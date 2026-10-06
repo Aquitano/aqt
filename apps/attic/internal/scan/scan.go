@@ -104,7 +104,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	}
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
 		archives: archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp},
-		text:     extract.Options{Open: disk.Open, MaxBytes: textMax, MaxChars: 1 << 20}}
+		text:     extract.Options{Open: openDocument, MaxBytes: textMax, MaxChars: 1 << 20}}
 	status, runErr := r.phases(ctx, rel)
 	if runErr != nil && ctx.Err() != nil {
 		status, runErr = "interrupted", nil
@@ -584,4 +584,12 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 		r.sc.Skip(p.Path, "text_failed", "", t.Detail)
 	}
 	return r.sc.SetText(ctx, p.ContentID, t)
+}
+
+func openDocument(p string) (extract.Handle, error) {
+	f, err := disk.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }

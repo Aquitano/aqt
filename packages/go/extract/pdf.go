@@ -18,10 +18,10 @@ import (
 // which — StatusNeedsOCR — is what makes "how much would OCR actually buy me"
 // a countable question instead of a guess.
 func pdfResult(ctx context.Context, f io.ReaderAt, size int64, path string, o Options) Result {
-	text, err := pdfText(ctx, f, size, o)
+	text, cut, err := pdfText(ctx, f, size, o)
 	if err == nil {
 		if t, truncated := normalize(text, o.MaxChars); t != "" {
-			return Result{Text: t, Extractor: "pdf", Status: StatusOK, Truncated: truncated}
+			return Result{Text: t, Extractor: "pdf", Status: StatusOK, Truncated: truncated || cut}
 		}
 		if !o.OCR {
 			return Result{Status: StatusNeedsOCR, Extractor: "pdf"}
@@ -33,7 +33,7 @@ func pdfResult(ctx context.Context, f io.ReaderAt, size int64, path string, o Op
 		// happens to be pixels.
 		return Result{Status: StatusFailed, Extractor: "pdf", Err: err}
 	}
-	return run("ocr-pdf", o, func() (string, error) { return ocrPDF(ctx, path, o) })
+	return run("ocr-pdf", o, func() (string, bool, error) { return ocrPDF(ctx, path, o) })
 }
 
 // pdfPageContentLimit caps one page's decompressed content stream. A content
@@ -44,29 +44,31 @@ const pdfPageContentLimit = 8 << 20
 
 // pdfText extracts the text layer page by page, so the caller's deadline is
 // checked between pages and one oversized or broken page costs only itself.
-// It reports an error only when the whole document yielded nothing.
-func pdfText(ctx context.Context, f io.ReaderAt, size int64, o Options) (text string, err error) {
+// It reports an error only when the whole document yielded nothing, and the
+// text cut when pages were left unread.
+func pdfText(ctx context.Context, f io.ReaderAt, size int64, o Options) (text string, cut bool, err error) {
 	// The library panics on malformed cross-reference tables and unusual font
 	// encodings, which in an archive of decades of mail is a matter of when.
 	defer func() {
 		if r := recover(); r != nil {
-			text, err = "", fmt.Errorf("pdf: %v", r)
+			text, cut, err = "", false, fmt.Errorf("pdf: %v", r)
 		}
 	}()
 	r, err := pdf.NewReader(f, size)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	var sb strings.Builder
 	var lastErr error
 	read := 0
 	max := readLimit(o)
-	for i := 1; i <= r.NumPage() && int64(sb.Len()) < max; i++ {
+	page := 1
+	for ; page <= r.NumPage() && int64(sb.Len()) < max; page++ {
 		if err := ctx.Err(); err != nil {
-			return "", err
+			return "", false, err
 		}
-		t, err := pdfPageText(r.Page(i))
+		t, err := pdfPageText(r.Page(page))
 		if err != nil {
 			lastErr = err
 			continue
@@ -75,9 +77,9 @@ func pdfText(ctx context.Context, f io.ReaderAt, size int64, o Options) (text st
 		read++
 	}
 	if read == 0 && lastErr != nil {
-		return "", lastErr
+		return "", false, lastErr
 	}
-	return sb.String(), nil
+	return sb.String(), page <= r.NumPage(), nil
 }
 
 // pdfPageText reads one page's text layer, refusing pages whose decompressed

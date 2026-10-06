@@ -103,9 +103,9 @@ func TestFilePlainText(t *testing.T) {
 func TestFileReadsThroughTheGivenOpener(t *testing.T) {
 	path := write(t, "notes.txt", []byte("through the opener"))
 	opened := 0
-	o := Options{Open: func(p string) (*os.File, error) {
+	o := Options{Open: func(p string) (Handle, error) {
 		opened++
-		return os.Open(p)
+		return openFile(p)
 	}}
 	if res := File(context.Background(), path, "notes.txt", "", o); res.Status != StatusOK || opened != 1 {
 		t.Fatalf("status %s, opened %d times; want ok, opened once through the opener", res.Status, opened)
@@ -272,7 +272,7 @@ func TestPDFTextHonorsContext(t *testing.T) {
 	doc := onePagePDF(t, []byte("q Q"))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := pdfText(ctx, bytes.NewReader(doc), int64(len(doc)), DefaultOptions()); !errors.Is(err, context.Canceled) {
+	if _, _, err := pdfText(ctx, bytes.NewReader(doc), int64(len(doc)), DefaultOptions()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
@@ -323,7 +323,7 @@ func TestOCRFailureIsRecordedNotPanicked(t *testing.T) {
 func TestOCRPDFAllPagesFailedIsAnError(t *testing.T) {
 	ppm := fakeBin(t, "pdftoppm", `for a in "$@"; do prefix="$a"; done; touch "$prefix-1.png" "$prefix-2.png"`)
 	tess := fakeBin(t, "tesseract", `echo "unreadable page" >&2; exit 1`)
-	_, err := ocrPDF(context.Background(), write(t, "scan.pdf", []byte("%PDF")),
+	_, _, err := ocrPDF(context.Background(), write(t, "scan.pdf", []byte("%PDF")),
 		Options{PDFToPPM: ppm, Tesseract: tess, MaxChars: 1 << 20})
 	if err == nil || !strings.Contains(err.Error(), "unreadable page") {
 		t.Fatalf("err = %v, want the page failure surfaced", err)
@@ -339,7 +339,7 @@ func TestOCRPDFTimeoutIsAnError(t *testing.T) {
 	tess := fakeBin(t, "tesseract", `m="$(dirname "$0")/ran"; if [ -e "$m" ]; then sleep 5 >/dev/null 2>&1; fi; touch "$m"; echo "page text"`)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	_, err := ocrPDF(ctx, write(t, "scan.pdf", []byte("%PDF")),
+	_, _, err := ocrPDF(ctx, write(t, "scan.pdf", []byte("%PDF")),
 		Options{PDFToPPM: ppm, Tesseract: tess, MaxChars: 1 << 20})
 	if err == nil {
 		t.Fatal("a timeout mid-scan must fail the document, not store what it got")
@@ -350,5 +350,31 @@ func TestOCRAvailableReportsMissingTools(t *testing.T) {
 	err := OCRAvailable(Options{Tesseract: "definitely-not-installed-xyz"})
 	if err == nil || !strings.Contains(err.Error(), "tesseract") {
 		t.Fatalf("err = %v, want a message naming tesseract", err)
+	}
+}
+
+// Old Windows tools write text in Windows-1252 or UTF-16; both must come out
+// searchable, umlauts included.
+func TestFileDecodesLegacyText(t *testing.T) {
+	cases := map[string][]byte{
+		"cp1252.txt": []byte("Vertr\xe4ge f\xfcr Stra\xdfe"),
+		"utf16.txt":  {0xFF, 0xFE, 'V', 0, 'e', 0, 'r', 0, 't', 0, 'r', 0, 0xE4, 0, 'g', 0, 'e', 0},
+	}
+	for name, content := range cases {
+		res := File(context.Background(), write(t, name, content), name, "", Options{})
+		if !strings.HasPrefix(res.Text, "Verträge") {
+			t.Errorf("%s: %q", name, res.Text)
+		}
+	}
+}
+
+// A reader that stops at its own read budget has cut the document as surely
+// as the character cap.
+func TestFileMarksTextCutByTheReadBudget(t *testing.T) {
+	page := "<p>start</p>" + strings.Repeat("<br>", 400_000) + "<p>end</p>"
+	path := write(t, "page.html", []byte(page))
+	res := File(context.Background(), path, "page.html", "", Options{MaxChars: 1000})
+	if res.Status != StatusOK || !res.Truncated || strings.Contains(res.Text, "end") {
+		t.Errorf("status %s, truncated %v, text %q; want ok, truncated, without the end", res.Status, res.Truncated, res.Text)
 	}
 }

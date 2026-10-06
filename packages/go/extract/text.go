@@ -2,6 +2,7 @@ package extract
 
 import (
 	"archive/zip"
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"html"
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/encoding/charmap"
+	xunicode "golang.org/x/text/encoding/unicode"
 )
 
 // readLimit bounds what any extractor pulls off disk. MaxChars caps what is
@@ -17,20 +21,57 @@ import (
 // cannot be decompressed into memory in full.
 func readLimit(o Options) int64 { return int64(o.MaxChars)*4 + 1<<20 }
 
-func readPlain(r io.Reader, o Options) (string, error) {
-	b, err := io.ReadAll(io.LimitReader(r, readLimit(o)))
+// readCapped reads up to readLimit bytes and reports whether more followed.
+func readCapped(r io.Reader, o Options) ([]byte, bool, error) {
+	limit := readLimit(o)
+	b, err := io.ReadAll(io.LimitReader(r, limit+1))
 	if err != nil {
-		return "", err
+		return nil, false, err
 	}
-	return string(b), nil
+	if int64(len(b)) > limit {
+		return b[:limit], true, nil
+	}
+	return b, false, nil
 }
 
-func readHTML(r io.Reader, o Options) (string, error) {
-	b, err := io.ReadAll(io.LimitReader(r, readLimit(o)))
-	if err != nil {
-		return "", err
+func readPlain(r io.Reader, o Options) (string, bool, error) {
+	b, cut, err := readCapped(r, o)
+	return decodeText(b), cut, err
+}
+
+func readHTML(r io.Reader, o Options) (string, bool, error) {
+	b, cut, err := readCapped(r, o)
+	return StripHTML(decodeText(b)), cut, err
+}
+
+// decodeText turns a file's bytes into text: UTF-16 behind a byte-order mark,
+// UTF-8, and anything else as Windows-1252, which old Windows tools wrote,
+// German Excel's CSV export among them.
+func decodeText(b []byte) string {
+	switch {
+	case bytes.HasPrefix(b, []byte{0xFF, 0xFE}), bytes.HasPrefix(b, []byte{0xFE, 0xFF}):
+		if s, err := xunicode.UTF16(xunicode.LittleEndian, xunicode.UseBOM).NewDecoder().Bytes(b); err == nil {
+			return string(s)
+		}
+	case validUTF8(b):
+		return strings.TrimPrefix(string(b), "FEFF")
 	}
-	return StripHTML(string(b)), nil
+	s, _ := charmap.Windows1252.NewDecoder().Bytes(b)
+	return string(s)
+}
+
+// validUTF8 forgives a character cut short at the end, where a read limit may
+// have split it.
+func validUTF8(b []byte) bool {
+	for i := len(b) - 1; i >= 0 && i >= len(b)-utf8.UTFMax; i-- {
+		if utf8.RuneStart(b[i]) {
+			if !utf8.FullRune(b[i:]) {
+				b = b[:i]
+			}
+			break
+		}
+	}
+	return utf8.Valid(b)
 }
 
 var (
@@ -77,10 +118,11 @@ func zipXMLParts(name string) bool {
 // text, not structure: for search, "what words are in this file" is the whole
 // question, and every one of these formats buries those words under a
 // different schema.
-func readZipXML(r io.ReaderAt, size int64, o Options) (string, error) {
+// It reports the text cut when the read budget ran out.
+func readZipXML(r io.ReaderAt, size int64, o Options) (string, bool, error) {
 	zr, err := zip.NewReader(r, size)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	var sb strings.Builder
@@ -103,7 +145,7 @@ func readZipXML(r io.ReaderAt, size int64, o Options) (string, error) {
 			continue
 		}
 	}
-	return sb.String(), nil
+	return sb.String(), budget <= 0, nil
 }
 
 // appendXMLText writes every character-data node into sb, separated by
@@ -172,7 +214,7 @@ func normalize(s string, maxChars int) (string, bool) {
 			space = false
 		}
 		if sb.Len() >= maxChars {
-			cut = strings.TrimSpace(s[i+utf8.RuneLen(r):]) != ""
+			cut = strings.IndexFunc(s[i+utf8.RuneLen(r):], kept) >= 0
 			break
 		}
 	}
@@ -195,3 +237,7 @@ func truncateRunes(s string, max int) string {
 	}
 	return s[:max]
 }
+
+// kept reports whether normalize writes r rather than dropping it or folding
+// it into a space.
+func kept(r rune) bool { return !unicode.IsSpace(r) && !unicode.IsControl(r) }

@@ -6,6 +6,7 @@ package extract
 
 import (
 	"context"
+	"io"
 	"mime"
 	"os"
 	"path/filepath"
@@ -84,9 +85,25 @@ type Options struct {
 	Tesseract string
 	PDFToPPM  string
 	// Open opens the file for the in-process extractors; os.Open when nil.
-	// attic passes one that keeps the file's last-access time. OCR hands the
-	// path to tesseract and pdftoppm, which open it themselves.
-	Open func(string) (*os.File, error)
+	// attic passes one that keeps the file's last-access time and watches its
+	// reads. OCR hands the path to tesseract and pdftoppm, which open it
+	// themselves.
+	Open func(string) (Handle, error)
+}
+
+// Handle is an open file as the extractors read it.
+type Handle interface {
+	io.Reader
+	io.ReaderAt
+	io.Closer
+}
+
+func openFile(path string) (Handle, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 // DefaultOptions are what the CLI uses before flags are applied.
@@ -126,7 +143,7 @@ func (o Options) withDefaults() Options {
 		o.PDFToPPM = d.PDFToPPM
 	}
 	if o.Open == nil {
-		o.Open = os.Open
+		o.Open = openFile
 	}
 	return o
 }
@@ -173,7 +190,10 @@ func File(ctx context.Context, path, filename, mimeType string, o Options) Resul
 	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
 	defer cancel()
 	if k == kindImage {
-		return run("ocr", o, func() (string, error) { return tesseract(ctx, path, o) })
+		return run("ocr", o, func() (string, bool, error) {
+			text, err := tesseract(ctx, path, o)
+			return text, false, err
+		})
 	}
 	f, err := o.Open(path)
 	if err != nil {
@@ -182,19 +202,20 @@ func File(ctx context.Context, path, filename, mimeType string, o Options) Resul
 	defer f.Close()
 	switch k {
 	case kindText:
-		return run("text", o, func() (string, error) { return readPlain(f, o) })
+		return run("text", o, func() (string, bool, error) { return readPlain(f, o) })
 	case kindHTML:
-		return run("html", o, func() (string, error) { return readHTML(f, o) })
+		return run("html", o, func() (string, bool, error) { return readHTML(f, o) })
 	case kindZipXML:
-		return run("zipxml", o, func() (string, error) { return readZipXML(f, info.Size(), o) })
+		return run("zipxml", o, func() (string, bool, error) { return readZipXML(f, info.Size(), o) })
 	}
 	return pdfResult(ctx, f, info.Size(), path, o)
 }
 
-// run calls one extractor and turns its (text, error) into a Result, applying
-// the character cap and the empty-versus-ok distinction in one place.
-func run(extractor string, o Options, f func() (string, error)) Result {
-	text, err := f()
+// run calls one extractor and turns its (text, cut, error) into a Result,
+// applying the character cap and the empty-versus-ok distinction in one place.
+// cut says the extractor stopped at a limit of its own before the end.
+func run(extractor string, o Options, f func() (string, bool, error)) Result {
+	text, cut, err := f()
 	if err != nil {
 		return Result{Status: StatusFailed, Extractor: extractor, Err: err}
 	}
@@ -202,7 +223,7 @@ func run(extractor string, o Options, f func() (string, error)) Result {
 	if text == "" {
 		return Result{Status: StatusEmpty, Extractor: extractor}
 	}
-	return Result{Text: text, Extractor: extractor, Status: StatusOK, Truncated: truncated}
+	return Result{Text: text, Extractor: extractor, Status: StatusOK, Truncated: truncated || cut}
 }
 
 // classify picks an extractor family from the filename first and the declared
