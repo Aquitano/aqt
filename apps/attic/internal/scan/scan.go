@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -103,8 +104,9 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 		textMax = math.MaxInt64
 	}
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
-		archives: archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp},
-		text:     extract.Options{Open: openDocument, MaxBytes: textMax, MaxChars: 1 << 20}}
+		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp},
+		textsRead: map[int64]bool{}}
+	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20}
 	status, runErr := r.phases(ctx, rel)
 	if runErr != nil && ctx.Err() != nil {
 		status, runErr = "interrupted", nil
@@ -127,6 +129,8 @@ type run struct {
 	hashBytes    int64
 	archives     archive.Options
 	text         extract.Options
+	textsRead    map[int64]bool
+	readErr      error
 	total        int64
 	current      string
 	phase        string
@@ -525,8 +529,9 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 
 // documents are the extensions read for their words. Source code and
 // configuration (json, yaml, sql, ini) keep their names only, as DESIGN.md
-// decides for code, and logs would bury documents under noise.
-var documents = []string{"txt", "text", "md", "markdown", "csv", "tsv", "rtf", "vcf", "ics", "srt", "vtt",
+// decides for code, and logs would bury documents under noise. RTF would be
+// read as its markup.
+var documents = []string{"txt", "text", "md", "markdown", "csv", "tsv", "vcf", "ics", "srt", "vtt",
 	"html", "htm", "xhtml", "docx", "xlsx", "pptx", "odt", "ods", "odp", "pdf"}
 
 // readTexts reads the documents below the scan root whose content has no
@@ -565,31 +570,74 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	if excluded, _ := r.rules.Excluded(path, false); excluded || r.rules.NameOnly(path) {
 		return nil
 	}
+	// A batch is fetched before its texts commit, so it can hold two copies.
+	if r.textsRead[p.ContentID] {
+		return nil
+	}
 	r.current = p.Path
 	r.progress(false)
+	r.readErr = nil
 	res := extract.File(ctx, r.osPath(p.Path), p.Name, "", r.text)
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	// A disk unplugged mid-read can look like any outcome, an empty docx
+	// included, so the disk is checked whatever the extractor said.
+	if gone := r.volumeGone(); gone != nil {
+		return gone
+	}
+	// A failed read or the size cap says nothing lasting about the content;
+	// the next scan, or a copy on another disk, tries again.
+	switch {
+	case r.readErr != nil:
+		r.sc.Skip(p.Path, "unreadable", "", r.readErr.Error())
+		return nil
+	case res.Status == extract.StatusTooBig:
+		r.sc.Skip(p.Path, "too_big", "", "over text.max_bytes")
+		return nil
 	}
 	t := store.DocumentText{Status: string(res.Status), Extractor: res.Extractor, Text: res.Text}
 	if res.Truncated {
 		t.Status = "truncated"
 	}
 	if res.Err != nil {
-		// A disk unplugged mid-read looks like a broken document.
-		if gone := r.volumeGone(); gone != nil {
-			return gone
-		}
 		t.Detail = res.Err.Error()
 		r.sc.Skip(p.Path, "text_failed", "", t.Detail)
 	}
+	r.textsRead[p.ContentID] = true
 	return r.sc.SetText(ctx, p.ContentID, t)
 }
 
-func openDocument(p string) (extract.Handle, error) {
+// openDocument opens a document for extract through disk.Open, and notes the
+// first failed open or read in r.readErr.
+func (r *run) openDocument(p string) (extract.Handle, error) {
 	f, err := disk.Open(p)
 	if err != nil {
+		r.readErr = err
 		return nil, err
 	}
-	return f, nil
+	return watchedDocument{File: f, err: &r.readErr}, nil
+}
+
+type watchedDocument struct {
+	*os.File
+	err *error
+}
+
+func (d watchedDocument) Read(p []byte) (int, error) {
+	n, err := d.File.Read(p)
+	d.note(err)
+	return n, err
+}
+
+func (d watchedDocument) ReadAt(p []byte, off int64) (int, error) {
+	n, err := d.File.ReadAt(p, off)
+	d.note(err)
+	return n, err
+}
+
+func (d watchedDocument) note(err error) {
+	if err != nil && !errors.Is(err, io.EOF) && *d.err == nil {
+		*d.err = err
+	}
 }

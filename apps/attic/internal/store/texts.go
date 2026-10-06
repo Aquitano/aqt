@@ -69,12 +69,12 @@ type DocumentText struct {
 
 // SetText records a document's text against its content. A copy of the same
 // content read in the meantime, by this scan or another, keeps its row.
+//
+// The row commits on its own, as SetContent's does: held in the scan's
+// transaction while the next document is read, it would block a scan of
+// another disk meeting the same content, and two such scans could deadlock.
 func (sc *Scan) SetText(ctx context.Context, contentID int64, t DocumentText) error {
-	tx, err := sc.begin(ctx)
-	if err != nil {
-		return err
-	}
-	tag, err := tx.Exec(ctx, `insert into texts (content_id, status, extractor, detail, text) values ($1, $2, $3, $4, $5)
+	tag, err := sc.store.pool.Exec(ctx, `insert into texts (content_id, status, extractor, detail, text) values ($1, $2, $3, $4, $5)
 		on conflict do nothing`, contentID, t.Status, t.Extractor, cleanText(t.Detail), cleanText(t.Text))
 	if err != nil {
 		return err
@@ -83,7 +83,6 @@ func (sc *Scan) SetText(ctx context.Context, contentID int64, t DocumentText) er
 		sc.Counts.Texts++
 		sc.Counts.TextChars += int64(utf8.RuneCountInString(t.Text))
 	}
-	sc.dirty++
 	return nil
 }
 
@@ -198,8 +197,8 @@ func (s *Store) Text(ctx context.Context, entryID int64, ref string) (TextDetail
 	}
 	err := s.pool.QueryRow(ctx, `select `+refSQL+`, t.status, t.extractor, t.detail, char_length(t.text), t.extracted_at, t.text
 		from texts t join contents c on c.id = t.content_id
-		where ($1 <> 0 and c.id = (select content_id from entries where id = $1))
-		   or ($1 = 0 and substr(c.blake3, 1, 8) = $2)
+		where ($1::bigint <> 0 and c.id = (select content_id from entries where id = $1))
+		   or ($1::bigint = 0 and substr(c.blake3, 1, 8) = $2)
 		order by c.id limit 1`, entryID, prefix).
 		Scan(&d.Ref, &d.Status, &d.Extractor, &d.Detail, &d.Chars, &d.Extracted, &d.Text)
 	if errors.Is(err, pgx.ErrNoRows) {

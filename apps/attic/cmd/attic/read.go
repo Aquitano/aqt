@@ -559,7 +559,7 @@ func cmdStats(ctx context.Context, args []string) error {
 		docs = append(docs, count(t.Texts[status])+" "+status)
 		read += t.Texts[status]
 	}
-	fmt.Printf("%s documents read (%s), %s characters of text\n", count(read), strings.Join(docs, ", "), count(t.TextChars))
+	fmt.Printf("%s documents (%s), %s characters of text\n", count(read), strings.Join(docs, ", "), count(t.TextChars))
 	return nil
 }
 

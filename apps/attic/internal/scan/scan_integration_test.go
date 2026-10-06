@@ -320,3 +320,21 @@ func TestDocumentsAreReadForTheirWords(t *testing.T) {
 		t.Errorf("long.md: %s with %d characters, %v; want truncated at the cap", long.Status, long.Chars, err)
 	}
 }
+
+// The size cap is a skip, not a property of the content: raising it reads the
+// document on the next scan.
+func TestOversizedDocumentsWaitForTheCap(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "report.txt", "quarterly figures for the board")
+	capped := func(o *Options) { o.Config.Text.MaxBytes = 10 }
+
+	first := scanAt(t, st, root, testVolume, capped)
+	skips, err := st.Skips(context.Background(), first.ScanID, "too_big", "", 10)
+	if first.Counts.Texts != 0 || err != nil || len(skips) != 1 {
+		t.Fatalf("read %d documents with skips %+v, %v; want none read and report.txt too big", first.Counts.Texts, skips, err)
+	}
+	if again := scanAt(t, st, root, testVolume); again.Counts.Texts != 1 {
+		t.Errorf("without the cap read %d documents, want report.txt", again.Counts.Texts)
+	}
+}
