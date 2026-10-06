@@ -17,11 +17,11 @@ import (
 // scanned contract is pixels and costs a minute of OCR. Recording which is
 // which — StatusNeedsOCR — is what makes "how much would OCR actually buy me"
 // a countable question instead of a guess.
-func pdfResult(ctx context.Context, path string, o Options) Result {
-	text, err := pdfText(ctx, path, o)
+func pdfResult(ctx context.Context, f io.ReaderAt, size int64, path string, o Options) Result {
+	text, err := pdfText(ctx, f, size, o)
 	if err == nil {
-		if t := normalize(text, o.MaxChars); t != "" {
-			return Result{Text: t, Extractor: "pdf", Status: StatusOK}
+		if t, truncated := normalize(text, o.MaxChars); t != "" {
+			return Result{Text: t, Extractor: "pdf", Status: StatusOK, Truncated: truncated}
 		}
 		if !o.OCR {
 			return Result{Status: StatusNeedsOCR, Extractor: "pdf"}
@@ -45,7 +45,7 @@ const pdfPageContentLimit = 8 << 20
 // pdfText extracts the text layer page by page, so the caller's deadline is
 // checked between pages and one oversized or broken page costs only itself.
 // It reports an error only when the whole document yielded nothing.
-func pdfText(ctx context.Context, path string, o Options) (text string, err error) {
+func pdfText(ctx context.Context, f io.ReaderAt, size int64, o Options) (text string, err error) {
 	// The library panics on malformed cross-reference tables and unusual font
 	// encodings, which in an archive of decades of mail is a matter of when.
 	defer func() {
@@ -53,11 +53,10 @@ func pdfText(ctx context.Context, path string, o Options) (text string, err erro
 			text, err = "", fmt.Errorf("pdf: %v", r)
 		}
 	}()
-	f, r, err := pdf.Open(path)
+	r, err := pdf.NewReader(f, size)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 
 	var sb strings.Builder
 	var lastErr error

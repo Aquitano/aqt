@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/extract"
+	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // Attachment text is writable over HTTP, not just readable, because the
@@ -97,7 +98,7 @@ func (s *Server) handleAttachmentTextPut(w http.ResponseWriter, r *http.Request)
 	// A status nothing recognizes strands the row: no default pass selects it
 	// again, and the content looks read when it never was. Storing "pending"
 	// is the same mistake spelled correctly — it means the absence of a row.
-	if err := extract.ValidStoredStatus(status); err != nil {
+	if err := blobtext.ValidStoredStatus(status); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}

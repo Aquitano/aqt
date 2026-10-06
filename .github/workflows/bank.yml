@@ -2,9 +2,9 @@ name: bank
 on:
   push:
     branches: [main]
-    paths: ["apps/bank/**", ".golangci.yml", ".github/workflows/bank.yml"]
+    paths: ["apps/bank/**", "packages/go/extract/**", ".golangci.yml", ".github/workflows/bank.yml"]
   pull_request:
-    paths: ["apps/bank/**", ".golangci.yml", ".github/workflows/bank.yml"]
+    paths: ["apps/bank/**", "packages/go/extract/**", ".golangci.yml", ".github/workflows/bank.yml"]
 permissions:
   contents: read
 concurrency:

@@ -16,9 +16,9 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/aichat"
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/discord"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
-	"github.com/aquitano/aqt/apps/bank/internal/extract"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/linkedin"
@@ -26,6 +26,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
 	"github.com/aquitano/aqt/apps/bank/internal/youtube"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // Uploads are always single files: directory inputs stay a client concern, the
@@ -173,13 +174,13 @@ func (s *Server) extractUntilCurrent() {
 func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Time) (backlog bool) {
 	o := extract.DefaultOptions()
 	o.TempDir = uploadStagingDir(s.dataDir)
-	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true, StoredSince: since, RefreshSince: refreshSince}
-	summary, err := extract.Run(ctx, extract.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
+	sel := blobtext.Selection{Limit: blobtext.PostImportLimit, NewestFirst: true, StoredSince: since, RefreshSince: refreshSince}
+	summary, err := blobtext.Run(ctx, blobtext.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)
 		return false
 	}
-	return summary.Considered == extract.PostImportLimit
+	return summary.Considered == blobtext.PostImportLimit
 }
 
 func (s *Server) importJSON(ctx context.Context, source string, body []byte) (generic.Result, error) {

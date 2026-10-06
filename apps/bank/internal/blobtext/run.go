@@ -1,4 +1,12 @@
-package extract
+// Package blobtext is bank's extraction pass: it turns attachment bytes into
+// searchable text with packages/go/extract and records the outcome per blob.
+//
+// Extraction is deliberately not part of importing. It is derived data —
+// rebuildable from the blobs at any time — and it is keyed on the blob's
+// sha256, so a PDF attached to forty messages is read once. Keeping it a
+// separate pass is also what lets the expensive half (OCR) run somewhere other
+// than the process that serves the archive over a network port.
+package blobtext
 
 import (
 	"context"
@@ -7,6 +15,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // Archive is the part of the archive an extraction run touches. The local
@@ -68,7 +77,7 @@ func defaultStatuses(named []string, ocr bool) []string {
 		return named
 	}
 	if ocr {
-		return []string{store.StatusPending, string(StatusNeedsOCR)}
+		return []string{store.StatusPending, string(extract.StatusNeedsOCR)}
 	}
 	return []string{store.StatusPending}
 }
@@ -76,10 +85,10 @@ func defaultStatuses(named []string, ocr bool) []string {
 // Run extracts text for the selected content and reindexes the messages that
 // carry it. Individual failures are recorded against their blob and the run
 // continues; only a broken archive aborts it.
-func Run(ctx context.Context, a Archive, sel Selection, o Options, progress func(store.BlobRef, Result)) (Summary, error) {
+func Run(ctx context.Context, a Archive, sel Selection, o extract.Options, progress func(store.BlobRef, extract.Result)) (Summary, error) {
 	sum := Summary{ByStatus: map[string]int{}}
 	if o.OCR {
-		if err := OCRAvailable(o); err != nil {
+		if err := extract.OCRAvailable(o); err != nil {
 			return sum, err
 		}
 	}
@@ -98,7 +107,7 @@ func Run(ctx context.Context, a Archive, sel Selection, o Options, progress func
 	// this is the last point before it would be overwritten and a hand-made
 	// transcription is the one kind of text nothing can rebuild.
 	blobs = slices.DeleteFunc(blobs, func(b store.BlobRef) bool {
-		return b.Status == string(StatusManual)
+		return b.Status == string(extract.StatusManual)
 	})
 	sum.Considered = len(blobs)
 
@@ -134,13 +143,13 @@ func Run(ctx context.Context, a Archive, sel Selection, o Options, progress func
 	return sum, nil
 }
 
-func extractOne(ctx context.Context, a Archive, b store.BlobRef, o Options) Result {
+func extractOne(ctx context.Context, a Archive, b store.BlobRef, o extract.Options) extract.Result {
 	path, cleanup, err := a.OpenBlob(ctx, b.SHA256)
 	if err != nil {
-		return Result{Status: StatusFailed, Err: err}
+		return extract.Result{Status: extract.StatusFailed, Err: err}
 	}
 	defer cleanup()
-	return File(ctx, path, b.Filename, b.MimeType, o)
+	return extract.File(ctx, path, b.Filename, b.MimeType, o)
 }
 
 func short(sha string) string {

@@ -6,13 +6,17 @@
 # it as possible.
 
 FROM golang:1.27.1-alpine AS build
-WORKDIR /src
+WORKDIR /src/apps/bank
 
+# The context is the repository root, because bank builds against
+# packages/go/extract (Dockerfile.dockerignore keeps everything else out).
 # Dependencies first, so a source-only change reuses the module cache.
-COPY go.mod go.sum ./
+COPY packages/go/extract/go.mod packages/go/extract/go.sum /src/packages/go/extract/
+COPY apps/bank/go.mod apps/bank/go.sum ./
 RUN go mod download
 
-COPY . .
+COPY packages/go/extract /src/packages/go/extract
+COPY apps/bank ./
 # CGO off keeps the binary static, which is what makes the distroless base
 # work; -trimpath keeps build paths out of it.
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bank ./cmd/bank

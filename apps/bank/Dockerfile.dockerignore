@@ -1,0 +1,24 @@
+# The build context is the repository root, so bank can build against
+# packages/go/extract. BuildKit reads this file instead of the root
+# .dockerignore. Allowlist: a stray archive or blob store would otherwise be
+# baked into an image layer.
+*
+!apps/bank
+!packages/go/extract
+apps/bank/.claude
+apps/bank/.env
+apps/bank/bank
+apps/bank/**/*.log
+
+# Local data directories, if anyone points BANK_DATA_DIR at the repo.
+apps/bank/.bankdata
+apps/bank/blobs/
+apps/bank/archive/
+apps/bank/inbox/
+
+# IMAP collector config, certificates and its queue of decrypted mail.
+apps/bank/imap.json
+apps/bank/config.json
+apps/bank/**/*.pem
+apps/bank/state/
+apps/bank/imap-state/

@@ -5,8 +5,8 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
-	"github.com/aquitano/aqt/apps/bank/internal/extract"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 )
 
@@ -65,7 +65,7 @@ func cmdMediaImport(ctx context.Context, kind string, args []string) error {
 		}
 	}
 	if d != nil {
-		if err := extractAfterImport(ctx, extract.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
+		if err := extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
 			return err
 		}
 	}

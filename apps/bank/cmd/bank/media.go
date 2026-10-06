@@ -14,9 +14,9 @@ import (
 	"strings"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
-	"github.com/aquitano/aqt/apps/bank/internal/extract"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 )
@@ -303,7 +303,7 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 	if _, err = local.st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
 		return err
 	}
-	if err = extractAfterImport(ctx, extract.Local{Store: local.st, Blobs: local.blobs}, noExtract); err != nil {
+	if err = extractAfterImport(ctx, blobtext.Local{Store: local.st, Blobs: local.blobs}, noExtract); err != nil {
 		return err
 	}
 	for i := range files {

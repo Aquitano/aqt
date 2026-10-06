@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
-	"github.com/aquitano/aqt/apps/bank/internal/extract"
 )
 
 func cmdImportMailTree(ctx context.Context, args []string) error {
@@ -88,5 +88,5 @@ func withMailImporter(ctx context.Context, source string, noExtract bool, run fu
 	if err != nil {
 		return err
 	}
-	return extractAfterImport(ctx, extract.Local{Store: local.st, Blobs: local.blobs}, noExtract)
+	return extractAfterImport(ctx, blobtext.Local{Store: local.st, Blobs: local.blobs}, noExtract)
 }

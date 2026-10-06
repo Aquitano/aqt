@@ -4,13 +4,12 @@ import (
 	"archive/zip"
 	"encoding/xml"
 	"errors"
+	"html"
 	"io"
-	"os"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/aquitano/aqt/apps/bank/internal/eml"
 )
 
 // readLimit bounds what any extractor pulls off disk. MaxChars caps what is
@@ -18,29 +17,41 @@ import (
 // cannot be decompressed into memory in full.
 func readLimit(o Options) int64 { return int64(o.MaxChars)*4 + 1<<20 }
 
-func readPlain(path string, o Options) (string, error) {
-	b, err := readCapped(path, readLimit(o))
+func readPlain(r io.Reader, o Options) (string, error) {
+	b, err := io.ReadAll(io.LimitReader(r, readLimit(o)))
 	if err != nil {
 		return "", err
 	}
 	return string(b), nil
 }
 
-func readHTML(path string, o Options) (string, error) {
-	b, err := readCapped(path, readLimit(o))
+func readHTML(r io.Reader, o Options) (string, error) {
+	b, err := io.ReadAll(io.LimitReader(r, readLimit(o)))
 	if err != nil {
 		return "", err
 	}
-	return eml.StripHTML(string(b)), nil
+	return StripHTML(string(b)), nil
 }
 
-func readCapped(path string, limit int64) ([]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
+var (
+	htmlStripBlocks = regexp.MustCompile(`(?is)<(style|script|head)\b.*?</\s*(style|script|head)\s*>`)
+	htmlBreaks      = regexp.MustCompile(`(?i)<\s*(br|/p|/div|/tr|/li|/h[1-6])\s*/?\s*>`)
+	htmlTags        = regexp.MustCompile(`(?s)<[^>]*>`)
+	blankLines      = regexp.MustCompile(`\n{3,}`)
+)
+
+// StripHTML reduces an HTML body to searchable plain text.
+func StripHTML(s string) string {
+	s = htmlStripBlocks.ReplaceAllString(s, "")
+	s = htmlBreaks.ReplaceAllString(s, "\n")
+	s = htmlTags.ReplaceAllString(s, "")
+	s = html.UnescapeString(s)
+	var lines []string
+	for _, l := range strings.Split(s, "\n") {
+		lines = append(lines, strings.TrimSpace(l))
 	}
-	defer f.Close()
-	return io.ReadAll(io.LimitReader(f, limit))
+	s = strings.Join(lines, "\n")
+	return strings.TrimSpace(blankLines.ReplaceAllString(s, "\n\n"))
 }
 
 // zipXMLParts names the parts worth reading per format. Everything else in an
@@ -66,12 +77,11 @@ func zipXMLParts(name string) bool {
 // text, not structure: for search, "what words are in this file" is the whole
 // question, and every one of these formats buries those words under a
 // different schema.
-func readZipXML(path string, o Options) (string, error) {
-	zr, err := zip.OpenReader(path)
+func readZipXML(r io.ReaderAt, size int64, o Options) (string, error) {
+	zr, err := zip.NewReader(r, size)
 	if err != nil {
 		return "", err
 	}
-	defer zr.Close()
 
 	var sb strings.Builder
 	budget := readLimit(o)
@@ -138,15 +148,17 @@ func (c *countingReader) Read(p []byte) (int, error) {
 // normalize makes extracted text safe to store and cheap to index: valid
 // UTF-8, no control characters, no runs of whitespace, and bounded length.
 // Extractors produce all three problems — OCR emits stray control bytes, PDF
-// text layers emit per-glyph spacing, XML emits indentation.
-func normalize(s string, maxChars int) string {
+// text layers emit per-glyph spacing, XML emits indentation. It reports
+// whether text was cut at maxChars.
+func normalize(s string, maxChars int) (string, bool) {
 	if !utf8.ValidString(s) {
 		s = strings.ToValidUTF8(s, " ")
 	}
 	var sb strings.Builder
 	sb.Grow(len(s))
 	space := true // leading whitespace is dropped
-	for _, r := range s {
+	cut := false
+	for i, r := range s {
 		switch {
 		case r == '\n' || r == '\t' || unicode.IsSpace(r):
 			if !space {
@@ -160,14 +172,16 @@ func normalize(s string, maxChars int) string {
 			space = false
 		}
 		if sb.Len() >= maxChars {
+			cut = strings.TrimSpace(s[i+utf8.RuneLen(r):]) != ""
 			break
 		}
 	}
 	out := strings.TrimSpace(sb.String())
 	if len(out) > maxChars {
 		out = strings.TrimSpace(truncateRunes(out, maxChars))
+		cut = true
 	}
-	return out
+	return out, cut
 }
 
 // truncateRunes cuts on a rune boundary, so the stored text never ends in half

@@ -39,6 +39,11 @@ run = [
   "bun run --filter \"./packages/ts/*\" typecheck",
 ]
 
+[tasks."shared:go"]
+description = "Vet, test and lint the Go packages that apps build against"
+dir = "packages/go/extract"
+run = ["go vet ./...", "go test ./...", "golangci-lint run"]
+
 [tasks."stack:check"]
 depends = ["shared:ts", "stack:ts"]
 
@@ -51,7 +56,7 @@ run = [
 ]
 
 [tasks."bank:check"]
-depends = ["shared:ts", "bank:ts", "bank:go"]
+depends = ["shared:ts", "shared:go", "bank:ts", "bank:go"]
 
 [tasks."bank:ts"]
 run = [

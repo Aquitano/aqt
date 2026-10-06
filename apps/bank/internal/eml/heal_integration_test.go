@@ -10,6 +10,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // seedStub archives raw under source and inserts the row an older parser would
@@ -59,12 +60,12 @@ func TestHealBodiesReplacesStubsFromTheArchive(t *testing.T) {
 	stub := stubMail("dauerauftrag@example.com")
 	seedStub(t, st, archiveDir, "gmail", "abc123456789-All mail.mbox",
 		"dauerauftrag@example.com", "From bank@example.com Mon May 13 21:08:00 2024\n"+stub,
-		StripHTML(stubPlain))
+		extract.StripHTML(stubPlain))
 	// A message whose stored body is already the full text: the pass must read
 	// it and leave it alone.
 	intact := stubMail("intact@example.com")
 	seedStub(t, st, archiveDir, "gmail", "def123456789-intact.eml", "intact@example.com",
-		intact, StripHTML(stubHTML))
+		intact, extract.StripHTML(stubHTML))
 
 	var heals []BodyHeal
 	collect := func(h BodyHeal) { heals = append(heals, h) }
@@ -102,7 +103,7 @@ func TestHealBodiesReplacesStubsFromTheArchive(t *testing.T) {
 	if !strings.Contains(body, "Dauerauftrag ueber 450,00 EUR") {
 		t.Errorf("body = %q, want the text the sender actually wrote", body)
 	}
-	if got := bodyOf(t, st, "gmail", "intact@example.com"); got != StripHTML(stubHTML) {
+	if got := bodyOf(t, st, "gmail", "intact@example.com"); got != extract.StripHTML(stubHTML) {
 		t.Errorf("an already-complete body changed: %q", got)
 	}
 
@@ -126,7 +127,7 @@ func TestHealBodiesStaysWithinMailOfOneSource(t *testing.T) {
 	archiveDir := filepath.Join(t.TempDir(), "archive")
 
 	seedStub(t, st, archiveDir, "gmail", "abc123456789-mail.eml", "elsewhere@example.com",
-		stubMail("elsewhere@example.com"), StripHTML(stubPlain))
+		stubMail("elsewhere@example.com"), extract.StripHTML(stubPlain))
 	if err := os.WriteFile(filepath.Join(archiveDir, "gmail", "abc123456789-chat.zip"), []byte("PK\x03\x04"), 0o600); err != nil {
 		t.Fatal(err)
 	}

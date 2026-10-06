@@ -1,15 +1,17 @@
-package extract
+package blobtext
 
 import (
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // fakeArchive stands in for Postgres plus the blob store, so the pass itself
@@ -89,7 +91,7 @@ func TestRunExtractsAndRecordsEveryOutcome(t *testing.T) {
 		"clip.mkv":  "binary",
 		"scan.png":  "pixels",
 	})
-	sum, err := Run(context.Background(), a, Selection{}, Options{}, nil)
+	sum, err := Run(context.Background(), a, Selection{}, extract.Options{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +122,7 @@ func TestRunExtractsAndRecordsEveryOutcome(t *testing.T) {
 func TestRunContinuesPastAnUnreadableBlob(t *testing.T) {
 	a := archiveWith(t, map[string]string{"notes.txt": "fine"})
 	a.openErr = errors.New("blob missing")
-	sum, err := Run(context.Background(), a, Selection{}, Options{}, nil)
+	sum, err := Run(context.Background(), a, Selection{}, extract.Options{}, nil)
 	if err != nil {
 		t.Fatalf("run aborted: %v", err)
 	}
@@ -134,7 +136,7 @@ func TestRunContinuesPastAnUnreadableBlob(t *testing.T) {
 
 func TestRunRefusesOCRWithoutTheTools(t *testing.T) {
 	a := archiveWith(t, map[string]string{"scan.png": "pixels"})
-	_, err := Run(context.Background(), a, Selection{}, Options{OCR: true, Tesseract: "not-installed-xyz"}, nil)
+	_, err := Run(context.Background(), a, Selection{}, extract.Options{OCR: true, Tesseract: "not-installed-xyz"}, nil)
 	if err == nil {
 		t.Fatal("want an error up front rather than one failure per blob")
 	}
@@ -148,7 +150,7 @@ func TestRunSelectsByStatus(t *testing.T) {
 	a.refs[0].Status = "needs_ocr"
 	a.refs[1].Status = store.StatusPending
 
-	sum, err := Run(context.Background(), a, Selection{Statuses: []string{"needs_ocr"}}, Options{}, nil)
+	sum, err := Run(context.Background(), a, Selection{Statuses: []string{"needs_ocr"}}, extract.Options{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,11 +165,11 @@ func TestRunNeverTouchesManualText(t *testing.T) {
 	a := archiveWith(t, map[string]string{"notes.txt": "the parsed text", "scan.png": "pixels"})
 	for i := range a.refs {
 		if a.refs[i].SHA256 == "notes.txt" {
-			a.refs[i].Status = string(StatusManual)
+			a.refs[i].Status = string(extract.StatusManual)
 		}
 	}
 
-	sum, err := Run(context.Background(), a, Selection{Statuses: []string{string(StatusManual), store.StatusPending}}, Options{}, nil)
+	sum, err := Run(context.Background(), a, Selection{Statuses: []string{string(extract.StatusManual), store.StatusPending}}, extract.Options{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +185,7 @@ func TestRunNeverTouchesManualText(t *testing.T) {
 // attachment's text was already known needs that text copied onto its row.
 func TestRunRefreshesEvenWithNothingToExtract(t *testing.T) {
 	a := &fakeArchive{}
-	if _, err := Run(context.Background(), a, Selection{}, Options{}, nil); err != nil {
+	if _, err := Run(context.Background(), a, Selection{}, extract.Options{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if a.refreshed != 1 {
@@ -218,11 +220,25 @@ func TestRunWithOCRPicksUpNeedsOCR(t *testing.T) {
 	a.refs[0].Status = "needs_ocr"
 	tess := fakeBin(t, "tesseract", `echo "read from the scan"`)
 
-	sum, err := Run(context.Background(), a, Selection{}, Options{OCR: true, Tesseract: tess, PDFToPPM: "echo"}, nil)
+	sum, err := Run(context.Background(), a, Selection{}, extract.Options{OCR: true, Tesseract: tess, PDFToPPM: "echo"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sum.ByStatus["ok"] != 1 {
 		t.Fatalf("by status = %v, want the queued scan read", sum.ByStatus)
 	}
+}
+
+// fakeBin writes a script standing in for tesseract, so the OCR queue is
+// tested without it.
+func fakeBin(t *testing.T, name, body string) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script stand-ins are POSIX only")
+	}
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

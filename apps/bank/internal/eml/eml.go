@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
-	"html"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -23,6 +22,8 @@ import (
 
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/htmlindex"
+
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 type Attachment struct {
@@ -249,7 +250,7 @@ func (p *parser) body() string {
 		return plain
 	}
 	if html != "" {
-		return StripHTML(html)
+		return extract.StripHTML(html)
 	}
 	if plain != "" {
 		return plain
@@ -259,7 +260,7 @@ func (p *parser) body() string {
 			continue
 		}
 		if n.isHTML {
-			return StripHTML(n.text)
+			return extract.StripHTML(n.text)
 		}
 		return strings.TrimSpace(n.text)
 	}
@@ -285,7 +286,7 @@ func plainIsStub(plain, html string) bool {
 	if html == "" || len(plain) >= stubMaxChars {
 		return false
 	}
-	return len(StripHTML(html)) > stubRatio*len(plain)
+	return len(extract.StripHTML(html)) > stubRatio*len(plain)
 }
 
 // cssJunkRe spots a stylesheet rule near the start of a text: a brace block
@@ -456,25 +457,4 @@ func addressList(s string) []string {
 		}
 	}
 	return out
-}
-
-var (
-	htmlStripBlocks = regexp.MustCompile(`(?is)<(style|script|head)\b.*?</\s*(style|script|head)\s*>`)
-	htmlBreaks      = regexp.MustCompile(`(?i)<\s*(br|/p|/div|/tr|/li|/h[1-6])\s*/?\s*>`)
-	htmlTags        = regexp.MustCompile(`(?s)<[^>]*>`)
-	blankLines      = regexp.MustCompile(`\n{3,}`)
-)
-
-// StripHTML reduces an HTML body to searchable plain text.
-func StripHTML(s string) string {
-	s = htmlStripBlocks.ReplaceAllString(s, "")
-	s = htmlBreaks.ReplaceAllString(s, "\n")
-	s = htmlTags.ReplaceAllString(s, "")
-	s = html.UnescapeString(s)
-	var lines []string
-	for _, l := range strings.Split(s, "\n") {
-		lines = append(lines, strings.TrimSpace(l))
-	}
-	s = strings.Join(lines, "\n")
-	return strings.TrimSpace(blankLines.ReplaceAllString(s, "\n\n"))
 }

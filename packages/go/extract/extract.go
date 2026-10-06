@@ -1,27 +1,21 @@
-// Package extract turns attachment bytes into searchable text.
-//
-// Extraction is deliberately not part of importing. It is derived data —
-// rebuildable from the blobs at any time — and it is keyed on the blob's
-// sha256, so a PDF attached to forty messages is read once. Keeping it a
-// separate pass is also what lets the expensive half (OCR) run somewhere other
-// than the process that serves the archive over a network port.
+// Package extract turns a file's bytes into searchable text: plain text, HTML,
+// Office and OpenDocument files, PDF text layers, and with OCR images and
+// scanned PDFs. bank reads mail attachments with it, attic files on backup
+// disks. Each keeps its own queue; this package knows one file at a time.
 package extract
 
 import (
 	"context"
-	"fmt"
 	"mime"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
-// Status is what an extraction attempt concluded. It is stored per blob so a
-// later pass can retry a subset — after installing tesseract, after adding an
-// extractor — without re-reading everything.
+// Status is what an extraction attempt concluded. Callers store it per
+// content so a later pass can retry a subset — after installing tesseract,
+// after adding an extractor — without re-reading everything.
 type Status string
 
 const (
@@ -32,7 +26,7 @@ const (
 	StatusEmpty Status = "empty"
 	// StatusNeedsOCR: an image, or a PDF with no text layer. Nothing is
 	// wrong; the text is pixels and OCR did not run. This is the work queue
-	// for `bank extract --ocr`.
+	// for an OCR pass.
 	StatusNeedsOCR Status = "needs_ocr"
 	// StatusUnsupported: no extractor handles this type (video, archives,
 	// binaries). Retried only when an extractor is added.
@@ -50,56 +44,6 @@ const (
 // Statuses lists every status, for flag validation and reporting order.
 var Statuses = []Status{StatusOK, StatusEmpty, StatusNeedsOCR, StatusUnsupported, StatusTooBig, StatusFailed, StatusManual}
 
-// ValidStatus keeps a typo in --status from silently selecting nothing. The
-// pending pseudo-status counts: it is what a caller names to mean content no
-// extraction has touched, and leaving it out of the message would make a valid
-// choice look wrong.
-func ValidStatus(s string) error {
-	if s == store.StatusPending || ValidStoredStatus(s) == nil {
-		return nil
-	}
-	return unknownStatus(s, append([]string{store.StatusPending}, statusNames()...))
-}
-
-// ValidStoredStatus is the same check for a status about to be written to a
-// row, which is a stricter question than which content to select: pending
-// means "no row at all", so storing it would leave content that no default
-// pass ever looks at again. The HTTP write route takes its status from a query
-// string, and that is the one place a caller can invent one.
-func ValidStoredStatus(s string) error {
-	for _, k := range Statuses {
-		if Status(s) == k {
-			return nil
-		}
-	}
-	return unknownStatus(s, statusNames())
-}
-
-// ValidRunStatus is the same check for content an automatic pass may work on.
-// Manual text is a transcription someone made by hand or with better tools
-// than this binary has; re-running extraction over it would replace it with
-// whatever tesseract makes of the same page, and nothing could rebuild it.
-func ValidRunStatus(s string) error {
-	if s == string(StatusManual) {
-		return fmt.Errorf("--status manual would overwrite transcriptions made by hand: " +
-			"replace one with `bank attachment text <sha256> --set`, " +
-			"or clear it with `--clear` to put the content back in the queue")
-	}
-	return ValidStatus(s)
-}
-
-func statusNames() []string {
-	names := make([]string, 0, len(Statuses))
-	for _, k := range Statuses {
-		names = append(names, string(k))
-	}
-	return names
-}
-
-func unknownStatus(s string, names []string) error {
-	return fmt.Errorf("unknown status %q (want one of: %s)", s, strings.Join(names, ", "))
-}
-
 // Result is one extraction attempt.
 type Result struct {
 	Text string
@@ -107,6 +51,9 @@ type Result struct {
 	// OCR'd body from a parsed one without a second column of meaning.
 	Extractor string
 	Status    Status
+	// Truncated marks text cut at MaxChars. The status stays ok: what was kept
+	// is as good as any other text.
+	Truncated bool
 	// Err carries why a failure failed. Never fatal to a run: one corrupt PDF
 	// must not stop the pass.
 	Err error
@@ -121,7 +68,7 @@ type Options struct {
 	// OCRLang is passed to tesseract as -l. Multiple languages are joined
 	// with '+' by tesseract itself ("deu+eng").
 	OCRLang string
-	// MaxBytes skips blobs larger than this. A 2 GB video has no text worth
+	// MaxBytes skips files larger than this. A 2 GB video has no text worth
 	// the read.
 	MaxBytes int64
 	// MaxChars truncates stored text. Bounds both the index and the row.
@@ -130,14 +77,16 @@ type Options struct {
 	OCRMaxPages int
 	// Timeout bounds one document, OCR included.
 	Timeout time.Duration
-	// TempDir is where OCR rasterizes pages. Defaults to the OS temp dir;
-	// the CLI points it at the data directory, which is the one writable
-	// mount in the container and is sized for archive-scale files.
+	// TempDir is where OCR rasterizes pages. Defaults to the OS temp dir.
 	TempDir string
 	// Tesseract and PDFToPPM are the binaries to run, overridable for tests
 	// and for a box that installed them somewhere unusual.
 	Tesseract string
 	PDFToPPM  string
+	// Open opens the file for the in-process extractors; os.Open when nil.
+	// attic passes one that keeps the file's last-access time. OCR hands the
+	// path to tesseract and pdftoppm, which open it themselves.
+	Open func(string) (*os.File, error)
 }
 
 // DefaultOptions are what the CLI uses before flags are applied.
@@ -176,6 +125,9 @@ func (o Options) withDefaults() Options {
 	if o.PDFToPPM == "" {
 		o.PDFToPPM = d.PDFToPPM
 	}
+	if o.Open == nil {
+		o.Open = os.Open
+	}
 	return o
 }
 
@@ -192,12 +144,11 @@ const (
 )
 
 // File extracts text from one file on disk. filename and mimeType come from
-// the attachment row; both are attacker-supplied in the sense that they came
-// out of someone else's mail client, so neither is trusted beyond choosing an
-// extractor.
+// whoever handed over the file, a mail client or a backup disk, so neither is
+// trusted beyond choosing an extractor. mimeType may be empty.
 //
 // It never returns an error: every outcome is a Status, because a run over
-// thousands of blobs must record what happened to each and continue.
+// thousands of files must record what happened to each and continue.
 func File(ctx context.Context, path, filename, mimeType string, o Options) Result {
 	o = o.withDefaults()
 
@@ -211,26 +162,33 @@ func File(ctx context.Context, path, filename, mimeType string, o Options) Resul
 	if info.Size() == 0 {
 		return Result{Status: StatusEmpty}
 	}
+	k := classify(filename, mimeType)
+	switch {
+	case k == kindNone:
+		return Result{Status: StatusUnsupported}
+	case k == kindImage && !o.OCR:
+		return Result{Status: StatusNeedsOCR}
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
 	defer cancel()
-
-	switch classify(filename, mimeType) {
-	case kindText:
-		return run("text", o, func() (string, error) { return readPlain(path, o) })
-	case kindHTML:
-		return run("html", o, func() (string, error) { return readHTML(path, o) })
-	case kindZipXML:
-		return run("zipxml", o, func() (string, error) { return readZipXML(path, o) })
-	case kindPDF:
-		return pdfResult(ctx, path, o)
-	case kindImage:
-		if !o.OCR {
-			return Result{Status: StatusNeedsOCR}
-		}
+	if k == kindImage {
 		return run("ocr", o, func() (string, error) { return tesseract(ctx, path, o) })
 	}
-	return Result{Status: StatusUnsupported}
+	f, err := o.Open(path)
+	if err != nil {
+		return Result{Status: StatusFailed, Err: err}
+	}
+	defer f.Close()
+	switch k {
+	case kindText:
+		return run("text", o, func() (string, error) { return readPlain(f, o) })
+	case kindHTML:
+		return run("html", o, func() (string, error) { return readHTML(f, o) })
+	case kindZipXML:
+		return run("zipxml", o, func() (string, error) { return readZipXML(f, info.Size(), o) })
+	}
+	return pdfResult(ctx, f, info.Size(), path, o)
 }
 
 // run calls one extractor and turns its (text, error) into a Result, applying
@@ -240,17 +198,16 @@ func run(extractor string, o Options, f func() (string, error)) Result {
 	if err != nil {
 		return Result{Status: StatusFailed, Extractor: extractor, Err: err}
 	}
-	text = normalize(text, o.MaxChars)
+	text, truncated := normalize(text, o.MaxChars)
 	if text == "" {
 		return Result{Status: StatusEmpty, Extractor: extractor}
 	}
-	return Result{Text: text, Extractor: extractor, Status: StatusOK}
+	return Result{Text: text, Extractor: extractor, Status: StatusOK, Truncated: truncated}
 }
 
 // classify picks an extractor family from the filename first and the declared
-// MIME type second. Mail clients mislabel attachments constantly — this
-// archive already carries a whole code path for malformed Content-Type — and
-// the extension is what the sender's own software chose.
+// MIME type second. Mail clients mislabel attachments constantly, and the
+// extension is what the sender's own software chose.
 func classify(filename, mimeType string) kind {
 	if k := byExt(strings.ToLower(filepath.Ext(filename))); k != kindNone {
 		return k

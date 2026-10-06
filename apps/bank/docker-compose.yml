@@ -40,7 +40,10 @@ services:
 
   bank:
     profiles: ["server"]
-    build: .
+    # The repository root, so the image can build packages/go/extract.
+    build:
+      context: ../..
+      dockerfile: apps/bank/Dockerfile
     image: aqt-bank:local
     # Extraction parses decades of hostile attachments; a bug that slips the
     # in-process limits must not take the box (and Postgres) down with it.
@@ -92,7 +95,8 @@ services:
   bank-ocr:
     profiles: ["ocr"]
     build:
-      context: .
+      context: ../..
+      dockerfile: apps/bank/Dockerfile
       target: ocr
     image: aqt-bank-ocr:local
     mem_limit: 2g

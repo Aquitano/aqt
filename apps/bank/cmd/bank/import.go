@@ -16,10 +16,10 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/aichat"
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/discord"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
-	"github.com/aquitano/aqt/apps/bank/internal/extract"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/inbox"
@@ -28,6 +28,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
 	"github.com/aquitano/aqt/apps/bank/internal/youtube"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 func cmdImport(ctx context.Context, args []string) error {
@@ -81,7 +82,7 @@ func cmdImport(ctx context.Context, args []string) error {
 		}
 		printImportResult(kind, *source, path, res)
 	}
-	return extractAfterImport(ctx, extract.Local{Store: d.st, Blobs: d.blobs}, *noExtract)
+	return extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, *noExtract)
 }
 
 // extractAfterImport reads text out of whatever the import just stored, so a
@@ -97,14 +98,14 @@ func cmdImport(ctx context.Context, args []string) error {
 //
 // What it did goes to stderr, not stdout: this runs inside `bank import inbox
 // --json`, whose stdout is a JSON document an agent parses.
-func extractAfterImport(ctx context.Context, a extract.Archive, skip bool) error {
+func extractAfterImport(ctx context.Context, a blobtext.Archive, skip bool) error {
 	if skip || os.Getenv("BANK_EXTRACT") == "off" {
 		return nil
 	}
 	o := extract.DefaultOptions()
 	o.TempDir = stagingDir()
-	sel := extract.Selection{Limit: extract.PostImportLimit, NewestFirst: true}
-	sum, err := extract.Run(ctx, a, sel, o, nil)
+	sel := blobtext.Selection{Limit: blobtext.PostImportLimit, NewestFirst: true}
+	sum, err := blobtext.Run(ctx, a, sel, o, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)
 		return nil
@@ -204,7 +205,7 @@ func cmdImportInbox(ctx context.Context, args []string) error {
 		}
 		return importOutcome(out), nil
 	})
-	if err := extractAfterImport(ctx, extract.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
+	if err := extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
 		return err
 	}
 	if *asJSON {
@@ -343,7 +344,7 @@ func cmdReimport(ctx context.Context, args []string) error {
 			return err
 		}
 	}
-	if err := extractAfterImport(ctx, extract.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
+	if err := extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
 		return err
 	}
 	if failed > 0 {

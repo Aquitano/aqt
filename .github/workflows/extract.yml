@@ -1,0 +1,29 @@
+name: extract
+on:
+  push:
+    branches: [main]
+    paths: ["packages/go/extract/**", ".golangci.yml", ".github/workflows/extract.yml"]
+  pull_request:
+    paths: ["packages/go/extract/**", ".golangci.yml", ".github/workflows/extract.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: extract-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/go/extract
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: packages/go/extract/go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.14.0
+          working-directory: packages/go/extract
+      - run: go vet ./...
+      - run: go test -race ./...

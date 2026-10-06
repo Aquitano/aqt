@@ -59,16 +59,19 @@ func TestNormalize(t *testing.T) {
 		{"\xff\xfe invalid utf8", "invalid utf8"},
 	}
 	for _, c := range cases {
-		if got := normalize(c.in, 1000); got != c.want {
+		if got, _ := normalize(c.in, 1000); got != c.want {
 			t.Errorf("normalize(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
 
 func TestNormalizeTruncatesOnRuneBoundary(t *testing.T) {
-	got := normalize(strings.Repeat("é", 100), 11)
-	if len(got) > 11 {
-		t.Fatalf("got %d bytes, want at most 11", len(got))
+	got, cut := normalize(strings.Repeat("é", 100), 11)
+	if len(got) > 11 || !cut {
+		t.Fatalf("got %d bytes, cut %v; want at most 11 and cut", len(got), cut)
+	}
+	if _, cut := normalize("é é é   ", 11); cut {
+		t.Error("text that fits, trailing spaces aside, was reported cut")
 	}
 	if strings.ContainsRune(got, '�') || !isValidUTF8(got) {
 		t.Fatalf("truncation split a rune: %q", got)
@@ -92,6 +95,20 @@ func TestFilePlainText(t *testing.T) {
 	}
 	if res.Text != "the invoice total is 4200 EUR" {
 		t.Fatalf("text = %q", res.Text)
+	}
+}
+
+// attic reads backup disks through an opener that keeps last-access times, so
+// the in-process extractors must not open the path themselves.
+func TestFileReadsThroughTheGivenOpener(t *testing.T) {
+	path := write(t, "notes.txt", []byte("through the opener"))
+	opened := 0
+	o := Options{Open: func(p string) (*os.File, error) {
+		opened++
+		return os.Open(p)
+	}}
+	if res := File(context.Background(), path, "notes.txt", "", o); res.Status != StatusOK || opened != 1 {
+		t.Fatalf("status %s, opened %d times; want ok, opened once through the opener", res.Status, opened)
 	}
 }
 
@@ -252,10 +269,10 @@ func TestPDFDecompressionBombIsBounded(t *testing.T) {
 // Options.Timeout used to never reach the text-layer path at all; the page
 // loop must notice a dead context.
 func TestPDFTextHonorsContext(t *testing.T) {
-	path := write(t, "small.pdf", onePagePDF(t, []byte("q Q")))
+	doc := onePagePDF(t, []byte("q Q"))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := pdfText(ctx, path, DefaultOptions()); !errors.Is(err, context.Canceled) {
+	if _, err := pdfText(ctx, bytes.NewReader(doc), int64(len(doc)), DefaultOptions()); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
@@ -333,56 +350,5 @@ func TestOCRAvailableReportsMissingTools(t *testing.T) {
 	err := OCRAvailable(Options{Tesseract: "definitely-not-installed-xyz"})
 	if err == nil || !strings.Contains(err.Error(), "tesseract") {
 		t.Fatalf("err = %v, want a message naming tesseract", err)
-	}
-}
-
-func TestValidStatus(t *testing.T) {
-	// "pending" is not one of the stored statuses but is a valid thing to ask
-	// for, and the message has to say so or a correct choice looks wrong.
-	for _, ok := range []string{"needs_ocr", "pending", "manual"} {
-		if err := ValidStatus(ok); err != nil {
-			t.Errorf("ValidStatus(%q) = %v", ok, err)
-		}
-	}
-	err := ValidStatus("needsocr")
-	if err == nil {
-		t.Fatal("a typo should not silently select nothing")
-	}
-	if !strings.Contains(err.Error(), "pending") {
-		t.Errorf("error should list every accepted status: %v", err)
-	}
-}
-
-// A status is checked twice over, for two different questions: which content
-// to select, and what may be written to a row.
-func TestValidStoredStatusRejectsPending(t *testing.T) {
-	for _, ok := range []string{"ok", "needs_ocr", "manual", "failed"} {
-		if err := ValidStoredStatus(ok); err != nil {
-			t.Errorf("ValidStoredStatus(%q) = %v", ok, err)
-		}
-	}
-	// Pending is the absence of a row. Stored, it would strand the content
-	// where no default pass ever selects it again.
-	for _, bad := range []string{"pending", "", "OK", "done"} {
-		if err := ValidStoredStatus(bad); err == nil {
-			t.Errorf("ValidStoredStatus(%q) accepted", bad)
-		}
-	}
-}
-
-// Manual text is someone's own transcription: an automatic pass over it would
-// replace work nothing can rebuild.
-func TestValidRunStatusRejectsManual(t *testing.T) {
-	err := ValidRunStatus("manual")
-	if err == nil {
-		t.Fatal("a run over manual text would overwrite it")
-	}
-	if !strings.Contains(err.Error(), "--set") {
-		t.Errorf("error should say how to replace a transcription: %v", err)
-	}
-	for _, ok := range []string{"pending", "failed", "needs_ocr"} {
-		if err := ValidRunStatus(ok); err != nil {
-			t.Errorf("ValidRunStatus(%q) = %v", ok, err)
-		}
 	}
 }

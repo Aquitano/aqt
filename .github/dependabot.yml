@@ -12,6 +12,10 @@ updates:
     directory: /apps/tracker
     schedule: { interval: weekly }
     groups: { tracker-go: { patterns: ["*"] } }
+  - package-ecosystem: gomod
+    directory: /packages/go/extract
+    schedule: { interval: weekly }
+    groups: { extract-go: { patterns: ["*"] } }
   - package-ecosystem: docker
     directory: /apps/bank
     schedule: { interval: weekly }

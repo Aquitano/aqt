@@ -16,9 +16,10 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
-	"github.com/aquitano/aqt/apps/bank/internal/extract"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // Extraction is a pass of its own, not a step inside importing. The text is
@@ -41,7 +42,7 @@ func cmdExtract(ctx context.Context, args []string) error {
 		return err
 	}
 	for _, s := range statuses {
-		if err := extract.ValidRunStatus(s); err != nil {
+		if err := blobtext.ValidRunStatus(s); err != nil {
 			return err
 		}
 	}
@@ -56,7 +57,7 @@ func cmdExtract(ctx context.Context, args []string) error {
 	o.OCRLang = *lang
 	o.TempDir = stagingDir()
 
-	sel := extract.Selection{Statuses: statuses, Source: *source, Limit: *limit}
+	sel := blobtext.Selection{Statuses: statuses, Source: *source, Limit: *limit}
 
 	var progress func(store.BlobRef, extract.Result)
 	if !*asJSON {
@@ -78,7 +79,7 @@ func cmdExtract(ctx context.Context, args []string) error {
 		return watchExtract(ctx, backend, sel, o, *interval)
 	}
 
-	sum, err := extract.Run(ctx, backend, sel, o, progress)
+	sum, err := blobtext.Run(ctx, backend, sel, o, progress)
 	if err != nil {
 		return err
 	}
@@ -102,7 +103,7 @@ const minWatchInterval = time.Minute
 // its work from the database rather than being handed it, which is what lets
 // OCR be automatic without the server knowing a worker exists; DESIGN.md has
 // the reasoning.
-func watchExtract(ctx context.Context, a extract.Archive, sel extract.Selection, o extract.Options, interval time.Duration) error {
+func watchExtract(ctx context.Context, a blobtext.Archive, sel blobtext.Selection, o extract.Options, interval time.Duration) error {
 	if interval < minWatchInterval {
 		return fmt.Errorf("--interval must be at least %s", minWatchInterval)
 	}
@@ -122,7 +123,7 @@ func watchExtract(ctx context.Context, a extract.Archive, sel extract.Selection,
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		sum, err := extract.Run(ctx, a, sel, o, nil)
+		sum, err := blobtext.Run(ctx, a, sel, o, nil)
 		switch {
 		case errors.Is(err, context.Canceled):
 			return nil
@@ -147,7 +148,7 @@ func watchExtract(ctx context.Context, a extract.Archive, sel extract.Selection,
 // needs. Both the local store and a remote `bank serve` satisfy it, so no
 // command below has to know which it is talking to.
 type attachmentBackend interface {
-	extract.Archive
+	blobtext.Archive
 	BlobText(ctx context.Context, sha256 string) (store.BlobText, error)
 	SetText(ctx context.Context, bt store.BlobText) error
 	DeleteBlobText(ctx context.Context, sha256 string) error
@@ -163,7 +164,7 @@ func openAttachments(ctx context.Context) (attachmentBackend, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return extract.Local{Store: d.st, Blobs: d.blobs}, closeStore, nil
+	return blobtext.Local{Store: d.st, Blobs: d.blobs}, closeStore, nil
 }
 
 // stagingDir is where downloads and rasterized pages go: the data directory,
@@ -217,7 +218,7 @@ func pruneStaging(dir string, maxAge time.Duration) {
 	}
 }
 
-func printExtractSummary(sum extract.Summary) {
+func printExtractSummary(sum blobtext.Summary) {
 	if sum.Considered == 0 && sum.Reindexed == 0 {
 		fmt.Println("nothing to extract")
 		return
