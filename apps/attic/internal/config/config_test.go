@@ -67,3 +67,15 @@ func TestLoadMissing(t *testing.T) {
 		t.Error("explicit path missing: want an error")
 	}
 }
+
+// Setting one archive key must not reset the others to "no limit".
+func TestArchiveKeysKeepTheirDefaults(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(file, []byte("[archives]\ndepth = 3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(file, true)
+	if err != nil || c.Archives.Depth != 3 || c.Archives.UnpackMaxBytes != Default().Archives.UnpackMaxBytes {
+		t.Errorf("archives %+v, %v: want depth 3 and the default unpack cap", c.Archives, err)
+	}
+}

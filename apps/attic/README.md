@@ -22,6 +22,7 @@ attic search minecraft server       # every word, in the name, the path or as a 
 attic search werkstudent --ext pdf  # fragments match: Werkstudentenvertrag.pdf
 attic search --volume Data --ext iso
 attic search notes --under E:\Files --json
+attic search --under E:\Backups\Minecraft.7z  # what one archive holds
 attic show 36331                    # one entry, its times, its ref and its other copies
 attic show 3f9a1c2b4d5e6f70         # a ref: every place that content lives
 attic volumes                       # known disks, mounted or not, and their last scan
@@ -34,6 +35,8 @@ A scan commits every couple of seconds, so search sees it while it runs. Interru
 
 Results show where a file can be opened now (`E:\Files\x.zip`) or the volume it lives on when the disk is unplugged (`Data:\Files\x.zip  (offline)`).
 
+After hashing, a scan lists what zip, 7z, rar and tar archives hold, and the archives inside those, without asking for passwords. Search shows those files after the plain hits, inside the copy of the archive that can be opened now: `E:\Backups\Minecraft.7z :: MinecraftServer.rar :: world\level.dat`. Each archive is read once however many disks hold it. Nested archives are copied to the temporary folder while they are listed and deleted right after.
+
 ## Configuration
 
 One TOML file at `%APPDATA%\attic\config.toml`, or another with `scan --config`. `attic config` prints the effective rules. Patterns use gitignore syntax and ignore case; the built-in defaults exclude dependency and build folders, game libraries and Windows system folders, and keep BitLocker recovery-key files to their names. A pattern with a slash inside is anchored at the volume root, so write `**/name/` to match at any depth. On Windows a backslash cannot escape a bracket; match a literal `[` with a class, as in `Fotos [[]2019]/`.
@@ -42,6 +45,10 @@ One TOML file at `%APPDATA%\attic\config.toml`, or another with `scan --config`.
 exclude = ["*.iso"]
 name_only = ["*.kdbx"]
 hash_max_bytes = 0   # 0 hashes every file
+
+[archives]
+depth = 2                      # archive levels opened, the one on disk included; 0 reads none
+unpack_max_bytes = 4294967296  # largest nested archive copied out to be listed
 
 [[volume]]
 label = "Data"        # or id = "<uuid from attic volumes>"

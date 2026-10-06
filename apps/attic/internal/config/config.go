@@ -20,7 +20,27 @@ type Config struct {
 	NameOnly []string `toml:"name_only"`
 	// HashMaxBytes leaves larger files unhashed; 0 hashes every file.
 	HashMaxBytes int64    `toml:"hash_max_bytes"`
+	Archives     Archives `toml:"archives"`
 	Volumes      []Volume `toml:"volume"`
+}
+
+// Archives says how far a scan reads into archives.
+type Archives struct {
+	// Depth counts the archive levels opened, the one on disk included; 0
+	// leaves archives unread.
+	Depth int `toml:"depth"`
+	// UnpackMaxBytes caps a nested archive copied to Temp to be listed; 0
+	// copies any size.
+	UnpackMaxBytes int64 `toml:"unpack_max_bytes"`
+	// Temp holds nested archives while they are listed; empty means the
+	// system's temporary folder. It must not be on a disk being scanned.
+	Temp string `toml:"temp"`
+}
+
+// Default is the configuration before the file is read: archives inside
+// archives are listed, nested ones up to 4 GiB.
+func Default() Config {
+	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}}
 }
 
 // Volume holds patterns anchored at one volume's root, selected by attic's
@@ -59,10 +79,11 @@ func Path() (string, error) {
 	return filepath.Join(dir, "attic", "config.toml"), nil
 }
 
-// Load reads path. A missing file at the default path is an empty
-// configuration; a missing file someone named explicitly is an error.
+// Load reads path over the defaults. A missing file at the default path is
+// the default configuration; a missing file someone named explicitly is an
+// error.
 func Load(path string, explicit bool) (Config, error) {
-	var c Config
+	c := Default()
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) && !explicit {
 		return c, nil
@@ -75,8 +96,8 @@ func Load(path string, explicit bool) (Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
-	if c.HashMaxBytes < 0 {
-		return c, fmt.Errorf("%s: hash_max_bytes must not be negative", path)
+	if c.HashMaxBytes < 0 || c.Archives.Depth < 0 || c.Archives.UnpackMaxBytes < 0 {
+		return c, fmt.Errorf("%s: hash_max_bytes, archives.depth and archives.unpack_max_bytes must not be negative", path)
 	}
 	return c, nil
 }

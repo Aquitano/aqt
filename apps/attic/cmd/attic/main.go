@@ -19,7 +19,7 @@ const usage = `attic — search the files on disks that come and go
 
 Usage:
   attic scan <folder> [flags]         index a folder and everything below it
-  attic search [words...] [flags]     find files and folders, mounted or not
+  attic search [words...] [flags]     find files and folders, mounted or not, and inside archives
   attic show <id|ref> [--json]        one entry, or every place a content lives
   attic volumes [--json]              known volumes, what they hold, last scan
   attic dupes [flags]                 contents stored more than once
@@ -39,7 +39,7 @@ Search flags:
   --volume v     a volume label or id
   --ext e        file extension, such as pdf
   --kind k       file, dir or link
-  --under p      a folder: E:\Files when mounted, or /Files with --volume
+  --under p      a folder or an archive: E:\Files when mounted, or /Files with --volume
   --limit n      default 20
   --offset n     skip this many ranked results
   --json         JSON output
@@ -52,7 +52,8 @@ Dupes flags:
 Skips flags:
   --scan n       a scan id (default: the newest scan, of --volume if given)
   --volume v     the newest scan of this volume
-  --reason r     list paths: excluded, name_only, too_big, link, remote, unreadable, changed
+  --reason r     list paths: excluded, name_only, too_big, link, remote, unreadable, changed,
+                 too_deep, encrypted, damaged, not_archive, split
   --rule r       list paths skipped by this rule, as the summary prints it
   --limit n      default 100
 

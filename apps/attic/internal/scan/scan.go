@@ -17,6 +17,7 @@ import (
 
 	gitconfig "github.com/go-git/go-git/v5/plumbing/format/config"
 
+	"github.com/aquitano/aqt/apps/attic/internal/archive"
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
@@ -38,12 +39,16 @@ type Options struct {
 }
 
 type Progress struct {
-	Phase string // walk | hash
+	Phase string // walk | hash | archives
 	store.ScanCounts
 	Dirs int64
 	// The hashing phase's totals, known when it starts.
 	HashFiles int64
 	HashBytes int64
+	// The archives waiting to be listed when that phase starts, and the one
+	// being read, volume-relative.
+	ArchiveTotal int64
+	Archive      string
 }
 
 type Result struct {
@@ -80,8 +85,10 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now()}
-	status, runErr := r.walkAndHash(ctx, rel)
+	a := o.Config.Archives
+	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
+		archives: archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp}}
+	status, runErr := r.phases(ctx, rel)
 	if runErr != nil && ctx.Err() != nil {
 		status, runErr = "interrupted", nil
 	}
@@ -101,6 +108,9 @@ type run struct {
 	dirs         int64
 	hashFiles    int64
 	hashBytes    int64
+	archives     archive.Options
+	archiveTotal int64
+	archive      string
 	phase        string
 	lastProgress time.Time
 }
@@ -115,10 +125,13 @@ func (r *run) progress(force bool) {
 		return
 	}
 	r.lastProgress = time.Now()
-	r.o.Progress(Progress{Phase: r.phase, ScanCounts: r.sc.Counts, Dirs: r.dirs, HashFiles: r.hashFiles, HashBytes: r.hashBytes})
+	r.o.Progress(Progress{Phase: r.phase, ScanCounts: r.sc.Counts, Dirs: r.dirs, HashFiles: r.hashFiles, HashBytes: r.hashBytes,
+		ArchiveTotal: r.archiveTotal, Archive: r.archive})
 }
 
-func (r *run) walkAndHash(ctx context.Context, rel []string) (string, error) {
+// phases walks, hashes and lists archives. Listings are keyed by content, so
+// they wait for the hashes.
+func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 	start, err := r.ancestors(ctx, rel)
 	if err != nil {
 		return "failed", err
@@ -139,6 +152,20 @@ func (r *run) walkAndHash(ctx context.Context, rel []string) (string, error) {
 	}
 	r.phase = "hash"
 	if err := r.hash(ctx); err != nil {
+		return "failed", err
+	}
+	r.progress(true)
+	if r.archives.Depth == 0 {
+		return "complete", nil
+	}
+	if err := r.sc.Commit(ctx); err != nil {
+		return "failed", err
+	}
+	if err := r.sc.SetStatus(ctx, "listing"); err != nil {
+		return "failed", err
+	}
+	r.phase = "archives"
+	if err := r.listArchives(ctx); err != nil {
 		return "failed", err
 	}
 	r.progress(true)
@@ -392,4 +419,81 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 		return nil
 	}
 	return r.sc.SetContent(ctx, p, digest)
+}
+
+// listArchives reads the archives below the scan root whose content has no
+// listing yet, in path order like hashing.
+func (r *run) listArchives(ctx context.Context) error {
+	var err error
+	if r.archiveTotal, err = r.sc.ArchiveTotals(ctx); err != nil {
+		return err
+	}
+	r.progress(true)
+	var after store.PendingArchive
+	for {
+		batch, err := r.sc.NextArchives(ctx, after, 64)
+		if err != nil {
+			return err
+		}
+		if len(batch) == 0 {
+			return nil
+		}
+		for _, a := range batch {
+			after = a
+			if err := r.listArchive(ctx, a); err != nil {
+				return err
+			}
+			if err := r.sc.MaybeCommit(ctx); err != nil {
+				return err
+			}
+			r.progress(false)
+		}
+	}
+}
+
+func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
+	// Hashed under older rules; the ones in force now may forbid reading it.
+	path := lowerComponents(a.Path)
+	if excluded, _ := r.rules.Excluded(path, false); excluded || r.rules.NameOnly(path) {
+		return nil
+	}
+	l, err := r.sc.StartListing(ctx, a.ContentID)
+	if err != nil || l == nil {
+		return err
+	}
+	r.archive = a.Path
+	r.progress(false)
+	var skips []archive.Skip
+	res, err := archive.List(ctx, r.osPath(a.Path), disk.Open, r.archives,
+		func(m archive.Member) error {
+			r.progress(false)
+			return l.Add(ctx, m)
+		},
+		func(s archive.Skip) { skips = append(skips, s) })
+	if err == nil && res.Status != archive.Listed {
+		// A disk unplugged mid-read looks like a damaged archive.
+		err = r.volumeGone()
+	}
+	if err != nil {
+		l.Abort(ctx)
+		var unreadable archive.UnreadableError
+		if !errors.As(err, &unreadable) || ctx.Err() != nil {
+			return err
+		}
+		if gone := r.volumeGone(); gone != nil {
+			return gone
+		}
+		r.sc.Skip(a.Path, "unreadable", "", err.Error())
+		return nil
+	}
+	if err := l.Finish(ctx, res); err != nil {
+		return err
+	}
+	if res.Status != archive.Listed {
+		r.sc.Skip(a.Path, res.Status, "", res.Detail)
+	}
+	for _, s := range skips {
+		r.sc.Skip(a.Path+archive.Separator+s.Path, s.Reason, "", s.Detail)
+	}
+	return nil
 }

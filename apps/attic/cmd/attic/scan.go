@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -58,6 +59,9 @@ func cmdScan(ctx context.Context, args []string) error {
 		count(c.Listed), count(c.Written), count(c.Missing), count(c.Skipped), res.ScanID)
 	fmt.Printf("  %s files hashed (%s), %s already known; %s left to hash\n",
 		count(c.Hashed), humanBytes(c.HashedBytes), count(c.Duplicates), count(res.Pending))
+	if c.Archives > 0 {
+		fmt.Printf("  %s archives listed, %s members inside\n", count(c.Archives), count(c.Members))
+	}
 	if res.Status == "interrupted" {
 		fmt.Println("  run the same command again to continue; finished work is kept")
 	}
@@ -97,6 +101,9 @@ func (p *progressLine) update(pr scan.Progress) {
 			left := time.Duration(float64(pr.HashBytes-pr.HashedBytes)/rate) * time.Second
 			line += fmt.Sprintf(", %s/s, about %s left", humanBytes(int64(rate)), left.Round(time.Minute))
 		}
+	case "archives":
+		line = fmt.Sprintf("archives: %s of %s listed, %s members; %s", count(pr.Archives), count(pr.ArchiveTotal),
+			count(pr.Members), path.Base(pr.Archive))
 	}
 	if !p.tty {
 		fmt.Fprintln(os.Stderr, line)

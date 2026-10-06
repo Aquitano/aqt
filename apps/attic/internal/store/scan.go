@@ -39,6 +39,8 @@ type ScanCounts struct {
 	Hashed      int64 `json:"hashed"`
 	HashedBytes int64 `json:"hashed_bytes"`
 	Duplicates  int64 `json:"duplicates"`
+	Archives    int64 `json:"archives"`
+	Members     int64 `json:"members"`
 }
 
 const (
@@ -87,7 +89,7 @@ func (s *Store) StartScan(ctx context.Context, v Volume, root string) (*Scan, er
 	// Holding the lock means no other scan of this volume is alive, so any
 	// still marked as running was killed before it could say so.
 	if _, err := conn.Exec(ctx, `update scans set status = 'interrupted', finished_at = now()
-		where volume_id = $1 and status in ('walking', 'hashing')`, v.ID); err != nil {
+		where volume_id = $1 and status in ('walking', 'hashing', 'listing')`, v.ID); err != nil {
 		sc.unlock(ctx)
 		return nil, err
 	}
@@ -141,10 +143,10 @@ func (sc *Scan) Finish(ctx context.Context, status string, failure error) error 
 	}
 	_, uerr := sc.lock.Exec(ctx, `
 		update scans set status = $2, error = $3, finished_at = now(), listed = $4, written = $5, missing = $6,
-		       skipped = $7, hashed = $8, hashed_bytes = $9, duplicates = $10
+		       skipped = $7, hashed = $8, hashed_bytes = $9, duplicates = $10, archives = $11, members = $12
 		where id = $1`,
 		sc.ID, status, msg, sc.Counts.Listed, sc.Counts.Written, sc.Counts.Missing, sc.Counts.Skipped,
-		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates)
+		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates, sc.Counts.Archives, sc.Counts.Members)
 	return errors.Join(err, uerr)
 }
 
@@ -189,9 +191,9 @@ func (sc *Scan) Commit(ctx context.Context) error {
 	sc.dirty = 0
 	sc.lastCommit = time.Now()
 	_, err := sc.lock.Exec(ctx, `update scans set listed = $2, written = $3, missing = $4, skipped = $5, hashed = $6,
-		hashed_bytes = $7, duplicates = $8 where id = $1`,
+		hashed_bytes = $7, duplicates = $8, archives = $9, members = $10 where id = $1`,
 		sc.ID, sc.Counts.Listed, sc.Counts.Written, sc.Counts.Missing, sc.Counts.Skipped,
-		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates)
+		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates, sc.Counts.Archives, sc.Counts.Members)
 	return err
 }
 
@@ -396,7 +398,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			       content_id = case when $14 then null else content_id end, hash_state = $15,
 			       missing_scan = null, updated_scan = $16
 			where id = $1`,
-			r.ID, parentID, l.Kind, l.Name, entryPath, ext(l), nullID(l.FileID), l.Size, nullTime(l.Created),
+			r.ID, parentID, l.Kind, l.Name, entryPath, ext(l.Kind, l.Name), nullID(l.FileID), l.Size, nullTime(l.Created),
 			nullTime(l.Modified), nullTime(l.Accessed), nullTime(l.Changed), l.Attributes, reset, state, sc.ID)
 		reads = append(reads, execResult)
 		sc.Counts.Written++
@@ -506,7 +508,7 @@ func (n *newRows) add(l Listed, entryPath string) {
 	n.kind = append(n.kind, l.Kind)
 	n.name = append(n.name, l.Name)
 	n.path = append(n.path, entryPath)
-	n.ext = append(n.ext, ext(l))
+	n.ext = append(n.ext, ext(l.Kind, l.Name))
 	n.state = append(n.state, l.HashState)
 	n.fileID = append(n.fileID, nullIDPtr(l.FileID))
 	n.size = append(n.size, l.Size)
@@ -583,11 +585,11 @@ func hashStateAfter(stored, wanted string) string {
 	return stored
 }
 
-func ext(l Listed) string {
-	if l.Kind != "file" {
+func ext(kind, name string) string {
+	if kind != "file" {
 		return ""
 	}
-	return strings.ToLower(strings.TrimPrefix(path.Ext(l.Name), "."))
+	return strings.ToLower(strings.TrimPrefix(path.Ext(name), "."))
 }
 
 func nullID(id int64) any {

@@ -6,10 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/aquitano/aqt/apps/attic/internal/archive"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 )
@@ -93,11 +96,80 @@ func cmdSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	out := outHits(hits, onlineRoots(vols))
-	if *asJSON {
-		return printJSON(out)
+	members, err := st.SearchMembers(ctx, o)
+	if err != nil {
+		return err
 	}
-	return printHits(out)
+	roots := onlineRoots(vols)
+	out, inside := outHits(hits, roots), outMembers(members, roots)
+	if *asJSON {
+		return printJSON(struct {
+			Entries []hitOut    `json:"entries"`
+			Members []memberOut `json:"members"`
+		}{out, inside})
+	}
+	if err := printHits(out); err != nil || len(inside) == 0 {
+		return err
+	}
+	// Two BM25 indexes score on different scales, so archive hits get their
+	// own ranking instead of being merged into the files'.
+	fmt.Println("\ninside archives:")
+	return printMembers(inside)
+}
+
+// memberOut is a member as printed: inside the copy of its archive that can
+// be opened now, or the first present one.
+type memberOut struct {
+	store.MemberHit
+	Display string   `json:"display"`
+	Online  bool     `json:"online"`
+	Archive []hitOut `json:"archive"`
+	shown   hitOut
+}
+
+func outMembers(members []store.MemberHit, roots map[string]string) []memberOut {
+	out := make([]memberOut, len(members))
+	for i, m := range members {
+		copies := outHits(m.Archive, roots)
+		out[i] = memberOut{MemberHit: m, Archive: copies}
+		if len(copies) == 0 {
+			continue
+		}
+		best := max(slices.IndexFunc(copies, func(h hitOut) bool { return h.Online && !h.Missing }), 0)
+		out[i].shown = copies[best]
+		out[i].Display = copies[best].Display + archive.Separator + filepath.FromSlash(m.Path)
+		out[i].Online = copies[best].Online
+	}
+	return out
+}
+
+func printMembers(members []memberOut) error {
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight)
+	for _, m := range members {
+		size := humanBytes(m.Size)
+		if m.Kind != "file" {
+			size = m.Kind
+		}
+		var notes []string
+		if !m.Online {
+			notes = append(notes, "offline")
+		}
+		if m.shown.Missing {
+			notes = append(notes, "missing")
+		}
+		if m.Encrypted {
+			notes = append(notes, "encrypted")
+		}
+		if n := len(m.Archive) - 1; n > 0 {
+			notes = append(notes, fmt.Sprintf("%d more copies", n))
+		}
+		note := ""
+		if len(notes) > 0 {
+			note = "  (" + strings.Join(notes, ", ") + ")"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t  %s%s\n", size, shortDate(m.Modified), m.Display, note)
+	}
+	return tw.Flush()
 }
 
 // resolveUnder accepts a mounted folder (E:\Files) or a volume-relative one
@@ -195,6 +267,16 @@ func cmdShow(ctx context.Context, args []string) error {
 		fmt.Fprintf(tw, "  ref\tattic:%s\n", d.Ref)
 	} else if d.Kind == "file" {
 		fmt.Fprintf(tw, "  hash\t%s\n", d.HashState)
+	}
+	if a := d.Archive; a != nil {
+		switch a.Status {
+		case archive.Listed:
+			fmt.Fprintf(tw, "  archive\t%s, %s members\n", a.Format, count(a.Members))
+		case archive.NotArchive:
+			fmt.Fprintf(tw, "  archive\tnot an archive\n")
+		default:
+			fmt.Fprintf(tw, "  archive\t%s, %s, %s members read: %s\n", a.Format, a.Status, count(a.Members), a.Detail)
+		}
 	}
 	if d.GitRemote != nil {
 		remote := *d.GitRemote
@@ -397,6 +479,7 @@ func cmdStats(ctx context.Context, args []string) error {
 	fmt.Printf("%s volumes, %s entries, %s files, %s\n", count(t.Volumes), count(t.Entries), count(t.Files), humanBytes(t.Bytes))
 	fmt.Printf("%s unique contents, %s; %s files left to hash, %s entries missing\n",
 		count(t.Contents), humanBytes(t.ContentBytes), count(t.Pending), count(t.Missing))
+	fmt.Printf("%s archives read, %s members inside\n", count(t.Archives), count(t.Members))
 	return nil
 }
 
@@ -413,11 +496,23 @@ func cmdConfig(_ context.Context, args []string) error {
 	if _, err := os.Stat(path); err != nil {
 		state = "not created; defaults apply"
 	}
-	fmt.Printf("config  %s (%s)\n", path, state)
+	fmt.Printf("config    %s (%s)\n", path, state)
 	if cfg.HashMaxBytes > 0 {
-		fmt.Printf("hash    files up to %s\n", humanBytes(cfg.HashMaxBytes))
+		fmt.Printf("hash      files up to %s\n", humanBytes(cfg.HashMaxBytes))
 	} else {
-		fmt.Println("hash    every file")
+		fmt.Println("hash      every file")
+	}
+	if a := cfg.Archives; a.Depth == 0 {
+		fmt.Println("archives  not read")
+	} else {
+		limit, temp := "any size", a.Temp
+		if a.UnpackMaxBytes > 0 {
+			limit = "up to " + humanBytes(a.UnpackMaxBytes)
+		}
+		if temp == "" {
+			temp = os.TempDir()
+		}
+		fmt.Printf("archives  %d levels deep; nested archives %s, unpacked in %s\n", a.Depth, limit, temp)
 	}
 	exclude, nameOnly := cfg.Rules(*volume, *volume).Describe()
 	fmt.Println("exclude")

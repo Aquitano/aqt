@@ -1,10 +1,14 @@
 package scan
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -209,4 +213,54 @@ func TestReappearingHardLinkScans(t *testing.T) {
 	}
 	scanAt(t, st, root, testVolume)
 	scanAt(t, st, root, testVolume)
+}
+
+func zipOf(t *testing.T, files map[string]string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		w, err := zw.Create(name)
+		if err == nil {
+			_, err = w.Write([]byte(files[name]))
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
+}
+
+// Two copies of one backup zip are read once, and a hit inside it names both.
+func TestArchivesAreListedOncePerContent(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	server := zipOf(t, map[string]string{"server.properties": "motd=hi", "deeper.zip": zipOf(t, map[string]string{"x.txt": "x"})})
+	backup := zipOf(t, map[string]string{"world/level.dat": "level", "MinecraftServer.zip": server})
+	write(t, root, "Backups/Minecraft.zip", backup)
+	write(t, root, "Old/Minecraft copy.zip", backup)
+	withArchives := func(o *Options) { o.Config = config.Default() }
+
+	first := scanAt(t, st, root, testVolume, withArchives)
+	if first.Counts.Archives != 1 || first.Counts.Members != 4 {
+		t.Fatalf("listed %d archives with %d members, want 1 with 4", first.Counts.Archives, first.Counts.Members)
+	}
+	hits, err := st.SearchMembers(context.Background(), store.SearchOptions{Query: "server properties"})
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("members %+v, %v", hits, err)
+	}
+	if hits[0].Path != "MinecraftServer.zip :: server.properties" || len(hits[0].Archive) != 2 {
+		t.Errorf("hit %s in %d copies, want the nested path in both", hits[0].Path, len(hits[0].Archive))
+	}
+	skips, err := st.Skips(context.Background(), first.ScanID, "too_deep", "", 10)
+	if err != nil || len(skips) != 1 || skips[0].Path != "/Backups/Minecraft.zip :: MinecraftServer.zip :: deeper.zip" {
+		t.Errorf("too_deep skips %+v, %v", skips, err)
+	}
+
+	if again := scanAt(t, st, root, testVolume, withArchives); again.Counts.Archives != 0 {
+		t.Errorf("a rescan listed %d archives again", again.Counts.Archives)
+	}
 }
