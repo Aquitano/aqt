@@ -113,9 +113,6 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 			return Result{}, fmt.Errorf("nested archives would be copied to %s, on the disk being scanned: "+
 				"set [archives] temp to a folder on another disk, or depth = 1", temp)
 		}
-		if n := archive.RemoveStale(temp); n > 0 {
-			log.Info("removed copies a killed scan left behind", "temp", temp, "files", n)
-		}
 	}
 	sc, err := st.StartScan(ctx, vol, root)
 	if err != nil {

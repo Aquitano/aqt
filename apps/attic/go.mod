@@ -6,6 +6,7 @@ require (
 	github.com/aquitano/aqt/packages/go/extract v0.0.0
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/go-git/go-git/v5 v5.19.3
+	github.com/gofrs/flock v0.13.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/klauspost/compress v1.20.1
 	github.com/mholt/archives v0.1.5

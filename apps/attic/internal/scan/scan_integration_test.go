@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 func write(t *testing.T, root, rel, body string) {
@@ -378,5 +381,84 @@ func TestScanLogsItsPhases(t *testing.T) {
 	history, err := st.Scans(context.Background(), "", 1)
 	if err != nil || len(history) != 1 || res.Phases.Hash == 0 || history[0].Phases.Hash != res.Phases.Hash.Truncate(time.Millisecond) {
 		t.Errorf("history %+v, %v; want the scan with its phase times, in milliseconds, %+v", history, err, res.Phases)
+	}
+}
+
+func TestDocumentReadFailureTriesAnotherCopy(t *testing.T) {
+	st, dsn := storetest.New(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	write(t, root, "a.txt", "the same searchable contract")
+	write(t, root, "b.txt", "the same searchable contract")
+	first := scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Text.MaxBytes = 1 })
+	sc, err := st.StartScan(ctx, first.Volume, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := false
+	t.Cleanup(func() {
+		if !finished {
+			_ = sc.Finish(context.Background(), "interrupted", nil)
+		}
+	})
+	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root, rules: config.Default().Rules(first.Volume.ID, first.Volume.Label), textsRead: map[int64]bool{}, seen: map[int64]bool{}}
+	r.text = extract.Options{Open: func(p string) (extract.Handle, error) {
+		if filepath.Base(p) == "a.txt" {
+			return nil, &os.PathError{Op: "open", Path: p, Err: syscall.EIO}
+		}
+		return r.openDocument(p)
+	}}
+	if err := r.readTexts(ctx); err != nil {
+		t.Fatal(err)
+	}
+	finished = true
+	if err := sc.Finish(ctx, "complete", nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := storetest.QueryInt(t, dsn, "select count(*) from texts where status = 'ok' and text = $1", "the same searchable contract"); n != 1 {
+		t.Errorf("successful copies stored %d texts, want one", n)
+	}
+	if n := storetest.QueryInt(t, dsn, "select count(*) from texts where status = 'failed'"); n != 0 {
+		t.Errorf("temporary read failure stored %d permanent failures", n)
+	}
+	if skips, err := st.Skips(ctx, sc.ID, "unreadable", "", 10); err != nil || len(skips) != 1 || skips[0].Path != "/a.txt" {
+		t.Errorf("unreadable skips %+v, %v; want only a.txt", skips, err)
+	}
+}
+
+func TestCancelledDocumentReadRemainsPending(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "report.txt", "a contract to retry after cancellation")
+	first := scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Text.MaxBytes = 1 })
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sc, err := st.StartScan(ctx, first.Volume, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := false
+	t.Cleanup(func() {
+		if !finished {
+			_ = sc.Finish(context.Background(), "interrupted", nil)
+		}
+	})
+	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root, rules: config.Default().Rules(first.Volume.ID, first.Volume.Label), textsRead: map[int64]bool{}, seen: map[int64]bool{}}
+	r.text = extract.Options{Open: func(p string) (extract.Handle, error) {
+		cancel()
+		return r.openDocument(p)
+	}}
+	if err := r.readTexts(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled read: %v", err)
+	}
+	finished = true
+	if err := sc.Finish(context.WithoutCancel(ctx), "interrupted", nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := storetest.QueryInt(t, dsn, "select count(*) from texts"); n != 0 {
+		t.Fatalf("cancelled read stored %d terminal texts", n)
+	}
+	if again := scanAt(t, st, root, testVolume); again.Counts.Texts != 1 {
+		t.Errorf("resumed scan read %d documents, want one", again.Counts.Texts)
 	}
 }
