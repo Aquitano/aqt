@@ -34,7 +34,8 @@ type Archives struct {
 	// copies any size.
 	UnpackMaxBytes int64 `toml:"unpack_max_bytes"`
 	// Temp holds nested archives while they are listed; empty means the
-	// system's temporary folder. It must not be on a disk being scanned.
+	// system's temporary folder. A scan refuses to start when it is on the
+	// disk being scanned.
 	Temp string `toml:"temp"`
 }
 

@@ -12,9 +12,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bodgit/sevenzip"
 	"github.com/klauspost/compress/zip"
@@ -32,9 +34,9 @@ var Extensions = []string{"zip", "7z", "rar", "tar", "tgz", "tbz2", "txz"}
 // server's logs/2016-07-30-1.log.gz is one compressed file.
 var Compressed = []string{"gz", "bz2", "xz", "zst"}
 
-// Outcomes of reading an archive. A damaged archive keeps the members read
-// before the damage. A split part is a later volume of a multi-volume archive,
-// listed with its first volume.
+// Outcomes of reading an archive. A damaged archive keeps whatever members
+// were read before the damage. A split part is a later volume of a
+// multi-volume archive, listed with its first volume.
 const (
 	Listed     = "listed"
 	Damaged    = "damaged"
@@ -103,14 +105,28 @@ func IsArchive(name string) bool {
 // written, or an UnreadableError. A damaged, encrypted or unknown archive is
 // a Result.
 func List(ctx context.Context, p string, open Opener, o Options, emit func(Member) error, skip func(Skip)) (Result, error) {
-	l := lister{o: o, emit: emit, skip: skip}
-	return l.list(ctx, p, open, "", 1)
+	if laterVolume.MatchString(filepath.Base(p)) {
+		return Result{Format: "rar", Status: Split}, nil
+	}
+	l := lister{o: o, emit: emit, skip: skip, watch: &watch{ctx: ctx}}
+	res, err := l.list(ctx, p, open, "", 1)
+	// A read that failed anywhere, a nested archive's included, says the disk
+	// faltered; the listing is dropped and the next scan tries again.
+	if err == nil && l.watch.err != nil {
+		err = UnreadableError{l.watch.err}
+	}
+	return res, err
 }
 
+// laterVolume names the second and later parts of a split rar, which are
+// listed with the first. RAR4 parts do not say so in a way rardecode reports.
+var laterVolume = regexp.MustCompile(`(?i)\.part0*([2-9]|[1-9]\d+)\.rar$`)
+
 type lister struct {
-	o    Options
-	emit func(Member) error
-	skip func(Skip)
+	o     Options
+	emit  func(Member) error
+	skip  func(Skip)
+	watch *watch
 }
 
 // UnreadableError is an archive that could not be opened or read at all, which
@@ -127,17 +143,74 @@ type fatal struct{ err error }
 func (f fatal) Error() string { return f.err.Error() }
 func (f fatal) Unwrap() error { return f.err }
 
+// watch sees every read of every file a listing opens. It keeps the first
+// failed read, so a disk error never becomes an archive's status, and it
+// fails reads once ctx is cancelled, which stops libraries that decode long
+// stretches of a solid archive without calling back.
+type watch struct {
+	ctx context.Context
+	err error
+}
+
+func (w *watch) note(err error) {
+	if err != nil && !errors.Is(err, io.EOF) && w.err == nil {
+		w.err = err
+	}
+}
+
+type watchedFile struct {
+	*os.File
+	w *watch
+}
+
+func (f watchedFile) Read(p []byte) (int, error) {
+	if err := f.w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := f.File.Read(p)
+	f.w.note(err)
+	return n, err
+}
+
+func (f watchedFile) ReadAt(p []byte, off int64) (int, error) {
+	if err := f.w.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := f.File.ReadAt(p, off)
+	f.w.note(err)
+	return n, err
+}
+
+func (f watchedFile) Seek(offset int64, whence int) (int64, error) {
+	n, err := f.File.Seek(offset, whence)
+	f.w.note(err)
+	return n, err
+}
+
+func (l *lister) open(open Opener, p string) (watchedFile, error) {
+	f, err := open(p)
+	if err != nil {
+		l.watch.note(err)
+		return watchedFile{}, err
+	}
+	return watchedFile{File: f, w: l.watch}, nil
+}
+
 // openMember hands out a member's bytes. Some readers allow it only while
 // their walk sits on that member.
 type openMember func() (io.ReadCloser, error)
 
 func (l *lister) list(ctx context.Context, p string, open Opener, prefix string, level int) (Result, error) {
-	f, err := open(p)
+	f, err := l.open(open, p)
 	if err != nil {
 		return Result{}, UnreadableError{err}
 	}
 	defer f.Close()
-	ex, err := identify(ctx, f)
+	info, err := f.Stat()
+	if err != nil {
+		return Result{}, UnreadableError{err}
+	}
+	ex, err := identify(ctx, f, info.Size())
 	if err != nil {
 		return Result{}, UnreadableError{err}
 	}
@@ -146,7 +219,7 @@ func (l *lister) list(ctx context.Context, p string, open Opener, prefix string,
 	}
 	res := Result{Format: strings.TrimPrefix(ex.Extension(), ".")}
 	if _, ok := ex.(archives.Rar); ok {
-		err = l.rar(ctx, dirFS{dir: filepath.Dir(p), open: open}, filepath.Base(p), prefix, level)
+		err = l.rar(ctx, dirFS{dir: filepath.Dir(p), open: open, l: l}, filepath.Base(p), prefix, level)
 	} else {
 		err = ex.Extract(ctx, f, func(ctx context.Context, fi archives.FileInfo) error {
 			m, ok := memberOf(fi, prefix)
@@ -164,12 +237,14 @@ func (l *lister) list(ctx context.Context, p string, open Opener, prefix string,
 	}
 	var stop fatal
 	switch {
-	case err == nil:
-		res.Status = Listed
 	case ctx.Err() != nil:
 		return res, ctx.Err()
 	case errors.As(err, &stop):
 		return res, stop.err
+	case l.watch.err != nil:
+		return res, UnreadableError{l.watch.err}
+	case err == nil:
+		res.Status = Listed
 	default:
 		res.Status, res.Detail = classify(err), err.Error()
 	}
@@ -264,23 +339,36 @@ func newMember(prefix, name string, size int64, modified time.Time) (Member, boo
 }
 
 func memberOf(fi archives.FileInfo, prefix string) (Member, bool) {
-	m, ok := newMember(prefix, fi.NameInArchive, fi.Size(), fi.ModTime())
+	name, modified := fi.NameInArchive, fi.ModTime()
+	zh, isZip := fi.Header.(zip.FileHeader)
+	if isZip {
+		// Without the UTF-8 flag, Windows writes names in the OEM code page,
+		// 850 on Western European systems; macOS and Info-ZIP write UTF-8
+		// without the flag. CP850 names are almost never valid UTF-8.
+		if !utf8.ValidString(name) {
+			name, _ = charmap.CodePage850.NewDecoder().String(name)
+		}
+		// A time from the MS-DOS fields alone is the writer's wall clock,
+		// which the reader labels UTC.
+		if t := zh.Modified; !t.IsZero() && t.Location() == time.UTC {
+			modified = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.Local)
+		}
+	}
+	m, ok := newMember(prefix, name, fi.Size(), modified)
 	switch {
 	case fi.IsDir():
 		m.Kind = "dir"
 	case fi.Mode()&fs.ModeSymlink != 0:
 		m.Kind = "link"
 	}
-	switch h := fi.Header.(type) {
-	case zip.FileHeader:
-		m.Encrypted = h.Flags&1 != 0
+	if isZip {
+		m.Encrypted = zh.Flags&1 != 0
 		if m.Kind == "file" {
-			m.CRC32 = &h.CRC32
+			m.CRC32 = &zh.CRC32
 		}
-	case sevenzip.FileHeader:
-		if m.Kind == "file" {
-			m.CRC32 = &h.CRC32
-		}
+	}
+	if sh, is7z := fi.Header.(sevenzip.FileHeader); is7z && m.Kind == "file" {
+		m.CRC32 = &sh.CRC32
 	}
 	return m, ok
 }
@@ -309,7 +397,7 @@ func (l *lister) opens(m Member, level int) bool {
 // nested copies an archive inside an archive to the temporary folder, lists
 // it below the member's path and deletes the copy.
 func (l *lister) nested(ctx context.Context, m Member, level int, open openMember) error {
-	tmp, err := os.CreateTemp(l.o.Temp, "attic-*"+path.Ext(m.Name))
+	tmp, err := os.CreateTemp(l.o.Temp, tempPrefix+"*"+path.Ext(m.Name))
 	if err != nil {
 		return fatal{err}
 	}
@@ -378,9 +466,7 @@ func classify(err error) string {
 
 var formats = []archives.Extraction{
 	archives.SevenZip{},
-	// Without the UTF-8 flag, Windows writes zip names in the OEM code page,
-	// 850 on Western European systems.
-	archives.Zip{TextEncoding: charmap.CodePage850},
+	archives.Zip{},
 	archives.Rar{},
 	archives.Tar{},
 }
@@ -391,34 +477,32 @@ var compressions = []archives.Compression{archives.Gz{}, archives.Bz2{}, archive
 // archives.Identify ranges over a map and also matches by name, so a .zip
 // holding 7z bytes could come back as either, and brotli, which has no magic
 // number, can claim almost anything.
-func identify(ctx context.Context, f io.ReadSeeker) (archives.Extraction, error) {
+func identify(ctx context.Context, f io.ReaderAt, size int64) (archives.Extraction, error) {
 	for _, ex := range formats {
-		if ok, err := matches(ctx, ex, f, nil); ok || err != nil {
+		if ok, err := matches(ctx, ex, f, size, nil); ok || err != nil {
 			return ex, err
 		}
 	}
 	for _, c := range compressions {
-		ok, err := matches(ctx, c, f, nil)
+		ok, err := matches(ctx, c, f, size, nil)
 		if !ok || err != nil {
 			continue
 		}
 		// A compressed file is an archive only when it holds a tar.
-		if tar, _ := matches(ctx, archives.Tar{}, f, c); tar {
+		if tar, _ := matches(ctx, archives.Tar{}, f, size, c); tar {
 			return archives.CompressedArchive{Extraction: archives.Tar{}, Compression: c}, nil
 		}
 		return nil, nil
 	}
-	_, err := f.Seek(0, io.SeekStart)
-	return nil, err
+	return nil, nil
 }
 
-func matches(ctx context.Context, format archives.Format, f io.ReadSeeker, inside archives.Compression) (bool, error) {
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
-		return false, err
-	}
-	var r io.Reader = f
+// matches reads through a section of its own, never the file's offset: zstd
+// keeps reading ahead in a goroutine after Match returns.
+func matches(ctx context.Context, format archives.Format, f io.ReaderAt, size int64, inside archives.Compression) (bool, error) {
+	var r io.Reader = io.NewSectionReader(f, 0, size)
 	if inside != nil {
-		rc, err := inside.OpenReader(f)
+		rc, err := inside.OpenReader(r)
 		if err != nil {
 			return false, nil
 		}
@@ -426,9 +510,6 @@ func matches(ctx context.Context, format archives.Format, f io.ReadSeeker, insid
 		r = rc
 	}
 	m, err := format.Match(ctx, "", r)
-	if _, serr := f.Seek(0, io.SeekStart); err == nil {
-		err = serr
-	}
 	return m.ByStream, err
 }
 
@@ -441,14 +522,17 @@ func cleanName(name string) string {
 }
 
 // dirFS lets rardecode open the volumes of a split archive with the caller's
-// opener.
+// opener, watched like the first. A volume that cannot be opened fails the
+// listing for now rather than marking the content damaged for good: the set
+// may be complete on another disk.
 type dirFS struct {
 	dir  string
 	open Opener
+	l    *lister
 }
 
 func (d dirFS) Open(name string) (fs.File, error) {
-	f, err := d.open(filepath.Join(d.dir, filepath.FromSlash(name)))
+	f, err := d.l.open(d.open, filepath.Join(d.dir, filepath.FromSlash(name)))
 	if err != nil {
 		return nil, err
 	}
@@ -480,4 +564,20 @@ func (w *writeErr) Write(p []byte) (int, error) {
 		w.err = err
 	}
 	return n, err
+}
+
+const tempPrefix = "attic-"
+
+// RemoveStale deletes nested-archive copies that a killed scan left in temp.
+// A copy younger than a day may belong to a scan still running.
+func RemoveStale(temp string) {
+	if temp == "" {
+		temp = os.TempDir()
+	}
+	stale, _ := filepath.Glob(filepath.Join(temp, tempPrefix+"*"))
+	for _, p := range stale {
+		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() && time.Since(fi.ModTime()) > 24*time.Hour {
+			_ = os.Remove(p)
+		}
+	}
 }

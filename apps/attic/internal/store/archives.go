@@ -92,9 +92,14 @@ func (l *Listing) Add(ctx context.Context, m archive.Member) error {
 		v := int64(*m.CRC32)
 		crc = &v
 	}
+	modified := nullTime(m.Modified)
+	// A tar header can claim any year; Postgres stops at 294276.
+	if y := m.Modified.Year(); y < 1 || y > 9999 {
+		modified = nil
+	}
 	name := cleanText(m.Name)
 	l.rows = append(l.rows, []any{l.contentID, m.Kind, name, cleanText(m.Path), ext(m.Kind, name), m.Size,
-		nullTime(m.Modified), crc, m.Encrypted})
+		modified, crc, m.Encrypted})
 	l.members++
 	// Counted as read, so progress moves through a large archive; Abort takes
 	// them back.

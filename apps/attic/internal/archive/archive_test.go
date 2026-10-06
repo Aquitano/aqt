@@ -136,3 +136,35 @@ func TestListTellsWhyAnArchiveCannotBeRead(t *testing.T) {
 		}
 	}
 }
+
+// Windows writes zip names in code page 850 without the UTF-8 flag, macOS and
+// Info-ZIP write UTF-8 without it; both must come out readable.
+func TestZipNamesWithoutTheUTF8Flag(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, name := range []string{"\x9aber.txt", "Übung.txt"} {
+		if _, err := zw.CreateHeader(&zip.FileHeader{Name: name, NonUTF8: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, members, _ := list(t, buf.Bytes(), Options{Depth: 1})
+	if len(members) != 2 || members[0].Name != "Über.txt" || members[1].Name != "Übung.txt" {
+		t.Errorf("members %+v, want Über.txt and Übung.txt", members)
+	}
+}
+
+// A later volume of a split rar is recognised by name before a byte is read;
+// RAR4 parts give rardecode no way to tell.
+func TestLaterRarVolumesAreSplit(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "Backup.part02.rar")
+	if err := os.WriteFile(p, []byte("continuation"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := List(context.Background(), p, os.Open, Options{Depth: 1}, func(Member) error { return nil }, func(Skip) {})
+	if err != nil || res.Status != Split {
+		t.Errorf("part02: %+v, %v; want split", res, err)
+	}
+}

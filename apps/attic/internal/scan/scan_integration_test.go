@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
 	"context"
@@ -237,27 +238,31 @@ func zipOf(t *testing.T, files map[string]string) string {
 }
 
 // Two copies of one backup zip are read once, and a hit inside it names both.
+// Once both copies are rewritten, the old listing is no longer found.
 func TestArchivesAreListedOncePerContent(t *testing.T) {
 	st, _ := storetest.New(t)
+	ctx := context.Background()
 	root := t.TempDir()
 	server := zipOf(t, map[string]string{"server.properties": "motd=hi", "deeper.zip": zipOf(t, map[string]string{"x.txt": "x"})})
 	backup := zipOf(t, map[string]string{"world/level.dat": "level", "MinecraftServer.zip": server})
 	write(t, root, "Backups/Minecraft.zip", backup)
 	write(t, root, "Old/Minecraft copy.zip", backup)
+	// A tar header can carry a year Postgres cannot store.
+	write(t, root, "Backups/odd.tar", tarOf(t, "future.txt", time.Date(300_000, 1, 1, 0, 0, 0, 0, time.UTC)))
 	withArchives := func(o *Options) { o.Config = config.Default() }
 
 	first := scanAt(t, st, root, testVolume, withArchives)
-	if first.Counts.Archives != 1 || first.Counts.Members != 4 {
-		t.Fatalf("listed %d archives with %d members, want 1 with 4", first.Counts.Archives, first.Counts.Members)
+	if first.Counts.Archives != 2 || first.Counts.Members != 5 {
+		t.Fatalf("listed %d archives with %d members, want 2 with 5", first.Counts.Archives, first.Counts.Members)
 	}
-	hits, err := st.SearchMembers(context.Background(), store.SearchOptions{Query: "server properties"})
+	hits, err := st.SearchMembers(ctx, store.SearchOptions{Query: "server properties"})
 	if err != nil || len(hits) != 1 {
 		t.Fatalf("members %+v, %v", hits, err)
 	}
 	if hits[0].Path != "MinecraftServer.zip :: server.properties" || len(hits[0].Archive) != 2 {
 		t.Errorf("hit %s in %d copies, want the nested path in both", hits[0].Path, len(hits[0].Archive))
 	}
-	skips, err := st.Skips(context.Background(), first.ScanID, "too_deep", "", 10)
+	skips, err := st.Skips(ctx, first.ScanID, "too_deep", "", 10)
 	if err != nil || len(skips) != 1 || skips[0].Path != "/Backups/Minecraft.zip :: MinecraftServer.zip :: deeper.zip" {
 		t.Errorf("too_deep skips %+v, %v", skips, err)
 	}
@@ -265,6 +270,27 @@ func TestArchivesAreListedOncePerContent(t *testing.T) {
 	if again := scanAt(t, st, root, testVolume, withArchives); again.Counts.Archives != 0 {
 		t.Errorf("a rescan listed %d archives again", again.Counts.Archives)
 	}
+
+	rewritten := zipOf(t, map[string]string{"world/level.dat": "a newer level"})
+	write(t, root, "Backups/Minecraft.zip", rewritten)
+	write(t, root, "Old/Minecraft copy.zip", rewritten)
+	scanAt(t, st, root, testVolume, withArchives)
+	if hits, err := st.SearchMembers(ctx, store.SearchOptions{Query: "server properties"}); err != nil || len(hits) != 0 {
+		t.Errorf("members of a rewritten archive still found: %+v, %v", hits, err)
+	}
+}
+
+func tarOf(t *testing.T, name string, modified time.Time) string {
+	t.Helper()
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o644, ModTime: modified, Format: tar.FormatPAX}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.String()
 }
 
 // Documents are read once per content and found by their words; configuration

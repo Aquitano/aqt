@@ -5,6 +5,7 @@ package scan
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -82,6 +83,15 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	root := ""
 	for _, part := range rel {
 		root += "/" + part
+	}
+	if a := o.Config.Archives; a.Depth > 1 {
+		temp := cmp.Or(a.Temp, os.TempDir())
+		// Locate works on Windows only; elsewhere the check is skipped.
+		if t, _, err := disk.Locate(temp); err == nil && vol.Holds(t.Fingerprint) {
+			return Result{}, fmt.Errorf("nested archives would be copied to %s, on the disk being scanned: "+
+				"set [archives] temp to a folder on another disk, or depth = 1", temp)
+		}
+		archive.RemoveStale(temp)
 	}
 	sc, err := st.StartScan(ctx, vol, root)
 	if err != nil {

@@ -113,7 +113,9 @@ func (s *Store) SearchTexts(ctx context.Context, o SearchOptions) ([]TextHit, er
 		mode = "should"
 	}
 	q.where = append(q.where, "t.content_id @@@ paradedb.boolean("+mode+" => array["+strings.Join(clauses, ", ")+"])")
-	var place []string
+	// Text outlives a file that was rewritten; only contents some entry still
+	// has are found.
+	place := []string{"e.content_id = t.content_id"}
 	if o.VolumeID != "" {
 		place = append(place, "e.volume_id::text = "+q.next(o.VolumeID))
 	}
@@ -124,9 +126,7 @@ func (s *Store) SearchTexts(ctx context.Context, o SearchOptions) ([]TextHit, er
 	if o.Ext != "" {
 		place = append(place, "e.ext = "+q.next(strings.ToLower(strings.TrimPrefix(o.Ext, "."))))
 	}
-	if len(place) > 0 {
-		q.where = append(q.where, `exists (select 1 from entries e where e.content_id = t.content_id and `+strings.Join(place, " and ")+`)`)
-	}
+	q.where = append(q.where, `exists (select 1 from entries e where `+strings.Join(place, " and ")+`)`)
 	q.order = "paradedb.score(t.content_id) desc, t.content_id"
 	rows, err := s.pool.Query(ctx, `select t.content_id, `+refSQL+`, paradedb.score(t.content_id),
 		paradedb.snippet(t.text, start_tag => '', end_tag => '', max_num_chars => 200)
@@ -152,7 +152,7 @@ func (s *Store) SearchTexts(ctx context.Context, o SearchOptions) ([]TextHit, er
 		return nil, err
 	}
 	for i, id := range ids {
-		if hits[i].Places, err = s.occurrences(ctx, id, 0, false, nil); err != nil {
+		if hits[i].Places, err = s.occurrences(ctx, id, 0, false, volumesOf(o)); err != nil {
 			return nil, err
 		}
 	}

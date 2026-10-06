@@ -71,6 +71,12 @@ func run() int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	// The first Ctrl+C asks for a clean stop; restoring the default lets a
+	// second one end the process at once.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 	var err error
 	switch os.Args[1] {
 	case "scan":

@@ -161,15 +161,18 @@ func (s *Store) SearchMembers(ctx context.Context, o SearchOptions) ([]MemberHit
 	if err != nil {
 		return nil, err
 	}
+	// A listing outlives an archive file that was rewritten; only contents some
+	// entry still has are found.
+	place := []string{"e.content_id = m.archive_id"}
 	if o.VolumeID != "" {
-		place := "e.volume_id::text = " + q.next(o.VolumeID)
-		if o.Under != "" {
-			under := strings.TrimSuffix(o.Under, "/")
-			place += ` and (e.path = ` + q.next(under) + ` or (e.path collate "C" > ` + q.next(under+"/") +
-				` and e.path collate "C" < ` + q.next(under+"0") + `))`
-		}
-		q.where = append(q.where, `exists (select 1 from entries e where e.content_id = m.archive_id and `+place+`)`)
+		place = append(place, "e.volume_id::text = "+q.next(o.VolumeID))
 	}
+	if o.Under != "" {
+		under := strings.TrimSuffix(o.Under, "/")
+		place = append(place, `(e.path = `+q.next(under)+` or (e.path collate "C" > `+q.next(under+"/")+
+			` and e.path collate "C" < `+q.next(under+"0")+`))`)
+	}
+	q.where = append(q.where, `exists (select 1 from entries e where `+strings.Join(place, " and ")+`)`)
 	rows, err := s.pool.Query(ctx, `select m.id, m.kind, m.path, m.size_bytes, m.modified_at, m.crc32, m.encrypted,
 		m.archive_id, `+q.score+` from members m`+q.tail(o), q.args...)
 	if err != nil {
@@ -195,7 +198,7 @@ func (s *Store) SearchMembers(ctx context.Context, o SearchOptions) ([]MemberHit
 	places := map[int64][]Hit{}
 	for i, id := range archiveIDs {
 		if _, ok := places[id]; !ok {
-			if places[id], err = s.occurrences(ctx, id, 0, false, nil); err != nil {
+			if places[id], err = s.occurrences(ctx, id, 0, false, volumesOf(o)); err != nil {
 				return nil, err
 			}
 		}
@@ -577,7 +580,8 @@ type Totals struct {
 func (s *Store) Totals(ctx context.Context) (Totals, error) {
 	var t Totals
 	// Entries, files and bytes count what is present; missing entries have
-	// their own number. A content counts while a present entry still has it.
+	// their own number. A content, and its listing or text, counts while a
+	// present entry still has it.
 	err := s.pool.QueryRow(ctx, `
 		with live as (select distinct content_id from entries where content_id is not null and missing_scan is null)
 		select (select count(*) from volumes),
@@ -587,14 +591,17 @@ func (s *Store) Totals(ctx context.Context) (Totals, error) {
 		       (select coalesce(sum(c.size_bytes), 0) from contents c join live l on l.content_id = c.id),
 		       count(*) filter (where hash_state in ('pending', 'failed') and missing_scan is null),
 		       count(*) filter (where missing_scan is not null),
-		       (select count(*) from archives where status <> 'not_archive'),
-		       (select coalesce(sum(members), 0)::bigint from archives)
+		       (select count(*) from archives a join live l using (content_id) where a.status <> 'not_archive'),
+		       (select coalesce(sum(a.members), 0)::bigint from archives a join live l using (content_id))
 		from entries`).Scan(&t.Volumes, &t.Entries, &t.Files, &t.Bytes, &t.Contents, &t.ContentBytes, &t.Pending, &t.Missing,
 		&t.Archives, &t.Members)
 	if err != nil {
 		return t, err
 	}
-	rows, err := s.pool.Query(ctx, `select status, count(*), coalesce(sum(char_length(text)), 0)::bigint from texts group by status`)
+	rows, err := s.pool.Query(ctx, `
+		select t.status, count(*), coalesce(sum(char_length(t.text)), 0)::bigint from texts t
+		where exists (select 1 from entries e where e.content_id = t.content_id and e.missing_scan is null)
+		group by t.status`)
 	if err != nil {
 		return t, err
 	}
@@ -610,4 +617,13 @@ func (s *Store) Totals(ctx context.Context) (Totals, error) {
 		t.TextChars += chars
 	}
 	return t, rows.Err()
+}
+
+// volumesOf narrows the copies shown for a hit to the volume searched, so a
+// search of E: does not point at the copy on F:.
+func volumesOf(o SearchOptions) []string {
+	if o.VolumeID == "" {
+		return nil
+	}
+	return []string{o.VolumeID}
 }
