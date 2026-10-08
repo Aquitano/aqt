@@ -176,12 +176,12 @@ func TestTempCleanupKeepsActiveAndUnownedFiles(t *testing.T) {
 	if err := os.WriteFile(unrelated, []byte("user archive"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	active, err := newTempWorkspace(base)
+	active, err := newTempWorkspace(base, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer active.Close()
-	stale, err := newTempWorkspace(base)
+	stale, err := newTempWorkspace(base, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

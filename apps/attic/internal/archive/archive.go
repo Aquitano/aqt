@@ -114,9 +114,9 @@ func List(ctx context.Context, p string, open Opener, o Options, emit func(Membe
 		return Result{Format: "rar", Status: Split}, nil
 	}
 	if o.Depth > 1 {
-		workspace, err := newTempWorkspace(o.Temp)
-		if err != nil {
-			return Result{}, err
+		workspace, createErr := newTempWorkspace(o.Temp, o.Log)
+		if createErr != nil {
+			return Result{}, createErr
 		}
 		defer func() { err = errors.Join(err, workspace.Close()) }()
 		o.Temp = workspace.path

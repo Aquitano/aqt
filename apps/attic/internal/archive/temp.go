@@ -1,8 +1,10 @@
 package archive
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,12 +18,14 @@ type tempWorkspace struct {
 	lock *flock.Flock
 }
 
-func newTempWorkspace(base string) (*tempWorkspace, error) {
+func newTempWorkspace(base string, log *slog.Logger) (*tempWorkspace, error) {
 	if base == "" {
 		base = os.TempDir()
 	}
 	root := filepath.Join(base, "aqt-attic")
-	if err := os.MkdirAll(root, 0o700); err != nil {
+	// The base must already exist so the scanner can check its volume before
+	// writing. Creating missing parents could bypass that check on Windows.
+	if err := os.Mkdir(root, 0o700); err != nil && !os.IsExist(err) {
 		return nil, err
 	}
 	info, err := os.Lstat(root)
@@ -32,7 +36,7 @@ func newTempWorkspace(base string) (*tempWorkspace, error) {
 		return nil, fmt.Errorf("archive temporary directory is not a directory: %s", root)
 	}
 	if err := removeStaleWorkspaces(root); err != nil {
-		return nil, err
+		cmp.Or(log, slog.New(slog.DiscardHandler)).Warn("could not clean abandoned archive workspaces", "temp", root, "err", err)
 	}
 	dir, err := os.MkdirTemp(root, "scan-")
 	if err != nil {
@@ -46,10 +50,32 @@ func newTempWorkspace(base string) (*tempWorkspace, error) {
 }
 
 func (w *tempWorkspace) Close() error {
-	if err := w.lock.Close(); err != nil {
+	// Keep the marker until every copy is gone, so a later sweep can retry
+	// when permissions or an open Windows handle prevent deletion.
+	err := w.removeContents()
+	if err := errors.Join(err, w.lock.Close()); err != nil {
 		return err
 	}
 	return os.RemoveAll(w.path)
+}
+
+func (w *tempWorkspace) removeContents() error {
+	entries, err := os.ReadDir(w.path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.Name() == ".lock" {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(w.path, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var workspaceName = regexp.MustCompile(`^scan-\d+$`)
@@ -65,6 +91,7 @@ func removeStaleWorkspaces(root string) error {
 	if err != nil {
 		return err
 	}
+	var failures []error
 	for _, entry := range entries {
 		if !entry.IsDir() || !workspaceName.MatchString(entry.Name()) {
 			continue
@@ -85,12 +112,10 @@ func removeStaleWorkspaces(root string) error {
 			_ = lock.Close()
 			continue
 		}
-		if err := lock.Close(); err != nil {
-			return err
-		}
-		if err := os.RemoveAll(dir); err != nil {
-			return err
+		workspace := tempWorkspace{path: dir, lock: lock}
+		if err := workspace.Close(); err != nil {
+			failures = append(failures, err)
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
