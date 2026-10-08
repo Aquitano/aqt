@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "check:dist": "bun run build && bun check-dist.ts",
     "preview": "vite preview",
+    "test": "bun test src",
     "check": "tsc -b && oxlint --type-aware src",
     "typecheck": "tsc -b"
   },

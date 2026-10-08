@@ -1,22 +1,23 @@
 import { initTRPC, TRPCError } from "@trpc/server";
+import { z } from "zod";
 
 import type { Context } from "./context";
 
 /** Opting a procedure into the MCP tool surface. A procedure without this meta
  * is invisible to agents; the tool's input schema is the procedure's own zod
  * input, so the two can never drift. */
-export type McpToolMeta = {
-  name: string;
-  title: string;
-  description: string;
-  readOnly?: boolean;
-  destructive?: boolean;
-  idempotent?: boolean;
-};
+export const mcpToolMetaSchema = z.object({
+  name: z.string(),
+  title: z.string(),
+  description: z.string(),
+  readOnly: z.boolean().optional(),
+  destructive: z.boolean().optional(),
+  idempotent: z.boolean().optional(),
+});
+export type McpToolMeta = z.infer<typeof mcpToolMetaSchema>;
 
-export type Meta = {
-  mcp?: McpToolMeta;
-};
+export const metaSchema = z.object({ mcp: mcpToolMetaSchema.optional() });
+export type Meta = z.infer<typeof metaSchema>;
 
 export const t = initTRPC.context<Context>().meta<Meta>().create();
 

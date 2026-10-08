@@ -63,6 +63,7 @@ run = [
   "bunx --no-install oxlint --type-aware apps/bank",
   "bunx --no-install oxfmt --check apps/bank",
   "bun run --filter \"@aqt/bank-*\" typecheck",
+  "bun run --cwd apps/bank/internal/webui/app test",
   "bun run --cwd apps/bank/internal/webui/app check:dist",
 ]
 

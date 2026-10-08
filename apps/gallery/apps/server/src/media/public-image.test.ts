@@ -49,18 +49,15 @@ const realFetch = globalThis.fetch;
  * network was not touched again. */
 function stubImageFetch(bytes: Buffer, contentType = "image/png") {
   const calls = { count: 0 };
-  globalThis.fetch = (async () => {
-    calls.count++;
-    return {
-      ok: true,
-      status: 200,
-      headers: {
-        get: (h: string) => (h.toLowerCase() === "content-type" ? contentType : null),
-      },
-      arrayBuffer: async () =>
-        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
-    } as unknown as Response;
-  }) as unknown as typeof fetch;
+  globalThis.fetch = Object.assign(
+    async () => {
+      calls.count++;
+      return new Response(new Uint8Array(bytes), {
+        headers: { "Content-Type": contentType },
+      });
+    },
+    { preconnect: realFetch.preconnect },
+  );
   return calls;
 }
 

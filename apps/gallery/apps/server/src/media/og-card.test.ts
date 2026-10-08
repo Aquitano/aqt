@@ -66,18 +66,15 @@ const realFetch = globalThis.fetch;
  * the network was not touched again. */
 function stubImageFetch(bytes: Buffer, contentType = "image/png") {
   const calls = { count: 0 };
-  globalThis.fetch = (async () => {
-    calls.count++;
-    return {
-      ok: true,
-      status: 200,
-      headers: {
-        get: (h: string) => (h.toLowerCase() === "content-type" ? contentType : null),
-      },
-      arrayBuffer: async () =>
-        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
-    } as unknown as Response;
-  }) as unknown as typeof fetch;
+  globalThis.fetch = Object.assign(
+    async () => {
+      calls.count++;
+      return new Response(new Uint8Array(bytes), {
+        headers: { "Content-Type": contentType },
+      });
+    },
+    { preconnect: realFetch.preconnect },
+  );
   return calls;
 }
 
@@ -234,12 +231,9 @@ describe("serveOgCard — compose and cache", () => {
 
     // Phase 1: the cover exists but upstream fails. A 404 aborts the fetch
     // ladder immediately (a 5xx would burn the 2s/8s backoffs).
-    globalThis.fetch = (async () => ({
-      ok: false,
-      status: 404,
-      body: null,
-      headers: { get: () => null },
-    })) as unknown as typeof fetch;
+    globalThis.fetch = Object.assign(async () => new Response(null, { status: 404 }), {
+      preconnect: realFetch.preconnect,
+    });
 
     const failed = await serveOgCard({ store, slug: "wing" });
     expect(failed.status).toBe(200);

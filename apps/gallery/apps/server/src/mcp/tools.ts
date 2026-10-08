@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { McpToolMeta, Meta } from "../api/index";
+import { metaSchema, type McpToolMeta } from "../api/index";
 import { appRouter } from "../api/routers/index";
 
 export type GalleryTool = McpToolMeta & {
@@ -11,7 +11,15 @@ export type GalleryTool = McpToolMeta & {
 
 /** tRPC 11 flattens every procedure into `_def.procedures` keyed by its dotted
  * path, but still types that record as the nested router shape. */
-type FlatProcedure = { _def: { meta?: Meta; inputs: readonly unknown[] } };
+const flatProceduresSchema = z.record(
+  z.string(),
+  z.preprocess(
+    (value) => (typeof value === "function" && "_def" in value ? { _def: value._def } : value),
+    z.object({
+      _def: z.object({ meta: metaSchema.optional(), inputs: z.array(z.unknown()) }),
+    }),
+  ),
+);
 
 function inputSchemaOf(path: string, inputs: readonly unknown[]): z.ZodObject {
   if (inputs.length === 0) {
@@ -31,7 +39,7 @@ function inputSchemaOf(path: string, inputs: readonly unknown[]): z.ZodObject {
 /** Every procedure carrying `mcp` meta, as a ready-to-register tool. The zod
  * input of the procedure is the tool's input schema, so the two can't drift. */
 function buildGalleryTools(): GalleryTool[] {
-  const procedures = appRouter._def.procedures as unknown as Record<string, FlatProcedure>;
+  const procedures = flatProceduresSchema.parse(appRouter._def.procedures);
   const tools: GalleryTool[] = [];
   const names = new Set<string>();
 

@@ -100,7 +100,7 @@ func TestListOpensNestedArchivesToTheDepth(t *testing.T) {
 	if len(skips) != 1 || skips[0].Path != "MinecraftServer.zip :: deeper.zip" || skips[0].Reason != "too_deep" {
 		t.Errorf("skips %+v, want deeper.zip too deep", skips)
 	}
-	if left, _ := os.ReadDir(temp); len(left) != 0 {
+	if left, err := os.ReadDir(filepath.Join(temp, "aqt-attic")); err != nil || len(left) != 1 || left[0].Name() != ".cleanup.lock" {
 		t.Errorf("temporary copies left behind: %v", left)
 	}
 
@@ -170,31 +170,53 @@ func TestLaterRarVolumesAreSplit(t *testing.T) {
 	}
 }
 
-// The sweep removes only old copies a scan made; temp may be shared with
-// files of the same prefix.
-func TestRemoveStaleKeepsWhatIsNotAnOldCopy(t *testing.T) {
-	dir := t.TempDir()
+func TestTempCleanupKeepsActiveAndUnownedFiles(t *testing.T) {
+	base := t.TempDir()
+	unrelated := filepath.Join(base, "attic-123.zip")
+	if err := os.WriteFile(unrelated, []byte("user archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	active, err := newTempWorkspace(base, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer active.Close()
+	stale, err := newTempWorkspace(base, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stale.lock.Close(); err != nil {
+		t.Fatal(err)
+	}
 	old := time.Now().Add(-48 * time.Hour)
-	for name, modified := range map[string]time.Time{
-		"attic-123.zip":   old,
-		"attic-notes.txt": old,
-		"attic-456.rar":   time.Now(),
-	} {
-		p := filepath.Join(dir, name)
-		if err := os.WriteFile(p, nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Chtimes(p, modified, modified); err != nil {
+	for _, p := range []string{unrelated, active.path, stale.path} {
+		if err := os.Chtimes(p, old, old); err != nil {
 			t.Fatal(err)
 		}
 	}
-	RemoveStale(dir)
-	var left []string
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		left = append(left, e.Name())
+	root := filepath.Dir(active.path)
+	unowned := filepath.Join(root, "scan-123")
+	if err := os.Mkdir(unowned, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if !slices.Equal(left, []string{"attic-456.rar", "attic-notes.txt"}) {
-		t.Errorf("left %v, want the young copy and the user's file", left)
+	if err := os.Chtimes(unowned, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeStaleWorkspaces(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{unrelated, active.path, unowned} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("cleanup removed %s: %v", p, err)
+		}
+	}
+	if _, err := os.Stat(stale.path); !os.IsNotExist(err) {
+		t.Errorf("abandoned workspace remains: %v", err)
+	}
+	if err := active.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(active.path); !os.IsNotExist(err) {
+		t.Errorf("finished workspace remains: %v", err)
 	}
 }

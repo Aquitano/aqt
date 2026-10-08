@@ -78,9 +78,10 @@ type Options struct {
 	// any size.
 	UnpackMaxBytes int64
 	// Temp holds nested archives while they are listed, the system's temporary
-	// folder when empty.
+	// folder when empty. The folder must already exist.
 	Temp string
-	// Log hears about each nested archive opened; nil logs nothing.
+	// Log receives nested archive events and stale cleanup warnings; nil logs
+	// nothing.
 	Log *slog.Logger
 }
 
@@ -105,16 +106,25 @@ func IsArchive(name string) bool {
 // List reads the archive at p and hands every member to emit, nested
 // archives' members included, as they are read rather than collected first.
 //
-// The error is for what makes the listing worthless rather than the archive
-// bad: cancellation, a failing emit, a temporary folder that cannot be
-// written, or an UnreadableError. A damaged, encrypted or unknown archive is
-// a Result.
-func List(ctx context.Context, p string, open Opener, o Options, emit func(Member) error, skip func(Skip)) (Result, error) {
+// List returns errors for cancellation, a failing emit, an UnreadableError,
+// or failures creating, writing or cleaning up the temporary workspace.
+// Cleanup can fail after all members have been emitted; its error is joined
+// with any listing error. A damaged, encrypted or unknown archive is reported
+// in Result.
+func List(ctx context.Context, p string, open Opener, o Options, emit func(Member) error, skip func(Skip)) (res Result, err error) {
 	if laterVolume.MatchString(filepath.Base(p)) {
 		return Result{Format: "rar", Status: Split}, nil
 	}
+	if o.Depth > 1 {
+		workspace, createErr := newTempWorkspace(o.Temp, o.Log)
+		if createErr != nil {
+			return Result{}, createErr
+		}
+		defer func() { err = errors.Join(err, workspace.Close()) }()
+		o.Temp = workspace.path
+	}
 	l := lister{o: o, emit: emit, skip: skip, watch: &watch{ctx: ctx}, log: cmp.Or(o.Log, slog.New(slog.DiscardHandler))}
-	res, err := l.list(ctx, p, open, "", 1)
+	res, err = l.list(ctx, p, open, "", 1)
 	// A read that failed anywhere, a nested archive's included, says the disk
 	// faltered; the listing is dropped and the next scan tries again.
 	if err == nil && l.watch.err != nil {
@@ -595,32 +605,6 @@ func (w *writeErr) Write(p []byte) (int, error) {
 }
 
 const tempPrefix = "attic-"
-
-// staleCopy is the name os.CreateTemp gives a nested-archive copy, and nothing
-// else: temp may be a folder shared with other files.
-var staleCopy = regexp.MustCompile(`(?i)^` + tempPrefix + `\d+\.[a-z0-9]+$`)
-
-// RemoveStale deletes nested-archive copies that a killed scan left in temp,
-// and says how many. A copy younger than a day may belong to a scan still
-// running.
-func RemoveStale(temp string) int {
-	removed := 0
-	if temp == "" {
-		temp = os.TempDir()
-	}
-	stale, _ := filepath.Glob(filepath.Join(temp, tempPrefix+"*"))
-	for _, p := range stale {
-		if name := filepath.Base(p); !staleCopy.MatchString(name) || !IsArchive(name) {
-			continue
-		}
-		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() && time.Since(fi.ModTime()) > 24*time.Hour {
-			if os.Remove(p) == nil {
-				removed++
-			}
-		}
-	}
-	return removed
-}
 
 // volumeMissing reports a rar that needed another volume and could not open
 // it.
