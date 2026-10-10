@@ -8,10 +8,12 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    # Ad-hoc signing ("-") invalidates TCC (Accessibility) grants on every
-    # rebuild because the CDHash changes. A real identity keeps grants sticky.
+    # TCC keys the Accessibility grant to the designated requirement. Ad-hoc
+    # signing makes that the CDHash, which changes on every build; a team
+    # certificate keeps it stable across rebuilds.
     CODE_SIGN_STYLE: Automatic
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: KRZZXX9G3M
+    CODE_SIGN_IDENTITY: "Apple Development"
     ENABLE_HARDENED_RUNTIME: false
 
 targets:
@@ -36,31 +38,8 @@ targets:
         # Menu bar app: no Dock icon, no app switcher entry.
         LSUIElement: true
         NSHumanReadableCopyright: "© 2026 Thomas Breindl"
-    entitlements:
-      path: Starboard/Starboard.entitlements
-      properties:
-        # Event taps and AX control require running unsandboxed.
-        com.apple.security.app-sandbox: false
-
-  StarboardTests:
-    type: bundle.unit-test
-    platform: macOS
-    sources: [StarboardTests]
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: true
     dependencies:
-      - target: Starboard
-
-  StarboardBenchmarks:
-    type: bundle.unit-test
-    platform: macOS
-    sources: [StarboardBenchmarks]
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: true
-    dependencies:
-      - target: Starboard
+      - package: StarboardCore
 
 schemes:
   Starboard:
@@ -69,14 +48,7 @@ schemes:
         Starboard: all
     run:
       config: Debug
-    test:
-      config: Debug
-      targets: [StarboardTests]
-  StarboardBenchmarks:
-    build:
-      targets:
-        Starboard: all
-        StarboardBenchmarks: [test]
-    test:
-      config: Release
-      targets: [StarboardBenchmarks]
+
+packages:
+  StarboardCore:
+    path: Packages/StarboardCore

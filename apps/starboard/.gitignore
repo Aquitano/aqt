@@ -1,5 +1,5 @@
-build/
 DerivedData/
 Starboard.xcodeproj/
+Packages/StarboardCore/.build/
 .DS_Store
 xcuserdata/
