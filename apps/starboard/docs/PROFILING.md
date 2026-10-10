@@ -20,7 +20,7 @@ quits and activations via `AppRegistry.refresh()`.
 
 ## Baseline procedure
 
-1. Build a profiling binary with `make profile-build`.
+1. Build a profiling binary with `./run.sh --install`, which builds Release.
 2. Grant that binary Accessibility and Screen Recording permission.
 3. Open Instruments with the **Points of Interest**, **Time Profiler**, and
    **Allocations** instruments and attach to Starboard.
@@ -50,8 +50,8 @@ is a correctness issue, regardless of the measured duration.
 
 ## Repeatable microbenchmarks
 
-`make benchmark` runs the separate `StarboardBenchmarks` XCTest bundle in
-Release configuration. It is intentionally not part of `make test`, so normal
+The `StarboardBenchmarks` scheme runs the separate `StarboardBenchmarks` XCTest bundle in
+Release configuration. It is intentionally not part of `mise run starboard:test`, so normal
 verification does not silently collect noisy local performance numbers.
 
 Before comparing results: quit heavy background applications, disable Low Power

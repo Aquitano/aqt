@@ -4,17 +4,20 @@ set -eu
 
 usage() {
     cat <<'EOF'
-Usage: ./run.sh [--run]
+Usage: ./run.sh [--run | --install]
 
-Build Starboard in Debug configuration. Pass --run to launch the freshly built app.
+Build Starboard in Debug configuration.
+  --run      launch the freshly built Debug app
+  --install  build Release, replace /Applications/Starboard.app and launch it
 EOF
 }
 
-launch_app=false
+mode=build
 
 case "${1:-}" in
     "") ;;
-    --run) launch_app=true ;;
+    --run) mode=run ;;
+    --install) mode=install ;;
     -h|--help)
         usage
         exit 0
@@ -32,16 +35,19 @@ if [ "$#" -gt 1 ]; then
     exit 2
 fi
 
-developer_dir=/Applications/Xcode.app/Contents/Developer
-
-if [ ! -d "$developer_dir" ]; then
-    echo "error: Xcode is required at $developer_dir" >&2
+if ! xcodebuild -version >/dev/null 2>&1; then
+    echo "error: Xcode is required; select it with: sudo xcode-select -s /Applications/Xcode.app" >&2
     exit 1
 fi
 
 if ! command -v xcodegen >/dev/null 2>&1; then
-    echo "error: XcodeGen is required (install it with: brew install xcodegen)" >&2
+    echo "error: XcodeGen is required (mise install, from the repo root)" >&2
     exit 1
+fi
+
+configuration=Debug
+if [ "$mode" = install ]; then
+    configuration=Release
 fi
 
 # Use the filesystem's canonical path spelling. A differently-cased logical PWD
@@ -49,19 +55,20 @@ fi
 # outside the build sandbox's allowed roots on case-insensitive filesystems.
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && /bin/pwd -P)
 derived_data="$script_dir/DerivedData"
-app="$derived_data/Build/Products/Debug/Starboard.app"
-app_executable="$app/Contents/MacOS/Starboard"
+app="$derived_data/Build/Products/$configuration/Starboard.app"
+installed=/Applications/Starboard.app
 
 echo "Generating Starboard.xcodeproj..."
-(cd "$script_dir" && xcodegen generate)
+(cd "$script_dir" && xcodegen generate --quiet)
 
-echo "Building Starboard (Debug)..."
-DEVELOPER_DIR="$developer_dir" xcodebuild \
+echo "Building Starboard ($configuration)..."
+xcodebuild \
     -project "$script_dir/Starboard.xcodeproj" \
     -scheme Starboard \
-    -configuration Debug \
+    -configuration "$configuration" \
     -destination 'platform=macOS' \
     -derivedDataPath "$derived_data" \
+    -allowProvisioningUpdates \
     -quiet \
     build
 
@@ -72,39 +79,52 @@ fi
 
 echo "Built $app"
 
-if [ "$launch_app" = true ]; then
-    if pgrep -x Starboard >/dev/null 2>&1; then
-        echo "Stopping the currently running Starboard instance..."
-        /usr/bin/osascript -e 'tell application id "com.aquitano.starboard" to quit' >/dev/null 2>&1 || true
-
-        attempts=0
-        while pgrep -x Starboard >/dev/null 2>&1 && [ "$attempts" -lt 50 ]; do
-            sleep 0.1
-            attempts=$((attempts + 1))
-        done
-
-        if pgrep -x Starboard >/dev/null 2>&1; then
-            echo "error: the existing Starboard instance did not quit; quit it manually and retry" >&2
-            exit 1
-        fi
-    fi
-
-    echo "Starting Starboard..."
-    # Multiple local builds share the same bundle identifier. Without -n,
-    # Launch Services may reuse a previously registered (and differently
-    # signed) Starboard.app instead of launching the app built above.
-    /usr/bin/open -n "$app"
+quit_running() {
+    pgrep -x Starboard >/dev/null 2>&1 || return 0
+    echo "Stopping the running Starboard..."
+    /usr/bin/osascript -e 'tell application id "com.aquitano.starboard" to quit' >/dev/null 2>&1 || true
 
     attempts=0
-    while ! pgrep -f -x "$app_executable" >/dev/null 2>&1 && [ "$attempts" -lt 50 ]; do
+    while pgrep -x Starboard >/dev/null 2>&1 && [ "$attempts" -lt 50 ]; do
         sleep 0.1
         attempts=$((attempts + 1))
     done
 
-    if ! pgrep -f -x "$app_executable" >/dev/null 2>&1; then
-        echo "error: the freshly built Starboard did not remain running after launch" >&2
+    if pgrep -x Starboard >/dev/null 2>&1; then
+        echo "error: the running Starboard did not quit; quit it manually and retry" >&2
         exit 1
     fi
+}
 
-    echo "Starboard is running."
-fi
+wait_for_launch() {
+    attempts=0
+    while ! pgrep -f -x "$1/Contents/MacOS/Starboard" >/dev/null 2>&1 && [ "$attempts" -lt 50 ]; do
+        sleep 0.1
+        attempts=$((attempts + 1))
+    done
+
+    if ! pgrep -f -x "$1/Contents/MacOS/Starboard" >/dev/null 2>&1; then
+        echo "error: Starboard did not stay running after launch" >&2
+        exit 1
+    fi
+    echo "Starboard is running from $1."
+}
+
+case "$mode" in
+    run)
+        quit_running
+        # Several builds share the bundle identifier. Without -n, Launch
+        # Services may reuse another registered Starboard.app instead of the
+        # one built above.
+        /usr/bin/open -n "$app"
+        wait_for_launch "$app"
+        ;;
+    install)
+        quit_running
+        rm -rf "$installed"
+        ditto "$app" "$installed"
+        codesign --verify --strict "$installed"
+        /usr/bin/open "$installed"
+        wait_for_launch "$installed"
+        ;;
+esac

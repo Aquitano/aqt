@@ -160,8 +160,15 @@ run = [
 
 [tasks."starboard:test"]
 dir = "apps/starboard"
-run = "make test"
+run = [
+  "xcodegen generate --quiet",
+  "xcodebuild -project Starboard.xcodeproj -scheme Starboard -destination platform=macOS -derivedDataPath DerivedData -allowProvisioningUpdates -quiet test",
+]
 
 [tasks."starboard:dev"]
 dir = "apps/starboard"
 run = "./run.sh --run"
+
+[tasks."starboard:install"]
+dir = "apps/starboard"
+run = "./run.sh --install"

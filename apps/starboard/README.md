@@ -13,18 +13,17 @@ Switch apps by holding **Right ⌘** and pressing a letter. A native macOS menu 
 
 ## Development
 
-Requires Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+Requires Xcode signed in to the Apple account of team `KRZZXX9G3M` (Xcode > Settings > Accounts). Builds are signed with its Apple Development certificate, which keeps the Accessibility grant across rebuilds. XcodeGen comes from mise.
+
+From the workspace root:
 
 ```sh
-make gen     # generate Starboard.xcodeproj from project.yml
-make build
-make run     # relaunches the app
-make test
-make benchmark     # explicit Release microbenchmarks
-make profile-build # instrumentable Release build
+mise run starboard:check    # lint and tests
+mise run starboard:dev      # build Debug and launch it
+mise run starboard:install  # build Release into /Applications and launch it
 ```
 
-From the workspace root, `mise run starboard:check` runs lint and tests, `mise run starboard:dev` builds and launches.
+`run.sh` behind them takes `--run` or `--install`.
 
 The repeatable performance workflow and signpost budgets are documented in
 [docs/PROFILING.md](docs/PROFILING.md).
@@ -38,7 +37,6 @@ disk, and an owner-only unix socket takes live commands (status, enable, visible
 apps, stage restore, search, focus, overlay). Adding `--search-deeplink <url>`
 mirrors the hold overlay into a Raycast command instead of the native panel.
 
-`make helper` builds a universal Release app into `raycast/assets/` for the
-extension to ship as its helper binary. The extension itself is not in this repo yet.
+The extension itself is not in this repo yet.
 
-The app needs the **Accessibility** permission (event tap) and optionally **Screen Recording** (window titles). With ad-hoc signing, Accessibility grants reset on each rebuild — set `CODE_SIGN_IDENTITY` in `project.yml` to a real development certificate for a stable grant.
+The app needs the **Accessibility** permission (event tap) and optionally **Screen Recording** (window titles).
