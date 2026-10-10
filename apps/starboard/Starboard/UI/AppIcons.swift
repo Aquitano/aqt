@@ -1,21 +1,21 @@
 import AppKit
 
 /// App icons for the overlay and the Stage sheet, kept for the life of the
-/// process. NSWorkspace hands out icons that decode on first draw, which
-/// costs 5 to 40 ms on the main thread in the middle of a keystroke, so
-/// `preload` renders them in the background first.
+/// process, misses included. NSWorkspace hands out icons that decode on first
+/// draw, which costs 5 to 40 ms on the main thread in the middle of a
+/// keystroke, so `preload` renders them in the background first.
 @MainActor
 enum AppIcons {
-    private static var icons: [String: NSImage] = [:]
+    private static var icons: [String: NSImage?] = [:]
     private static var pending: Set<String> = []
     private static let size = NSSize(width: 24, height: 24)
 
     static func icon(for bundleID: String) -> NSImage? {
-        if let icon = icons[bundleID] {
-            return icon
+        if let cached = icons[bundleID] {
+            return cached
         }
         let icon = render(bundleID).map { NSImage(cgImage: $0, size: size) }
-        icons[bundleID] = icon
+        icons[bundleID] = .some(icon)
         return icon
     }
 

@@ -26,7 +26,10 @@ final class EventTap: Sendable {
     private let deliver: @Sendable ([Intent]) -> Void
     private let onFailure: @Sendable () -> Void
 
-    /// `deliver` and `onFailure` are called on the tap thread.
+    /// `deliver` runs on the tap thread for key events and on the caller's
+    /// thread for `setEnabled`, `stop` and `invalidate`, always while the
+    /// router lock is held, so intents arrive in the order the router made
+    /// them. It must only hand them off. `onFailure` runs on the tap thread.
     init(
         config: RouterConfig,
         deliver: @escaping @Sendable ([Intent]) -> Void,
@@ -111,9 +114,11 @@ final class EventTap: Sendable {
     /// Drops everything the router has observed. Whatever was held while the
     /// tap was off was released unseen.
     func invalidate() {
-        let intents = router.withLock { $0.reset() }
-        if !intents.isEmpty {
-            deliver(intents)
+        router.withLock { router in
+            let intents = router.reset()
+            if !intents.isEmpty {
+                deliver(intents)
+            }
         }
     }
 
@@ -143,13 +148,15 @@ final class EventTap: Sendable {
             isAutorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
             time: CACurrentMediaTime()
         )
-        let route = signposter.withIntervalSignpost("Event routing") {
-            router.withLock { $0.handle(keyEvent) }
+        return signposter.withIntervalSignpost("Event routing") {
+            router.withLock { router in
+                let route = router.handle(keyEvent)
+                if !route.intents.isEmpty {
+                    deliver(route.intents)
+                }
+                return route.consume
+            }
         }
-        if !route.intents.isEmpty {
-            deliver(route.intents)
-        }
-        return route.consume
     }
 
     /// macOS disables a tap whose callback was too slow. Re-enabling it is

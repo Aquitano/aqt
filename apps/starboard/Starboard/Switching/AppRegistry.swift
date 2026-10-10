@@ -80,10 +80,13 @@ final class AppRegistry {
             let apps = await Task.detached(priority: .utility) {
                 signposter.withIntervalSignpost("Installed app scan") { Self.scanInstalledApps() }
             }.value
+            let changed = apps != installed
             installed = apps
             installedScannedAt = .now
             scanning = false
-            onInstalledChange?()
+            if changed {
+                onInstalledChange?()
+            }
         }
     }
 

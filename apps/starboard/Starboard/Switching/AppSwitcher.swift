@@ -188,10 +188,13 @@ final class AppSwitcher {
     }
 
     private func pin(_ letter: Character) {
-        guard let app = NSWorkspace.shared.frontmostApplication,
+        guard let app = frontBundleID.flatMap(registry.runningApp) ?? NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier, let name = app.localizedName else { return }
         let reference = registry.reference(bundleID: bundleID, name: name)
-        if case let .failure(error) = config.update({ $0.pin(letter, to: reference) }) {
+        let pinned = config.update { config in
+            config.pin(letter, to: reference, in: registry.records(naming: config.appNames))
+        }
+        if case let .failure(error) = pinned {
             toast.show(message: "Pin not saved: \(error.message)")
             return
         }
@@ -251,7 +254,7 @@ final class AppSwitcher {
             .filter { !runningIDs.contains($0.bundleID) && !resolution.excluded.contains($0.bundleID) }
             .map { SearchCandidate(bundleID: $0.bundleID, title: $0.name, isRunning: false, order: .max) }
         let runningLetters = assigner.letters(running)
-        let pinnedLetters = Dictionary(assigner.pins.map { ($1, $0) }) { first, _ in first }
+        let pinnedLetters = Dictionary(assigner.pins.map { ($1, $0) }, uniquingKeysWith: min)
         let ranked = signposter.withIntervalSignpost("Search ranking") { Search.rank(search.query, in: candidates) }
         let rows = ranked.map { result in
             let bundleID = result.candidate.bundleID

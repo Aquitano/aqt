@@ -21,7 +21,8 @@ final class ConfigStore {
 
     init(url: URL = ConfigStore.defaultURL) {
         self.url = url
-        if FileManager.default.fileExists(atPath: url.path) {
+        // A dangling symlink counts as there, so its target is never replaced.
+        if (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil {
             load()
         } else {
             // Every key, written out, is the documentation of what can be set.
@@ -43,6 +44,10 @@ final class ConfigStore {
         var next = config
         change(&next)
         guard next != config else { return .success(()) }
+        // A change that the next reload would reject must not reach the file.
+        if case let .failure(invalid) = next.validated() {
+            return .failure(invalid)
+        }
         return write(next).map {
             config = next
             onChange?()
@@ -78,13 +83,16 @@ final class ConfigStore {
         onChange?()
     }
 
+    /// Writes through a symlink, such as one into a dotfiles repository; an
+    /// atomic write to the link itself would replace it with a plain file.
     private func write(_ config: Config) -> Result<Void, ConfigError> {
+        let target = url.resolvingSymlinksInPath()
         do {
             try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(),
+                at: target.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try config.encoded().write(to: url, options: .atomic)
+            try config.encoded().write(to: target, options: .atomic)
             return .success(())
         } catch {
             return .failure(ConfigError(message: "could not write \(url.path): \(error.localizedDescription)"))

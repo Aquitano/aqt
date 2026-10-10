@@ -57,11 +57,26 @@ struct ConfigTests {
         #expect(decode(json).failure != nil)
     }
 
+    @Test func pinningReplacesTheLetterInEitherCase() throws {
+        var config = try decode(#"{"assignments": {"S": "Safari"}}"#).get()
+        config.pin("s", to: "Slack", in: [])
+        #expect(config.assignments == ["s": "Slack"])
+        #expect(try config.validated().get() == config)
+    }
+
     @Test func pinningMovesAnAppOffItsOldLetter() {
         var config = Config()
         config.assignments = ["g": "Google Chrome", "t": "Ghostty"]
-        config.pin("c", to: "google chrome")
+        config.pin("c", to: "google chrome", in: [])
         #expect(config.assignments == ["c": "google chrome", "t": "Ghostty"])
+    }
+
+    @Test func pinningFindsTheAppUnderAnyName() {
+        let chrome = AppRecord(bundleID: "com.google.Chrome", names: ["Google Chrome"])
+        var config = Config()
+        config.assignments = ["c": "com.google.Chrome"]
+        config.pin("g", to: "Google Chrome", in: [chrome])
+        #expect(config.assignments == ["g": "Google Chrome"])
     }
 }
 
@@ -69,16 +84,24 @@ struct ResolutionTests {
     private let apps = [
         AppRecord(bundleID: "com.google.Chrome", names: ["Google Chrome"]),
         AppRecord(bundleID: "com.mitchellh.ghostty", names: ["Ghostty"]),
+        AppRecord(bundleID: "com.anthropic.claudefordesktop", names: ["Claude"]),
     ]
 
     @Test func namesAndBundleIDsBothResolve() {
         var config = Config()
         config.assignments = ["c": "google chrome", "G": "com.mitchellh.ghostty"]
-        config.excluded = ["Ghostty"]
+        config.excluded = ["claude"]
         let resolution = config.resolve(in: apps)
         #expect(resolution.pins == ["c": "com.google.Chrome", "g": "com.mitchellh.ghostty"])
-        #expect(resolution.excluded == ["com.mitchellh.ghostty"])
+        #expect(resolution.excluded == ["com.anthropic.claudefordesktop"])
         #expect(resolution.unresolved.isEmpty)
+    }
+
+    @Test func anExcludedAppLosesItsPin() {
+        var config = Config()
+        config.assignments = ["g": "Ghostty", "c": "Google Chrome"]
+        config.excluded = ["Ghostty"]
+        #expect(config.resolve(in: apps).pins == ["c": "com.google.Chrome"])
     }
 
     @Test func unknownNamesAreReported() {

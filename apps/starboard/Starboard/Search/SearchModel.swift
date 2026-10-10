@@ -13,8 +13,10 @@ final class SearchModel {
         /// Character offsets into `title` that the query matched.
         let matchedIndices: [Int]
 
+        /// A hand-written config can pin one app to two letters, so the
+        /// letter map may list an app twice.
         var id: String {
-            bundleID
+            "\(letter.map(String.init) ?? "")\(bundleID)"
         }
     }
 

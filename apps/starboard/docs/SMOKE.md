@@ -55,6 +55,6 @@ Run after meaningful changes. Prerequisites: Accessibility granted; Safari, Slac
 
 ## Polish
 
-- [ ] `mouseFollowsFocus` on: the pointer moves to the focused window after a switch, and not after Escape or a bare tap.
+- [ ] `mouseFollowsFocus` on: the pointer moves to the focused window after a switch, also when Escape closed the search after it, and not after a bare tap.
 - [ ] Sleep and wake: shortcuts work immediately.
 - [ ] Rebuild with `mise run starboard:install`: Accessibility stays granted.

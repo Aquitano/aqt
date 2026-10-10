@@ -14,7 +14,7 @@ The menu bar menu turns Starboard off and on, opens the config file and sets lau
 
 ## Config
 
-`~/.config/starboard/config.json` is written with every key on first launch and reloaded whenever it changes. Apps are named by app name or bundle ID. A file that doesn't parse leaves the last good config in effect and shows the error in the menu.
+`~/.config/starboard/config.json` is written with every key on first launch and reloaded whenever it changes. Apps are named by app name or bundle ID. A file that doesn't parse leaves the previous config in effect, or the defaults right after launch, and shows the error in the menu.
 
 ```json
 {

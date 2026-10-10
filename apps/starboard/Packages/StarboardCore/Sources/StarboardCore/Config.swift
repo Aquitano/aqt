@@ -72,10 +72,15 @@ public struct Config: Codable, Equatable, Sendable {
         Set(stages.compactMap { Self.letter($0.letter) })
     }
 
-    /// Pins `letter` to `app`, dropping any other letter that named the same app.
-    public mutating func pin(_ letter: Character, to app: String) {
-        for (key, value) in assignments where value.caseInsensitiveCompare(app) == .orderedSame {
-            assignments[key] = nil
+    /// Pins `letter` to `app`. Whatever the letter named before, in either
+    /// case, is dropped, and so is every other letter naming the same app,
+    /// whether by name or by bundle ID.
+    public mutating func pin(_ letter: Character, to app: String, in apps: [AppRecord]) {
+        let target = Self.bundleID(for: app, in: apps)
+        assignments = assignments.filter { key, value in
+            guard Self.letter(key) != letter else { return false }
+            guard let target else { return value.caseInsensitiveCompare(app) != .orderedSame }
+            return Self.bundleID(for: value, in: apps) != target
         }
         assignments[String(letter)] = app
     }
@@ -87,7 +92,8 @@ public struct Config: Codable, Equatable, Sendable {
         return letter
     }
 
-    private func validated() -> Result<Config, ConfigError> {
+    /// The checks a decoded file must pass beyond its types.
+    public func validated() -> Result<Config, ConfigError> {
         var pinned = Set<Character>()
         for key in assignments.keys.sorted() {
             guard let letter = Self.letter(key) else {
@@ -251,6 +257,8 @@ public extension Config {
                 resolution.unresolved.append(name)
             }
         }
+        // Excluded wins: an app both pinned and excluded gets no letter.
+        resolution.pins = resolution.pins.filter { !resolution.excluded.contains($0.value) }
         return resolution
     }
 
