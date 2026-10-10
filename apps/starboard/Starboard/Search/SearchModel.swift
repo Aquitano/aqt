@@ -43,8 +43,10 @@ final class SearchModel {
         selectedIndex = (current + delta + items.count) % items.count
     }
 
-    func remove(_ item: Item) {
-        items.removeAll { $0.id == item.id }
+    /// Drops every row of the app, including a second letter-map row when
+    /// the app is pinned to two letters.
+    func removeApp(_ bundleID: String) {
+        items.removeAll { $0.bundleID == bundleID }
         if let index = selectedIndex, index >= items.count {
             selectedIndex = items.isEmpty ? nil : items.count - 1
         }

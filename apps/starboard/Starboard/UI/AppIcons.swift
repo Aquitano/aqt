@@ -25,10 +25,10 @@ enum AppIcons {
         pending.formUnion(missing)
         Task {
             let rendered = await Task.detached(priority: .utility) {
-                missing.compactMap { bundleID in render(bundleID).map { (bundleID, $0) } }
+                missing.map { bundleID in (bundleID, render(bundleID)) }
             }.value
             for (bundleID, image) in rendered where icons[bundleID] == nil {
-                icons[bundleID] = NSImage(cgImage: image, size: size)
+                icons[bundleID] = .some(image.map { NSImage(cgImage: $0, size: size) })
             }
             pending.subtract(missing)
         }

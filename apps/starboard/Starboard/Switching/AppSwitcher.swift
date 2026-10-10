@@ -301,7 +301,7 @@ final class AppSwitcher {
             app.hide()
         case .quit:
             app.terminate()
-            search.remove(item)
+            search.removeApp(item.bundleID)
         }
     }
 }
