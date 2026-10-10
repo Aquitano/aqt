@@ -6,8 +6,8 @@ usage() {
     cat <<'EOF'
 Usage: ./run.sh [--run | --install]
 
-Build Starboard in Debug configuration.
-  --run      launch the freshly built Debug app
+With no option, build Starboard in Debug configuration.
+  --run      build Debug and launch it
   --install  build Release, replace /Applications/Starboard.app and launch it
 EOF
 }

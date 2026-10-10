@@ -161,8 +161,9 @@ run = [
 [tasks."starboard:test"]
 dir = "apps/starboard"
 run = [
+  "swift test --package-path Packages/StarboardCore",
   "xcodegen generate --quiet",
-  "xcodebuild -project Starboard.xcodeproj -scheme Starboard -destination platform=macOS -derivedDataPath DerivedData -allowProvisioningUpdates -quiet test",
+  "xcodebuild -project Starboard.xcodeproj -scheme Starboard -destination platform=macOS -derivedDataPath DerivedData -quiet build CODE_SIGNING_ALLOWED=NO",
 ]
 
 [tasks."starboard:dev"]

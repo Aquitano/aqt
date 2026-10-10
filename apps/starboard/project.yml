@@ -38,31 +38,8 @@ targets:
         # Menu bar app: no Dock icon, no app switcher entry.
         LSUIElement: true
         NSHumanReadableCopyright: "© 2026 Thomas Breindl"
-    entitlements:
-      path: Starboard/Starboard.entitlements
-      properties:
-        # Event taps and AX control require running unsandboxed.
-        com.apple.security.app-sandbox: false
-
-  StarboardTests:
-    type: bundle.unit-test
-    platform: macOS
-    sources: [StarboardTests]
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: true
     dependencies:
-      - target: Starboard
-
-  StarboardBenchmarks:
-    type: bundle.unit-test
-    platform: macOS
-    sources: [StarboardBenchmarks]
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: true
-    dependencies:
-      - target: Starboard
+      - package: StarboardCore
 
 schemes:
   Starboard:
@@ -71,14 +48,7 @@ schemes:
         Starboard: all
     run:
       config: Debug
-    test:
-      config: Debug
-      targets: [StarboardTests]
-  StarboardBenchmarks:
-    build:
-      targets:
-        Starboard: all
-        StarboardBenchmarks: [test]
-    test:
-      config: Release
-      targets: [StarboardBenchmarks]
+
+packages:
+  StarboardCore:
+    path: Packages/StarboardCore

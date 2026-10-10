@@ -1,80 +1,60 @@
 # Starboard manual smoke checklist
 
-Run after meaningful changes; each line maps to a phase acceptance criterion in
-BATTLEPLAN.md. Prereq: Accessibility granted; Safari, Slack, Spotify running.
+Run after meaningful changes. Prerequisites: Accessibility granted; Safari, Slack and Spotify running; "Switch to Desktop N" shortcuts enabled.
 
-## Safety invariants (always first)
+## Safety (always first)
 
-- [ ] With Starboard running, normal typing in any app is completely unaffected.
+- [ ] With Starboard running, normal typing in any app is unaffected.
 - [ ] Left ⌘ shortcuts (⌘C, ⌘Tab, ⌘Space) all work as stock.
-- [ ] Hold rcmd, press Escape, then press Q — the frontmost app must NOT quit.
-- [ ] Menu bar → Disable Starboard: everything passes through, including rcmd.
-- [ ] Hold rcmd, lock the screen, unlock, release rcmd: typing is normal again (no stuck modifier).
+- [ ] Hold Right ⌘, type two letters, press Escape, then Q: the frontmost app must not quit.
+- [ ] In Finder, hold Right ⌘, type S, then press Backspace twice: nothing moves to the Trash.
+- [ ] Menu bar > Disable Starboard: every key passes through, Right ⌘ included.
+- [ ] Hold Right ⌘, lock the screen, unlock, release: typing is normal and no overlay is left on screen.
+- [ ] Right ⌘ + Tab shows the system app switcher; Right ⌘ + ↓ before the overlay appears reaches the app.
 
-## Phase 1 — core switching
+## Switching
 
-- [ ] rcmd+S focuses the best S app; rcmd+M launches Mail from cold.
-- [ ] rcmd+S while an S app is focused hides it (toggle off in settings → cycles instead).
-- [ ] rcmd+S then rcmd+M within a fraction of a second: Mail keeps focus (the first switch never steals it back).
-- [ ] rcmd held + Tab after S cycles Safari/Slack/Spotify in a stable order, wrapping past the third.
+- [ ] Right ⌘ + S focuses the S app; held Tab moves through Safari, Slack and Spotify in a stable order.
+- [ ] Right ⌘ + S, S quickly: the second press steps to Safari's next window instead of re-focusing it.
+- [ ] Right ⌘ + S then Right ⌘ + M within a fraction of a second: the M app keeps focus.
+- [ ] With `repeatPress` set to `hide`, a second S hides Safari.
+- [ ] Right ⌘ + Right ⌥ + K pins the frontmost app to K; the toast confirms and the config file shows the pin.
+- [ ] Quit the pinned app; Right ⌘ + K launches it.
+- [ ] A closed app that isn't pinned is not launched by its letter.
 
-## Phase 2 — assignments
+## Search and overlay
 
-- [ ] rcmd+ralt+K pins the frontmost app to K; toast confirms.
-- [ ] Quit and relaunch Starboard; rcmd+K still works, even launching the pinned app from cold.
-- [ ] Settings shows the pin with a CUSTOM badge; Clear removes it.
-- [ ] Settings → Backup → Import a JSON with different toggles: every switch redraws to the imported value.
+- [ ] Hold Right ⌘ for ~0.3 s: the overlay lists the letter map with nothing selected; release opens nothing.
+- [ ] A pinned app shows its pinned letter in the letter map and in search results.
+- [ ] Hold Right ⌘ and type "xco": the overlay appears at two characters with Xcode on top; release opens it.
+- [ ] Right ⌘ + S released before ~0.3 s switches with no overlay flash.
+- [ ] Queries containing w, q or h are typeable; Left ⌘ + W, Q or H act on the selection instead.
+- [ ] The caret in a Safari text field keeps blinking while the overlay is up.
+- [ ] Escape closes the overlay; releasing afterwards opens nothing.
+- [ ] An excluded app gets no letter and never shows in search.
 
-## Phase 3 — search
+## Config
 
-- [ ] Hold rcmd and type "xco" straight away: overlay appears at 2 chars, Xcode on top; release focuses it.
-- [ ] Queries containing w/q/h are typeable ("wha…"); left ⌘+W/Q/H act on the selection instead.
-- [ ] The caret in a Safari text field keeps blinking while the overlay is up (never steals focus).
-- [ ] Escape cancels; releasing afterwards focuses nothing.
+- [ ] Delete the config file and relaunch: it is written again with every key.
+- [ ] Add `"c": "Google Chrome"` under `assignments` and save: Right ⌘ + C opens Chrome without a relaunch.
+- [ ] Save a typo such as `"repeatPres"`: a toast and the menu name the key; switching keeps working with the previous config; pinning is refused until the file is fixed.
+- [ ] Name an app that doesn't exist: a toast names it.
 
-## Phase 4 — windows
+## Spaces
 
-- [ ] rcmd+Tab (no letter first) shows visible windows, second selected; minimized windows absent.
-- [ ] Selecting a background window raises exactly that window.
-- [ ] Typing while cycling switches to fuzzy window search.
-- [ ] Double-tap-and-hold rcmd lists windows only.
-- [ ] Window search (double-tap rcmd, or typing while cycling) finds a minimized window and one on another Space; committing it unminimizes and raises it. The rcmd+Tab ring still shows neither.
-- [ ] rcmd+` cycles the frontmost app's windows.
-- [ ] Without Screen Recording, windows show as "App Window"; with it, real titles.
-- [ ] Window jump: enable in settings, ralt+S steps Safari's windows.
+- [ ] Right ⌘ + 3 lands on Space 3; Right ⌘ + [ and ] move to the neighbouring Spaces.
+- [ ] With two displays and separate Spaces, the jump happens on the display the pointer is on.
 
-## Phase 5 — Spaces
+## Stages
 
-- [ ] Compatible engine + ctrl+digit shortcuts enabled: rcmd+3 lands on Space 3.
-- [ ] rcmd+[ and rcmd+] jump to adjacent Spaces.
-- [ ] Instant engine: same jumps with no swipe animation; menu bar shows the Space number when enabled.
-- [ ] ralt+2 (Instant + toggle on) moves the focused window to Space 2.
-- [ ] Two displays with "Displays have separate Spaces": rcmd+3 switches the display the pointer is on.
-- [ ] Compatible engine selected: the move-window and Space-number toggles are disabled under an Instant-engine note.
+- [ ] Caps Lock, then `=`: the save sheet lists the visible apps; the Caps Lock light never toggles.
+- [ ] Save "Writing" on W with Notes and Safari and a URL under `open`; switch away; Caps Lock, W shows both and hides everything else.
+- [ ] Quit Notes, then Caps Lock, W: Notes launches, ends up in front, and the URL opens.
+- [ ] Caps Lock, `-` closes only the Stage's windows; the apps keep running.
+- [ ] Caps Lock, then a letter with no Stage, in a text field: the letter is typed.
 
-## Phase 6 — Stages
+## Polish
 
-- [ ] Caps Lock tap, then `=`: save sheet lists visible apps; Caps Lock LED/state never toggles.
-- [ ] Save "Writing" on W with Notes + Safari and a URL item; switch away; Caps Lock, W restores both, opens the URL, hides everything else.
-- [ ] Repeat Caps Lock, W: re-hides intruders without reopening items.
-- [ ] Caps Lock, `-`: closes only the Stage's windows; apps stay running.
-- [ ] Quit the Stage's first app, then Caps Lock, W: it launches and ends up frontmost.
-- [ ] Caps Lock, `=` twice in a row: only one save sheet is on screen.
-- [ ] Caps Lock, then a letter with no Stage, in a text field: the letter is typed and nothing is swallowed.
-
-## Phase 7 — polish
-
-- [ ] Hold rcmd bare for ~0.3 s: the overlay opens on the letter map (icon, name, letter cap), no row selected; release focuses nothing.
-- [ ] From that state, typing filters the same panel; a letter still switches; arrows select and release focuses.
-- [ ] rcmd+S released before ~0.3 s switches with no overlay flash; held past it, the panel opens on the "s" results.
-- [ ] Mouse-follows toggle warps the pointer after a switch.
-- [ ] Settings export produces JSON; import restores assignments and Stages.
-- [ ] Dark and light system appearance both look intentional in settings.
-
-## Enhancements — ergonomic & hardware diversity
-
-- [ ] Configurable Hold Overlay Delay: set delay to 150 ms (fast) or 500 ms (relaxed) in Settings; verify overlay prompt appearance matches chosen duration.
-- [ ] Primary Modifier (Hardware Diversity): change Trigger key to Right ⌥, Right ⌃, or Left ⌥; verify holding that key switches apps, while unchosen modifiers pass through normally.
-- [ ] Excluded Apps: add an app (e.g. Docker, Slack) in Settings → Excluded Apps (or via the "Exclude" button on an assignment row); verify it does not receive dynamic letters, does not show in the letter map, and is omitted from window cycle and search.
-- [ ] Fuzzy Match Highlighting: search overlay visually highlights matching letters in Coral bold against the rest of the title.
-- [ ] Immediate Recovery on Sleep/Wake: sleep Mac and wake; verify Starboard responds to hotkeys immediately upon wake without waiting for the fallback poll timer.
+- [ ] `mouseFollowsFocus` on: the pointer moves to the focused window after a switch, and not after Escape or a bare tap.
+- [ ] Sleep and wake: shortcuts work immediately.
+- [ ] Rebuild with `mise run starboard:install`: Accessibility stays granted.
