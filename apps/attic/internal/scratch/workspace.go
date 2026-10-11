@@ -1,4 +1,5 @@
-package archive
+// Package scratch owns locked, disposable workspaces shared by file readers.
+package scratch
 
 import (
 	"cmp"
@@ -13,12 +14,14 @@ import (
 	"github.com/gofrs/flock"
 )
 
-type tempWorkspace struct {
-	path string
+// Workspace keeps its directory locked until Close removes its contents.
+type Workspace struct {
+	Path string
 	lock *flock.Flock
 }
 
-func newTempWorkspace(base string, log *slog.Logger) (*tempWorkspace, error) {
+// New requires an existing base directory; empty uses the system temp directory.
+func New(base string, log *slog.Logger) (*Workspace, error) {
 	if base == "" {
 		base = os.TempDir()
 	}
@@ -33,10 +36,10 @@ func newTempWorkspace(base string, log *slog.Logger) (*tempWorkspace, error) {
 		return nil, err
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("archive temporary directory is not a directory: %s", root)
+		return nil, fmt.Errorf("temporary directory is not a directory: %s", root)
 	}
 	if err := removeStaleWorkspaces(root); err != nil {
-		cmp.Or(log, slog.New(slog.DiscardHandler)).Warn("could not clean abandoned archive workspaces", "temp", root, "err", err)
+		cmp.Or(log, slog.New(slog.DiscardHandler)).Warn("could not clean abandoned workspaces", "temp", root, "err", err)
 	}
 	dir, err := os.MkdirTemp(root, "scan-")
 	if err != nil {
@@ -46,21 +49,21 @@ func newTempWorkspace(base string, log *slog.Logger) (*tempWorkspace, error) {
 	if err := lock.Lock(); err != nil {
 		return nil, errors.Join(err, os.RemoveAll(dir))
 	}
-	return &tempWorkspace{path: dir, lock: lock}, nil
+	return &Workspace{Path: dir, lock: lock}, nil
 }
 
-func (w *tempWorkspace) Close() error {
+func (w *Workspace) Close() error {
 	// Keep the marker until every copy is gone, so a later sweep can retry
 	// when permissions or an open Windows handle prevent deletion.
 	err := w.removeContents()
 	if err := errors.Join(err, w.lock.Close()); err != nil {
 		return err
 	}
-	return os.RemoveAll(w.path)
+	return os.RemoveAll(w.Path)
 }
 
-func (w *tempWorkspace) removeContents() error {
-	entries, err := os.ReadDir(w.path)
+func (w *Workspace) removeContents() error {
+	entries, err := os.ReadDir(w.Path)
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -71,7 +74,7 @@ func (w *tempWorkspace) removeContents() error {
 		if entry.Name() == ".lock" {
 			continue
 		}
-		if err := os.RemoveAll(filepath.Join(w.path, entry.Name())); err != nil {
+		if err := os.RemoveAll(filepath.Join(w.Path, entry.Name())); err != nil {
 			return err
 		}
 	}
@@ -112,7 +115,7 @@ func removeStaleWorkspaces(root string) error {
 			_ = lock.Close()
 			continue
 		}
-		workspace := tempWorkspace{path: dir, lock: lock}
+		workspace := Workspace{Path: dir, lock: lock}
 		if err := workspace.Close(); err != nil {
 			failures = append(failures, err)
 		}

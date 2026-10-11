@@ -22,6 +22,7 @@ type Config struct {
 	HashMaxBytes int64    `toml:"hash_max_bytes"`
 	Archives     Archives `toml:"archives"`
 	Text         Text     `toml:"text"`
+	Metadata     Metadata `toml:"metadata"`
 	Volumes      []Volume `toml:"volume"`
 }
 
@@ -45,11 +46,19 @@ type Text struct {
 	MaxBytes int64 `toml:"max_bytes"`
 }
 
+// Metadata controls batch extraction on temporary copies.
+type Metadata struct {
+	Enabled  bool   `toml:"enabled"`
+	ExifTool string `toml:"exiftool"`
+	MaxBytes int64  `toml:"max_bytes"`
+	Temp     string `toml:"temp"`
+}
+
 // Default is the configuration before the file is read: archives inside
 // archives are listed, nested ones up to 4 GiB, and documents up to 64 MiB
 // are read.
 func Default() Config {
-	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}, Text: Text{MaxBytes: 64 << 20}}
+	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}, Text: Text{MaxBytes: 64 << 20}, Metadata: Metadata{Enabled: true, ExifTool: "exiftool", MaxBytes: 1 << 30}}
 }
 
 // Volume holds patterns anchored at one volume's root, selected by attic's
@@ -105,8 +114,8 @@ func Load(path string, explicit bool) (Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
-	if c.HashMaxBytes < 0 || c.Archives.Depth < 0 || c.Archives.UnpackMaxBytes < 0 || c.Text.MaxBytes < 0 {
-		return c, fmt.Errorf("%s: hash_max_bytes, archives.depth, archives.unpack_max_bytes and text.max_bytes must not be negative", path)
+	if c.HashMaxBytes < 0 || c.Archives.Depth < 0 || c.Archives.UnpackMaxBytes < 0 || c.Text.MaxBytes < 0 || c.Metadata.MaxBytes < 0 {
+		return c, fmt.Errorf("%s: hash_max_bytes, archives.depth, archives.unpack_max_bytes text.max_bytes and metadata.max_bytes must not be negative", path)
 	}
 	return c, nil
 }

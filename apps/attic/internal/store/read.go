@@ -249,8 +249,9 @@ type EntryDetail struct {
 	Copies     []Hit      `json:"copies,omitempty"`
 	// Archive is set once the entry's content was read as an archive, Text
 	// once it was read as a document.
-	Archive *ArchiveInfo `json:"archive,omitempty"`
-	Text    *TextInfo    `json:"text,omitempty"`
+	Archive  *ArchiveInfo    `json:"archive,omitempty"`
+	Text     *TextInfo       `json:"text,omitempty"`
+	Metadata *MetadataDetail `json:"metadata,omitempty"`
 }
 
 type ArchiveInfo struct {
@@ -284,6 +285,11 @@ func (s *Store) Entry(ctx context.Context, id int64) (EntryDetail, error) {
 		return d, err
 	}
 	if d.Text, err = s.textInfo(ctx, *contentID); err != nil {
+		return d, err
+	}
+	if m, err := s.Metadata(ctx, id, ""); err == nil {
+		d.Metadata = &m
+	} else if !errors.Is(err, ErrNotFound) {
 		return d, err
 	}
 	var a ArchiveInfo
@@ -388,16 +394,16 @@ type ScanInfo struct {
 
 const scanColumns = `id, volume_id::text, (select label from volumes v where v.id = scans.volume_id), root, status,
 	started_at, finished_at, error, walk_ms, hash_ms, archives_ms, text_ms, listed, written, missing,
-	skipped, hashed, hashed_bytes, duplicates, archives, members, texts, text_chars`
+	skipped, hashed, hashed_bytes, duplicates, archives, members, texts, text_chars, metadata, metadata_ms`
 
 func scanScanInfo(row pgx.Row) (ScanInfo, error) {
 	var si ScanInfo
-	var walk, hash, archives, text int64
+	var walk, hash, archives, text, metadataMS int64
 	err := row.Scan(&si.ID, &si.VolumeID, &si.Volume, &si.Root, &si.Status, &si.Started, &si.Finished, &si.Error,
 		&walk, &hash, &archives, &text, &si.Listed, &si.Written, &si.Missing, &si.Skipped, &si.Hashed, &si.HashedBytes,
-		&si.Duplicates, &si.Archives, &si.Members, &si.Texts, &si.TextChars)
+		&si.Duplicates, &si.Archives, &si.Members, &si.Texts, &si.TextChars, &si.Metadata, &metadataMS)
 	si.Phases = PhaseTimes{Walk: time.Duration(walk) * time.Millisecond, Hash: time.Duration(hash) * time.Millisecond,
-		Archives: time.Duration(archives) * time.Millisecond, Text: time.Duration(text) * time.Millisecond}
+		Archives: time.Duration(archives) * time.Millisecond, Text: time.Duration(text) * time.Millisecond, Metadata: time.Duration(metadataMS) * time.Millisecond}
 	return si, err
 }
 
@@ -617,6 +623,7 @@ type Totals struct {
 	// Texts counts read documents by status.
 	Texts     map[string]int64 `json:"texts"`
 	TextChars int64            `json:"text_chars"`
+	Metadata  int64            `json:"metadata"`
 }
 
 func (s *Store) Totals(ctx context.Context) (Totals, error) {
@@ -634,9 +641,10 @@ func (s *Store) Totals(ctx context.Context) (Totals, error) {
 		       count(*) filter (where hash_state in ('pending', 'failed') and missing_scan is null),
 		       count(*) filter (where missing_scan is not null),
 		       (select count(*) from archives a join live l using (content_id) where a.status <> 'not_archive'),
-		       (select coalesce(sum(a.members), 0)::bigint from archives a join live l using (content_id))
+		       (select coalesce(sum(a.members), 0)::bigint from archives a join live l using (content_id)),
+		       (select count(*) from metadata m join live l using (content_id))
 		from entries`).Scan(&t.Volumes, &t.Entries, &t.Files, &t.Bytes, &t.Contents, &t.ContentBytes, &t.Pending, &t.Missing,
-		&t.Archives, &t.Members)
+		&t.Archives, &t.Members, &t.Metadata)
 	if err != nil {
 		return t, err
 	}

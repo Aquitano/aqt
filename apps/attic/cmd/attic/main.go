@@ -22,6 +22,7 @@ Usage:
   attic search [words...] [flags]     find files and folders, mounted or not, inside archives and in documents
   attic show <id|ref> [--json]        one entry, or every place a content lives
   attic text <id|ref> [--json]        the words read from a document
+  attic metadata <id|ref> [--json]    embedded image, document, audio and video tags
   attic volumes [--json]              known volumes, what they hold, last scan
   attic scans [flags]                 scan history: how long each phase took, what it found
   attic dupes [flags]                 contents stored more than once
@@ -61,7 +62,7 @@ Skips flags:
   --scan n       a scan id (default: the newest scan, of --volume if given)
   --volume v     the newest scan of this volume
   --reason r     list paths: excluded, name_only, too_big, link, remote, unreadable, changed,
-                 too_deep, encrypted, damaged, not_archive, split, text_failed
+                 too_deep, encrypted, damaged, not_archive, split, text_failed, metadata_failed, metadata_unavailable
   --rule r       list paths skipped by this rule, as the summary prints it
   --limit n      default 100
 
@@ -100,6 +101,8 @@ func run() int {
 		err = cmdDupes(ctx, os.Args[2:])
 	case "skips":
 		err = cmdSkips(ctx, os.Args[2:])
+	case "metadata":
+		err = cmdMetadata(ctx, os.Args[2:])
 	case "text":
 		err = cmdText(ctx, os.Args[2:])
 	case "stats":

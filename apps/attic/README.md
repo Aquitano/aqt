@@ -26,6 +26,7 @@ attic search notes --under E:\Files --json
 attic search --under E:\Backups\Minecraft.7z  # what one archive holds
 attic show 36331                    # one entry, its times, its ref and its other copies
 attic show 3f9a1c2b4d5e6f70         # a ref: every place that content lives
+attic metadata 36331                # embedded tags, including dimensions, dates and authors
 attic text 36331                    # the words read from a document, for reading or quoting
 attic volumes                       # known disks, mounted or not, and their last scan
 attic scans --volume Data            # scan history: each phase's time, what it found
@@ -42,7 +43,11 @@ Results show where a file can be opened now (`E:\Files\x.zip`) or the volume it 
 
 After hashing, a scan lists what zip, 7z, rar and tar archives hold, and the archives inside those, without asking for passwords. Search shows those files after the plain hits, inside the copy of the archive that can be opened now: `E:\Backups\Minecraft.7z :: MinecraftServer.rar :: world\level.dat`. Each archive is read once however many disks hold it. Nested archives are copied into private `aqt-attic/scan-*` workspaces below the temporary folder and deleted right after listing. Workspaces abandoned for more than a day are removed only when their file lock is free. Failed stale cleanup logs a warning and leaves the scan running. Existing `attic-*` files in the shared temporary folder are left alone. The temporary folder must already exist. Because that folder is on C:, a scan of a C: folder needs `[archives] temp` on another disk, or `depth = 1`.
 
-It also reads documents for their words: text files, Markdown, CSV, HTML, Word, Excel, PowerPoint, OpenDocument and PDFs with a text layer. Matching documents come last in search, with the passage that matched. The first 1 MB of each document's text is kept. Scanned PDFs wait for OCR, and source code and configuration files are never read.
+It also reads documents for their words: text files, Markdown, CSV, HTML, Word, Excel, PowerPoint, OpenDocument and PDFs with a text layer. Matching documents follow file and archive hits in search, with the passage that matched. The first 1 MB of each document's text is kept. Scanned PDFs wait for OCR, and source code and configuration files are never read.
+
+The metadata phase uses [ExifTool](https://exiftool.org/) in batches for images, PDFs, Office and OpenDocument files, audio and video. Install `exiftool` on PATH, or set `metadata.exiftool`. If it is missing, scanning continues and records `metadata_unavailable`; the next scan tries again. `attic metadata <id|ref>` prints the embedded tags, and `search` includes matching metadata after document hits.
+
+External tools read verified temporary copies, made through Attic's last-access-preserving reader. Set `metadata.temp` to an existing directory on another disk when scanning the disk that holds the system temp directory. Each batch holds up to 256 MiB of copies, or one larger file up to `metadata.max_bytes`, then removes them. The default file cap is 1 GiB. Files above the cap, failed reads and files changed since hashing remain eligible on the next scan. A corrupt file's metadata failure is recorded once per content.
 
 ## Configuration
 
@@ -60,6 +65,12 @@ unpack_max_bytes = 4294967296  # largest nested archive copied out to be listed
 [text]
 max_bytes = 67108864           # largest document read for its words
 
+[metadata]
+enabled = true
+exiftool = "exiftool"
+max_bytes = 1073741824         # largest file copied for metadata; 0 is no limit
+temp = ""                      # existing directory, on a different disk from the source
+
 [[volume]]
 label = "Data"        # or id = "<uuid from attic volumes>"
 exclude = ["/Games/"]
@@ -71,4 +82,4 @@ exclude = ["/Games/"]
 mise run attic:check                # vet, test and lint, Windows and Linux builds
 ```
 
-Tests run against the compose database in a throwaway schema and skip when nothing listens on the port. `ATTIC_REQUIRE_DB=1` or `CI` makes a missing database a failure.
+The integration tests also use ExifTool when installed; CI requires it. Tests run against the compose database in a throwaway schema and skip when nothing listens on the port. `ATTIC_REQUIRE_DB=1` or `CI` makes a missing database a failure.

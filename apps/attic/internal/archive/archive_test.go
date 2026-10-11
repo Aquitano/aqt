@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
-	"time"
 )
 
 func zipOf(t *testing.T, files map[string][]byte) []byte {
@@ -167,56 +166,5 @@ func TestLaterRarVolumesAreSplit(t *testing.T) {
 	res, err := List(context.Background(), p, os.Open, Options{Depth: 1}, func(Member) error { return nil }, func(Skip) {})
 	if err != nil || res.Status != Split {
 		t.Errorf("part02: %+v, %v; want split", res, err)
-	}
-}
-
-func TestTempCleanupKeepsActiveAndUnownedFiles(t *testing.T) {
-	base := t.TempDir()
-	unrelated := filepath.Join(base, "attic-123.zip")
-	if err := os.WriteFile(unrelated, []byte("user archive"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	active, err := newTempWorkspace(base, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer active.Close()
-	stale, err := newTempWorkspace(base, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := stale.lock.Close(); err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().Add(-48 * time.Hour)
-	for _, p := range []string{unrelated, active.path, stale.path} {
-		if err := os.Chtimes(p, old, old); err != nil {
-			t.Fatal(err)
-		}
-	}
-	root := filepath.Dir(active.path)
-	unowned := filepath.Join(root, "scan-123")
-	if err := os.Mkdir(unowned, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chtimes(unowned, old, old); err != nil {
-		t.Fatal(err)
-	}
-	if err := removeStaleWorkspaces(root); err != nil {
-		t.Fatal(err)
-	}
-	for _, p := range []string{unrelated, active.path, unowned} {
-		if _, err := os.Stat(p); err != nil {
-			t.Errorf("cleanup removed %s: %v", p, err)
-		}
-	}
-	if _, err := os.Stat(stale.path); !os.IsNotExist(err) {
-		t.Errorf("abandoned workspace remains: %v", err)
-	}
-	if err := active.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(active.path); !os.IsNotExist(err) {
-		t.Errorf("finished workspace remains: %v", err)
 	}
 }

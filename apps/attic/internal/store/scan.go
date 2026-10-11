@@ -45,6 +45,7 @@ type ScanCounts struct {
 	Members     int64 `json:"members"`
 	Texts       int64 `json:"texts"`
 	TextChars   int64 `json:"text_chars"`
+	Metadata    int64 `json:"metadata"`
 }
 
 // PhaseTimes is how long each phase of a scan took; zero for one that did not
@@ -54,6 +55,7 @@ type PhaseTimes struct {
 	Hash     time.Duration `json:"hash"`
 	Archives time.Duration `json:"archives"`
 	Text     time.Duration `json:"text"`
+	Metadata time.Duration `json:"metadata"`
 }
 
 const (
@@ -102,7 +104,7 @@ func (s *Store) StartScan(ctx context.Context, v Volume, root string) (*Scan, er
 	// Holding the lock means no other scan of this volume is alive, so any
 	// still marked as running was killed before it could say so.
 	if _, err := conn.Exec(ctx, `update scans set status = 'interrupted', finished_at = now()
-		where volume_id = $1 and status in ('walking', 'hashing', 'listing', 'reading')`, v.ID); err != nil {
+		where volume_id = $1 and status in ('walking', 'hashing', 'listing', 'reading', 'metadata')`, v.ID); err != nil {
 		sc.unlock(ctx)
 		return nil, err
 	}
@@ -157,12 +159,12 @@ func (sc *Scan) Finish(ctx context.Context, status string, failure error) error 
 	_, uerr := sc.lock.Exec(ctx, `
 		update scans set status = $2, error = $3, finished_at = now(), listed = $4, written = $5, missing = $6,
 		       skipped = $7, hashed = $8, hashed_bytes = $9, duplicates = $10, archives = $11, members = $12,
-		       texts = $13, text_chars = $14, walk_ms = $15, hash_ms = $16, archives_ms = $17, text_ms = $18
+		       texts = $13, text_chars = $14, walk_ms = $15, hash_ms = $16, archives_ms = $17, text_ms = $18, metadata = $19, metadata_ms = $20
 		where id = $1`,
 		sc.ID, status, msg, sc.Counts.Listed, sc.Counts.Written, sc.Counts.Missing, sc.Counts.Skipped,
 		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates, sc.Counts.Archives, sc.Counts.Members,
 		sc.Counts.Texts, sc.Counts.TextChars, sc.Phases.Walk.Milliseconds(), sc.Phases.Hash.Milliseconds(),
-		sc.Phases.Archives.Milliseconds(), sc.Phases.Text.Milliseconds())
+		sc.Phases.Archives.Milliseconds(), sc.Phases.Text.Milliseconds(), sc.Counts.Metadata, sc.Phases.Metadata.Milliseconds())
 	return errors.Join(err, uerr)
 }
 
@@ -208,10 +210,10 @@ func (sc *Scan) Commit(ctx context.Context) error {
 	sc.lastCommit = time.Now()
 	_, err := sc.lock.Exec(ctx, `update scans set listed = $2, written = $3, missing = $4, skipped = $5, hashed = $6,
 		hashed_bytes = $7, duplicates = $8, archives = $9, members = $10,
-		texts = $11, text_chars = $12 where id = $1`,
+		texts = $11, text_chars = $12, metadata = $13 where id = $1`,
 		sc.ID, sc.Counts.Listed, sc.Counts.Written, sc.Counts.Missing, sc.Counts.Skipped,
 		sc.Counts.Hashed, sc.Counts.HashedBytes, sc.Counts.Duplicates, sc.Counts.Archives, sc.Counts.Members,
-		sc.Counts.Texts, sc.Counts.TextChars)
+		sc.Counts.Texts, sc.Counts.TextChars, sc.Counts.Metadata)
 	return err
 }
 

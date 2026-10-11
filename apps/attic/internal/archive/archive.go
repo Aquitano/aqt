@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aquitano/aqt/apps/attic/internal/scratch"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -116,12 +117,12 @@ func List(ctx context.Context, p string, open Opener, o Options, emit func(Membe
 		return Result{Format: "rar", Status: Split}, nil
 	}
 	if o.Depth > 1 {
-		workspace, createErr := newTempWorkspace(o.Temp, o.Log)
+		workspace, createErr := scratch.New(o.Temp, o.Log)
 		if createErr != nil {
 			return Result{}, createErr
 		}
 		defer func() { err = errors.Join(err, workspace.Close()) }()
-		o.Temp = workspace.path
+		o.Temp = workspace.Path
 	}
 	l := lister{o: o, emit: emit, skip: skip, watch: &watch{ctx: ctx}, log: cmp.Or(o.Log, slog.New(slog.DiscardHandler))}
 	res, err = l.list(ctx, p, open, "", 1)
