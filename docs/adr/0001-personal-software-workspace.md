@@ -72,7 +72,9 @@ Open: whether the standalone repository stays a development home. Nothing reconc
 
 ## Applied 2026-10-11: one shared UI package
 
-`@aqt/ui` holds the shared shadcn components and design tokens for every web app. Its first contents are gallery's former `@aqt/gallery-ui`, which already used Base UI and the base-lyra style. Gallery's tokens became the shared ones unchanged, and gallery-only styles moved to `apps/gallery/apps/web/src/gallery.css`. Components use `cn` from the `cn` package. Bank and img keep their local Radix copies until they move over. A future gallery re-import has to leave `packages/ts/ui` in place.
+`@aqt/ui` holds the shared shadcn components and design tokens for every web app. It started as gallery's former `@aqt/gallery-ui`, whose components had been customised away from their base-lyra config. They now follow upstream shadcn base-maia, the closest upstream style, with every base-maia component installed through the CLI. Local changes to upstream are limited to success and warning badge variants and the fixes the strict package lint requires.
+
+The tokens keep gallery's warm neutrals and add a `--brand` accent each app can set, success and warning colours, and Cloudflare Kumo's categorical chart palette. Light and dark mode come from a shared `ThemeProvider`. Charts use shadcn's Recharts component; a chart shadcn lacks is copied from Kumo's MIT source when an app needs it, never imported as the Kumo package. Gallery-only styles live in `apps/gallery/apps/web/src/gallery.css`. Components use `cn` from the `cn` package. Bank and img keep their local Radix copies until they move over. A future gallery re-import has to leave `packages/ts/ui` in place.
 
 ## Toolchain versions (2026-09-05)
 
