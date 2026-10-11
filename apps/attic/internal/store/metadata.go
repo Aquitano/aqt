@@ -71,6 +71,9 @@ func (sc *Scan) SetMetadata(ctx context.Context, contentID int64, result metadat
 	var lines []string
 	if result.Status == "ok" {
 		for _, key := range slices.Sorted(maps.Keys(result.Tags)) {
+			if strings.HasPrefix(key, "ExifTool:") {
+				continue
+			}
 			lines = append(lines, key+": "+fmt.Sprint(cleanJSON(result.Tags[key])))
 		}
 	}

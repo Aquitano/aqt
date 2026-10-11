@@ -55,11 +55,13 @@ func (w *Workspace) Copy(ctx context.Context, source string, digest disk.Digest,
 	}
 	out, err := os.CreateTemp(w.Path, "file-*"+filepath.Ext(source))
 	if err != nil {
-		return "", err
+		return "", WriteError{err}
 	}
 	path = out.Name()
 	defer func() {
-		err = errors.Join(err, out.Close())
+		if closeErr := out.Close(); closeErr != nil {
+			err = errors.Join(err, WriteError{closeErr})
+		}
 		if err != nil {
 			_ = os.Remove(path)
 			path = ""
@@ -70,7 +72,7 @@ func (w *Workspace) Copy(ctx context.Context, source string, digest disk.Digest,
 	if maxBytes > 0 && maxBytes < math.MaxInt64 {
 		reader = io.LimitReader(reader, maxBytes+1)
 	}
-	n, err := io.Copy(io.MultiWriter(out, h), reader)
+	n, err := io.Copy(io.MultiWriter(copyWriter{out}, h), reader)
 	if err != nil {
 		return path, err
 	}
@@ -95,4 +97,20 @@ func (r cancelReader) Read(p []byte) (int, error) {
 		return 0, err
 	}
 	return r.r.Read(p)
+}
+
+// WriteError identifies a failure on the scratch disk, not on the source.
+type WriteError struct{ Err error }
+
+func (e WriteError) Error() string { return "scratch: " + e.Err.Error() }
+func (e WriteError) Unwrap() error { return e.Err }
+
+type copyWriter struct{ *os.File }
+
+func (w copyWriter) Write(p []byte) (int, error) {
+	n, err := w.File.Write(p)
+	if err != nil {
+		err = WriteError{err}
+	}
+	return n, err
 }

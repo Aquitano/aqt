@@ -50,3 +50,21 @@ func TestCopyChecksHashLimitAndCancellation(t *testing.T) {
 		t.Fatalf("partial copies left behind: %v %v", files, err)
 	}
 }
+
+func TestCopyDistinguishesScratchAndSourceFailures(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "source")
+	if err := os.WriteFile(source, []byte("content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	digest, _, err := disk.Hash(context.Background(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := &Workspace{Path: filepath.Join(t.TempDir(), "missing")}
+	if _, err := w.Copy(context.Background(), source, digest, 100); !errors.As(err, new(WriteError)) {
+		t.Fatalf("scratch failure: %v", err)
+	}
+	if _, err := w.Copy(context.Background(), source+"missing", digest, 100); err == nil || errors.As(err, new(WriteError)) {
+		t.Fatalf("source failure: %v", err)
+	}
+}

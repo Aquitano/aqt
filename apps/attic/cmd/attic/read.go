@@ -649,7 +649,7 @@ func cmdConfig(_ context.Context, args []string) error {
 	} else {
 		fmt.Println("text      documents of any size, the first 1 MB of text each")
 	}
-	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d, temp=%s\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes, cmp.Or(cfg.Metadata.Temp, os.TempDir()))
+	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d, temp=%s\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes, cmp.Or(cfg.Metadata.Temp, cfg.Archives.Temp, os.TempDir()))
 	exclude, nameOnly := cfg.Rules(*volume, *volume).Describe()
 	fmt.Println("exclude")
 	for _, r := range exclude {

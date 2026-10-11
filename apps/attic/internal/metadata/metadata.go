@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -40,8 +41,16 @@ func Read(ctx context.Context, binary string, paths []string) ([]Result, error) 
 		args = append(args, "-"+tag)
 	}
 	args = append(args, "--")
-	args = append(args, paths...)
-	data, runErr := process.Run(ctx, binary, args, nil, 4<<20)
+	dir := filepath.Dir(paths[0])
+	names := make([]string, len(paths))
+	for i, path := range paths {
+		if filepath.Dir(path) != dir {
+			return nil, errors.New("metadata batch spans scratch directories")
+		}
+		names[i] = filepath.Base(path)
+	}
+	args = append(args, names...)
+	data, runErr := process.Run(ctx, binary, dir, args, nil, 4<<20)
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -67,7 +76,7 @@ func Read(ctx context.Context, binary string, paths []string) ([]Result, error) 
 		return nil, errors.New("exiftool returned an incomplete batch")
 	}
 	results := make([]Result, len(paths))
-	for i, path := range paths {
+	for i, path := range names {
 		tags, ok := byPath[path]
 		if !ok {
 			return nil, fmt.Errorf("exiftool omitted %s", path)

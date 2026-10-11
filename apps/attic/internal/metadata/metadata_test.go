@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -13,6 +14,12 @@ func TestMain(m *testing.M) {
 	if mode := os.Getenv("ATTIC_METADATA_HELPER"); mode != "" {
 		paths := os.Args[slices.Index(os.Args, "--")+1:]
 		switch mode {
+		case "basenames":
+			rows := make([]map[string]any, len(paths))
+			for i, path := range paths {
+				rows[i] = map[string]any{"SourceFile": filepath.Base(path), "EXIF:Model": "camera"}
+			}
+			_ = json.NewEncoder(os.Stdout).Encode(rows)
 		case "invalid":
 			fmt.Print("not JSON")
 		case "partial":
@@ -58,5 +65,18 @@ func TestBrokenBatchDoesNotReturnCacheableResults(t *testing.T) {
 				t.Fatalf("bad batch accepted: %+v %v", got, err)
 			}
 		})
+	}
+}
+
+func TestBatchUsesBareNamesAcrossPlatforms(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ATTIC_METADATA_HELPER", "basenames")
+	dir := t.TempDir()
+	got, err := Read(context.Background(), binary, []string{filepath.Join(dir, "one.jpg"), filepath.Join(dir, "two.jpg")})
+	if err != nil || len(got) != 2 {
+		t.Fatalf("scratch names: %+v %v", got, err)
 	}
 }

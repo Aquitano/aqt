@@ -109,13 +109,11 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 		root += "/" + part
 	}
 	if a := o.Config.Archives; a.Depth > 1 && !o.NoHash {
-		temp := cmp.Or(a.Temp, os.TempDir())
-		// Locate works on Windows only; elsewhere the check is skipped.
-		if t, _, err := disk.Locate(temp); err == nil && vol.Holds(t.Fingerprint) {
-			return Result{}, fmt.Errorf("nested archives would be copied to %s, on the disk being scanned: "+
-				"set [archives] temp to a folder on another disk, or depth = 1", temp)
+		if err := scratch.CheckVolume(mounted.Fingerprint, a.Temp); err != nil {
+			return Result{}, err
 		}
 	}
+	o.Config.Metadata.Temp = cmp.Or(o.Config.Metadata.Temp, o.Config.Archives.Temp)
 	metadataUnavailable := ""
 	if o.Config.Metadata.Enabled && !o.NoHash {
 		binary, err := exec.LookPath(cmp.Or(o.Config.Metadata.ExifTool, "exiftool"))

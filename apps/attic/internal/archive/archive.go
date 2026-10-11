@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/aquitano/aqt/apps/attic/internal/scratch"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -21,6 +20,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/aquitano/aqt/apps/attic/internal/scratch"
 
 	"github.com/bodgit/sevenzip"
 	"github.com/klauspost/compress/zip"

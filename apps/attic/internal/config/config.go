@@ -115,7 +115,7 @@ func Load(path string, explicit bool) (Config, error) {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
 	if c.HashMaxBytes < 0 || c.Archives.Depth < 0 || c.Archives.UnpackMaxBytes < 0 || c.Text.MaxBytes < 0 || c.Metadata.MaxBytes < 0 {
-		return c, fmt.Errorf("%s: hash_max_bytes, archives.depth, archives.unpack_max_bytes text.max_bytes and metadata.max_bytes must not be negative", path)
+		return c, fmt.Errorf("%s: hash_max_bytes, archives.depth, archives.unpack_max_bytes, text.max_bytes and metadata.max_bytes must not be negative", path)
 	}
 	return c, nil
 }

@@ -47,7 +47,7 @@ It also reads documents for their words: text files, Markdown, CSV, HTML, Word, 
 
 The metadata phase uses [ExifTool](https://exiftool.org/) in batches for images, PDFs, Office and OpenDocument files, audio and video. Install `exiftool` on PATH, or set `metadata.exiftool`. If it is missing, scanning continues and records `metadata_unavailable`; the next scan tries again. `attic metadata <id|ref>` prints the embedded tags, and `search` includes matching metadata after document hits.
 
-External tools read verified temporary copies, made through Attic's last-access-preserving reader. Set `metadata.temp` to an existing directory on another disk when scanning the disk that holds the system temp directory. Each batch holds up to 256 MiB of copies, or one larger file up to `metadata.max_bytes`, then removes them. The default file cap is 1 GiB. Files above the cap, failed reads and files changed since hashing remain eligible on the next scan. A corrupt file's metadata failure is recorded once per content.
+External tools read verified temporary copies, made through Attic's last-access-preserving reader. Set `metadata.temp`, which otherwise inherits `archives.temp`, to an existing directory on another disk when scanning the disk that holds the system temp directory. Each batch holds up to 256 MiB of copies, or one larger file up to `metadata.max_bytes`, then removes them. The default file cap is 1 GiB. This reads each eligible file in full again after hashing. Files above the cap, failed reads and files changed since hashing remain eligible on the next scan. A corrupt file's metadata failure is recorded once per content. A timeout or malformed batch is retried one file at a time; a file that still fails stays pending without blocking the rest.
 
 ## Configuration
 
@@ -69,7 +69,7 @@ max_bytes = 67108864           # largest document read for its words
 enabled = true
 exiftool = "exiftool"
 max_bytes = 1073741824         # largest file copied for metadata; 0 is no limit
-temp = ""                      # existing directory, on a different disk from the source
+temp = ""                      # inherits archives.temp; existing directory on another disk
 
 [[volume]]
 label = "Data"        # or id = "<uuid from attic volumes>"
