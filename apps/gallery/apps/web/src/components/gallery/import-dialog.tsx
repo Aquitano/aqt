@@ -257,7 +257,9 @@ function ImportWorkspace({
         <div className="flex items-center gap-2 text-xs">
           <span className="font-medium">Queue</span>
           <span className="text-muted-foreground">{queue.counts.total}</span>
-          {queue.counts.done > 0 ? <Badge variant="success">{queue.counts.done} done</Badge> : null}
+          {queue.counts.done > 0 ? (
+            <Badge variant="secondary">{queue.counts.done} done</Badge>
+          ) : null}
           {queue.counts.error > 0 ? (
             <Badge variant="destructive">{queue.counts.error} failed</Badge>
           ) : null}

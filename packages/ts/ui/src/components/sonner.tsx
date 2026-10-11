@@ -1,15 +1,17 @@
 "use client";
 
+import type { CSSVariables } from "@aqt/ui/lib/utils";
 import {
   CircleCheckIcon,
   InfoIcon,
-  Loader2Icon,
-  OctagonXIcon,
   TriangleAlertIcon,
+  OctagonXIcon,
+  Loader2Icon,
 } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
-const toasterStyle: React.CSSProperties & Record<`--${string}`, string> = {
+const toasterStyle: CSSVariables = {
   "--normal-bg": "var(--popover)",
   "--normal-text": "var(--popover-foreground)",
   "--normal-border": "var(--border)",
@@ -17,9 +19,11 @@ const toasterStyle: React.CSSProperties & Record<`--${string}`, string> = {
 };
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  const { theme } = useTheme();
+
   return (
     <Sonner
-      theme="system"
+      theme={theme === "light" || theme === "dark" ? theme : "system"}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,
