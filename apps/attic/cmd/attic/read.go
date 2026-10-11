@@ -111,15 +111,20 @@ func cmdSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	analyses, err := st.SearchAI(ctx, o)
+	if err != nil {
+		return err
+	}
 	roots := onlineRoots(vols)
 	out, inside, docs := outHits(hits, roots), outMembers(members, roots), outTexts(texts, roots)
 	if *asJSON {
 		return printJSON(struct {
-			Entries  []hitOut    `json:"entries"`
-			Members  []memberOut `json:"members"`
-			Texts    []textOut   `json:"texts"`
-			Metadata []textOut   `json:"metadata"`
-		}{out, inside, docs, outTexts(meta, roots)})
+			Entries  []hitOut      `json:"entries"`
+			Members  []memberOut   `json:"members"`
+			Texts    []textOut     `json:"texts"`
+			Metadata []textOut     `json:"metadata"`
+			Analyses []analysisOut `json:"analyses"`
+		}{out, inside, docs, outTexts(meta, roots), outAnalyses(analyses, roots)})
 	}
 	if err := printHits(out); err != nil {
 		return err
@@ -139,6 +144,13 @@ func cmdSearch(ctx context.Context, args []string) error {
 	if len(meta) > 0 {
 		fmt.Println("\nin metadata:")
 		printTexts(outTexts(meta, roots))
+	}
+	if len(analyses) > 0 {
+		fmt.Println("\nin OCR and descriptions:")
+		for _, a := range outAnalyses(analyses, roots) {
+			fmt.Printf("  %s / %s / %s\n", a.Task, a.Provider, a.Model)
+			printTexts([]textOut{a.textOut})
+		}
 	}
 	return nil
 }
@@ -560,14 +572,24 @@ func cmdStats(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	analyses, err := st.AITotals(ctx)
+	if err != nil {
+		return err
+	}
 	if *asJSON {
-		return printJSON(t)
+		return printJSON(struct {
+			store.Totals
+			Analyses map[string]int64 `json:"analyses"`
+		}{t, analyses})
 	}
 	fmt.Printf("%s volumes, %s entries, %s files, %s\n", count(t.Volumes), count(t.Entries), count(t.Files), humanBytes(t.Bytes))
 	fmt.Printf("%s unique contents, %s; %s files left to hash, %s entries missing\n",
 		count(t.Contents), humanBytes(t.ContentBytes), count(t.Pending), count(t.Missing))
 	fmt.Printf("%s archives read, %s members inside\n", count(t.Archives), count(t.Members))
 	fmt.Printf("%s files with metadata extracted\n", count(t.Metadata))
+	for _, key := range slices.Sorted(maps.Keys(analyses)) {
+		fmt.Printf("%s %s enrichment results\n", count(analyses[key]), key)
+	}
 	var docs []string
 	var read int64
 	for _, status := range slices.Sorted(maps.Keys(t.Texts)) {
@@ -650,6 +672,7 @@ func cmdConfig(_ context.Context, args []string) error {
 		fmt.Println("text      documents of any size, the first 1 MB of text each")
 	}
 	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d, temp=%s\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes, cmp.Or(cfg.Metadata.Temp, cfg.Archives.Temp, os.TempDir()))
+	fmt.Printf("enrich    explicit command only; provider=%s, model=%s, endpoint=%s, api_key_env=%s, max_bytes=%d, timeout=%ds, temp=%s\n", cfg.AI.Provider, cfg.AI.Model, cfg.AI.Endpoint, cfg.AI.APIKeyEnv, cfg.AI.MaxBytes, cfg.AI.TimeoutSeconds, cmp.Or(cfg.AI.Temp, cfg.Archives.Temp, os.TempDir()))
 	exclude, nameOnly := cfg.Rules(*volume, *volume).Describe()
 	fmt.Println("exclude")
 	for _, r := range exclude {

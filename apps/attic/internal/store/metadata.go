@@ -16,12 +16,15 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type PendingMetadata struct {
+// ContentFile identifies a catalogued copy and the bytes its derived results belong to.
+type ContentFile struct {
 	ID        int64
 	Path      string
 	ContentID int64
 	Size      int64
 	Digest    disk.Digest
+	VolumeID  string
+	Ref       string
 }
 
 const pendingMetadata = `from entries e join contents c on c.id = e.content_id
@@ -36,7 +39,7 @@ func (sc *Scan) MetadataTotals(ctx context.Context) (int64, error) {
 	return n, err
 }
 
-func (sc *Scan) NextMetadata(ctx context.Context, after PendingMetadata, limit int) ([]PendingMetadata, error) {
+func (sc *Scan) NextMetadata(ctx context.Context, after ContentFile, limit int) ([]ContentFile, error) {
 	lower, upper := sc.subtree()
 	if after.ID != 0 {
 		lower = after.Path
@@ -46,8 +49,8 @@ func (sc *Scan) NextMetadata(ctx context.Context, after PendingMetadata, limit i
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (PendingMetadata, error) {
-		var p PendingMetadata
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ContentFile, error) {
+		var p ContentFile
 		var digest []byte
 		err := row.Scan(&p.ID, &p.Path, &p.ContentID, &p.Size, &digest)
 		copy(p.Digest[:], digest)

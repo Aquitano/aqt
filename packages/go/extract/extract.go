@@ -194,8 +194,7 @@ func File(ctx context.Context, path, filename, mimeType string, o Options) Resul
 	defer cancel()
 	if k == kindImage {
 		return run("ocr", o, func() (string, bool, error) {
-			text, err := tesseract(ctx, path, o)
-			return text, false, err
+			return tesseract(ctx, path, o)
 		})
 	}
 	f, err := o.Open(path)
@@ -229,7 +228,7 @@ func run(extractor string, o Options, f func() (string, bool, error)) Result {
 	}
 	text, truncated := normalize(text, o.MaxChars)
 	if text == "" {
-		return Result{Status: StatusEmpty, Extractor: extractor}
+		return Result{Status: StatusEmpty, Extractor: extractor, Truncated: cut || truncated}
 	}
 	return Result{Text: text, Extractor: extractor, Status: StatusOK, Truncated: truncated || cut}
 }

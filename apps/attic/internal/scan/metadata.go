@@ -29,7 +29,7 @@ func (r *run) readMetadata(ctx context.Context) error {
 	}()
 	r.done, r.seen = 0, map[int64]bool{}
 	r.progress(true)
-	var after store.PendingMetadata
+	var after store.ContentFile
 	for {
 		batch, err := r.sc.NextMetadata(ctx, after, 16)
 		if err != nil || len(batch) == 0 {
@@ -45,9 +45,9 @@ func (r *run) readMetadata(ctx context.Context) error {
 	}
 }
 
-func (r *run) metadataBatch(ctx context.Context, w *scratch.Workspace, batch []store.PendingMetadata) error {
+func (r *run) metadataBatch(ctx context.Context, w *scratch.Workspace, batch []store.ContentFile) error {
 	var paths []string
-	var pending []store.PendingMetadata
+	var pending []store.ContentFile
 	var bytes int64
 	flush := func() error {
 		if err := r.extractMetadata(ctx, pending, paths); err != nil {
@@ -110,7 +110,7 @@ func (r *run) metadataBatch(ctx context.Context, w *scratch.Workspace, batch []s
 
 // A broken batch is retried file by file so one parser failure cannot starve
 // the rest of the disk. Tool failures stay skips, not properties of content.
-func (r *run) extractMetadata(ctx context.Context, pending []store.PendingMetadata, paths []string) error {
+func (r *run) extractMetadata(ctx context.Context, pending []store.ContentFile, paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}

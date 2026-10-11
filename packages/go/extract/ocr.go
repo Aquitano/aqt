@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // OCR is a subprocess rather than a linked library on purpose: tesseract
@@ -44,11 +45,13 @@ func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 
 	prefix := filepath.Join(dir, "page")
 	// 300 dpi is tesseract's documented sweet spot: below it accuracy drops
-	// sharply, above it costs time for nothing.
-	cmd := exec.CommandContext(ctx, o.PDFToPPM, "-r", "300", "-png",
+	// sharply, above it costs time for nothing. The pixel cap bounds unusually
+	// large page dimensions as well as page count.
+	cmd := exec.CommandContext(ctx, o.PDFToPPM, "-r", "300", "-scale-to", "4096", "-png",
 		"-f", "1", "-l", strconv.Itoa(o.OCRMaxPages+1), path, prefix)
-	var stderr bytes.Buffer
+	stderr := ocrBuffer{left: 8192}
 	cmd.Stderr = &stderr
+	cmd.WaitDelay = 2 * time.Second
 	if err := cmd.Run(); err != nil {
 		return "", false, fmt.Errorf("%s: %w: %s", o.PDFToPPM, err, strings.TrimSpace(stderr.String()))
 	}
@@ -70,7 +73,7 @@ func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 	var lastErr error
 	read := 0
 	for _, p := range pages {
-		text, err := tesseract(ctx, p, o)
+		text, pageCut, err := tesseract(ctx, p, o)
 		if err != nil {
 			if ctx.Err() != nil {
 				// A timeout mid-document is not "that was all the text":
@@ -79,8 +82,10 @@ func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 			}
 			// One unreadable page should not lose the other thirty.
 			lastErr = err
+			cut = true
 			continue
 		}
+		cut = cut || pageCut
 		read++
 		sb.WriteString(text)
 		sb.WriteByte('\n')
@@ -97,13 +102,32 @@ func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 	return sb.String(), cut, nil
 }
 
-func tesseract(ctx context.Context, path string, o Options) (string, error) {
+func tesseract(ctx context.Context, path string, o Options) (string, bool, error) {
 	cmd := exec.CommandContext(ctx, o.Tesseract, path, "stdout", "-l", o.OCRLang)
-	var stdout, stderr bytes.Buffer
+	stdout := ocrBuffer{left: 4 * max(o.MaxChars+1, 1)}
+	stderr := ocrBuffer{left: 8192}
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.WaitDelay = 2 * time.Second
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%s: %w: %s", o.Tesseract, err, strings.TrimSpace(stderr.String()))
+		return "", false, fmt.Errorf("%s: %w: %s", o.Tesseract, err, strings.TrimSpace(stderr.String()))
 	}
-	return stdout.String(), nil
+	return stdout.String(), stdout.cut, nil
 }
+
+// Keep a bounded prefix even when a tool ignores the document limits. Four
+// bytes per retained rune leaves File enough text to detect truncation.
+type ocrBuffer struct {
+	buf  bytes.Buffer
+	left int
+	cut  bool
+}
+
+func (b *ocrBuffer) Write(p []byte) (int, error) {
+	n := min(len(p), b.left)
+	b.cut = b.cut || n < len(p)
+	_, _ = b.buf.Write(p[:n])
+	b.left -= n
+	return len(p), nil
+}
+func (b *ocrBuffer) String() string { return b.buf.String() }

@@ -409,3 +409,17 @@ func TestFileOpenFailureNamesTheExtractor(t *testing.T) {
 		t.Errorf("status %s, extractor %q; want failed from text", res.Status, res.Extractor)
 	}
 }
+
+func TestOCROutputLimitsAndPartialPages(t *testing.T) {
+	tess := fakeBin(t, "tesseract", `head -c 100000 /dev/zero | tr '\000' 'a'; head -c 100000 /dev/zero | tr '\000' 'e' >&2`)
+	res := File(t.Context(), write(t, "scan.png", []byte("pixels")), "scan.png", "image/png", Options{OCR: true, Tesseract: tess, MaxChars: 32})
+	if res.Status != StatusOK || !res.Truncated || len(res.Text) != 32 {
+		t.Fatalf("bounded output: %+v", res)
+	}
+	ppm := fakeBin(t, "pdftoppm", `for a in "$@"; do prefix="$a"; done; touch "$prefix-1.png" "$prefix-2.png"`)
+	tess = fakeBin(t, "tesseract", `case "$1" in *-2.png) exit 1;; esac; echo 'first page'`)
+	text, cut, err := ocrPDF(t.Context(), write(t, "scan.pdf", []byte("%PDF")), Options{PDFToPPM: ppm, Tesseract: tess, MaxChars: 1024})
+	if err != nil || !cut || !strings.Contains(text, "first page") {
+		t.Fatalf("partial pages: %q %v %v", text, cut, err)
+	}
+}

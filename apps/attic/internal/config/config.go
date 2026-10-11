@@ -23,6 +23,7 @@ type Config struct {
 	Archives     Archives `toml:"archives"`
 	Text         Text     `toml:"text"`
 	Metadata     Metadata `toml:"metadata"`
+	AI           AI       `toml:"ai"`
 	Volumes      []Volume `toml:"volume"`
 }
 
@@ -54,11 +55,29 @@ type Metadata struct {
 	Temp     string `toml:"temp"`
 }
 
+// AI is used only by the explicit enrich command, never by scan.
+type AI struct {
+	Provider       string `toml:"provider"`
+	Endpoint       string `toml:"endpoint"`
+	Model          string `toml:"model"`
+	APIKeyEnv      string `toml:"api_key_env"`
+	MaxBytes       int64  `toml:"max_bytes"`
+	Temp           string `toml:"temp"`
+	TimeoutSeconds int    `toml:"timeout_seconds"`
+	MaxTokens      int    `toml:"max_tokens"`
+	TokenParameter string `toml:"token_parameter"`
+	OCRLang        string `toml:"ocr_lang"`
+	OCRMaxPages    int    `toml:"ocr_max_pages"`
+	Tesseract      string `toml:"tesseract"`
+	PDFToPPM       string `toml:"pdftoppm"`
+	Codex          string `toml:"codex"`
+}
+
 // Default is the configuration before the file is read: archives inside
 // archives are listed, nested ones up to 4 GiB, and documents up to 64 MiB
 // are read.
 func Default() Config {
-	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}, Text: Text{MaxBytes: 64 << 20}, Metadata: Metadata{Enabled: true, ExifTool: "exiftool", MaxBytes: 1 << 30}}
+	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}, Text: Text{MaxBytes: 64 << 20}, Metadata: Metadata{Enabled: true, ExifTool: "exiftool", MaxBytes: 1 << 30}, AI: AI{Endpoint: "http://localhost:11434/v1", MaxBytes: 64 << 20, TimeoutSeconds: 300, MaxTokens: 4096, TokenParameter: "max_tokens", OCRLang: "eng", OCRMaxPages: 20, Tesseract: "tesseract", PDFToPPM: "pdftoppm", Codex: "codex"}}
 }
 
 // Volume holds patterns anchored at one volume's root, selected by attic's
@@ -116,6 +135,9 @@ func Load(path string, explicit bool) (Config, error) {
 	}
 	if c.HashMaxBytes < 0 || c.Archives.Depth < 0 || c.Archives.UnpackMaxBytes < 0 || c.Text.MaxBytes < 0 || c.Metadata.MaxBytes < 0 {
 		return c, fmt.Errorf("%s: hash_max_bytes, archives.depth, archives.unpack_max_bytes, text.max_bytes and metadata.max_bytes must not be negative", path)
+	}
+	if c.AI.MaxBytes < 0 || c.AI.TimeoutSeconds <= 0 || c.AI.MaxTokens <= 0 || c.AI.OCRMaxPages <= 0 {
+		return c, fmt.Errorf("%s: ai limits must be positive; max_bytes may be zero", path)
 	}
 	return c, nil
 }
