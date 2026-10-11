@@ -22,6 +22,9 @@ Usage:
   attic search [words...] [flags]     find files and folders, mounted or not, inside archives and in documents
   attic show <id|ref> [--json]        one entry, or every place a content lives
   attic text <id|ref> [--json]        the words read from a document
+  attic enrich [ids|refs] [flags]    explicitly run OCR or image descriptions
+  attic analysis <id|ref> [--json]    compare stored OCR and descriptions by model
+  attic metadata <id|ref> [--json]    embedded image, document, audio and video tags
   attic volumes [--json]              known volumes, what they hold, last scan
   attic scans [flags]                 scan history: how long each phase took, what it found
   attic dupes [flags]                 contents stored more than once
@@ -37,6 +40,18 @@ Scan flags:
   --log-level l  debug, info (default), warn or error; the log is a JSON-lines file under
                  %LOCALAPPDATA%\attic\logs, named in the summary
   --json         print the result as JSON
+
+Enrich flags:
+  --task t       ocr or describe (required)
+  --under p      select a folder; or supply entry ids / content refs
+  --volume v     volume label or id
+  --provider p   tesseract (default for OCR), openai (default for descriptions), codex
+  --model m      vision model (required for openai/codex)
+  --endpoint u   OpenAI-compatible base URL (default http://localhost:11434/v1)
+  --limit n      at most n provider calls (default 20, max 1000; Codex max 20)
+  --force        repeat successful work for this model and prompt
+  --config f     configuration file
+  --json         JSON summary; per-file progress goes to stderr
 
 Search flags:
   --any          match entries with any word (default: every word)
@@ -61,7 +76,7 @@ Skips flags:
   --scan n       a scan id (default: the newest scan, of --volume if given)
   --volume v     the newest scan of this volume
   --reason r     list paths: excluded, name_only, too_big, link, remote, unreadable, changed,
-                 too_deep, encrypted, damaged, not_archive, split, text_failed
+                 too_deep, encrypted, damaged, not_archive, split, text_failed, metadata_failed, metadata_unavailable
   --rule r       list paths skipped by this rule, as the summary prints it
   --limit n      default 100
 
@@ -100,6 +115,12 @@ func run() int {
 		err = cmdDupes(ctx, os.Args[2:])
 	case "skips":
 		err = cmdSkips(ctx, os.Args[2:])
+	case "enrich":
+		err = cmdEnrich(ctx, os.Args[2:])
+	case "analysis":
+		err = cmdAnalysis(ctx, os.Args[2:])
+	case "metadata":
+		err = cmdMetadata(ctx, os.Args[2:])
 	case "text":
 		err = cmdText(ctx, os.Args[2:])
 	case "stats":

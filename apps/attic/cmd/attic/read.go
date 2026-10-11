@@ -107,14 +107,24 @@ func cmdSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	meta, err := st.SearchMetadata(ctx, o)
+	if err != nil {
+		return err
+	}
+	analyses, err := st.SearchAI(ctx, o)
+	if err != nil {
+		return err
+	}
 	roots := onlineRoots(vols)
 	out, inside, docs := outHits(hits, roots), outMembers(members, roots), outTexts(texts, roots)
 	if *asJSON {
 		return printJSON(struct {
-			Entries []hitOut    `json:"entries"`
-			Members []memberOut `json:"members"`
-			Texts   []textOut   `json:"texts"`
-		}{out, inside, docs})
+			Entries  []hitOut      `json:"entries"`
+			Members  []memberOut   `json:"members"`
+			Texts    []textOut     `json:"texts"`
+			Metadata []textOut     `json:"metadata"`
+			Analyses []analysisOut `json:"analyses"`
+		}{out, inside, docs, outTexts(meta, roots), outAnalyses(analyses, roots)})
 	}
 	if err := printHits(out); err != nil {
 		return err
@@ -130,6 +140,17 @@ func cmdSearch(ctx context.Context, args []string) error {
 	if len(docs) > 0 {
 		fmt.Println("\nin documents:")
 		printTexts(docs)
+	}
+	if len(meta) > 0 {
+		fmt.Println("\nin metadata:")
+		printTexts(outTexts(meta, roots))
+	}
+	if len(analyses) > 0 {
+		fmt.Println("\nin OCR and descriptions:")
+		for _, a := range outAnalyses(analyses, roots) {
+			fmt.Printf("  %s / %s / %s\n", a.Task, a.Provider, a.Model)
+			printTexts([]textOut{a.textOut})
+		}
 	}
 	return nil
 }
@@ -353,6 +374,9 @@ func cmdShow(ctx context.Context, args []string) error {
 			fmt.Fprintf(tw, "  text\t%s %s\n", t.Status, t.Detail)
 		}
 	}
+	if m := d.Metadata; m != nil {
+		fmt.Fprintf(tw, "  metadata\t%s, %d tags (attic metadata %d)\n", m.Status, len(m.Tags), d.ID)
+	}
 	if d.GitRemote != nil {
 		remote := *d.GitRemote
 		if remote == "" {
@@ -548,13 +572,24 @@ func cmdStats(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	analyses, err := st.AITotals(ctx)
+	if err != nil {
+		return err
+	}
 	if *asJSON {
-		return printJSON(t)
+		return printJSON(struct {
+			store.Totals
+			Analyses map[string]int64 `json:"analyses"`
+		}{t, analyses})
 	}
 	fmt.Printf("%s volumes, %s entries, %s files, %s\n", count(t.Volumes), count(t.Entries), count(t.Files), humanBytes(t.Bytes))
 	fmt.Printf("%s unique contents, %s; %s files left to hash, %s entries missing\n",
 		count(t.Contents), humanBytes(t.ContentBytes), count(t.Pending), count(t.Missing))
 	fmt.Printf("%s archives read, %s members inside\n", count(t.Archives), count(t.Members))
+	fmt.Printf("%s files with metadata extracted\n", count(t.Metadata))
+	for _, key := range slices.Sorted(maps.Keys(analyses)) {
+		fmt.Printf("%s %s enrichment results\n", count(analyses[key]), key)
+	}
 	var docs []string
 	var read int64
 	for _, status := range slices.Sorted(maps.Keys(t.Texts)) {
@@ -636,6 +671,8 @@ func cmdConfig(_ context.Context, args []string) error {
 	} else {
 		fmt.Println("text      documents of any size, the first 1 MB of text each")
 	}
+	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d, temp=%s\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes, cmp.Or(cfg.Metadata.Temp, cfg.Archives.Temp, os.TempDir()))
+	fmt.Printf("enrich    explicit command only; provider=%s, model=%s, endpoint=%s, api_key_env=%s, max_bytes=%d, timeout=%ds, temp=%s\n", cfg.AI.Provider, cfg.AI.Model, cfg.AI.Endpoint, cfg.AI.APIKeyEnv, cfg.AI.MaxBytes, cfg.AI.TimeoutSeconds, cmp.Or(cfg.AI.Temp, cfg.Archives.Temp, os.TempDir()))
 	exclude, nameOnly := cfg.Rules(*volume, *volume).Describe()
 	fmt.Println("exclude")
 	for _, r := range exclude {
@@ -684,6 +721,45 @@ func cmdScans(ctx context.Context, args []string) error {
 		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", s.ID, s.Volume, cmp.Or(s.Root, "/"), s.Status,
 			s.Started.Local().Format("2006-01-02 15:04"), took, humanBytes(s.HashedBytes), count(s.Archives),
 			count(s.Texts), count(s.Skipped), phaseSummary(s.Phases, s.HashedBytes))
+	}
+	return tw.Flush()
+}
+
+func cmdMetadata(ctx context.Context, args []string) error {
+	flags, pos := interspersed(args, map[string]bool{"json": true})
+	fs := flag.NewFlagSet("metadata", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "")
+	_ = fs.Parse(flags)
+	if len(pos) != 1 {
+		return fmt.Errorf("metadata needs an entry id or a ref: %w", errUsage)
+	}
+	var id int64
+	ref, isRef := store.ParseRef(pos[0])
+	if !isRef {
+		var err error
+		if id, err = strconv.ParseInt(pos[0], 10, 64); err != nil {
+			return fmt.Errorf("not an entry id or a ref: %q", pos[0])
+		}
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	d, err := st.Metadata(ctx, id, ref)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return printJSON(d)
+	}
+	fmt.Printf("attic:%s: %s\n", d.Ref, d.Status)
+	if d.Detail != "" {
+		fmt.Println(d.Detail)
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	for _, key := range slices.Sorted(maps.Keys(d.Tags)) {
+		fmt.Fprintf(tw, "%s\t%v\n", key, d.Tags[key])
 	}
 	return tw.Flush()
 }

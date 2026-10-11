@@ -83,6 +83,9 @@ func cmdScan(ctx context.Context, args []string) error {
 	if c.Texts > 0 {
 		fmt.Printf("  %s documents read, %s characters of text\n", count(c.Texts), count(c.TextChars))
 	}
+	if c.Metadata > 0 {
+		fmt.Printf("  %s files read for metadata\n", count(c.Metadata))
+	}
 	fmt.Printf("  took %s\n", phaseSummary(res.Phases, c.HashedBytes))
 	printSlow("slowest archives", res.SlowArchives, res.Volume.MountPath)
 	printSlow("slowest documents", res.SlowDocuments, res.Volume.MountPath)
@@ -112,6 +115,7 @@ func phaseSummary(ph store.PhaseTimes, hashed int64) string {
 	add("hash", ph.Hash, rate)
 	add("archives", ph.Archives, "")
 	add("documents", ph.Text, "")
+	add("metadata", ph.Metadata, "")
 	// Scans from before phase times were kept have none.
 	if len(parts) == 0 {
 		return "-"
@@ -206,6 +210,8 @@ func (p *progressLine) update(pr scan.Progress) {
 			left := time.Duration(float64(pr.HashBytes-pr.HashedBytes)/rate) * time.Second
 			line += fmt.Sprintf(", %s/s, about %s left", humanBytes(int64(rate)), left.Round(time.Minute))
 		}
+	case "metadata":
+		line = fmt.Sprintf("metadata: %s of %s; %s", count(pr.Done), count(pr.Total), pr.Current)
 	case "archives":
 		line = fmt.Sprintf("archives: %s of %s, %s members; %s", count(pr.Done), count(pr.Total),
 			count(pr.Members), path.Base(pr.Current))

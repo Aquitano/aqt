@@ -43,7 +43,7 @@ type Hit struct {
 }
 
 const hitColumns = `e.id, e.volume_id::text, v.label, e.kind, e.path, e.size_bytes, e.modified_at,
-	e.missing_scan is not null, coalesce(` + refSQL + `, '')`
+	e.missing_scan is not null as missing, coalesce(` + refSQL + `, '')`
 
 const hitFrom = ` from entries e join volumes v on v.id = e.volume_id left join contents c on c.id = e.content_id`
 
@@ -249,8 +249,9 @@ type EntryDetail struct {
 	Copies     []Hit      `json:"copies,omitempty"`
 	// Archive is set once the entry's content was read as an archive, Text
 	// once it was read as a document.
-	Archive *ArchiveInfo `json:"archive,omitempty"`
-	Text    *TextInfo    `json:"text,omitempty"`
+	Archive  *ArchiveInfo    `json:"archive,omitempty"`
+	Text     *TextInfo       `json:"text,omitempty"`
+	Metadata *MetadataDetail `json:"metadata,omitempty"`
 }
 
 type ArchiveInfo struct {
@@ -284,6 +285,11 @@ func (s *Store) Entry(ctx context.Context, id int64) (EntryDetail, error) {
 		return d, err
 	}
 	if d.Text, err = s.textInfo(ctx, *contentID); err != nil {
+		return d, err
+	}
+	if m, err := s.Metadata(ctx, id, ""); err == nil {
+		d.Metadata = &m
+	} else if !errors.Is(err, ErrNotFound) {
 		return d, err
 	}
 	var a ArchiveInfo
@@ -358,17 +364,37 @@ func copiesOf(o SearchOptions, self bool) copies {
 // occurrences lists where a content lives, present copies first. presentOnly
 // drops missing ones; c narrows them further.
 func (s *Store) occurrences(ctx context.Context, contentID, except int64, presentOnly bool, c copies) ([]Hit, error) {
-	rows, err := s.pool.Query(ctx, `select `+hitColumns+hitFrom+`
-		where e.content_id = $1 and e.id <> $2 and (not $3 or e.missing_scan is null)
+	places, err := s.occurrencesMany(ctx, []int64{contentID}, except, presentOnly, c)
+	return places[contentID], err
+}
+
+func (s *Store) occurrencesMany(ctx context.Context, ids []int64, except int64, presentOnly bool, c copies) (map[int64][]Hit, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `select places.* from (select distinct unnest($1::bigint[]) as id) selected
+		cross join lateral (select `+hitColumns+`, e.content_id`+hitFrom+`
+		where e.content_id = selected.id and e.id <> $2 and (not $3 or e.missing_scan is null)
 		  and ($4::text[] is null or e.volume_id::text = any($4))
 		  and ($5 = '' or (e.path collate "C" > $5 || '/' and e.path collate "C" < $5 || '0') or ($6 and e.path = $5))
 		  and ($7 = '' or e.ext = $7)
-		order by e.missing_scan is not null, v.label, e.path collate "C" limit 100`,
-		contentID, except, presentOnly, c.volumes, c.under, c.self, c.ext)
+		order by e.missing_scan is not null, v.label, e.path collate "C", e.id limit 100) places
+		order by places.content_id, places.missing, places.label, places.path collate "C", places.id`,
+		ids, except, presentOnly, c.volumes, c.under, c.self, c.ext)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Hit, error) { return scanHit(r) })
+	defer rows.Close()
+	places := make(map[int64][]Hit)
+	for rows.Next() {
+		var id int64
+		h, err := scanHit(rows, &id)
+		if err != nil {
+			return nil, err
+		}
+		places[id] = append(places[id], h)
+	}
+	return places, rows.Err()
 }
 
 // ScanInfo is one scan as `attic scans`, `attic volumes` and `attic skips`
@@ -388,16 +414,16 @@ type ScanInfo struct {
 
 const scanColumns = `id, volume_id::text, (select label from volumes v where v.id = scans.volume_id), root, status,
 	started_at, finished_at, error, walk_ms, hash_ms, archives_ms, text_ms, listed, written, missing,
-	skipped, hashed, hashed_bytes, duplicates, archives, members, texts, text_chars`
+	skipped, hashed, hashed_bytes, duplicates, archives, members, texts, text_chars, metadata, metadata_ms`
 
 func scanScanInfo(row pgx.Row) (ScanInfo, error) {
 	var si ScanInfo
-	var walk, hash, archives, text int64
+	var walk, hash, archives, text, metadataMS int64
 	err := row.Scan(&si.ID, &si.VolumeID, &si.Volume, &si.Root, &si.Status, &si.Started, &si.Finished, &si.Error,
 		&walk, &hash, &archives, &text, &si.Listed, &si.Written, &si.Missing, &si.Skipped, &si.Hashed, &si.HashedBytes,
-		&si.Duplicates, &si.Archives, &si.Members, &si.Texts, &si.TextChars)
+		&si.Duplicates, &si.Archives, &si.Members, &si.Texts, &si.TextChars, &si.Metadata, &metadataMS)
 	si.Phases = PhaseTimes{Walk: time.Duration(walk) * time.Millisecond, Hash: time.Duration(hash) * time.Millisecond,
-		Archives: time.Duration(archives) * time.Millisecond, Text: time.Duration(text) * time.Millisecond}
+		Archives: time.Duration(archives) * time.Millisecond, Text: time.Duration(text) * time.Millisecond, Metadata: time.Duration(metadataMS) * time.Millisecond}
 	return si, err
 }
 
@@ -617,6 +643,7 @@ type Totals struct {
 	// Texts counts read documents by status.
 	Texts     map[string]int64 `json:"texts"`
 	TextChars int64            `json:"text_chars"`
+	Metadata  int64            `json:"metadata"`
 }
 
 func (s *Store) Totals(ctx context.Context) (Totals, error) {
@@ -634,9 +661,10 @@ func (s *Store) Totals(ctx context.Context) (Totals, error) {
 		       count(*) filter (where hash_state in ('pending', 'failed') and missing_scan is null),
 		       count(*) filter (where missing_scan is not null),
 		       (select count(*) from archives a join live l using (content_id) where a.status <> 'not_archive'),
-		       (select coalesce(sum(a.members), 0)::bigint from archives a join live l using (content_id))
+		       (select coalesce(sum(a.members), 0)::bigint from archives a join live l using (content_id)),
+		       (select count(*) from metadata m join live l using (content_id))
 		from entries`).Scan(&t.Volumes, &t.Entries, &t.Files, &t.Bytes, &t.Contents, &t.ContentBytes, &t.Pending, &t.Missing,
-		&t.Archives, &t.Members)
+		&t.Archives, &t.Members, &t.Metadata)
 	if err != nil {
 		return t, err
 	}

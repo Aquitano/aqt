@@ -44,8 +44,18 @@ jobs:
         with:
           version: v2.14.0
           working-directory: apps/attic
+      - run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl tesseract-ocr poppler-utils
       - run: go vet ./...
       - run: go test -race ./...
       # The scanner's disk access is Windows code; CI runs on Linux.
       - run: GOOS=windows go vet ./...
       - run: GOOS=windows golangci-lint run
+
+  windows-process:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/attic/go.mod
+      - run: go test ./apps/attic/internal/process

@@ -98,6 +98,11 @@ type TextHit struct {
 // SearchTexts finds documents whose text holds the words. The filters apply
 // to where a copy lives and what it is named; folders hold no text.
 func (s *Store) SearchTexts(ctx context.Context, o SearchOptions) ([]TextHit, error) {
+	return s.searchTextTable(ctx, o, "texts")
+}
+
+// table is a package-owned literal; never a query parameter.
+func (s *Store) searchTextTable(ctx context.Context, o SearchOptions, table string) ([]TextHit, error) {
 	words := strings.Fields(o.Query)
 	if len(words) == 0 || (o.Kind != "" && o.Kind != "file") {
 		return nil, nil
@@ -129,7 +134,7 @@ func (s *Store) SearchTexts(ctx context.Context, o SearchOptions) ([]TextHit, er
 	q.order = "paradedb.score(t.content_id) desc, t.content_id"
 	rows, err := s.pool.Query(ctx, `select t.content_id, `+refSQL+`, paradedb.score(t.content_id),
 		paradedb.snippet(t.text, start_tag => '', end_tag => '', max_num_chars => 200)
-		from texts t join contents c on c.id = t.content_id`+q.tail(o), q.args...)
+		from `+table+` t join contents c on c.id = t.content_id`+q.tail(o), q.args...)
 	if err != nil {
 		return nil, err
 	}

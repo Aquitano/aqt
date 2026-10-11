@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -24,6 +25,7 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/archive"
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
+	"github.com/aquitano/aqt/apps/attic/internal/scratch"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
@@ -107,16 +109,31 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 		root += "/" + part
 	}
 	if a := o.Config.Archives; a.Depth > 1 && !o.NoHash {
-		temp := cmp.Or(a.Temp, os.TempDir())
-		// Locate works on Windows only; elsewhere the check is skipped.
-		if t, _, err := disk.Locate(temp); err == nil && vol.Holds(t.Fingerprint) {
-			return Result{}, fmt.Errorf("nested archives would be copied to %s, on the disk being scanned: "+
-				"set [archives] temp to a folder on another disk, or depth = 1", temp)
+		if err := scratch.CheckVolume(mounted.Fingerprint, a.Temp); err != nil {
+			return Result{}, err
+		}
+	}
+	o.Config.Metadata.Temp = cmp.Or(o.Config.Metadata.Temp, o.Config.Archives.Temp)
+	metadataUnavailable := ""
+	if o.Config.Metadata.Enabled && !o.NoHash {
+		binary, err := exec.LookPath(cmp.Or(o.Config.Metadata.ExifTool, "exiftool"))
+		if err != nil {
+			metadataUnavailable = err.Error()
+			o.Config.Metadata.Enabled = false
+			log.Warn("metadata waits for ExifTool", "err", err)
+		} else {
+			o.Config.Metadata.ExifTool = binary
+			if err := scratch.CheckVolume(mounted.Fingerprint, o.Config.Metadata.Temp); err != nil {
+				return Result{}, err
+			}
 		}
 	}
 	sc, err := st.StartScan(ctx, vol, root)
 	if err != nil {
 		return Result{}, err
+	}
+	if metadataUnavailable != "" {
+		sc.Skip(root, "metadata_unavailable", "", metadataUnavailable)
 	}
 	log = log.With("scan", sc.ID)
 	a := o.Config.Archives
@@ -143,7 +160,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	}
 	attrs := []any{"status", status, "took_ms", res.Elapsed.Milliseconds(), "counts", res.Counts, "pending", res.Pending,
 		"phases_ms", map[string]int64{"walk": res.Phases.Walk.Milliseconds(), "hash": res.Phases.Hash.Milliseconds(),
-			"archives": res.Phases.Archives.Milliseconds(), "text": res.Phases.Text.Milliseconds()}}
+			"archives": res.Phases.Archives.Milliseconds(), "text": res.Phases.Text.Milliseconds(), "metadata": res.Phases.Metadata.Milliseconds()}}
 	if err := errors.Join(runErr, finishErr); err != nil {
 		log.Error("scan failed", append(attrs, "err", err)...)
 		return res, err
@@ -224,6 +241,11 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 	}
 	if err := r.step(ctx, "text", "reading", &r.sc.Phases.Text, r.readTexts); err != nil {
 		return "failed", err
+	}
+	if r.o.Config.Metadata.Enabled {
+		if err := r.step(ctx, "metadata", "metadata", &r.sc.Phases.Metadata, r.readMetadata); err != nil {
+			return "failed", err
+		}
 	}
 	return "complete", nil
 }
@@ -553,8 +575,7 @@ func (r *run) listArchives(ctx context.Context) error {
 
 func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
-	path := lowerComponents(a.Path)
-	if excluded, _ := r.rules.Excluded(path, false); excluded || r.rules.NameOnly(path) {
+	if r.rules.SkipContent(a.Path) {
 		r.log.Debug("archive left unread by the rules", "path", a.Path)
 		return nil
 	}
@@ -656,8 +677,7 @@ func (r *run) readTexts(ctx context.Context) error {
 
 func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
-	path := lowerComponents(p.Path)
-	if excluded, _ := r.rules.Excluded(path, false); excluded || r.rules.NameOnly(path) {
+	if r.rules.SkipContent(p.Path) {
 		r.log.Debug("document left unread by the rules", "path", p.Path)
 		return nil
 	}
