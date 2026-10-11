@@ -102,7 +102,7 @@ export function LintPanel({ report, loading }: { report: LintReport | null; load
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg font-semibold tracking-[-0.02em]">Pre-publish check</h2>
           {clean ? (
-            <Badge variant="secondary">
+            <Badge variant="success">
               <CheckCircle2 data-icon="inline-start" />
               Ready
             </Badge>
