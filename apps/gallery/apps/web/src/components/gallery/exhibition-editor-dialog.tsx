@@ -91,6 +91,7 @@ export function ExhibitionEditorDialog({
             <Label htmlFor="exhibition-description">Description</Label>
             <Textarea
               id="exhibition-description"
+              className="max-h-48"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />

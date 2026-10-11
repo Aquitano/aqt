@@ -221,7 +221,7 @@ function ArtworkInspector({
       {selected ? (
         <DialogContent
           showCloseButton={false}
-          className="h-[min(92svh,58rem)] max-h-none gap-0 overflow-hidden overscroll-contain p-0 sm:w-[calc(100%-3rem)] sm:max-w-[min(94vw,84rem)]"
+          className="flex h-[min(92svh,58rem)] max-h-none flex-col gap-0 overflow-hidden overscroll-contain p-0 sm:w-[calc(100%-3rem)] sm:max-w-[min(94vw,84rem)]"
         >
           <DialogClose className="absolute top-3 right-3 z-10 grid size-9 place-items-center rounded-full bg-background/90 text-foreground backdrop-blur transition-opacity outline-none hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">
             <X className="size-4" aria-hidden="true" />

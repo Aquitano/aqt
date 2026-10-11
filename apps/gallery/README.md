@@ -202,9 +202,10 @@ aqt-gallery/
 │   ├── auth/            # Clerk-based session/auth resolution
 │   ├── db/              # Drizzle schema & DB client
 │   ├── env/             # Typed environment-variable validation
-│   ├── gallery-layout/  # Floor-plan graph + 3D layout shared by renderer, linter, studio
-│   └── ui/              # Shared shadcn/ui components and styles
+│   └── gallery-layout/  # Floor-plan graph + 3D layout shared by renderer, linter, studio
 ```
+
+Shared shadcn/ui components and styles come from `@aqt/ui` in the workspace's `packages/ts/ui`.
 
 ## Available Scripts
 

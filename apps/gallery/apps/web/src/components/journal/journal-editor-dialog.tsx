@@ -256,7 +256,7 @@ export function JournalEditorDialog({
       >
         <DialogContent
           showCloseButton={false}
-          className="inset-x-0 top-auto bottom-0 left-0 h-[min(92dvh,56rem)] max-h-none w-full max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden border-x-0 border-b-0 p-0 transition-[transform,opacity] duration-200 data-[ending-style]:translate-y-full data-[ending-style]:scale-100 data-[starting-style]:translate-y-full data-[starting-style]:scale-100 motion-reduce:transition-none sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:h-[min(88dvh,56rem)] sm:w-[calc(100%-3rem)] sm:max-w-6xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:border sm:data-[ending-style]:translate-y-[calc(-50%+1rem)] sm:data-[starting-style]:translate-y-[calc(-50%+1rem)]"
+          className="inset-x-0 top-auto bottom-0 left-0 flex h-[min(92dvh,56rem)] flex-col max-h-none w-full max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden border-x-0 border-b-0 p-0 transition-[transform,opacity] duration-200 data-[ending-style]:translate-y-full data-[ending-style]:scale-100 data-[starting-style]:translate-y-full data-[starting-style]:scale-100 motion-reduce:transition-none sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:h-[min(88dvh,56rem)] sm:w-[calc(100%-3rem)] sm:max-w-6xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:border sm:data-[ending-style]:translate-y-[calc(-50%+1rem)] sm:data-[starting-style]:translate-y-[calc(-50%+1rem)]"
         >
           <DialogHeader className="shrink-0 border-b border-border/60 px-5 py-4 pr-5 sm:px-7">
             <div className="flex flex-wrap items-start justify-between gap-4">

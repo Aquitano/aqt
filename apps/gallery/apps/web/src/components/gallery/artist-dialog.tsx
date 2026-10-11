@@ -214,6 +214,7 @@ export function ArtistDialog({
             <Label htmlFor="artist-bio">Bio</Label>
             <Textarea
               id="artist-bio"
+              className="max-h-48"
               disabled={editing && !ownArtist}
               value={form.bio}
               onChange={(event) => setForm({ ...form, bio: event.target.value })}
