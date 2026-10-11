@@ -1,0 +1,16 @@
+import { ThemeProvider as NextThemesProvider } from "next-themes";
+import type * as React from "react";
+
+function ThemeProvider(props: React.ComponentProps<typeof NextThemesProvider>) {
+  return (
+    <NextThemesProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+      {...props}
+    />
+  );
+}
+
+export { ThemeProvider };
