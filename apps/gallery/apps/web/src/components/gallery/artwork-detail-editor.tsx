@@ -259,7 +259,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
         onDelete={() => setConfirmDelete(true)}
       />
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete this artwork?</DialogTitle>
             <DialogDescription>

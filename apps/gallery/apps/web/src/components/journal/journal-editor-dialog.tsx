@@ -497,7 +497,7 @@ export function JournalEditorDialog({
       </Dialog>
 
       <Dialog open={discardOpen} onOpenChange={(open) => !open && keepEditing()}>
-        <DialogContent className="max-w-sm" showCloseButton={false}>
+        <DialogContent className="sm:max-w-sm" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Discard unsaved changes?</DialogTitle>
             <DialogDescription>

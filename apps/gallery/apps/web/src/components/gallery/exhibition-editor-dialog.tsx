@@ -57,7 +57,7 @@ export function ExhibitionEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Create an exhibition</DialogTitle>
           <DialogDescription>

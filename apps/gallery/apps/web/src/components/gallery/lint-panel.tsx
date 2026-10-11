@@ -188,7 +188,7 @@ export function PublishButton({
         {isPublished ? "Unpublish" : "Publish"}
       </Button>
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               Publish with {blockingCount} blocking {blockingCount === 1 ? "issue" : "issues"}?

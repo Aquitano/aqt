@@ -35,7 +35,7 @@ type ImportDialogProps = {
 export function ImportDialog({ open, onOpenChange, target }: ImportDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl gap-0 p-0">
+      <DialogContent className="gap-0 p-0 sm:max-w-2xl">
         <ImportWorkspace target={target} onOpenChange={onOpenChange} />
       </DialogContent>
     </Dialog>

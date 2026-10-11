@@ -211,7 +211,7 @@ export function BulkActionBar({
       </div>
 
       <Dialog open={tagOpen} onOpenChange={setTagOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add a tag</DialogTitle>
             <DialogDescription>
@@ -247,7 +247,7 @@ export function BulkActionBar({
       </Dialog>
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               Delete {count} {count === 1 ? "artwork" : "artworks"}?
