@@ -25,7 +25,7 @@ function ThemeToggle() {
         <MoonIcon className="hidden dark:block" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+        <DropdownMenuRadioGroup value={theme ?? "system"} onValueChange={setTheme}>
           {THEMES.map(({ value, label, Icon }) => (
             <DropdownMenuRadioItem key={value} value={value}>
               <Icon />

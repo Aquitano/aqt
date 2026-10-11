@@ -8,9 +8,10 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  color-scheme: light;
   --background: oklch(0.985 0.002 90);
   --foreground: oklch(0.17 0 0);
-  --card: oklch(0.96 0.002 90);
+  --card: oklch(1 0 0);
   --card-foreground: oklch(0.17 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.17 0 0);
@@ -34,17 +35,18 @@
   --chart-4: #8d58ee;
   --chart-5: #50c3b6;
   --radius: 0.75rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--card-foreground);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.15 0.003 80);
   --foreground: oklch(0.955 0.003 80);
   --card: oklch(0.195 0.003 80);
@@ -70,14 +72,14 @@
   --chart-3: #e8649d;
   --chart-4: #8d58ee;
   --chart-5: #50c3b6;
-  --sidebar: oklch(0.195 0.003 80);
-  --sidebar-foreground: oklch(0.955 0 0);
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--card-foreground);
   --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: var(--primary-foreground);
-  --sidebar-accent: oklch(0.245 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: oklch(0.6 0 0);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 @theme inline {
