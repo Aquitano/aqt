@@ -40,7 +40,7 @@ const LEVEL_ORDER: LintLevel[] = ["error", "warning", "info"];
 
 const LEVEL_META: Record<LintLevel, { icon: LucideIcon; className: string }> = {
   error: { icon: CircleAlert, className: "text-destructive" },
-  warning: { icon: AlertTriangle, className: "text-amber-400" },
+  warning: { icon: AlertTriangle, className: "text-warning" },
   info: { icon: Info, className: "text-muted-foreground" },
 };
 
@@ -69,7 +69,7 @@ function LintRow({ finding }: { finding: LintFinding }) {
       <span className="min-w-0 flex-1">{finding.message}</span>
       {anchor ? (
         <Button variant="ghost" size="xs" className="-my-1 shrink-0" onClick={() => locate(anchor)}>
-          <MapPin />
+          <MapPin data-icon="inline-start" />
           Locate
         </Button>
       ) : null}
@@ -112,7 +112,7 @@ export function LintPanel({ report, loading }: { report: LintReport | null; load
                 <Badge variant="destructive">{report.errorCount} blocking</Badge>
               ) : null}
               {report.warningCount > 0 ? (
-                <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-300">
+                <Badge variant="warning">
                   {report.warningCount} {report.warningCount === 1 ? "warning" : "warnings"}
                 </Badge>
               ) : null}

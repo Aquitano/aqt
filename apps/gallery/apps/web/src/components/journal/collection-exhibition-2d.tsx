@@ -271,7 +271,7 @@ function ArtworkInspector({
                     onClick={() => previous && onSelectArtwork(previous.id)}
                     disabled={artworks.length < 2}
                   >
-                    <ArrowLeft aria-hidden="true" />
+                    <ArrowLeft data-icon="inline-start" aria-hidden="true" />
                     Previous
                   </Button>
                   <span className="hidden text-xs text-muted-foreground lg:inline">
@@ -284,7 +284,7 @@ function ArtworkInspector({
                     disabled={artworks.length < 2}
                   >
                     Next
-                    <ArrowRight aria-hidden="true" />
+                    <ArrowRight data-icon="inline-end" aria-hidden="true" />
                   </Button>
                 </div>
               </div>

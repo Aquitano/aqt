@@ -402,7 +402,7 @@ function StatusLabel({ status, error }: { status: ImportStatus; error?: string }
   }
   if (status === "done") {
     return (
-      <span className="flex items-center gap-1 text-xs text-emerald-400">
+      <span className="flex items-center gap-1 text-xs text-success">
         <CheckCircle2 className="size-3" /> Done
       </span>
     );

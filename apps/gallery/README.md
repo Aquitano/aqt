@@ -174,11 +174,7 @@ The shadcn/ui primitives and design tokens live in the workspace package `@aqt/u
 
 ### Add more shared components
 
-Run this from the workspace root to add more primitives to the shared UI package:
-
-```bash
-npx shadcn@latest add accordion popover sheet table -c packages/ts/ui
-```
+`packages/ts/ui/README.md` covers adding and updating shared components with the shadcn CLI, theming and charts.
 
 Import shared components like this:
 

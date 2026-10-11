@@ -220,7 +220,7 @@ export function ArtworkEditor({
                     <Button
                       id="type"
                       variant="outline"
-                      className="h-9 w-full justify-between rounded-lg border-input px-3 font-normal"
+                      className="w-full justify-between border-input font-normal"
                     />
                   }
                 >
@@ -430,7 +430,7 @@ export function ArtworkEditor({
               ])
             }
           >
-            <Plus />
+            <Plus data-icon="inline-start" />
             Add field
           </Button>
         </Section>
@@ -445,7 +445,7 @@ export function ArtworkEditor({
       >
         <div className="flex items-center gap-1 rounded-full border border-border bg-popover/90 py-1.5 pr-1.5 pl-4 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.8)] backdrop-blur-xl">
           <span className="mr-2 flex items-center gap-2 text-[13px] whitespace-nowrap text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-amber-300" />
+            <span className="size-1.5 rounded-full bg-warning" />
             <span className="hidden sm:inline">Unsaved changes</span>
           </span>
           <Button variant="ghost" size="sm" onClick={onDiscard} disabled={saving}>

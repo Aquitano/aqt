@@ -163,7 +163,7 @@ export function BulkActionBar({
             </DropdownMenu>
 
             <Button variant="outline" size="sm" disabled={busy} onClick={() => setTagOpen(true)}>
-              <Tag />
+              <Tag data-icon="inline-start" />
               Add tag
             </Button>
           </>
@@ -194,7 +194,7 @@ export function BulkActionBar({
             disabled={busy}
             onClick={() => setConfirmDelete(true)}
           >
-            <Trash2 />
+            <Trash2 data-icon="inline-start" />
             Delete
           </Button>
         ) : null}

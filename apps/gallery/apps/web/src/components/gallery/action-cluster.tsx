@@ -26,11 +26,9 @@ export function ActionCluster() {
     <div className="flex items-center justify-end gap-2">
       {isSignedIn ? (
         <Button type="button" variant="secondary" onClick={openImport}>
-          <Upload />
+          <Upload data-icon="inline-start" />
           Import
-          <Kbd className="ml-0.5 border-transparent bg-foreground/10 text-secondary-foreground/80">
-            I
-          </Kbd>
+          <Kbd className="ml-0.5 bg-foreground/10 text-secondary-foreground/80">I</Kbd>
         </Button>
       ) : (
         <Button nativeButton={false} render={<Link to="/login">Sign in</Link>} />

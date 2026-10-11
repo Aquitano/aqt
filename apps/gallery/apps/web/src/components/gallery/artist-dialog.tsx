@@ -223,7 +223,7 @@ export function ArtistDialog({
         <DialogFooter className="sm:justify-between">
           {editing && ownArtist ? (
             <Button variant="destructive" onClick={() => void remove()} disabled={busy}>
-              <Trash2 />
+              <Trash2 data-icon="inline-start" />
               Delete
             </Button>
           ) : (

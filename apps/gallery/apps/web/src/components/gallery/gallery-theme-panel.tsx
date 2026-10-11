@@ -142,7 +142,7 @@ export function GalleryThemePanel({
             disabled={disabled || isDefault}
             onClick={() => setDraft(withThemeDefaults(null))}
           >
-            <RotateCcw />
+            <RotateCcw data-icon="inline-start" />
             Reset to defaults
           </Button>
           <Button size="sm" disabled={disabled || !dirty} onClick={() => onSave(draft)}>

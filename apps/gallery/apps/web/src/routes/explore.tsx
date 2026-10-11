@@ -147,7 +147,7 @@ function ArtworksWall({ search }: { search: string }) {
         count={artworks.hasNextPage ? undefined : cards.length}
         action={
           <Button variant={selectMode ? "secondary" : "ghost"} size="sm" onClick={toggleSelectMode}>
-            <CheckSquare />
+            <CheckSquare data-icon="inline-start" />
             {selectMode ? "Done" : "Select"}
           </Button>
         }
@@ -161,7 +161,7 @@ function ArtworksWall({ search }: { search: string }) {
           </p>
           {search ? null : (
             <Button className="mt-5" onClick={openImport}>
-              <Plus />
+              <Plus data-icon="inline-start" />
               Import artworks
             </Button>
           )}
@@ -244,7 +244,7 @@ function SpacesWall({ search }: { search: string }) {
             {spaces.length} {spaces.length === 1 ? "space" : "spaces"}
           </span>
           <Button size="sm" onClick={() => setEditorOpen(true)}>
-            <Plus />
+            <Plus data-icon="inline-start" />
             New gallery
           </Button>
         </div>
@@ -258,7 +258,7 @@ function SpacesWall({ search }: { search: string }) {
           </p>
           {needle ? null : (
             <Button className="mt-5" onClick={() => setEditorOpen(true)}>
-              <Plus />
+              <Plus data-icon="inline-start" />
               New gallery
             </Button>
           )}

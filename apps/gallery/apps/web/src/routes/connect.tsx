@@ -195,7 +195,7 @@ function ConnectBody() {
             disabled={busy || name.trim().length === 0}
             onClick={() => void create()}
           >
-            <Plus />
+            <Plus data-icon="inline-start" />
             Create token
           </Button>
         </div>
