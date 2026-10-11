@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,8 +7,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@aqt/gallery-ui/components/dropdown-menu";
-import { Kbd } from "@aqt/gallery-ui/components/kbd";
+} from "@aqt/ui/components/dropdown-menu";
+import { Kbd } from "@aqt/ui/components/kbd";
 import { useClerk, useUser } from "@clerk/tanstack-react-start";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Upload } from "lucide-react";

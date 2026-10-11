@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogClose,
@@ -6,8 +6,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
-import { cn } from "@aqt/gallery-ui/lib/utils";
+} from "@aqt/ui/components/dialog";
+import { cn } from "@aqt/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Expand, Footprints, Grid2X2, List, X } from "lucide-react";
 import { useEffect, useMemo } from "react";

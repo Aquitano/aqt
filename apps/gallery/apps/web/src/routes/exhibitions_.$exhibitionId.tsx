@@ -5,11 +5,11 @@ import {
   type RoomAnalysis,
   type WorldInput,
 } from "@aqt/gallery-layout";
-import { Button } from "@aqt/gallery-ui/components/button";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { Label } from "@aqt/gallery-ui/components/label";
-import { Textarea } from "@aqt/gallery-ui/components/textarea";
-import { cn } from "@aqt/gallery-ui/lib/utils";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
+import { Textarea } from "@aqt/ui/components/textarea";
+import { cn } from "@aqt/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import {

@@ -1,11 +1,11 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
-} from "@aqt/gallery-ui/components/dropdown-menu";
+} from "@aqt/ui/components/dropdown-menu";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDownWideNarrow, ChevronDown, Globe, Shapes, Tag, User } from "lucide-react";
 import type { ReactNode } from "react";

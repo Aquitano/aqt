@@ -1,16 +1,16 @@
-import { Badge } from "@aqt/gallery-ui/components/badge";
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { Kbd } from "@aqt/gallery-ui/components/kbd";
-import { ScrollArea } from "@aqt/gallery-ui/components/scroll-area";
-import { Textarea } from "@aqt/gallery-ui/components/textarea";
+} from "@aqt/ui/components/dialog";
+import { Input } from "@aqt/ui/components/input";
+import { Kbd } from "@aqt/ui/components/kbd";
+import { ScrollArea } from "@aqt/ui/components/scroll-area";
+import { Textarea } from "@aqt/ui/components/textarea";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ImageIcon, Link2, Loader2, TriangleAlert, Upload, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";

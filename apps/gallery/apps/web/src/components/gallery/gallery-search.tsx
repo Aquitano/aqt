@@ -1,4 +1,4 @@
-import { Kbd } from "@aqt/gallery-ui/components/kbd";
+import { Kbd } from "@aqt/ui/components/kbd";
 import { Search } from "lucide-react";
 import { useRef } from "react";
 

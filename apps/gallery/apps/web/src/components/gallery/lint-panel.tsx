@@ -1,5 +1,5 @@
-import { Badge } from "@aqt/gallery-ui/components/badge";
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -7,8 +7,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
-import { cn } from "@aqt/gallery-ui/lib/utils";
+} from "@aqt/ui/components/dialog";
+import { cn } from "@aqt/ui/lib/utils";
 import {
   AlertTriangle,
   CheckCircle2,

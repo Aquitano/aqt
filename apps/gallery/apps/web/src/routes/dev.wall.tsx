@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { CheckSquare, Eye, Plus } from "lucide-react";
 import { useState } from "react";
