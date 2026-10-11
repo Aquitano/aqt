@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/ibm-plex-sans";
+@import "../fonts/ioskeley-mono/ioskeley-mono.css";
 @source "../**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
@@ -75,7 +77,8 @@
 }
 
 @theme inline {
-  --font-sans: "Inter Variable", "Inter", system-ui, sans-serif;
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "Ioskeley Mono", ui-monospace, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
