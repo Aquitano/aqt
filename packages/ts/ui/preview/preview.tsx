@@ -219,6 +219,7 @@ function Controls() {
             <Badge variant="outline">Outline</Badge>
             <Badge variant="destructive">Destructive</Badge>
             <Badge variant="success">Success</Badge>
+            <Badge variant="warning">Warning</Badge>
           </div>
           <Progress value={64} />
           <div className="flex items-center gap-3">

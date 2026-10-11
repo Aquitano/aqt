@@ -37,7 +37,7 @@ For a chart shadcn lacks, such as a Sankey, copy the component's source from Kum
 
 ## Add or update components
 
-Run the shadcn CLI from this directory: `bunx --bun shadcn@latest add <name>`. To compare an installed component with upstream, use `add <name> --diff src/components/<name>.tsx`. Upstream code is formatted with `bunx oxfmt` and has to pass the strict lint rules for `packages/`. Two kinds of local change sit on top of upstream and must survive an update: the badge's `success` variant, which uses the `--success` token, and the fixes the strict lint required in chart, sidebar, sonner and a few others.
+Run the shadcn CLI from this directory: `bunx --bun shadcn@latest add <name>`. To compare an installed component with upstream, use `add <name> --diff src/components/<name>.tsx`. Upstream code is formatted with `bunx oxfmt` and has to pass the strict lint rules for `packages/`. Two kinds of local change sit on top of upstream and must survive an update: the badge's `success` and `warning` variants, which use the `--success` and `--warning` tokens, and the fixes the strict lint required in chart, sidebar, sonner and a few others.
 
 ## Preview
 
