@@ -130,6 +130,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 					continue
 				}
 				if max := o.Config.AI.MaxBytes; max > 0 && p.Size > max {
+					seen[p.ContentID] = true
 					summary.Skipped++
 					report(p, "over ai.max_bytes")
 					continue
@@ -145,6 +146,11 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 				if attempted {
 					summary.Attempted++
 					seen[p.ContentID] = true
+				}
+				if errors.Is(err, ai.ErrInput) {
+					// Validation rejected these bytes, so another copy cannot help.
+					seen[p.ContentID] = true
+					status, err = err.Error(), nil
 				}
 				if err != nil {
 					return summary, err
@@ -214,7 +220,7 @@ func readOne(ctx context.Context, w *scratch.Workspace, o Options, p store.Conte
 		return true, "", failure
 	}
 	if errors.Is(failure, ai.ErrInput) {
-		return false, failure.Error(), nil
+		return false, "", failure
 	}
 	if err := claim.Save(ctx, result, failure, time.Since(start)); err != nil {
 		return true, "", err

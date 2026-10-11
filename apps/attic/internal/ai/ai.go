@@ -101,7 +101,7 @@ func New(ctx context.Context, cfg config.AI, task string) (Provider, error) {
 				return nil, errors.New("ai.codex must point to the native codex.exe, not a shell shim")
 			}
 		}
-		return &codex{key: Key{task, "codex", cfg.Model, task + "-v1"}, binary: binary}, nil
+		return &codex{key: Key{task, "codex", cfg.Model, task + "-v2"}, binary: binary}, nil
 	default:
 		return nil, fmt.Errorf("unknown AI provider %q; use tesseract, openai or codex", cfg.Provider)
 	}

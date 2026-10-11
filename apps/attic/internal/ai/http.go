@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"os"
 	"strings"
@@ -33,6 +34,11 @@ func newHTTP(cfg config.AI, task string) (Provider, error) {
 	endpoint, err := url.Parse(strings.TrimRight(cfg.Endpoint, "/"))
 	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "http" && endpoint.Scheme != "https") || endpoint.User != nil || endpoint.RawQuery != "" || endpoint.Fragment != "" {
 		return nil, errors.New("ai.endpoint must be an HTTP(S) base URL without credentials, query or fragment")
+	}
+	host := strings.TrimSuffix(strings.ToLower(endpoint.Hostname()), ".")
+	addr, _ := netip.ParseAddr(host)
+	if endpoint.Scheme == "http" && host != "localhost" && !addr.Unmap().IsLoopback() {
+		return nil, errors.New("ai.endpoint requires HTTPS unless it uses localhost or a loopback IP")
 	}
 	parameter := cfg.TokenParameter
 	if parameter != "max_tokens" && parameter != "max_completion_tokens" {
@@ -99,7 +105,10 @@ func (p *httpProvider) Read(ctx context.Context, path string) (Result, error) {
 	}
 	data, err = io.ReadAll(io.LimitReader(response.Body, 4<<20+1))
 	if err != nil {
-		return Result{}, err
+		if ctx.Err() != nil {
+			return Result{}, ctx.Err()
+		}
+		return Result{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	if len(data) > 4<<20 {
 		return Result{}, errors.New("vision response exceeds 4 MiB")

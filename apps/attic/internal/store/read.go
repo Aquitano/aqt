@@ -43,7 +43,7 @@ type Hit struct {
 }
 
 const hitColumns = `e.id, e.volume_id::text, v.label, e.kind, e.path, e.size_bytes, e.modified_at,
-	e.missing_scan is not null, coalesce(` + refSQL + `, '')`
+	e.missing_scan is not null as missing, coalesce(` + refSQL + `, '')`
 
 const hitFrom = ` from entries e join volumes v on v.id = e.volume_id left join contents c on c.id = e.content_id`
 
@@ -364,17 +364,37 @@ func copiesOf(o SearchOptions, self bool) copies {
 // occurrences lists where a content lives, present copies first. presentOnly
 // drops missing ones; c narrows them further.
 func (s *Store) occurrences(ctx context.Context, contentID, except int64, presentOnly bool, c copies) ([]Hit, error) {
-	rows, err := s.pool.Query(ctx, `select `+hitColumns+hitFrom+`
-		where e.content_id = $1 and e.id <> $2 and (not $3 or e.missing_scan is null)
+	places, err := s.occurrencesMany(ctx, []int64{contentID}, except, presentOnly, c)
+	return places[contentID], err
+}
+
+func (s *Store) occurrencesMany(ctx context.Context, ids []int64, except int64, presentOnly bool, c copies) (map[int64][]Hit, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `select places.* from (select distinct unnest($1::bigint[]) as id) selected
+		cross join lateral (select `+hitColumns+`, e.content_id`+hitFrom+`
+		where e.content_id = selected.id and e.id <> $2 and (not $3 or e.missing_scan is null)
 		  and ($4::text[] is null or e.volume_id::text = any($4))
 		  and ($5 = '' or (e.path collate "C" > $5 || '/' and e.path collate "C" < $5 || '0') or ($6 and e.path = $5))
 		  and ($7 = '' or e.ext = $7)
-		order by e.missing_scan is not null, v.label, e.path collate "C" limit 100`,
-		contentID, except, presentOnly, c.volumes, c.under, c.self, c.ext)
+		order by e.missing_scan is not null, v.label, e.path collate "C", e.id limit 100) places
+		order by places.content_id, places.missing, places.label, places.path collate "C", places.id`,
+		ids, except, presentOnly, c.volumes, c.under, c.self, c.ext)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Hit, error) { return scanHit(r) })
+	defer rows.Close()
+	places := make(map[int64][]Hit)
+	for rows.Next() {
+		var id int64
+		h, err := scanHit(rows, &id)
+		if err != nil {
+			return nil, err
+		}
+		places[id] = append(places[id], h)
+	}
+	return places, rows.Err()
 }
 
 // ScanInfo is one scan as `attic scans`, `attic volumes` and `attic skips`

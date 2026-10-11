@@ -79,6 +79,19 @@ func TestRunBoundsOutputAndTime(t *testing.T) {
 	}
 }
 
+func TestRunRelativeExecutableFromAnotherDirectory(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(filepath.Dir(binary))
+	t.Setenv("ATTIC_PROCESS_HELPER", "stderr")
+	out, err := Run(t.Context(), "."+string(filepath.Separator)+filepath.Base(binary), t.TempDir(), nil, nil, 1024)
+	if err != nil || string(out) != "result" {
+		t.Fatalf("relative executable: %q %v", out, err)
+	}
+}
+
 // The grandchild writes continuously. Both cancellation and an exited launcher
 // must stop those writes before Run returns, on Unix and Windows alike.
 func TestRunOwnsGrandchildren(t *testing.T) {

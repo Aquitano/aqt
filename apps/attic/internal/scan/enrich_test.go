@@ -91,7 +91,24 @@ func TestEnrichDedupRetriesVersionsAndSearch(t *testing.T) {
 	if err != nil || len(hits) != 4 {
 		t.Fatalf("hits %+v %v", hits, err)
 	}
-	results, err := st.Analyses(t.Context(), 0, hits[0].Ref)
+	for _, h := range hits {
+		if len(h.Places) == 0 {
+			t.Fatalf("missing copies: %+v", h)
+		}
+		for _, place := range h.Places {
+			if place.Ref != h.Ref {
+				t.Fatalf("mixed contents: %+v", h)
+			}
+		}
+		want := 2
+		if h.Places[0].Path == "/c.png" {
+			want = 1
+		}
+		if len(h.Places) != want {
+			t.Fatalf("copies: %+v", h)
+		}
+	}
+	results, err := st.Analyses(t.Context(), 0, "attic:"+strings.ToUpper(hits[0].Ref))
 	if err != nil || len(results) != 2 {
 		t.Fatalf("analyses %+v %v", results, err)
 	}
@@ -155,7 +172,27 @@ func TestEnrichSelectionRulesChangedFilesLimitAndCancel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	o.Selection.Refs = []string{files[0].Ref}
+	for _, tc := range []struct {
+		name    string
+		entries []int64
+		refs    []string
+		want    int
+	}{
+		{"entry", []int64{files[0].ID}, nil, 1},
+		{"ref", nil, []string{files[0].Ref}, 1},
+		{"mixed", []int64{files[1].ID}, []string{files[0].Ref}, 2},
+	} {
+		selection := store.AISelection{Volumes: []string{vols[0].ID}, Extensions: []string{"png"}, Key: p.key, Force: true, Entries: tc.entries, Refs: tc.refs}
+		selected, err := st.NextAI(t.Context(), selection, 0, 20)
+		if err != nil || len(selected) != tc.want {
+			t.Fatalf("%s selection: %+v %v", tc.name, selected, err)
+		}
+		selectedVolumes, err := st.AIVolumes(t.Context(), selection)
+		if err != nil || len(selectedVolumes) != 1 || selectedVolumes[0] != vols[0].ID {
+			t.Fatalf("%s volumes: %v %v", tc.name, selectedVolumes, err)
+		}
+	}
+	o.Selection.Refs = []string{"attic:" + strings.ToUpper(files[0].Ref)}
 	o.Config.NameOnly = nil
 	p.key.Model = "two"
 	s, err = enrich.Run(t.Context(), st, o)
@@ -236,8 +273,9 @@ func TestEnrichNewWorkPrecedesPermanentFailures(t *testing.T) {
 }
 
 func TestEnrichUnavailableProviderAndRejectedInput(t *testing.T) {
-	for _, unavailable := range []bool{true, false} {
-		t.Run(fmt.Sprint(unavailable), func(t *testing.T) {
+	for _, mode := range []string{"unavailable", "disconnect", "rejected"} {
+		t.Run(mode, func(t *testing.T) {
+			unavailable := mode != "rejected"
 			st, dsn := storetest.New(t)
 			root := t.TempDir()
 			data, err := os.ReadFile("../ai/testdata/invoice.png")
@@ -249,12 +287,18 @@ func TestEnrichUnavailableProviderAndRejectedInput(t *testing.T) {
 				write(t, root, "d.png", string(data)+"different content")
 			} else {
 				write(t, root, "a.png", strings.Repeat("x", 21<<20))
+				write(t, root, "a-copy.png", strings.Repeat("x", 21<<20))
 				write(t, root, "b.png", "not an image")
 			}
 			scanAt(t, st, root, testVolume)
 			var requests atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				requests.Add(1)
+				if mode == "disconnect" {
+					w.Header().Set("Content-Length", "1000")
+					fmt.Fprint(w, `{"choices":`)
+					return
+				}
 				if unavailable {
 					w.WriteHeader(http.StatusNotFound)
 					fmt.Fprint(w, `{"error":"model not found"}`)
@@ -281,7 +325,7 @@ func TestEnrichUnavailableProviderAndRejectedInput(t *testing.T) {
 			}
 			rows := storetest.QueryInt(t, dsn, "select count(*) from ai_results")
 			if unavailable {
-				if !errors.Is(err, ai.ErrUnavailable) || !strings.Contains(err.Error(), "model not found") || rows != 0 {
+				if !errors.Is(err, ai.ErrUnavailable) || rows != 0 {
 					t.Fatalf("outage: %+v %v rows=%d", s, err, rows)
 				}
 			} else if err != nil || s.Skipped != 2 || s.Saved != 1 || rows != 1 {

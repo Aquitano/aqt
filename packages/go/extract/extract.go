@@ -52,8 +52,8 @@ type Result struct {
 	// OCR'd body from a parsed one without a second column of meaning.
 	Extractor string
 	Status    Status
-	// Truncated marks text cut at MaxChars. The status stays ok: what was kept
-	// is as good as any other text.
+	// Truncated marks omitted text or OCR pages. Status can be ok or empty
+	// depending on whether the completed portion contains any text.
 	Truncated bool
 	// Err carries why a failure failed. Never fatal to a run: one corrupt PDF
 	// must not stop the pass.

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -23,21 +24,44 @@ type AISelection struct {
 	Retry      bool
 }
 
-func (o AISelection) args(after int64) []any {
-	return []any{after, o.Volumes, o.Extensions, strings.TrimSuffix(o.Under, "/"), nonNil(o.Entries), nonNil(o.Refs), o.Key.Task, o.Key.Provider, o.Key.Model, o.Key.PromptVersion, o.Force}
-}
-
-const aiCandidates = ` from entries e join contents c on c.id=e.content_id
- left join ai_results a on a.content_id=c.id and a.task=$7 and a.provider=$8 and a.model=$9 and a.prompt_version=$10
+// candidates keeps ref-only selections on the digest-prefix index. Combining
+// entry and ref predicates with OR across the join prevents that index lookup.
+func (o AISelection) candidates(after int64) (string, []any, error) {
+	prefixes := make([][]byte, 0, len(o.Refs))
+	for _, ref := range o.Refs {
+		r, ok := ParseRef(ref)
+		if !ok {
+			return "", nil, fmt.Errorf("not a ref: %q", ref)
+		}
+		prefix, _ := hex.DecodeString(r)
+		prefixes = append(prefixes, prefix)
+	}
+	q := &search{args: []any{after, o.Volumes, o.Extensions, strings.TrimSuffix(o.Under, "/"), o.Key.Task, o.Key.Provider, o.Key.Model, o.Key.PromptVersion, o.Force}}
+	sql := ` from entries e join contents c on c.id=e.content_id
+ left join ai_results a on a.content_id=c.id and a.task=$5 and a.provider=$6 and a.model=$7 and a.prompt_version=$8
  where e.id > $1 and e.volume_id::text=any($2) and e.kind='file' and e.hash_state='done' and e.missing_scan is null
  and e.ext=any($3) and ($4='' or (e.path collate "C" > $4 || '/' and e.path collate "C" < $4 || '0'))
- and (cardinality($5::bigint[])+cardinality($6::text[])=0 or e.id=any($5) or ` + refSQL + `=any($6))
- and ($7 <> 'ocr' or e.ext <> 'pdf' or exists (select 1 from texts t where t.content_id=c.id and t.status='needs_ocr'))
- and ($11 or a.id is null or a.status='failed')`
+ and ($5 <> 'ocr' or e.ext <> 'pdf' or exists (select 1 from texts t where t.content_id=c.id and t.status='needs_ocr'))
+ and ($9 or a.id is null or a.status='failed')`
+	switch {
+	case len(o.Entries) > 0 && len(prefixes) > 0:
+		sql += ` and e.id in (select unnest(` + q.next(o.Entries) + `::bigint[]) union
+ select pe.id from entries pe join contents pc on pc.id=pe.content_id where substr(pc.blake3,1,8)=any(` + q.next(prefixes) + `::bytea[]))`
+	case len(o.Entries) > 0:
+		sql += ` and e.id=any(` + q.next(o.Entries) + `::bigint[])`
+	case len(prefixes) > 0:
+		sql += ` and substr(c.blake3,1,8)=any(` + q.next(prefixes) + `::bytea[])`
+	}
+	return sql, q.args, nil
+}
 
 // AIVolumes preflights all selected source disks before creating scratch files.
 func (s *Store) AIVolumes(ctx context.Context, o AISelection) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `select distinct e.volume_id::text `+aiCandidates, o.args(0)...)
+	sql, args, err := o.candidates(0)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx, `select distinct e.volume_id::text `+sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -45,9 +69,15 @@ func (s *Store) AIVolumes(ctx context.Context, o AISelection) ([]string, error) 
 }
 
 func (s *Store) NextAI(ctx context.Context, o AISelection, after int64, limit int) ([]ContentFile, error) {
-	rows, err := s.pool.Query(ctx, `select e.id,e.path,e.volume_id::text,c.id,c.size_bytes,c.blake3,`+refSQL+aiCandidates+`
- and ($11 or (not $13 and a.id is null) or ($13 and a.status='failed'))
- order by e.id limit $12`, append(o.args(after), limit, o.Retry)...)
+	sql, args, err := o.candidates(after)
+	if err != nil {
+		return nil, err
+	}
+	q := &search{args: args}
+	retryParam, limitParam := q.next(o.Retry), q.next(limit)
+	rows, err := s.pool.Query(ctx, `select e.id,e.path,e.volume_id::text,c.id,c.size_bytes,c.blake3,`+refSQL+sql+
+		` and ($9 or (not `+retryParam+` and a.id is null) or (`+retryParam+` and a.status='failed'))
+ order by e.id limit `+limitParam, q.args...)
 
 	if err != nil {
 		return nil, err
@@ -59,13 +89,6 @@ func (s *Store) NextAI(ctx context.Context, o AISelection, after int64, limit in
 		copy(p.Digest[:], hash)
 		return p, err
 	})
-}
-
-func nonNil[T any](values []T) []T {
-	if values == nil {
-		return []T{}
-	}
-	return values
 }
 
 // AIClaim holds the content-policy lock and saves through the same connection.
@@ -151,17 +174,18 @@ func (c *AIClaim) Save(ctx context.Context, result ai.Result, failure error, ela
 }
 
 func (s *Store) Analyses(ctx context.Context, entryID int64, ref string) ([]Analysis, error) {
+	var prefix []byte
 	if entryID == 0 {
-		var ok bool
-		ref, ok = ParseRef(ref)
+		r, ok := ParseRef(ref)
 		if !ok {
 			return nil, fmt.Errorf("not a ref: %q", ref)
 		}
+		prefix, _ = hex.DecodeString(r)
 	}
 	rows, err := s.pool.Query(ctx, `select a.id,`+refSQL+`,a.task,a.provider,a.model,a.prompt_version,a.status,a.text,a.detail,a.reported_model,a.elapsed_ms,a.attempts,a.updated_at
  from ai_results a join contents c on c.id=a.content_id
- where ($1::bigint<>0 and c.id=(select content_id from entries where id=$1)) or ($1::bigint=0 and `+refSQL+`=$2)
- order by a.updated_at desc,a.id desc`, entryID, ref)
+ where ($1::bigint<>0 and c.id=(select content_id from entries where id=$1)) or ($1::bigint=0 and substr(c.blake3,1,8)=$2)
+ order by a.updated_at desc,a.id desc`, entryID, prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -224,10 +248,12 @@ func (s *Store) SearchAI(ctx context.Context, o SearchOptions) ([]AIHit, error) 
 	if err != nil {
 		return nil, err
 	}
+	places, err := s.occurrencesMany(ctx, ids, 0, false, copiesOf(o, false))
+	if err != nil {
+		return nil, err
+	}
 	for i, id := range ids {
-		if hits[i].Places, err = s.occurrences(ctx, id, 0, false, copiesOf(o, false)); err != nil {
-			return nil, err
-		}
+		hits[i].Places = places[id]
 	}
 	return hits, nil
 }

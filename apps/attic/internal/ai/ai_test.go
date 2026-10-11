@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -130,6 +131,32 @@ func TestHTTPDoesNotFollowRedirects(t *testing.T) {
 	}
 }
 
+func TestHTTPRequiresTLSOutsideLoopback(t *testing.T) {
+	for _, tc := range []struct {
+		endpoint string
+		allowed  bool
+	}{
+		{"http://localhost:11434/v1", true},
+		{"http://127.0.0.1:11434/v1", true},
+		{"http://[::1]:11434/v1", true},
+		{"http://[::ffff:127.0.0.1]:11434/v1", true},
+		{"https://vision.example/v1", true},
+		{"http://vision.example/v1", false},
+		{"http://192.168.1.2:11434/v1", false},
+		{"http://localhost.example/v1", false},
+		{"http://127.0.0.1.example/v1", false},
+	} {
+		t.Run(tc.endpoint, func(t *testing.T) {
+			cfg := config.Default().AI
+			cfg.Model, cfg.Endpoint = "test", tc.endpoint
+			_, err := New(t.Context(), cfg, Describe)
+			if (err == nil) != tc.allowed {
+				t.Fatalf("allowed=%v err=%v", tc.allowed, err)
+			}
+		})
+	}
+}
+
 func TestHTTPContextCancels(t *testing.T) {
 	started := make(chan struct{})
 	done := make(chan struct{})
@@ -154,7 +181,7 @@ func TestHTTPContextCancels(t *testing.T) {
 func TestMain(m *testing.M) {
 	switch os.Getenv("ATTIC_AI_HELPER") {
 	case "codex":
-		for _, flag := range []string{"exec", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "read-only", "approval_policy=\"never\""} {
+		for _, flag := range []string{"exec", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check", "--strict-config", `default_permissions="attic-image"`, `features.shell_tool=false`, `features.view_image=false`, `features.plugins=false`, `approval_policy="never"`} {
 			if !slices.Contains(os.Args, flag) {
 				fmt.Fprintln(os.Stderr, "missing", flag)
 				os.Exit(2)
@@ -174,6 +201,9 @@ func TestMain(m *testing.M) {
 		fmt.Fprint(os.Stderr, "diagnostic that must not be indexed")
 		fmt.Print("A yellow submarine")
 		os.Exit(0)
+	case "codex-failed":
+		fmt.Fprintln(os.Stderr, "Codex native executable missing")
+		os.Exit(1)
 	case "ocr":
 		if slices.Contains(os.Args, "--version") {
 			fmt.Println("tesseract test-1")
@@ -183,6 +213,24 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+func TestCodexStartupFailureIsUnavailable(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ATTIC_AI_HELPER", "codex-failed")
+	cfg := config.Default().AI
+	cfg.Provider, cfg.Model, cfg.Codex = "codex", "test", binary
+	p, err := New(t.Context(), cfg, Describe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.Read(t.Context(), testImage(t))
+	if !errors.Is(err, ErrUnavailable) || !strings.Contains(err.Error(), "native executable missing") {
+		t.Fatalf("startup error: %v", err)
+	}
 }
 
 func TestCodexAndOCRUseCopies(t *testing.T) {
