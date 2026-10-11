@@ -75,11 +75,27 @@ func (p *httpProvider) Read(ctx context.Context, path string) (Result, error) {
 	}
 	response, err := p.client.Do(req)
 	if err != nil {
-		return Result{}, err
+		if ctx.Err() != nil {
+			return Result{}, ctx.Err()
+		}
+		return Result{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return Result{}, fmt.Errorf("vision provider returned HTTP %d", response.StatusCode)
+		detail, _ := io.ReadAll(io.LimitReader(response.Body, 512))
+		message := strings.TrimSpace(strings.ToValidUTF8(string(detail), "�"))
+		if p.apiKey != "" {
+			message = strings.ReplaceAll(message, p.apiKey, "[redacted]")
+		}
+		failure := fmt.Errorf("vision provider returned HTTP %d: %s", response.StatusCode, message)
+		switch response.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusTooManyRequests:
+			return Result{}, fmt.Errorf("%w: %w", ErrUnavailable, failure)
+		}
+		if response.StatusCode >= 500 {
+			return Result{}, fmt.Errorf("%w: %w", ErrUnavailable, failure)
+		}
+		return Result{}, failure
 	}
 	data, err = io.ReadAll(io.LimitReader(response.Body, 4<<20+1))
 	if err != nil {
@@ -119,21 +135,21 @@ func (p *httpProvider) Read(ctx context.Context, path string) (Result, error) {
 func imageBytes(path string) ([]byte, string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("%w: %w", ErrInput, err)
 	}
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, 20<<20+1))
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("%w: %w", ErrInput, err)
 	}
 	if len(data) > 20<<20 {
-		return nil, "", errors.New("vision image exceeds 20 MiB")
+		return nil, "", fmt.Errorf("%w: vision image exceeds 20 MiB", ErrInput)
 	}
 	mime := http.DetectContentType(data)
 	switch mime {
 	case "image/png", "image/jpeg", "image/gif", "image/webp":
 		return data, mime, nil
 	default:
-		return nil, "", fmt.Errorf("vision input is %s; supported images are PNG, JPEG, GIF and WebP", mime)
+		return nil, "", fmt.Errorf("%w: vision input is %s; supported images are PNG, JPEG, GIF and WebP", ErrInput, mime)
 	}
 }

@@ -575,8 +575,7 @@ func (r *run) listArchives(ctx context.Context) error {
 
 func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
-	path := lowerComponents(a.Path)
-	if excluded, _ := r.rules.Excluded(path, false); excluded || r.rules.NameOnly(path) {
+	if r.rules.SkipContent(a.Path) {
 		r.log.Debug("archive left unread by the rules", "path", a.Path)
 		return nil
 	}
@@ -678,8 +677,7 @@ func (r *run) readTexts(ctx context.Context) error {
 
 func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
-	path := lowerComponents(p.Path)
-	if excluded, _ := r.rules.Excluded(path, false); excluded || r.rules.NameOnly(path) {
+	if r.rules.SkipContent(p.Path) {
 		r.log.Debug("document left unread by the rules", "path", p.Path)
 		return nil
 	}

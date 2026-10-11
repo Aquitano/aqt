@@ -3,9 +3,13 @@ package scan
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/aquitano/aqt/apps/attic/internal/ai"
@@ -191,5 +195,98 @@ func TestEnrichPDFQueueAndFolderSelection(t *testing.T) {
 	files, err := st.NextAI(t.Context(), store.AISelection{Volumes: []string{vols[0].ID}, Under: "/docs", Extensions: []string{"pdf", "png"}, Key: ai.Key{Task: ai.OCR, Provider: "test", Model: "one", PromptVersion: "v1"}}, 0, 20)
 	if err != nil || len(files) != 1 || files[0].Path != "/docs/scanned.pdf" {
 		t.Fatalf("PDF queue %+v %v", files, err)
+	}
+}
+
+func TestEnrichNewWorkPrecedesPermanentFailures(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "a.png", "poison")
+	write(t, root, "b.png", "good")
+	scanAt(t, st, root, testVolume)
+	vols, err := st.KnownVolumes(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &visionStub{key: ai.Key{Task: ai.Describe, Provider: "test", Model: "one", PromptVersion: "v1"}, read: func(_ context.Context, path string) (ai.Result, error) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return ai.Result{}, err
+		}
+		if string(data) == "poison" {
+			return ai.Result{}, errors.New("permanent failure")
+		}
+		return ai.Result{Text: "submarine"}, nil
+	}}
+	cfg := config.Default()
+	cfg.AI.Temp = t.TempDir()
+	o := enrich.Options{Config: cfg, Provider: p, Limit: 1, Mounts: map[string]disk.Volume{vols[0].ID: {Fingerprint: testVolume, Root: root}}}
+	first, err := enrich.Run(t.Context(), st, o)
+	if err != nil || first.Failed != 1 {
+		t.Fatalf("first %+v %v", first, err)
+	}
+	second, err := enrich.Run(t.Context(), st, o)
+	if err != nil || second.Saved != 1 {
+		t.Fatalf("second %+v %v", second, err)
+	}
+	third, err := enrich.Run(t.Context(), st, o)
+	if err != nil || third.Failed != 1 {
+		t.Fatalf("retry %+v %v", third, err)
+	}
+}
+
+func TestEnrichUnavailableProviderAndRejectedInput(t *testing.T) {
+	for _, unavailable := range []bool{true, false} {
+		t.Run(fmt.Sprint(unavailable), func(t *testing.T) {
+			st, dsn := storetest.New(t)
+			root := t.TempDir()
+			data, err := os.ReadFile("../ai/testdata/invoice.png")
+			if err != nil {
+				t.Fatal(err)
+			}
+			write(t, root, "c.png", string(data))
+			if unavailable {
+				write(t, root, "d.png", string(data)+"different content")
+			} else {
+				write(t, root, "a.png", strings.Repeat("x", 21<<20))
+				write(t, root, "b.png", "not an image")
+			}
+			scanAt(t, st, root, testVolume)
+			var requests atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
+				if unavailable {
+					w.WriteHeader(http.StatusNotFound)
+					fmt.Fprint(w, `{"error":"model not found"}`)
+					return
+				}
+				fmt.Fprint(w, `{"choices":[{"finish_reason":"stop","message":{"content":"invoice"}}]}`)
+			}))
+			defer server.Close()
+			cfg := config.Default()
+			cfg.AI.Temp = t.TempDir()
+			cfg.AI.Model = "test"
+			cfg.AI.Endpoint = server.URL
+			p, err := ai.New(t.Context(), cfg.AI, ai.Describe)
+			if err != nil {
+				t.Fatal(err)
+			}
+			vols, err := st.KnownVolumes(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err := enrich.Run(t.Context(), st, enrich.Options{Config: cfg, Provider: p, Limit: 20, Mounts: map[string]disk.Volume{vols[0].ID: {Fingerprint: testVolume, Root: root}}})
+			if requests.Load() != 1 || s.Attempted != 1 {
+				t.Fatalf("requests=%d summary=%+v err=%v", requests.Load(), s, err)
+			}
+			rows := storetest.QueryInt(t, dsn, "select count(*) from ai_results")
+			if unavailable {
+				if !errors.Is(err, ai.ErrUnavailable) || !strings.Contains(err.Error(), "model not found") || rows != 0 {
+					t.Fatalf("outage: %+v %v rows=%d", s, err, rows)
+				}
+			} else if err != nil || s.Skipped != 2 || s.Saved != 1 || rows != 1 {
+				t.Fatalf("inputs: %+v %v rows=%d", s, err, rows)
+			}
+		})
 	}
 }

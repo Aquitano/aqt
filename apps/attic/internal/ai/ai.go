@@ -7,12 +7,22 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/process"
 	"github.com/aquitano/aqt/packages/go/extract"
+)
+
+var (
+	// ErrUnavailable means the provider cannot serve this run; do not attach it
+	// to each content in the selection.
+	ErrUnavailable = errors.New("provider unavailable")
+	// ErrInput means validation rejected the copy before any provider work.
+	ErrInput = errors.New("unsupported provider input")
 )
 
 const OCR = "ocr"
@@ -73,7 +83,7 @@ func New(ctx context.Context, cfg config.AI, task string) (Provider, error) {
 			return nil, err
 		}
 		model := strings.SplitN(strings.TrimSpace(string(data)), "\n", 2)[0]
-		key := Key{Task: task, Provider: "tesseract", Model: model, PromptVersion: fmt.Sprintf("ocr-v1;lang=%s;pages=%d;chars=%d", cfg.OCRLang, cfg.OCRMaxPages, MaxText)}
+		key := Key{Task: task, Provider: "tesseract", Model: model, PromptVersion: fmt.Sprintf("ocr-v2;lang=%s;pages=%d;chars=%d", cfg.OCRLang, cfg.OCRMaxPages, MaxText)}
 		return &ocr{key: key, options: options}, nil
 	case "openai":
 		return newHTTP(cfg, task)
@@ -84,6 +94,12 @@ func New(ctx context.Context, cfg config.AI, task string) (Provider, error) {
 		binary, err := exec.LookPath(cfg.Codex)
 		if err != nil {
 			return nil, err
+		}
+		if runtime.GOOS == "windows" {
+			ext := strings.ToLower(filepath.Ext(binary))
+			if ext == ".cmd" || ext == ".bat" {
+				return nil, errors.New("ai.codex must point to the native codex.exe, not a shell shim")
+			}
 		}
 		return &codex{key: Key{task, "codex", cfg.Model, task + "-v1"}, binary: binary}, nil
 	default:

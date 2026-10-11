@@ -62,9 +62,7 @@ func (r *run) metadataBatch(ctx context.Context, w *scratch.Workspace, batch []s
 			return err
 		}
 		r.count(p.ContentID)
-		path := lowerComponents(p.Path)
-		excluded, _ := r.rules.Excluded(path, false)
-		if excluded || r.rules.NameOnly(path) || queued[p.ContentID] {
+		if r.rules.SkipContent(p.Path) || queued[p.ContentID] {
 			continue
 		}
 		if max := r.o.Config.Metadata.MaxBytes; max > 0 && p.Size > max {

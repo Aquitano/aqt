@@ -24,7 +24,7 @@ func Run(ctx context.Context, binary, dir string, args []string, input io.Reader
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, &out, &stderr
 	cmd.Dir = dir
 	cmd.WaitDelay = 2 * time.Second
-	err := cmd.Run()
+	err := runTree(cmd)
 	if out.exceeded {
 		return nil, ErrOutputLimit
 	}

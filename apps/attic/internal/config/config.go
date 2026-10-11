@@ -228,3 +228,18 @@ func (r Rules) Describe() (exclude, nameOnly []string) {
 	}
 	return exclude, nameOnly
 }
+
+// SkipContent applies read exclusions to a catalogued path, including parent
+// directories that a fresh walk would not enter.
+func (r Rules) SkipContent(path string) bool {
+	parts := strings.Split(strings.ToLower(strings.TrimPrefix(path, "/")), "/")
+	if excluded, _ := r.Excluded(parts, false); excluded || r.NameOnly(parts) {
+		return true
+	}
+	for i := 1; i < len(parts); i++ {
+		if excluded, _ := r.Excluded(parts[:i], true); excluded {
+			return true
+		}
+	}
+	return false
+}

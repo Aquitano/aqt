@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -215,6 +216,11 @@ func TestCorruptPDFDoesNotPanic(t *testing.T) {
 // its FlateDecode content stream.
 func onePagePDF(t *testing.T, content []byte) []byte {
 	t.Helper()
+	return pagePDF(t, content, 612, 792)
+}
+
+func pagePDF(t *testing.T, content []byte, width, height int) []byte {
+	t.Helper()
 	var z bytes.Buffer
 	zw := zlib.NewWriter(&z)
 	if _, err := zw.Write(content); err != nil {
@@ -233,7 +239,7 @@ func onePagePDF(t *testing.T, content []byte) []byte {
 	buf.WriteString("%PDF-1.4\n")
 	obj("<< /Type /Catalog /Pages 2 0 R >>")
 	obj("<< /Type /Pages /Kids [3 0 R] /Count 1 >>")
-	obj("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> >>")
+	obj(fmt.Sprintf("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %d %d] /Contents 4 0 R /Resources << >> >>", width, height))
 	offsets = append(offsets, buf.Len())
 	fmt.Fprintf(&buf, "4 0 obj\n<< /Length %d /Filter /FlateDecode >>\nstream\n", z.Len())
 	buf.Write(z.Bytes())
@@ -421,5 +427,18 @@ func TestOCROutputLimitsAndPartialPages(t *testing.T) {
 	text, cut, err := ocrPDF(t.Context(), write(t, "scan.pdf", []byte("%PDF")), Options{PDFToPPM: ppm, Tesseract: tess, MaxChars: 1024})
 	if err != nil || !cut || !strings.Contains(text, "first page") {
 		t.Fatalf("partial pages: %q %v %v", text, cut, err)
+	}
+}
+
+func TestOCRDoesNotUpscaleSmallPDFPages(t *testing.T) {
+	ppm, err := exec.LookPath("pdftoppm")
+	if err != nil {
+		t.Skip("Poppler is not installed")
+	}
+	tess := fakeBin(t, "tesseract", `od -An -tu4 --endian=big -j16 -N4 "$1"`)
+	pdf := write(t, "small.pdf", pagePDF(t, []byte("q Q"), 72, 72))
+	text, cut, err := ocrPDF(t.Context(), pdf, Options{Tesseract: tess, PDFToPPM: ppm, OCRMaxPages: 1, MaxChars: 1024})
+	if err != nil || cut || strings.TrimSpace(text) != "300" {
+		t.Fatalf("one inch at 300 dpi: %q cut=%v err=%v", text, cut, err)
 	}
 }

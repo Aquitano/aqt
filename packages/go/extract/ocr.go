@@ -45,9 +45,8 @@ func ocrPDF(ctx context.Context, path string, o Options) (string, bool, error) {
 
 	prefix := filepath.Join(dir, "page")
 	// 300 dpi is tesseract's documented sweet spot: below it accuracy drops
-	// sharply, above it costs time for nothing. The pixel cap bounds unusually
-	// large page dimensions as well as page count.
-	cmd := exec.CommandContext(ctx, o.PDFToPPM, "-r", "300", "-scale-to", "4096", "-png",
+	// sharply, above it costs time for nothing.
+	cmd := exec.CommandContext(ctx, o.PDFToPPM, "-r", "300", "-png",
 		"-f", "1", "-l", strconv.Itoa(o.OCRMaxPages+1), path, prefix)
 	stderr := ocrBuffer{left: 8192}
 	cmd.Stderr = &stderr

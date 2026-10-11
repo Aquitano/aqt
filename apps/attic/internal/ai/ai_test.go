@@ -79,11 +79,12 @@ func TestHTTPVisionRequestAndProvenance(t *testing.T) {
 }
 
 func TestHTTPVisionFailures(t *testing.T) {
+	t.Setenv("ATTIC_TEST_API_KEY", "test-provider-key")
 	for _, tc := range []struct {
 		name, body string
 		status     int
 	}{
-		{"unauthorized", `secret echoed by upstream`, 401},
+		{"unauthorized", `invalid credentials: test-provider-key`, 401},
 		{"invalid", "not json", 200},
 		{"refusal", `{"choices":[{"finish_reason":"stop","message":{"content":"","refusal":"no"}}]}`, 200},
 		{"tool call", `{"choices":[{"finish_reason":"tool_calls","message":{"content":"claim"}}]}`, 200},
@@ -96,12 +97,13 @@ func TestHTTPVisionFailures(t *testing.T) {
 			cfg := config.Default().AI
 			cfg.Model = "test"
 			cfg.Endpoint = server.URL
+			cfg.APIKeyEnv = "ATTIC_TEST_API_KEY"
 			p, err := New(t.Context(), cfg, Describe)
 			if err != nil {
 				t.Fatal(err)
 			}
 			_, err = p.Read(t.Context(), testImage(t))
-			if err == nil || strings.Contains(err.Error(), "secret echoed") {
+			if err == nil || strings.Contains(err.Error(), "test-provider-key") {
 				t.Fatalf("err %v", err)
 			}
 		})

@@ -69,13 +69,22 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 	selection.Volumes = nil
 	rules := map[string]config.Rules{}
 	for id, m := range o.Mounts {
-		if err := scratch.CheckVolume(m.Fingerprint, temp); err != nil {
-			return summary, err
-		}
 		selection.Volumes = append(selection.Volumes, id)
 		rules[id] = o.Config.Rules(id, m.Label)
 	}
 	slices.Sort(selection.Volumes)
+	selected, err := st.AIVolumes(ctx, selection)
+	if err != nil {
+		return summary, err
+	}
+	if len(selected) == 0 {
+		return summary, nil
+	}
+	for _, id := range selected {
+		if err := scratch.CheckVolume(o.Mounts[id].Fingerprint, temp); err != nil {
+			return summary, err
+		}
+	}
 	w, err := scratch.New(temp, log)
 	if err != nil {
 		return summary, err
@@ -91,61 +100,68 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 		}
 	}
 	seen := map[int64]bool{}
-	var after int64
-	for summary.Attempted < o.Limit {
-		batch, err := st.NextAI(ctx, selection, after, 64)
-		if err != nil || len(batch) == 0 {
-			return summary, err
+	// New work always precedes retries: a permanent failure must not take the
+	// first slot forever on every bounded run.
+	for _, retry := range []bool{false, true} {
+		if retry && selection.Force {
+			break
 		}
-		for _, p := range batch {
-			after = p.ID
-			if err := ctx.Err(); err != nil {
-				return summary, err
-			}
-			if seen[p.ContentID] {
-				continue
-			}
-			r := rules[p.VolumeID]
-			parts := strings.Split(strings.ToLower(strings.TrimPrefix(p.Path, "/")), "/")
-			excluded, _ := r.Excluded(parts, false)
-			for i := 1; i < len(parts) && !excluded; i++ {
-				excluded, _ = r.Excluded(parts[:i], true)
-			}
-			if excluded || r.NameOnly(parts) {
-				summary.Skipped++
-				report(p, "excluded by current rules")
-				continue
-			}
-			if max := o.Config.AI.MaxBytes; max > 0 && p.Size > max {
-				summary.Skipped++
-				report(p, "over ai.max_bytes")
-				continue
-			}
-			claim, err := st.ClaimAI(ctx, p.ContentID, summary.Key, selection.Force)
+		selection.Retry = retry
+		var after int64
+		for summary.Attempted < o.Limit {
+			batch, err := st.NextAI(ctx, selection, after, 64)
 			if err != nil {
 				return summary, err
 			}
-			if claim == nil {
-				continue
-			}
-			attempted, status, err := readOne(ctx, w, o, p, claim, log)
-			if err != nil {
-				return summary, err
-			}
-			if attempted {
-				seen[p.ContentID] = true
-				summary.Attempted++
-				if status == "saved" {
-					summary.Saved++
-				} else {
-					summary.Failed++
-				}
-			} else {
-				summary.Skipped++
-			}
-			report(p, status)
-			if summary.Attempted >= o.Limit {
+			if len(batch) == 0 {
 				break
+			}
+			for _, p := range batch {
+				after = p.ID
+				if err := ctx.Err(); err != nil {
+					return summary, err
+				}
+				if seen[p.ContentID] {
+					continue
+				}
+				if rules[p.VolumeID].SkipContent(p.Path) {
+					summary.Skipped++
+					report(p, "excluded by current rules")
+					continue
+				}
+				if max := o.Config.AI.MaxBytes; max > 0 && p.Size > max {
+					summary.Skipped++
+					report(p, "over ai.max_bytes")
+					continue
+				}
+				claim, err := st.ClaimAI(ctx, p.ContentID, summary.Key, selection.Force)
+				if err != nil {
+					return summary, err
+				}
+				if claim == nil {
+					continue
+				}
+				attempted, status, err := readOne(ctx, w, o, p, claim, log)
+				if attempted {
+					summary.Attempted++
+					seen[p.ContentID] = true
+				}
+				if err != nil {
+					return summary, err
+				}
+				if attempted {
+					if status == "saved" {
+						summary.Saved++
+					} else {
+						summary.Failed++
+					}
+				} else {
+					summary.Skipped++
+				}
+				report(p, status)
+				if summary.Attempted >= o.Limit {
+					break
+				}
 			}
 		}
 	}
@@ -193,6 +209,12 @@ func readOne(ctx context.Context, w *scratch.Workspace, o Options, p store.Conte
 	}
 	if ctx.Err() != nil {
 		return true, "", ctx.Err()
+	}
+	if errors.Is(failure, ai.ErrUnavailable) {
+		return true, "", failure
+	}
+	if errors.Is(failure, ai.ErrInput) {
+		return false, failure.Error(), nil
 	}
 	if err := claim.Save(ctx, result, failure, time.Since(start)); err != nil {
 		return true, "", err

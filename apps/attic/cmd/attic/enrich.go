@@ -65,6 +65,9 @@ func cmdEnrich(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if p.Key().Provider == "codex" && *limit > 20 {
+		return errors.New("Codex enrichment is limited to 20 contents per run")
+	}
 	st, err := openStore(ctx)
 	if err != nil {
 		return err
@@ -96,22 +99,6 @@ func cmdEnrich(ctx context.Context, args []string) error {
 			}
 		}
 	}
-	// Explicit IDs and refs may cover only a subset of the mounted volumes.
-	// Limit scratch-disk checks to volumes that contain eligible selected files.
-	selection.Key, selection.Extensions = p.Key(), p.Extensions()
-	for id := range mounts {
-		selection.Volumes = []string{id}
-		files, err := st.NextAI(ctx, selection, 0, 1)
-		if err != nil {
-			return err
-		}
-		if len(files) == 0 {
-			delete(mounts, id)
-		}
-	}
-	if len(mounts) == 0 {
-		return errors.New("no pending supported files on the selected online volumes; scan first, or use --force to repeat successful work")
-	}
 	fmt.Fprintf(os.Stderr, "%s using %s / %s; at most %d contents\n", p.Key().Task, p.Key().Provider, p.Key().Model, *limit)
 	summary, runErr := enrich.Run(ctx, st, enrich.Options{Config: cfg, Provider: p, Selection: selection, Mounts: mounts, Limit: *limit, Progress: func(f store.ContentFile, status string) {
 		fmt.Fprintf(os.Stderr, "attic:%s  %s: %s\n", f.Ref, f.Path, status)
@@ -122,7 +109,7 @@ func cmdEnrich(ctx context.Context, args []string) error {
 		fmt.Printf("%d attempted, %d saved, %d failed, %d skipped\n", summary.Attempted, summary.Saved, summary.Failed, summary.Skipped)
 	}
 	if runErr == nil && summary.Failed > 0 {
-		runErr = errors.New("some enrichments failed; rerun the same selection to retry them")
+		runErr = errors.New("some enrichments failed; rerun to continue pending work, then retry failures")
 	}
 	return errors.Join(runErr, err)
 }
@@ -168,7 +155,10 @@ func cmdAnalysis(ctx context.Context, args []string) error {
 		return errors.New("no enrichment results for that content")
 	}
 	for _, a := range results {
-		fmt.Printf("attic:%s  %s / %s / %s (%s, %d ms)\n  policy %s, reported model %s\n", a.Ref, a.Task, a.Provider, a.Model, a.Status, a.ElapsedMS, a.PromptVersion, a.ReportedModel)
+		fmt.Printf("attic:%s  %s / %s / %s (%s, %d ms)\n  policy %s\n", a.Ref, a.Task, a.Provider, a.Model, a.Status, a.ElapsedMS, a.PromptVersion)
+		if a.ReportedModel != "" {
+			fmt.Printf("  reported model %s\n", a.ReportedModel)
+		}
 		if a.Detail != "" {
 			fmt.Println(a.Detail)
 		}

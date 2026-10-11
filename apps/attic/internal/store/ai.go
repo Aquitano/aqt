@@ -20,17 +20,35 @@ type AISelection struct {
 	Extensions []string
 	Key        ai.Key
 	Force      bool
+	Retry      bool
+}
+
+func (o AISelection) args(after int64) []any {
+	return []any{after, o.Volumes, o.Extensions, strings.TrimSuffix(o.Under, "/"), nonNil(o.Entries), nonNil(o.Refs), o.Key.Task, o.Key.Provider, o.Key.Model, o.Key.PromptVersion, o.Force}
+}
+
+const aiCandidates = ` from entries e join contents c on c.id=e.content_id
+ left join ai_results a on a.content_id=c.id and a.task=$7 and a.provider=$8 and a.model=$9 and a.prompt_version=$10
+ where e.id > $1 and e.volume_id::text=any($2) and e.kind='file' and e.hash_state='done' and e.missing_scan is null
+ and e.ext=any($3) and ($4='' or (e.path collate "C" > $4 || '/' and e.path collate "C" < $4 || '0'))
+ and (cardinality($5::bigint[])+cardinality($6::text[])=0 or e.id=any($5) or ` + refSQL + `=any($6))
+ and ($7 <> 'ocr' or e.ext <> 'pdf' or exists (select 1 from texts t where t.content_id=c.id and t.status='needs_ocr'))
+ and ($11 or a.id is null or a.status='failed')`
+
+// AIVolumes preflights all selected source disks before creating scratch files.
+func (s *Store) AIVolumes(ctx context.Context, o AISelection) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `select distinct e.volume_id::text `+aiCandidates, o.args(0)...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 func (s *Store) NextAI(ctx context.Context, o AISelection, after int64, limit int) ([]ContentFile, error) {
-	rows, err := s.pool.Query(ctx, `select e.id, e.path, e.volume_id::text, c.id, c.size_bytes, c.blake3, `+refSQL+`
- from entries e join contents c on c.id=e.content_id
- where e.id > $1 and e.volume_id::text=any($2) and e.kind='file' and e.hash_state='done' and e.missing_scan is null
- and e.ext=any($3) and ($4='' or (e.path collate "C" > $4 || '/' and e.path collate "C" < $4 || '0'))
- and (cardinality($5::bigint[])+cardinality($6::text[])=0 or e.id=any($5) or `+refSQL+`=any($6))
- and ($7 <> 'ocr' or e.ext <> 'pdf' or exists (select 1 from texts t where t.content_id=c.id and t.status='needs_ocr'))
- and ($11 or not exists (select 1 from ai_results a where a.content_id=c.id and a.task=$7 and a.provider=$8 and a.model=$9 and a.prompt_version=$10 and a.status<>'failed'))
- order by e.id limit $12`, after, o.Volumes, o.Extensions, strings.TrimSuffix(o.Under, "/"), nonNil(o.Entries), nonNil(o.Refs), o.Key.Task, o.Key.Provider, o.Key.Model, o.Key.PromptVersion, o.Force, limit)
+	rows, err := s.pool.Query(ctx, `select e.id,e.path,e.volume_id::text,c.id,c.size_bytes,c.blake3,`+refSQL+aiCandidates+`
+ and ($11 or (not $13 and a.id is null) or ($13 and a.status='failed'))
+ order by e.id limit $12`, append(o.args(after), limit, o.Retry)...)
+
 	if err != nil {
 		return nil, err
 	}

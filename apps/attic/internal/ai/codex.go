@@ -25,7 +25,7 @@ func (p *codex) Read(ctx context.Context, path string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	result := normalized(Result{Text: string(out), ReportedModel: p.key.Model})
+	result := normalized(Result{Text: string(out)})
 	if p.key.Task == Describe && result.Text == "" {
 		return Result{}, errors.New("Codex returned an empty description")
 	}
