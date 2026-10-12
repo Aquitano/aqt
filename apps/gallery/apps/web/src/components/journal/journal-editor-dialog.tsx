@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -6,11 +6,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { Label } from "@aqt/gallery-ui/components/label";
-import { Textarea } from "@aqt/gallery-ui/components/textarea";
-import { cn } from "@aqt/gallery-ui/lib/utils";
+} from "@aqt/ui/components/dialog";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
+import { Textarea } from "@aqt/ui/components/textarea";
+import { cn } from "@aqt/ui/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { useBlocker } from "@tanstack/react-router";
 import {
@@ -255,8 +255,8 @@ export function JournalEditorDialog({
         }}
       >
         <DialogContent
-          showClose={false}
-          className="inset-x-0 top-auto bottom-0 left-0 h-[min(92dvh,56rem)] max-h-none w-full max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden border-x-0 border-b-0 p-0 transition-[transform,opacity] duration-200 data-[ending-style]:translate-y-full data-[ending-style]:scale-100 data-[starting-style]:translate-y-full data-[starting-style]:scale-100 motion-reduce:transition-none sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:h-[min(88dvh,56rem)] sm:w-[calc(100%-3rem)] sm:max-w-6xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:border sm:data-[ending-style]:translate-y-[calc(-50%+1rem)] sm:data-[starting-style]:translate-y-[calc(-50%+1rem)]"
+          showCloseButton={false}
+          className="inset-x-0 top-auto bottom-0 left-0 flex h-[min(92dvh,56rem)] flex-col max-h-none w-full max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden border-x-0 border-b-0 p-0 transition-[transform,opacity] duration-200 data-[ending-style]:translate-y-full data-[ending-style]:scale-100 data-[starting-style]:translate-y-full data-[starting-style]:scale-100 motion-reduce:transition-none sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:h-[min(88dvh,56rem)] sm:w-[calc(100%-3rem)] sm:max-w-6xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:border sm:data-[ending-style]:translate-y-[calc(-50%+1rem)] sm:data-[starting-style]:translate-y-[calc(-50%+1rem)]"
         >
           <DialogHeader className="shrink-0 border-b border-border/60 px-5 py-4 pr-5 sm:px-7">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -497,7 +497,7 @@ export function JournalEditorDialog({
       </Dialog>
 
       <Dialog open={discardOpen} onOpenChange={(open) => !open && keepEditing()}>
-        <DialogContent className="max-w-sm" showClose={false}>
+        <DialogContent className="sm:max-w-sm" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle>Discard unsaved changes?</DialogTitle>
             <DialogDescription>

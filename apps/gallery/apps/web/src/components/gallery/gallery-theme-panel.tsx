@@ -1,5 +1,5 @@
-import { Button } from "@aqt/gallery-ui/components/button";
-import { Input } from "@aqt/gallery-ui/components/input";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
 import { RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -142,7 +142,7 @@ export function GalleryThemePanel({
             disabled={disabled || isDefault}
             onClick={() => setDraft(withThemeDefaults(null))}
           >
-            <RotateCcw />
+            <RotateCcw data-icon="inline-start" />
             Reset to defaults
           </Button>
           <Button size="sm" disabled={disabled || !dirty} onClick={() => onSave(draft)}>

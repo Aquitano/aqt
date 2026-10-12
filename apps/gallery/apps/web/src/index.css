@@ -1,1 +1,2 @@
-@import "@aqt/gallery-ui/globals.css";
+@import "@aqt/ui/styles/globals.css";
+@import "./gallery.css";

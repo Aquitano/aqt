@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -6,15 +6,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
+} from "@aqt/ui/components/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@aqt/gallery-ui/components/dropdown-menu";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { Label } from "@aqt/gallery-ui/components/label";
+} from "@aqt/ui/components/dropdown-menu";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LandPlot, Shapes, Tag, Trash2, X } from "lucide-react";
 import { useState } from "react";
@@ -163,7 +163,7 @@ export function BulkActionBar({
             </DropdownMenu>
 
             <Button variant="outline" size="sm" disabled={busy} onClick={() => setTagOpen(true)}>
-              <Tag />
+              <Tag data-icon="inline-start" />
               Add tag
             </Button>
           </>
@@ -194,7 +194,7 @@ export function BulkActionBar({
             disabled={busy}
             onClick={() => setConfirmDelete(true)}
           >
-            <Trash2 />
+            <Trash2 data-icon="inline-start" />
             Delete
           </Button>
         ) : null}
@@ -211,7 +211,7 @@ export function BulkActionBar({
       </div>
 
       <Dialog open={tagOpen} onOpenChange={setTagOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add a tag</DialogTitle>
             <DialogDescription>
@@ -247,7 +247,7 @@ export function BulkActionBar({
       </Dialog>
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               Delete {count} {count === 1 ? "artwork" : "artworks"}?

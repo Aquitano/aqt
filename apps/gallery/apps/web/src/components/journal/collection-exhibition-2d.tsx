@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogClose,
@@ -6,8 +6,8 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
-import { cn } from "@aqt/gallery-ui/lib/utils";
+} from "@aqt/ui/components/dialog";
+import { cn } from "@aqt/ui/lib/utils";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, Expand, Footprints, Grid2X2, List, X } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -220,8 +220,8 @@ function ArtworkInspector({
     >
       {selected ? (
         <DialogContent
-          showClose={false}
-          className="h-[min(92svh,58rem)] max-h-none max-w-[min(94vw,84rem)] gap-0 overflow-hidden overscroll-contain p-0 sm:w-[calc(100%-3rem)]"
+          showCloseButton={false}
+          className="flex h-[min(92svh,58rem)] max-h-none flex-col gap-0 overflow-hidden overscroll-contain p-0 sm:w-[calc(100%-3rem)] sm:max-w-[min(94vw,84rem)]"
         >
           <DialogClose className="absolute top-3 right-3 z-10 grid size-9 place-items-center rounded-full bg-background/90 text-foreground backdrop-blur transition-opacity outline-none hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none">
             <X className="size-4" aria-hidden="true" />
@@ -271,7 +271,7 @@ function ArtworkInspector({
                     onClick={() => previous && onSelectArtwork(previous.id)}
                     disabled={artworks.length < 2}
                   >
-                    <ArrowLeft aria-hidden="true" />
+                    <ArrowLeft data-icon="inline-start" aria-hidden="true" />
                     Previous
                   </Button>
                   <span className="hidden text-xs text-muted-foreground lg:inline">
@@ -284,7 +284,7 @@ function ArtworkInspector({
                     disabled={artworks.length < 2}
                   >
                     Next
-                    <ArrowRight aria-hidden="true" />
+                    <ArrowRight data-icon="inline-end" aria-hidden="true" />
                   </Button>
                 </div>
               </div>

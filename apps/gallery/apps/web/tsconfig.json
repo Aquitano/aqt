@@ -2,8 +2,7 @@
   "extends": "@aqt/config/tsconfig.app.json",
   "compilerOptions": {
     "paths": {
-      "@/*": ["./src/*"],
-      "@aqt/gallery-ui/*": ["../../packages/ui/src/*"]
+      "@/*": ["./src/*"]
     },
     "noUncheckedIndexedAccess": false
   },

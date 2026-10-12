@@ -1,5 +1,5 @@
-import { Badge } from "@aqt/gallery-ui/components/badge";
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
@@ -107,7 +107,7 @@ function CollectionExhibitionPage() {
           View in 2D
         </Button>
         <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center pt-4">
-          <Badge variant="secondary" className="px-4 py-1.5 backdrop-blur">
+          <Badge variant="secondary" className="h-auto px-4 py-1.5 backdrop-blur">
             Private collection
           </Badge>
         </div>

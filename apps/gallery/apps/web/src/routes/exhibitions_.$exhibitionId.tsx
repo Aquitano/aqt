@@ -5,11 +5,11 @@ import {
   type RoomAnalysis,
   type WorldInput,
 } from "@aqt/gallery-layout";
-import { Button } from "@aqt/gallery-ui/components/button";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { Label } from "@aqt/gallery-ui/components/label";
-import { Textarea } from "@aqt/gallery-ui/components/textarea";
-import { cn } from "@aqt/gallery-ui/lib/utils";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
+import { Textarea } from "@aqt/ui/components/textarea";
+import { cn } from "@aqt/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import {
@@ -330,7 +330,7 @@ function StudioBody({ exhibitionId, search }: { exhibitionId: string; search: st
               }
             }}
           >
-            <Trash2 />
+            <Trash2 data-icon="inline-start" />
             Delete
           </Button>
         </div>
@@ -442,7 +442,7 @@ function StudioBody({ exhibitionId, search }: { exhibitionId: string; search: st
               disabled={busy || !exhibition || newRoomName.trim().length === 0}
               onClick={addRoom}
             >
-              <Plus />
+              <Plus data-icon="inline-start" />
               Add room
             </Button>
           </div>
@@ -525,7 +525,7 @@ function StudioBody({ exhibitionId, search }: { exhibitionId: string; search: st
                   Clear
                 </Button>
                 <Button size="sm" disabled={busy} onClick={addSelected}>
-                  <Check />
+                  <Check data-icon="inline-start" />
                   {singleRoom
                     ? `Add ${selected.size}`
                     : `Add ${selected.size} to "${activeRoom.name}"`}
@@ -533,7 +533,7 @@ function StudioBody({ exhibitionId, search }: { exhibitionId: string; search: st
               </>
             ) : (
               <Button variant="outline" size="sm" onClick={openImport}>
-                <Upload />
+                <Upload data-icon="inline-start" />
                 Import artworks
               </Button>
             )}
@@ -547,7 +547,7 @@ function StudioBody({ exhibitionId, search }: { exhibitionId: string; search: st
                 : "Nothing to hang yet. Import artworks to get started."}
             </span>
             <Button variant="outline" size="sm" onClick={openImport}>
-              <Upload />
+              <Upload data-icon="inline-start" />
               Import artworks
             </Button>
           </div>
@@ -862,7 +862,7 @@ function RoomCard({
               key={`${warning.code}-${warning.artworkId ?? warning.wall ?? ""}`}
               className={cn(
                 "flex items-start gap-2 text-sm",
-                warning.level === "error" ? "text-destructive" : "text-amber-500",
+                warning.level === "error" ? "text-destructive" : "text-warning",
               )}
             >
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
@@ -874,7 +874,7 @@ function RoomCard({
 
       <div>
         <Button variant="outline" size="sm" disabled={busy} onClick={onAdd}>
-          <Plus />
+          <Plus data-icon="inline-start" />
           {singleRoom ? "Add artworks" : "Add artworks to this room"}
         </Button>
       </div>

@@ -1,8 +1,8 @@
 import { env } from "@aqt/gallery-env/web";
-import { Badge } from "@aqt/gallery-ui/components/badge";
-import { Button } from "@aqt/gallery-ui/components/button";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { Label } from "@aqt/gallery-ui/components/label";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { Check, Copy, KeyRound, Plus, Trash2, TriangleAlert } from "lucide-react";
@@ -195,7 +195,7 @@ function ConnectBody() {
             disabled={busy || name.trim().length === 0}
             onClick={() => void create()}
           >
-            <Plus />
+            <Plus data-icon="inline-start" />
             Create token
           </Button>
         </div>

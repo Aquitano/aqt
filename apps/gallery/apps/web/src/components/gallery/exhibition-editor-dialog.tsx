@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -6,10 +6,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { Label } from "@aqt/gallery-ui/components/label";
-import { Textarea } from "@aqt/gallery-ui/components/textarea";
+} from "@aqt/ui/components/dialog";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
+import { Textarea } from "@aqt/ui/components/textarea";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
@@ -57,7 +57,7 @@ export function ExhibitionEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Create an exhibition</DialogTitle>
           <DialogDescription>
@@ -91,6 +91,7 @@ export function ExhibitionEditorDialog({
             <Label htmlFor="exhibition-description">Description</Label>
             <Textarea
               id="exhibition-description"
+              className="max-h-48"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />

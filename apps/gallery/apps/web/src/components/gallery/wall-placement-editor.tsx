@@ -1,8 +1,8 @@
 import type { LayoutArtwork, RoomAnalysis, WallId } from "@aqt/gallery-layout";
-import { Button } from "@aqt/gallery-ui/components/button";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { Label } from "@aqt/gallery-ui/components/label";
-import { cn } from "@aqt/gallery-ui/lib/utils";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
+import { cn } from "@aqt/ui/lib/utils";
 import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 

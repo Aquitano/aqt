@@ -19,7 +19,7 @@ Scaffolded with [Better-T-Stack](https://github.com/AmanVarshney01/create-better
 - **Drizzle** ORM on **PostgreSQL**
 - **Clerk** authentication (browser sessions), plus `aqtg_` personal access
   tokens for agents
-- **TailwindCSS** with shared shadcn/ui primitives in `packages/ui`
+- **TailwindCSS** with shadcn/ui primitives from the workspace package `@aqt/ui`
 - **oxlint** and **oxfmt**, configured once at the workspace root
 - **three.js + React Three Fiber** museum renderer in
   `apps/web/src/components/museum/renderer/` — see its
@@ -139,8 +139,8 @@ switch for the Bun line used to install, build and run; its default Bun 1.3
 cannot read this lockfile), the function region (`fra1`, next to the API and
 Neon), a filtered workspace install from the repository root, a plain
 `vite build` so Vercel's Turbo detection stays out of the way, and an ignore
-command so only changes under `apps/gallery` or to the lockfile trigger a
-build. The vite config names the matching `bun1.4.x` function runtime, since
+command so only changes under `apps/gallery` or `packages/ts/ui`, or to the
+lockfile, trigger a build. The vite config names the matching `bun1.4.x` function runtime, since
 nitro would otherwise emit `bun1.x`. When the Bun line moves in `mise.toml`,
 move it in those two places as well.
 
@@ -165,24 +165,21 @@ from `apps/web` does the same by hand.
 
 ## UI Customization
 
-React web apps in this stack share shadcn/ui primitives through `packages/ui`.
+The shadcn/ui primitives and design tokens live in the workspace package `@aqt/ui` (`packages/ts/ui` at the workspace root), shared with the other aqt web apps.
 
-- Change design tokens and global styles in `packages/ui/src/styles/globals.css`
-- Update shared primitives in `packages/ui/src/components/*`
-- Adjust shadcn aliases or style config in `packages/ui/components.json` and `apps/web/components.json`
+- Change design tokens and global styles in `packages/ts/ui/src/styles/globals.css`
+- Change gallery-only styles in `apps/web/src/gallery.css`
+- Update shared primitives in `packages/ts/ui/src/components/*`
+- Adjust shadcn aliases or style config in `packages/ts/ui/components.json` and `apps/web/components.json`
 
 ### Add more shared components
 
-Run this from the project root to add more primitives to the shared UI package:
-
-```bash
-npx shadcn@latest add accordion dialog popover sheet table -c packages/ui
-```
+`packages/ts/ui/README.md` covers adding and updating shared components with the shadcn CLI, theming and charts.
 
 Import shared components like this:
 
 ```tsx
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 ```
 
 ### Add app-specific blocks
@@ -205,9 +202,10 @@ aqt-gallery/
 │   ├── auth/            # Clerk-based session/auth resolution
 │   ├── db/              # Drizzle schema & DB client
 │   ├── env/             # Typed environment-variable validation
-│   ├── gallery-layout/  # Floor-plan graph + 3D layout shared by renderer, linter, studio
-│   └── ui/              # Shared shadcn/ui components and styles
+│   └── gallery-layout/  # Floor-plan graph + 3D layout shared by renderer, linter, studio
 ```
+
+Shared shadcn/ui components and styles come from `@aqt/ui` in the workspace's `packages/ts/ui`.
 
 ## Available Scripts
 

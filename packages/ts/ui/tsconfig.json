@@ -2,7 +2,7 @@
   "extends": "@aqt/config/tsconfig.app.json",
   "compilerOptions": {
     "types": [],
-    "paths": { "@/*": ["./src/*"] }
+    "paths": { "@aqt/ui/*": ["./src/*"] }
   },
   "include": ["src"]
 }

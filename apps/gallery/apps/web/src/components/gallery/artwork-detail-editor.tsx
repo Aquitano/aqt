@@ -1,5 +1,5 @@
 import { env } from "@aqt/gallery-env/web";
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -7,8 +7,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
-import { Skeleton } from "@aqt/gallery-ui/components/skeleton";
+} from "@aqt/ui/components/dialog";
+import { Skeleton } from "@aqt/ui/components/skeleton";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
@@ -259,7 +259,7 @@ export function ArtworkDetailEditor({ artworkId }: { artworkId: string }) {
         onDelete={() => setConfirmDelete(true)}
       />
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete this artwork?</DialogTitle>
             <DialogDescription>

@@ -1,6 +1,6 @@
-import { Button } from "@aqt/gallery-ui/components/button";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { cn } from "@aqt/gallery-ui/lib/utils";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
+import { cn } from "@aqt/ui/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { CalendarDays, MapPin, Sparkles } from "lucide-react";

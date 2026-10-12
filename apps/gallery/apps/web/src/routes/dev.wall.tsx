@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { CheckSquare, Eye, Plus } from "lucide-react";
 import { useState } from "react";
@@ -191,7 +191,7 @@ function WallHarness() {
               Preview exhibit wall
             </Button>
             <Button size="sm">
-              <Plus />
+              <Plus data-icon="inline-start" />
               New gallery
             </Button>
           </div>
@@ -229,11 +229,11 @@ function WallHarness() {
               size="sm"
               onClick={() => setSelectMode((v) => !v)}
             >
-              <CheckSquare />
+              <CheckSquare data-icon="inline-start" />
               {selectMode ? "Done" : "Select"}
             </Button>
             <Button size="sm">
-              <Plus />
+              <Plus data-icon="inline-start" />
               New gallery
             </Button>
           </>

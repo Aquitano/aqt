@@ -1,5 +1,5 @@
-import { Badge } from "@aqt/gallery-ui/components/badge";
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -7,8 +7,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
-import { cn } from "@aqt/gallery-ui/lib/utils";
+} from "@aqt/ui/components/dialog";
+import { cn } from "@aqt/ui/lib/utils";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -40,7 +40,7 @@ const LEVEL_ORDER: LintLevel[] = ["error", "warning", "info"];
 
 const LEVEL_META: Record<LintLevel, { icon: LucideIcon; className: string }> = {
   error: { icon: CircleAlert, className: "text-destructive" },
-  warning: { icon: AlertTriangle, className: "text-amber-400" },
+  warning: { icon: AlertTriangle, className: "text-warning" },
   info: { icon: Info, className: "text-muted-foreground" },
 };
 
@@ -69,7 +69,7 @@ function LintRow({ finding }: { finding: LintFinding }) {
       <span className="min-w-0 flex-1">{finding.message}</span>
       {anchor ? (
         <Button variant="ghost" size="xs" className="-my-1 shrink-0" onClick={() => locate(anchor)}>
-          <MapPin />
+          <MapPin data-icon="inline-start" />
           Locate
         </Button>
       ) : null}
@@ -103,7 +103,7 @@ export function LintPanel({ report, loading }: { report: LintReport | null; load
           <h2 className="text-lg font-semibold tracking-[-0.02em]">Pre-publish check</h2>
           {clean ? (
             <Badge variant="success">
-              <CheckCircle2 />
+              <CheckCircle2 data-icon="inline-start" />
               Ready
             </Badge>
           ) : (
@@ -112,7 +112,7 @@ export function LintPanel({ report, loading }: { report: LintReport | null; load
                 <Badge variant="destructive">{report.errorCount} blocking</Badge>
               ) : null}
               {report.warningCount > 0 ? (
-                <Badge className="border-amber-500/30 bg-amber-500/10 text-amber-300">
+                <Badge variant="warning">
                   {report.warningCount} {report.warningCount === 1 ? "warning" : "warnings"}
                 </Badge>
               ) : null}
@@ -188,7 +188,7 @@ export function PublishButton({
         {isPublished ? "Unpublish" : "Publish"}
       </Button>
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               Publish with {blockingCount} blocking {blockingCount === 1 ? "issue" : "issues"}?

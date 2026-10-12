@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -6,10 +6,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@aqt/gallery-ui/components/dialog";
-import { Input } from "@aqt/gallery-ui/components/input";
-import { Label } from "@aqt/gallery-ui/components/label";
-import { Textarea } from "@aqt/gallery-ui/components/textarea";
+} from "@aqt/ui/components/dialog";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
+import { Textarea } from "@aqt/ui/components/textarea";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -143,7 +143,7 @@ export function ArtistDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="flex max-h-[min(90svh,46rem)] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit artist" : "New artist"}</DialogTitle>
           <DialogDescription>
@@ -152,7 +152,7 @@ export function ArtistDialog({
               : "Bio, dates and nationality appear on the artist's wall in the 3D museum."}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div className="-m-1 flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain p-1">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="artist-name">Name</Label>
             <Input
@@ -214,6 +214,7 @@ export function ArtistDialog({
             <Label htmlFor="artist-bio">Bio</Label>
             <Textarea
               id="artist-bio"
+              className="max-h-48"
               disabled={editing && !ownArtist}
               value={form.bio}
               onChange={(event) => setForm({ ...form, bio: event.target.value })}
@@ -223,7 +224,7 @@ export function ArtistDialog({
         <DialogFooter className="sm:justify-between">
           {editing && ownArtist ? (
             <Button variant="destructive" onClick={() => void remove()} disabled={busy}>
-              <Trash2 />
+              <Trash2 data-icon="inline-start" />
               Delete
             </Button>
           ) : (

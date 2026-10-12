@@ -1,4 +1,4 @@
-import { Button } from "@aqt/gallery-ui/components/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,8 +7,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@aqt/gallery-ui/components/dropdown-menu";
-import { Kbd } from "@aqt/gallery-ui/components/kbd";
+} from "@aqt/ui/components/dropdown-menu";
+import { Kbd } from "@aqt/ui/components/kbd";
 import { useClerk, useUser } from "@clerk/tanstack-react-start";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Upload } from "lucide-react";
@@ -26,11 +26,9 @@ export function ActionCluster() {
     <div className="flex items-center justify-end gap-2">
       {isSignedIn ? (
         <Button type="button" variant="secondary" onClick={openImport}>
-          <Upload />
+          <Upload data-icon="inline-start" />
           Import
-          <Kbd className="ml-0.5 border-transparent bg-foreground/10 text-secondary-foreground/80">
-            I
-          </Kbd>
+          <Kbd className="ml-0.5 bg-foreground/10 text-secondary-foreground/80">I</Kbd>
         </Button>
       ) : (
         <Button nativeButton={false} render={<Link to="/login">Sign in</Link>} />
