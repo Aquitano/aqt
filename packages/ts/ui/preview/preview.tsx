@@ -256,9 +256,9 @@ function Controls() {
               </InputGroup>
             </Field>
             <Field>
-              <FieldLabel>Provider</FieldLabel>
+              <FieldLabel htmlFor="provider">Provider</FieldLabel>
               <Select items={PROVIDERS} defaultValue="claude">
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="provider" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -294,8 +294,8 @@ function Controls() {
               </RadioGroup>
             </FieldSet>
             <Field>
-              <FieldLabel>Monthly budget</FieldLabel>
-              <Slider defaultValue={[60]} max={100} />
+              <FieldLabel id="budget-label">Monthly budget</FieldLabel>
+              <Slider aria-labelledby="budget-label" defaultValue={[60]} max={100} />
             </Field>
             <Field>
               <FieldLabel htmlFor="notes">Notes</FieldLabel>
