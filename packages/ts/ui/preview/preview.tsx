@@ -325,6 +325,11 @@ function Feedback() {
           <AlertTitle>Sync failed</AlertTitle>
           <AlertDescription>The machine token for the laptop expired.</AlertDescription>
         </Alert>
+        <Alert variant="warning">
+          <TriangleAlertIcon />
+          <AlertTitle>This token is shown once</AlertTitle>
+          <AlertDescription>Copy it now; only its hash is kept.</AlertDescription>
+        </Alert>
         <div className="flex flex-wrap gap-2">
           <Dialog />
           <Sheet>
