@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/aquitano/aqt/packages/go/extract/internal/pdf"
 )
 
 // pdfResult reads a PDF's text layer and, only when that comes back empty,

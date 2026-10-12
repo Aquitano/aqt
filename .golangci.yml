@@ -28,6 +28,10 @@ linters:
         - golang.org/x/sys/windows.CloseHandle
         - (*golang.org/x/sys/windows.LazyProc).Call
   exclusions:
+    # Upstream ledongthuc/pdf, kept close to upstream so it can be dropped once
+    # its fixes are released.
+    paths:
+      - packages/go/extract/internal/pdf/
     rules:
       - linters: [errcheck]
         text: 'Error return value of `[^`]*\.Close` is not checked'
@@ -38,3 +42,6 @@ linters:
 formatters:
   enable:
     - gofmt
+  exclusions:
+    paths:
+      - packages/go/extract/internal/pdf/
