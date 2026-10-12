@@ -24,6 +24,7 @@ function ToggleGroup({
   size,
   spacing = 2,
   orientation = "horizontal",
+  style,
   children,
   ...props
 }: ToggleGroupPrimitive.Props &
@@ -31,7 +32,10 @@ function ToggleGroup({
     spacing?: number;
     orientation?: "horizontal" | "vertical";
   }) {
-  const gapStyle: CSSVariables = { "--gap": spacing };
+  const gapStyle = (state: ToggleGroupPrimitive.State): CSSVariables => ({
+    ...(typeof style === "function" ? style(state) : style),
+    "--gap": spacing,
+  });
 
   return (
     <ToggleGroupPrimitive
