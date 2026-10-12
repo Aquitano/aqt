@@ -104,12 +104,15 @@ import { type ReactNode, useState } from "react";
 
 import { Charts } from "./charts";
 
+const LIGHT_TEXT = "oklch(0.985 0 0)";
+const DARK_TEXT = "oklch(0.205 0 0)";
+
 const ACCENTS = [
-  { name: "Neutral", color: null },
-  { name: "Blue", color: "oklch(0.55 0.2 262)" },
-  { name: "Orange", color: "oklch(0.64 0.19 42)" },
-  { name: "Green", color: "oklch(0.6 0.15 155)" },
-  { name: "Violet", color: "oklch(0.56 0.22 295)" },
+  { name: "Neutral", color: null, foreground: null },
+  { name: "Blue", color: "oklch(0.55 0.2 262)", foreground: LIGHT_TEXT },
+  { name: "Orange", color: "oklch(0.64 0.19 42)", foreground: DARK_TEXT },
+  { name: "Green", color: "oklch(0.6 0.15 155)", foreground: DARK_TEXT },
+  { name: "Violet", color: "oklch(0.56 0.22 295)", foreground: LIGHT_TEXT },
 ] as const;
 
 const PROVIDERS = [
@@ -125,11 +128,11 @@ const REQUESTS = [
 ];
 
 function applyAccent(name: string) {
-  const color = ACCENTS.find((accent) => accent.name === name)?.color;
+  const accent = ACCENTS.find((candidate) => candidate.name === name);
   const root = document.documentElement.style;
-  if (color) {
-    root.setProperty("--brand", color);
-    root.setProperty("--brand-foreground", "oklch(0.985 0 0)");
+  if (accent?.color) {
+    root.setProperty("--brand", accent.color);
+    root.setProperty("--brand-foreground", accent.foreground);
   } else {
     root.removeProperty("--brand");
     root.removeProperty("--brand-foreground");

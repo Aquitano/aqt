@@ -18,12 +18,12 @@ Wrap the app in `ThemeProvider` from `@aqt/ui/components/theme-provider`. It fol
 
 ## Accent colour
 
-Buttons, switches, checkboxes, sliders and the sidebar use `--primary`, which is neutral until an app sets `--brand`. Set it in the app's CSS after the import, with a foreground colour that reads on it:
+Buttons, switches, checkboxes, sliders and the sidebar use `--primary`, which is neutral until an app sets `--brand`. Set it in the app's CSS after the import, with a foreground colour that reaches 4.5:1 on it. Mid-lightness oranges and greens need dark text; blues and violets take light text.
 
 ```css
 :root {
   --brand: oklch(0.64 0.19 42);
-  --brand-foreground: oklch(0.985 0 0);
+  --brand-foreground: oklch(0.205 0 0);
 }
 ```
 
