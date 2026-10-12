@@ -55,11 +55,11 @@ Install [Bun](https://bun.sh/docs/installation) 1.4.2 or newer and [GitHub CLI](
 
 ```sh
 gh auth login
-gh repo clone Aquitano/aqt-turnstash
-cd aqt-turnstash
+gh repo clone Aquitano/aqt
+cd aqt/apps/turnstash
 ```
 
-From that checkout, build and install the standalone agent:
+From that directory, build and install the standalone agent:
 
 ```sh
 bun install --frozen-lockfile
@@ -98,7 +98,7 @@ If you create a machine in Settings, run the generated `turnstash connect --serv
 
 An existing agent connection cannot be replaced with a different machine or server because its sync checkpoints and queued batches belong to that connection. To use a second server, set both `TURNSTASH_CONFIG_DIR` and `TURNSTASH_STATE_DIR` to separate directories before enrolling. `connect` can refresh the token for the same server and machine.
 
-To distribute the agent as a package, run `bun pm --cwd apps/agent pack`. Packing builds the bundle automatically. After a version has been published to the configured registry, install it with `bun add -g --registry https://npm.aquitano.me @aqt/turnstash`. The server image workflow does not publish the agent package.
+To distribute the agent as a package, run `bun pm --cwd apps/agent pack`. Packing builds the bundle automatically. After a version has been published to the configured registry, install it with `bun add -g --registry https://npm.aquitano.me @aqt/turnstash`. The turnstash workflow does not publish the agent package.
 
 `enroll` writes `~/.config/aqt-turnstash/config.json` (mode 0600) with the machine token. `sync` scans every provider root, extracts new records, redacts them, queues them in `~/.local/state/aqt-turnstash/agent.db` and pushes batches of at most 500 records or 8 MB with idempotent batch ids. `schedule install` writes a launchd agent, a systemd user timer or a Task Scheduler job. `doctor` lists the discovered roots and checks the server, `status` shows the outbox.
 
@@ -136,14 +136,16 @@ Before replacing the old executable, run `codeburn schedule uninstall`. Keep the
 
 ## Development
 
+Turnstash is part of the aqt workspace. From the repository root:
+
 ```sh
 bun install
-docker compose -p turnstash-dev -f deploy/docker-compose.dev.yml --profile test up -d db db-test
-bunx tsc -p tsconfig.json --noEmit && bunx tsc -p apps/web --noEmit
-bun test
-DATABASE_URL=postgres://turnstash:turnstash@localhost:5433/turnstash ADMIN_TOKEN=dev PORT=4320 bun apps/server/src/main.ts
-bun run --cwd apps/web dev
+mise run turnstash:db     # dev database on 5433, disposable test database on 5434
+mise run turnstash:check  # lint, format, typecheck and every test
+mise run turnstash:dev    # server on 4320 with ADMIN_TOKEN=dev, web UI with hot reload
 ```
+
+Without mise, run the commands those tasks list in `tools/tasks/turnstash.toml`.
 
 The server tests in `apps/server/test` truncate the separate, disposable `turnstash_test` database on port 5434. They ignore `DATABASE_URL`. Override `TEST_DATABASE_URL` only with a test database whose name ends in `_test`; the test helper rejects other names before migrations or truncation. Provider tests use anonymized fixtures under `packages/providers/test/fixtures`. Regenerate migrations with `bun run --cwd apps/server db:generate` after changing `apps/server/src/db/schema.ts`.
 

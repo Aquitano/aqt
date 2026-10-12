@@ -4,19 +4,19 @@ Use a Linux host with Docker Engine, Docker Compose v2 or newer, Git, OpenSSL, a
 
 GitHub builds the server image after verification. The VPS pulls that image. Postgres uses the pinned ParadeDB image. The database has no published port, and the server binds to localhost.
 
-The project is [Aquitano/aqt-turnstash](https://github.com/Aquitano/aqt-turnstash), and its CLI is `turnstash`. The repository is private. Authenticate with an account that has access and clone it on the VPS:
+Turnstash lives in `apps/turnstash` of [Aquitano/aqt](https://github.com/Aquitano/aqt), and its CLI is `turnstash`. The repository is private. Authenticate with an account that has access and clone it on the VPS:
 
 ```sh
 gh auth login
-gh repo clone Aquitano/aqt-turnstash
-cd aqt-turnstash
+gh repo clone Aquitano/aqt
+cd aqt/apps/turnstash
 ```
 
 Run the remaining server commands from this directory. The VPS needs Docker but does not need Bun installed on the host. Use the published image with the commands below.
 
 Published server images are available after a successful push workflow. Set `SERVER_IMAGE=ghcr.io/aquitano/aqt-turnstash-server@sha256:<digest>` in `deploy/.env` to pin the image you verified. Private GHCR images require a separate `docker login ghcr.io` with a classic personal access token that has `read:packages` and access to the package. GitHub CLI login does not log Docker in. See [GitHub's container registry authentication guide](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry). The published image targets Linux AMD64; use the source build on ARM64.
 
-The GitHub workflow runs tests, installs the packaged agent in isolation, and checks the running containers before publishing `ghcr.io/aquitano/aqt-turnstash-server`. A pushed version tag must match `apps/agent/package.json`, such as `v0.1.0`. After those checks pass, it creates a GitHub release with `turnstash.js`, `turnstash.tgz`, and `SHA256SUMS`. It does not publish to an npm registry. Build the agent from the checkout if no release exists.
+The GitHub workflow runs tests, installs the packaged agent in isolation, and checks the running containers before publishing `ghcr.io/aquitano/aqt-turnstash-server`. A pushed `turnstash/v` tag must match `apps/agent/package.json`, such as `turnstash/v0.9.0`. After those checks pass, it creates a GitHub release with `turnstash.js`, `turnstash.tgz`, and `SHA256SUMS`. It does not publish to an npm registry. Build the agent from the checkout if no release exists.
 
 ## Configure credentials
 
@@ -45,6 +45,10 @@ turnstash_compose() {
 ```
 
 New deployments use the project name `turnstash` and the `turnstash_db-data` volume. To upgrade an existing Codeburn deployment, keep its original project name in `-p`, usually `codeburn`, and set `POSTGRES_USER=codeburn` and `POSTGRES_DB=codeburn` in `deploy/.env`. Retain its password and admin token. This reuses the existing volume and database. Changing the project name selects a different volume.
+
+### Move a deployment from Aquitano/aqt-turnstash
+
+Turnstash was developed in its own repository until 0.8.0. A deployment from that checkout keeps its database, because the Compose project name selects the volume, not the directory. Clone aqt as above, then copy the old `deploy/.env` to `apps/turnstash/deploy/.env` with mode `0600`. Run the remaining commands from `aqt/apps/turnstash`; the old checkout can go once the server is healthy.
 
 ## Start and check health
 
@@ -164,7 +168,7 @@ After a parser or model-alias correction, rebuild conversations and costs from t
 
 ```sh
 turnstash_compose stop server
-turnstash_compose run --rm server bun run --cwd apps/server reprocess
+turnstash_compose run --rm server bun run --cwd apps/turnstash/apps/server reprocess
 turnstash_compose up -d --wait --wait-timeout 300
 ```
 
