@@ -1,0 +1,24 @@
+# Allowlist: every workspace manifest so bun can verify the lockfile, turnstash's sources and
+# the shared TypeScript packages.
+*
+!package.json
+!bun.lock
+!apps/*/package.json
+!apps/*/apps/*/package.json
+!apps/*/packages/*/package.json
+!apps/img/cli/package.json
+!apps/bank/internal/webui/app/package.json
+!apps/bank/scripts/package.json
+!apps/tracker/extension/package.json
+!packages/ts
+!tools/stack/package.json
+!apps/turnstash
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/*.log
+**/*.tsbuildinfo
+apps/turnstash/.scratch-verify
+apps/turnstash/.notes
+apps/turnstash/docs

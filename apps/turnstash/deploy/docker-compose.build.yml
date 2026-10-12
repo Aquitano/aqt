@@ -3,5 +3,5 @@ services:
     image: ${SERVER_IMAGE:-aqt-turnstash-server:local}
     pull_policy: never
     build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+      context: ../../..
+      dockerfile: apps/turnstash/deploy/Dockerfile

@@ -28,6 +28,10 @@ updates:
     directory: /apps/gallery/apps/server
     schedule: { interval: weekly }
     groups: { gallery-docker: { patterns: ["*"] } }
+  - package-ecosystem: docker
+    directory: /apps/turnstash/deploy
+    schedule: { interval: weekly }
+    groups: { turnstash-docker: { patterns: ["*"] } }
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
