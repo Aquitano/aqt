@@ -1,0 +1,29 @@
+{
+  "name": "@aqt/turnstash-server",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/main.ts",
+    "start": "bun src/main.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "bun src/migrate.ts",
+    "reprocess": "bun src/reprocess-main.ts"
+  },
+  "dependencies": {
+    "@aqt/turnstash-analysis": "workspace:*",
+    "@aqt/turnstash-api": "workspace:*",
+    "@aqt/turnstash-core": "workspace:*",
+    "@aqt/turnstash-pricing": "workspace:*",
+    "@aqt/turnstash-providers": "workspace:*",
+    "@effect/platform-bun": "rc",
+    "@effect/sql-pg": "rc",
+    "countries-and-timezones": "^3.10.0",
+    "drizzle-orm": "1.0.0-rc.5-5935859",
+    "effect": "rc",
+    "openid-client": "^6.8.8"
+  },
+  "devDependencies": {
+    "drizzle-kit": "1.0.0-rc.5-5935859"
+  }
+}

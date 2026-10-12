@@ -1,0 +1,7 @@
+{"sessionId":"session-beta-0002","projectHash":"7b41d0e2","startTime":"2026-05-16T11:00:00.000Z","lastUpdated":"2026-05-16T11:00:00.000Z","kind":"chat"}
+{"id":"u1","timestamp":"2026-05-16T11:00:00.000Z","type":"user","content":"summarise the changelog"}
+{"id":"g1","timestamp":"2026-05-16T11:00:20.000Z","type":"gemini","content":"Here is the summary.","model":"gemini-3-flash-preview","tokens":{"input":200,"cached":50,"output":40,"thoughts":12},"toolCalls":[{"id":"t1","name":"ReadFile","args":{"path":"CHANGELOG.md"},"status":"success"}]}
+{"$set":{"lastUpdated":"2026-05-16T11:02:00.000Z"}}
+{"id":"g2","timestamp":"1999-01-01T00:00:00.000Z","type":"gemini","content":"stale clock","model":"gemini-3-flash-preview","tokens":{"input":10,"output":5}}
+{"id":"g3","timestamp":"2026-05-16T11:01:00.000Z","type":"gemini","content":"","toolCalls":[{"id":"t2","name":"Shell","args":{"command":"ls docs"},"status":"success"}]}
+{"id":"g4","timestamp":"2026-05-16T11:01:30.000Z","type":"gemini","content":"nothing billed","model":"gemini-3-flash-preview","tokens":{"input":0,"output":0,"cached":0,"thoughts":0}}

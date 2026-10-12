@@ -1,0 +1,95 @@
+{
+  "session_v2": {
+    "id": "ses_AAAA1111",
+    "project_id": "prj_1111",
+    "parent_id": null,
+    "fork_session_id": null,
+    "slug": "tidy-otter",
+    "directory": "/home/dev/projects/demo",
+    "path": null,
+    "title": "Tidy the parser",
+    "version": "2.1.0",
+    "agent": "build",
+    "model": { "id": "gpt-5.6-luna", "providerID": "opencode-go", "variant": "default" },
+    "cost": 0.0016941,
+    "tokens_input": 6,
+    "tokens_output": 80,
+    "tokens_reasoning": 432,
+    "tokens_cache_read": 0,
+    "tokens_cache_write": 4314,
+    "time_created": 1789983314397,
+    "time_updated": 1789983315388,
+    "time_archived": null
+  },
+  "user": {
+    "id": "msg_USER0001",
+    "session_id": "ses_AAAA1111",
+    "type": "user",
+    "seq": 4,
+    "time_created": 1789983314500,
+    "time_updated": 1789983314500,
+    "data": { "text": "Fix the date parser", "time": { "created": 1789983314500 } }
+  },
+  "assistant": {
+    "id": "msg_BBBB2222",
+    "session_id": "ses_AAAA1111",
+    "type": "assistant",
+    "seq": 8,
+    "time_created": 1789983315000,
+    "time_updated": 1789983315388,
+    "data": {
+      "agent": "build",
+      "model": { "id": "gpt-5.6-luna", "providerID": "opencode-go" },
+      "cost": 0.0012474,
+      "tokens": {
+        "input": 3,
+        "output": 67,
+        "reasoning": 432,
+        "cache": { "read": 0, "write": 2592 }
+      },
+      "time": { "created": 1789983315000, "completed": 1789983315380 },
+      "finish": "tool-calls",
+      "content": [
+        {
+          "type": "reasoning",
+          "text": "Check the parser first",
+          "time": { "created": 1789983315010 },
+          "state": { "openai": { "itemId": "rs_opaque", "reasoningEncryptedContent": "opaque" } }
+        },
+        { "type": "text", "text": "Reading the parser now." },
+        {
+          "type": "tool",
+          "id": "call_CCCC3333",
+          "name": "read",
+          "time": { "created": 1789983315100, "completed": 1789983315200 },
+          "state": {
+            "status": "completed",
+            "input": { "filePath": "/home/dev/projects/demo/parse.ts" },
+            "content": [{ "type": "text", "text": "export const parseDate = () => null" }],
+            "metadata": { "preview": "export const parseDate", "truncated": false }
+          }
+        },
+        {
+          "type": "tool",
+          "id": "call_DDDD4444",
+          "name": "linear_create_issue",
+          "time": { "created": 1789983315300 },
+          "state": {
+            "status": "error",
+            "input": { "title": "Parser returns null" },
+            "error": "rate limited"
+          }
+        }
+      ]
+    }
+  },
+  "idle": {
+    "id": "msg_IDLE0003",
+    "session_id": "ses_AAAA1111",
+    "type": "idle",
+    "seq": 12,
+    "time_created": 1789983315500,
+    "time_updated": 1789983315500,
+    "data": { "outcome": "completed", "time": { "created": 1789983315500 } }
+  }
+}

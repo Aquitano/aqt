@@ -1,0 +1,1 @@
+ALTER TABLE "pricing_catalogs" ADD COLUMN "pending" boolean DEFAULT false NOT NULL;

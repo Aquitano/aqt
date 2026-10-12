@@ -1,0 +1,1 @@
+CREATE INDEX "conversations_project_path" ON "conversations" ("project_path");

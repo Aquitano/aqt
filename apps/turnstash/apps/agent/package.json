@@ -1,0 +1,28 @@
+{
+  "name": "@aqt/turnstash",
+  "version": "0.8.0",
+  "description": "Collects AI coding-agent transcripts and usage on this machine and syncs them to your aqt-turnstash server",
+  "bin": {
+    "turnstash": "dist/turnstash.js"
+  },
+  "files": [
+    "dist/turnstash.js"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://npm.aquitano.me"
+  },
+  "scripts": {
+    "build": "bun build src/main.ts --target bun --outfile dist/turnstash.js",
+    "prepack": "bun run build",
+    "dev": "bun src/main.ts"
+  },
+  "devDependencies": {
+    "@aqt/turnstash-api": "workspace:*",
+    "@aqt/turnstash-core": "workspace:*",
+    "@aqt/turnstash-providers": "workspace:*",
+    "@effect/platform-bun": "rc",
+    "effect": "rc"
+  }
+}

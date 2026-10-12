@@ -1,0 +1,7 @@
+{
+  "agentType": "Explore",
+  "description": "look up the config loader",
+  "toolUseId": "toolu_0000000000000000000002",
+  "spawnDepth": 1,
+  "model": "haiku"
+}

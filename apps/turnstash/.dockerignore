@@ -1,0 +1,10 @@
+.git
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/*.log
+**/*.tsbuildinfo
+.scratch-verify
+.notes
+docs

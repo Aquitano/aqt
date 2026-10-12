@@ -1,0 +1,13 @@
+{
+  "name": "@aqt/turnstash-pricing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@aqt/turnstash-core": "workspace:*",
+    "effect": "rc"
+  }
+}

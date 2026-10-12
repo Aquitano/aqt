@@ -1,0 +1,32 @@
+{
+  "name": "@aqt/turnstash-web",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aqt/turnstash-api": "workspace:*",
+    "@cloudflare/kumo": "^2.14.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@tanstack/react-query": "^5.100.0",
+    "@tanstack/react-router": "^1.165.0",
+    "@tanstack/react-virtual": "^3.13.0",
+    "echarts": "^6.1.0",
+    "effect": "rc",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5"
+  }
+}
