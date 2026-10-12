@@ -1,5 +1,5 @@
 import { isExcludedPath, type SourceRoot } from "@aqt/turnstash-core";
-import { Effect, FileSystem, Option, Path, Schema } from "effect";
+import { Effect, FileSystem, Option, Order, Path, Schema } from "effect";
 
 export interface WalkedFile {
   readonly relativePath: string;
@@ -24,7 +24,7 @@ export const walkFiles = Effect.fn("Sources.walkFiles")(function* (
     const entries = yield* fs
       .readDirectory(path.join(root.path, directory.relativePath))
       .pipe(Effect.catchReason("PlatformError", "NotFound", () => Effect.succeed([])));
-    for (const entry of entries.sort()) {
+    for (const entry of entries.toSorted(Order.String)) {
       if (skippedDirectories.has(entry) || isExcludedPath(entry)) continue;
       const relativePath =
         directory.relativePath === "" ? entry : `${directory.relativePath}/${entry}`;

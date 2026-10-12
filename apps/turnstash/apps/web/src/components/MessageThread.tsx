@@ -154,6 +154,7 @@ const VirtualMessages = ({
     (index: number) => messages[index]?.messageKey ?? index,
     [messages],
   );
+  // oxlint-disable-next-line react/incompatible-library -- the compiler leaves this component unmemoized, as TanStack Virtual needs
   const virtualizer = useWindowVirtualizer({
     count: messages.length,
     estimateSize: () => 180,

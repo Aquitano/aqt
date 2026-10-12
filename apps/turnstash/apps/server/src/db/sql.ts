@@ -19,11 +19,11 @@ const column = <T extends Table>(table: T, key: ColumnKey<T>): Column => {
 const excludedColumn = <T extends Table>(table: T, key: ColumnKey<T>): SQL =>
   sql`excluded.${sql.identifier(column(table, key).name)}`;
 
-// SAFETY: the entries are built from exactly the keys in K, one property per key.
 export const excluded = <T extends Table, K extends ColumnKey<T>>(
   table: T,
   keys: ReadonlyArray<K>,
 ): Record<K, SQL> =>
+  // SAFETY: the entries are built from exactly the keys in K, one property per key.
   Object.fromEntries(keys.map((key) => [key, excludedColumn(table, key)])) as Record<K, SQL>;
 
 export const differsFromExcluded = <T extends Table>(

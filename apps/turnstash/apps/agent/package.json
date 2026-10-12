@@ -16,13 +16,17 @@
   "scripts": {
     "build": "bun build src/main.ts --target bun --outfile dist/turnstash.js",
     "prepack": "bun run build",
-    "dev": "bun src/main.ts"
+    "dev": "bun src/main.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@aqt/config": "workspace:*",
     "@aqt/turnstash-api": "workspace:*",
     "@aqt/turnstash-core": "workspace:*",
     "@aqt/turnstash-providers": "workspace:*",
-    "@effect/platform-bun": "rc",
-    "effect": "rc"
+    "@effect/platform-bun": "4.0.0-rc.116",
+    "@types/bun": "catalog:",
+    "effect": "4.0.0-rc.116",
+    "typescript": "catalog:"
   }
 }

@@ -6,6 +6,8 @@
       "apps/*",
       "apps/gallery/apps/*",
       "apps/gallery/packages/*",
+      "apps/turnstash/apps/*",
+      "apps/turnstash/packages/*",
       "apps/img/cli",
       "apps/bank/internal/webui/app",
       "apps/bank/scripts",
@@ -42,6 +44,7 @@
     "typescript": "7.0.2"
   },
   "overrides": {
+    "@effect/platform-node-shared": "4.0.0-rc.116",
     "@tanstack/query-core": "5.104.1"
   },
   "packageManager": "bun@1.4.2"

@@ -63,7 +63,7 @@ test("OpenID uses PKCE and rejects invalid state, nonce, issuer, audience, subje
   const upstream = spyOn(globalThis, "fetch").mockImplementation(
     Object.assign(
       async (input: string | URL | Request, init?: RequestInit) => {
-        const url = String(input);
+        const url = input instanceof Request ? input.url : input.toString();
         if (url.includes(".well-known/openid-configuration"))
           return Response.json({
             issuer,
@@ -79,7 +79,7 @@ test("OpenID uses PKCE and rejects invalid state, nonce, issuer, audience, subje
         if (url === "https://issuer.test/jwks") return Response.json({ keys: [jwk] });
         if (url === "https://issuer.test/token") {
           exchanges++;
-          const form = new URLSearchParams(String(init?.body));
+          const form = init?.body instanceof URLSearchParams ? init.body : new URLSearchParams();
           expect(form.get("code_verifier")).toBe(verifier);
           expect(form.get("redirect_uri")).toBe("https://turnstash.test/auth/callback");
           const now = Math.floor(Date.now() / 1000);

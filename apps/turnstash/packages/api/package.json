@@ -6,8 +6,16 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@aqt/turnstash-core": "workspace:*",
-    "effect": "rc"
+    "effect": "4.0.0-rc.116"
+  },
+  "devDependencies": {
+    "@aqt/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
   }
 }

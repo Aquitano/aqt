@@ -1,10 +1,5 @@
-node_modules
-dist
 .scratch-verify
 *.log
-*.tsbuildinfo
-.env
-apps/web/dist
-apps/server/web-dist
 .notes
 /docs/
+apps/server/web-dist

@@ -1,26 +1,14 @@
 {
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "ignorePatterns": [
-    ".claude/**",
-    "tools/oxlint/anti-slop/**",
-    "**/dist/**",
-    "apps/server/drizzle/**"
-  ],
+  "extends": ["../../.oxlintrc.json"],
   "jsPlugins": [
     {
-      "name": "anti-slop",
-      "specifier": "./tools/oxlint/anti-slop/index.ts"
-    },
-    {
       "name": "anti-slop-effect",
-      "specifier": "./tools/oxlint/anti-slop/effect/index.ts"
+      "specifier": "../../tools/oxlint/anti-slop/effect/index.ts"
     }
   ],
   "rules": {
+    "no-control-regex": "off",
     "oxc/no-accumulating-spread": "error",
-    "anti-slop/no-array-filter-map": "error",
-    "anti-slop/no-reduce-accumulator-copy": "error",
-    "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "off",
     "anti-slop/no-known-value-widening": "off",
     "anti-slop/no-module-mocking": "error",
@@ -38,15 +26,12 @@
     "anti-slop/no-unknown-returns": "error",
     "anti-slop/no-unknown-type-aliases": "error",
     "anti-slop/no-unsafe-dictionary-type": "error",
-    "anti-slop/no-widen-then-assert": "error",
-    "anti-slop/require-readable-spacing": "off",
     "anti-slop/require-safety-comment-for-type-assertion": "error",
     "anti-slop-effect/no-manual-effect-error-tag": "error",
     "anti-slop-effect/no-manual-tag-comparison": "error",
     "anti-slop-effect/no-manual-tagged-construction": "error",
     "anti-slop-effect/no-service-constructor-imports": "error",
-    "anti-slop-effect/prefer-effect-match": "error",
-    "no-control-regex": "off"
+    "anti-slop-effect/prefer-effect-match": "error"
   },
   "overrides": [
     {

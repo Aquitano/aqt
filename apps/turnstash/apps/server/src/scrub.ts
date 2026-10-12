@@ -17,6 +17,7 @@ const scrub = (value: Schema.Json): Schema.Json => {
   return value;
 };
 
-// SAFETY: scrub only rewrites string contents and keeps every key, index and nesting, so the
-// input type still describes the output.
-export const scrubJson = <A extends Schema.Json>(value: A): A => scrub(value) as A;
+export const scrubJson = <A extends Schema.Json>(value: A): A =>
+  // SAFETY: scrub only rewrites string contents and keeps every key, index and nesting, so the
+  // input type still describes the output.
+  scrub(value) as A;

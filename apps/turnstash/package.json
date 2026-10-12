@@ -1,30 +1,12 @@
 {
   "name": "aqt-turnstash",
   "private": true,
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p apps/web --noEmit",
-    "lint": "oxlint",
-    "fmt": "oxfmt",
-    "fmt:check": "oxfmt --check",
     "test": "bun test"
   },
-  "dependencies": {
-    "@effect/platform-bun": "^4.0.0-rc.116",
-    "@effect/sql-pg": "^4.0.0-rc.116",
-    "drizzle-orm": "1.0.0-rc.5-5935859",
-    "effect": "^4.0.0-rc.116"
-  },
   "devDependencies": {
-    "@oxlint/plugins": "1.83.0",
-    "@types/bun": "^1.4.2",
-    "drizzle-kit": "1.0.0-rc.5-5935859",
-    "oxfmt": "0.68.0",
-    "oxlint": "1.83.0",
-    "typescript": "^7.0.2"
+    "@aqt/config": "workspace:*",
+    "@types/bun": "catalog:"
   }
 }

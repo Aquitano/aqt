@@ -33,6 +33,9 @@ const natural = (value: Schema.Json | undefined): number => {
     : 0;
 };
 
+const rowIdOf = (value: Schema.Json | undefined): string =>
+  typeof value === "string" || typeof value === "number" ? String(value) : "";
+
 const isoOf = (value: Schema.Json | undefined): string | null => {
   if (typeof value === "number") return isoTimestampOf(value) ?? null;
   if (typeof value !== "string" || value === "") return null;
@@ -314,7 +317,7 @@ const readRows = (records: ReadonlyArray<SourceRecordRow>): JournalRows => {
           model ?? "",
         ].join("|"),
       ).slice(0, 16);
-      const id = String(payload["id"] ?? "");
+      const id = rowIdOf(payload["id"]);
       usageRows.set(`${id}:${signature}`, {
         id,
         signature,
@@ -326,7 +329,7 @@ const readRows = (records: ReadonlyArray<SourceRecordRow>): JournalRows => {
       continue;
     }
     if (stream.table === "turns") {
-      const id = String(payload["id"] ?? "");
+      const id = rowIdOf(payload["id"]);
       turns.set(id, {
         id,
         index: natural(payload["turn_index"]),
