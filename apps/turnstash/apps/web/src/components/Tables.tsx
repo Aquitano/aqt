@@ -1,12 +1,16 @@
 import { providerLabels } from "@aqt/turnstash-api";
 import type { MachineSummary, ModelRow, ProjectRow, ProviderRow } from "@aqt/turnstash-api";
-import { Badge, Button } from "@cloudflare/kumo";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { Link } from "@tanstack/react-router";
+import { cn } from "cn";
 import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 
 import { compact, dateTime, hoursSince, int, relativeTime, usd } from "../format";
 import { Card } from "./Card";
+import { DataTable, PrimaryTd, Td, Th } from "./DataTable";
 import { ShareCell, shareOf, totalCost } from "./ShareCell";
 import { SortHeader, useSort } from "./Sort";
 
@@ -19,7 +23,7 @@ export const useCollapse = <A,>(rows: ReadonlyArray<A>) => {
   const shown = expanded || rows.length <= collapsedRows + 2 ? rows : rows.slice(0, collapsedRows);
   const toggle =
     shown.length === rows.length && !expanded ? null : (
-      <div className="table-foot">
+      <div className="flex items-center gap-2 pt-2">
         <Button size="xs" variant="ghost" onClick={() => setExpanded((value) => !value)}>
           {expanded ? "Show fewer" : `Show all ${rows.length}`}
         </Button>
@@ -41,36 +45,36 @@ export const ModelsTable = ({ rows }: { readonly rows: ReadonlyArray<ModelRow> }
   const collapse = useCollapse(sorted);
   return (
     <Card title="By model" note={`${rows.length} models`}>
-      <table className="data-table">
-        <thead>
-          <tr>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
             <SortHeader label="Model" column="modelId" sort={sort} onToggle={toggle} />
             <SortHeader label="Requests" column="requests" sort={sort} onToggle={toggle} numeric />
             <SortHeader label="In" column="inputTokens" sort={sort} onToggle={toggle} numeric />
             <SortHeader label="Out" column="outputTokens" sort={sort} onToggle={toggle} numeric />
             <SortHeader label="Cost" column="costUsd" sort={sort} onToggle={toggle} numeric />
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {collapse.shown.map((row) => (
-            <tr key={`${row.modelId}:${row.route ?? ""}`}>
+            <TableRow key={`${row.modelId}:${row.route ?? ""}`}>
               <ShareCell
                 label={row.modelId}
                 share={shareOf(row.costUsd, total)}
                 sub={row.route === null ? null : routeLabel(row.route)}
               />
-              <td className="num">{int(row.requests)}</td>
-              <td className="num" title={int(row.inputTokens)}>
+              <Td numeric>{int(row.requests)}</Td>
+              <Td numeric title={int(row.inputTokens)}>
                 {compact(row.inputTokens)}
-              </td>
-              <td className="num" title={int(row.outputTokens)}>
+              </Td>
+              <Td numeric title={int(row.outputTokens)}>
                 {compact(row.outputTokens)}
-              </td>
-              <td className="num">{usd(row.costUsd)}</td>
-            </tr>
+              </Td>
+              <Td numeric>{usd(row.costUsd)}</Td>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </DataTable>
       {collapse.toggle}
     </Card>
   );
@@ -89,9 +93,9 @@ export const ProjectsTable = ({ rows }: { readonly rows: ReadonlyArray<ProjectRo
   const collapse = useCollapse(sorted);
   return (
     <Card title="By project" note={`${rows.length} projects`}>
-      <table className="data-table">
-        <thead>
-          <tr>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
             <SortHeader label="Project" column="projectKey" sort={sort} onToggle={toggle} />
             <SortHeader
               label="Conversations"
@@ -102,11 +106,11 @@ export const ProjectsTable = ({ rows }: { readonly rows: ReadonlyArray<ProjectRo
             />
             <SortHeader label="Requests" column="requests" sort={sort} onToggle={toggle} numeric />
             <SortHeader label="Cost" column="costUsd" sort={sort} onToggle={toggle} numeric />
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {collapse.shown.map((row) => (
-            <tr key={row.projectKey}>
+            <TableRow key={row.projectKey}>
               <ShareCell
                 label={
                   <Link
@@ -119,13 +123,13 @@ export const ProjectsTable = ({ rows }: { readonly rows: ReadonlyArray<ProjectRo
                 }
                 share={shareOf(row.costUsd, total)}
               />
-              <td className="num">{int(row.conversations)}</td>
-              <td className="num">{int(row.requests)}</td>
-              <td className="num">{usd(row.costUsd)}</td>
-            </tr>
+              <Td numeric>{int(row.conversations)}</Td>
+              <Td numeric>{int(row.requests)}</Td>
+              <Td numeric>{usd(row.costUsd)}</Td>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </DataTable>
       {collapse.toggle}
     </Card>
   );
@@ -135,26 +139,26 @@ export const ProvidersTable = ({ rows }: { readonly rows: ReadonlyArray<Provider
   const total = totalCost(rows);
   return (
     <Card title="By provider" note={`${rows.length} providers`}>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Provider</th>
-            <th className="num">Conversations</th>
-            <th className="num">Requests</th>
-            <th className="num">Cost</th>
-          </tr>
-        </thead>
-        <tbody>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
+            <Th>Provider</Th>
+            <Th numeric>Conversations</Th>
+            <Th numeric>Requests</Th>
+            <Th numeric>Cost</Th>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => (
-            <tr key={row.provider}>
+            <TableRow key={row.provider}>
               <ShareCell label={providerLabels[row.provider]} share={shareOf(row.costUsd, total)} />
-              <td className="num">{int(row.conversations)}</td>
-              <td className="num">{int(row.requests)}</td>
-              <td className="num">{usd(row.costUsd)}</td>
-            </tr>
+              <Td numeric>{int(row.conversations)}</Td>
+              <Td numeric>{int(row.requests)}</Td>
+              <Td numeric>{usd(row.costUsd)}</Td>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </DataTable>
     </Card>
   );
 };
@@ -162,10 +166,13 @@ export const ProvidersTable = ({ rows }: { readonly rows: ReadonlyArray<Provider
 const Freshness = ({ lastSeenAt }: { readonly lastSeenAt: string | null }) => {
   const hours = hoursSince(lastSeenAt);
   return (
-    <Badge
-      variant={hours <= 24 ? "success" : hours <= 24 * 7 ? "warning" : "error"}
-      appearance="dot"
-    >
+    <Badge variant="outline">
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          hours <= 24 ? "bg-success" : hours <= 24 * 7 ? "bg-warning" : "bg-destructive",
+        )}
+      />
       {relativeTime(lastSeenAt)}
     </Badge>
   );
@@ -175,6 +182,7 @@ export const MachinesTable = ({
   rows,
   title,
   note,
+  action,
   platform = false,
   enrolled = false,
   conversations = false,
@@ -182,56 +190,62 @@ export const MachinesTable = ({
 }: {
   readonly rows: ReadonlyArray<MachineSummary>;
   readonly title: string;
-  readonly note: ReactNode;
+  readonly note?: ReactNode;
+  readonly action?: ReactNode;
   readonly platform?: boolean;
   readonly enrolled?: boolean;
   readonly conversations?: boolean;
   readonly agent?: "column" | "inline";
 }) => (
-  <Card title={title} note={note}>
-    <table className="data-table">
-      <thead>
-        <tr>
-          <th>Machine</th>
-          {platform && <th>Platform</th>}
-          <th>Last sync</th>
-          {enrolled && <th>Enrolled</th>}
-          {agent === "column" && <th className="num">Agent</th>}
-          {conversations && <th className="num">Conversations</th>}
-          <th className="num">Cost</th>
-        </tr>
-      </thead>
-      <tbody>
+  <Card title={title} note={note} action={action}>
+    <DataTable>
+      <TableHeader>
+        <TableRow>
+          <Th>Machine</Th>
+          {platform && <Th>Platform</Th>}
+          <Th>Last sync</Th>
+          {enrolled && <Th>Enrolled</Th>}
+          {agent === "column" && <Th numeric>Agent</Th>}
+          {conversations && <Th numeric>Conversations</Th>}
+          <Th numeric>Cost</Th>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {rows.map((machine) => {
           const platformName = `${machine.os} · ${machine.arch}`;
           return (
-            <tr key={machine.id}>
-              <td className="primary" title={platform ? undefined : platformName}>
+            <TableRow key={machine.id}>
+              <PrimaryTd title={platform ? undefined : platformName}>
                 <Link to="/machines/$id" params={{ id: machine.id }}>
                   {machine.name}
                 </Link>
                 {agent === "inline" && (
-                  <span className="muted"> {machine.agentVersion ?? "no agent version"}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {" "}
+                    {machine.agentVersion ?? "no agent version"}
+                  </span>
                 )}
-              </td>
+              </PrimaryTd>
               {platform && (
-                <td>
-                  <Badge variant="neutral">{platformName}</Badge>
-                </td>
+                <Td>
+                  <Badge variant="secondary">{platformName}</Badge>
+                </Td>
               )}
-              <td>
+              <Td>
                 <Freshness lastSeenAt={machine.lastSeenAt} />
-              </td>
-              {enrolled && <td>{dateTime(machine.enrolledAt)}</td>}
+              </Td>
+              {enrolled && <Td>{dateTime(machine.enrolledAt)}</Td>}
               {agent === "column" && (
-                <td className="num muted">{machine.agentVersion ?? "none"}</td>
+                <Td numeric className="text-xs text-muted-foreground">
+                  {machine.agentVersion ?? "none"}
+                </Td>
               )}
-              {conversations && <td className="num">{int(machine.conversations)}</td>}
-              <td className="num">{usd(machine.costUsd)}</td>
-            </tr>
+              {conversations && <Td numeric>{int(machine.conversations)}</Td>}
+              <Td numeric>{usd(machine.costUsd)}</Td>
+            </TableRow>
           );
         })}
-      </tbody>
-    </table>
+      </TableBody>
+    </DataTable>
   </Card>
 );

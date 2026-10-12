@@ -58,6 +58,15 @@
       }
     },
     {
+      "files": ["apps/turnstash/**"],
+      "options": {
+        "sortTailwindcss": {
+          "functions": ["cn", "cva", "clsx"],
+          "stylesheet": "apps/turnstash/apps/web/src/app.css"
+        }
+      }
+    },
+    {
       "files": ["packages/ts/ui/**"],
       "options": {
         "sortTailwindcss": {

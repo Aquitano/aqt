@@ -1,6 +1,8 @@
 import type { DayRow, Overall, PlanCost, Stats, SubscriptionValue } from "@aqt/turnstash-api";
-import { ArrowDownRightIcon, ArrowUpRightIcon } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
+import { cn } from "cn";
+import { ArrowDownRightIcon, ArrowUpRightIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { compact, int, moneyList, pct, usd } from "../format";
 import { ymd } from "../period";
@@ -12,8 +14,17 @@ const Delta = ({ now, previous }: { readonly now: number; readonly previous: num
   const change = (now - previous) / previous;
   if (!Number.isFinite(change) || Math.abs(change) < 0.005) return null;
   return (
-    <span className={change > 0 ? "delta is-up" : "delta is-down"}>
-      {change > 0 ? <ArrowUpRightIcon size={13} /> : <ArrowDownRightIcon size={13} />}
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 text-[13px] font-medium tracking-normal",
+        change > 0 ? "text-destructive" : "text-success",
+      )}
+    >
+      {change > 0 ? (
+        <ArrowUpRightIcon className="size-3.5" />
+      ) : (
+        <ArrowDownRightIcon className="size-3.5" />
+      )}
       {pct(Math.abs(change))}
     </span>
   );
@@ -52,15 +63,26 @@ const Figure = ({
   sub,
   lead = false,
 }: {
-  readonly label: React.ReactNode;
-  readonly value: React.ReactNode;
-  readonly sub?: React.ReactNode;
+  readonly label: ReactNode;
+  readonly value: ReactNode;
+  readonly sub?: ReactNode;
   readonly lead?: boolean;
 }) => (
-  <div className={lead ? "figure is-lead" : "figure"}>
-    <span className="value">{value}</span>
-    <span className="label">{label}</span>
-    {sub !== undefined && <span className="sub">{sub}</span>}
+  <div className={cn("flex min-w-0 flex-col gap-0.5", lead && "max-sm:col-span-full")}>
+    <span
+      className={cn(
+        "flex flex-wrap items-baseline gap-2.5 leading-tight font-medium tracking-tight",
+        lead ? "text-[40px] tracking-[-0.03em] max-sm:text-[32px]" : "text-[22px]",
+      )}
+    >
+      {value}
+    </span>
+    <span className="text-[13px]">{label}</span>
+    {sub !== undefined && (
+      <span className="text-xs text-muted-foreground [&_a]:text-flame [&_a]:hover:underline">
+        {sub}
+      </span>
+    )}
   </div>
 );
 
@@ -93,7 +115,7 @@ export const StatTiles = ({
     ].join(", ");
 
   return (
-    <div className="ledger">
+    <div className="grid grid-cols-2 gap-x-8 gap-y-4 border-y py-5 sm:grid-cols-[minmax(220px,1.4fr)_repeat(auto-fit,minmax(150px,1fr))]">
       <Figure
         lead
         label="API-equivalent cost"

@@ -13,7 +13,7 @@ Archive and cost dashboard for AI coding-agent sessions. A small agent on each m
 | `packages/pricing`   | Catalog parsing, LiteLLM refresh, model resolution, cost calculation                             |
 | `apps/agent`         | The `turnstash` CLI that runs on each machine                                                    |
 | `apps/server`        | Effect HttpApi server, Drizzle schema and migrations, normalize and valuation worker             |
-| `apps/web`           | Vite, React and Kumo dashboard served by the server                                              |
+| `apps/web`           | Vite and React dashboard on `@aqt/ui`, served by the server                                      |
 | `deploy`             | Dockerfile and docker-compose files                                                              |
 
 ## Server

@@ -1,5 +1,9 @@
-import { CaretDownIcon, CaretRightIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@aqt/ui/components/collapsible";
+import { ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 export const Disclosure = ({
@@ -10,20 +14,12 @@ export const Disclosure = ({
   readonly summary: ReactNode;
   readonly defaultOpen?: boolean;
   readonly children: ReactNode;
-}) => {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="disclosure">
-      <button
-        type="button"
-        className="disclosure-trigger"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-      >
-        {open ? <CaretDownIcon size={12} /> : <CaretRightIcon size={12} />}
-        {summary}
-      </button>
-      {open && children}
-    </div>
-  );
-};
+}) => (
+  <Collapsible defaultOpen={defaultOpen} className="rounded-lg border bg-background px-2.5 py-2">
+    <CollapsibleTrigger className="group/disclosure flex w-full cursor-pointer items-center gap-1.5 text-left text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
+      <ChevronRightIcon className="size-3 transition-transform group-data-panel-open/disclosure:rotate-90" />
+      {summary}
+    </CollapsibleTrigger>
+    <CollapsibleContent className="mt-2">{children}</CollapsibleContent>
+  </Collapsible>
+);

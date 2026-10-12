@@ -1,5 +1,7 @@
 import type { MessageView, RequestSummary, ToolExecutionView } from "@aqt/turnstash-api";
-import { Badge, Button } from "@cloudflare/kumo";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
+import { Spinner } from "@aqt/ui/components/spinner";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
@@ -29,13 +31,18 @@ const CostChips = ({
   readonly requests: ReadonlyArray<RequestSummary>;
   readonly onInspect: (requestId: string) => void;
 }) => (
-  <div className="chips">
+  <div className="flex flex-wrap gap-1.5">
     {requests.map((request) => (
-      <button key={request.id} type="button" className="chip" onClick={() => onInspect(request.id)}>
+      <Badge
+        key={request.id}
+        variant="outline"
+        className="cursor-pointer gap-1.5 px-2.5 text-[11px] font-normal hover:border-flame"
+        render={<button type="button" onClick={() => onInspect(request.id)} />}
+      >
         <span>{request.modelId}</span>
         <span>{request.costUsd === null ? "unpriced" : usd(request.costUsd)}</span>
         <span>{compact(billedTokens(request))} tok</span>
-      </button>
+      </Badge>
     ))}
   </div>
 );
@@ -76,29 +83,37 @@ const MessageRow = ({
   readonly actions: (message: MessageView) => ReactNode;
 }) => (
   <article
-    className={`message${targeted ? " message-target" : ""}`}
+    className="flex flex-col gap-2 border-b pt-3.5 pb-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-flame data-targeted:border-l-3 data-targeted:border-l-flame data-targeted:bg-flame/8 data-targeted:pl-3 [&_mark]:rounded-[3px] [&_mark]:bg-flame/30 [&_mark]:px-0.5 [&_mark]:text-foreground"
+    data-targeted={targeted ? "" : undefined}
     tabIndex={targeted ? -1 : undefined}
     aria-label={targeted ? "Linked message" : undefined}
   >
-    <div className="message-head">
-      <span className="message-role">{message.role}</span>
+    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <span className="font-semibold text-foreground capitalize">{message.role}</span>
       <span>{dateTime(message.createdAt)}</span>
       <Link
         to="/conversations/$id"
         params={{ id: conversationId }}
         search={{ message: message.messageKey }}
-        className="message-link"
+        className="underline underline-offset-2 hover:text-foreground hover:decoration-flame"
         aria-label={`Permalink to ${message.role} message ${message.seq + 1}`}
       >
         Link
       </Link>
-      {targeted && <Badge variant="orange">Linked message</Badge>}
-      {message.parts.length === 0 && <Badge variant="neutral">empty</Badge>}
+      {targeted && (
+        <Badge variant="outline">
+          <span className="size-1.5 rounded-full bg-flame" />
+          Linked message
+        </Badge>
+      )}
+      {message.parts.length === 0 && <Badge variant="secondary">empty</Badge>}
       {actions(message)}
     </div>
     {message.role === "system" ? (
       <Disclosure summary="System prompt" defaultOpen={targeted}>
-        <div className="part">{parts(message, tools, query, targeted)}</div>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          {parts(message, tools, query, targeted)}
+        </div>
       </Disclosure>
     ) : (
       parts(message, tools, query, targeted)
@@ -146,6 +161,9 @@ const VirtualMessages = ({
   readonly layoutReady: boolean;
   readonly actions: (message: MessageView) => ReactNode;
 }) => {
+  // The compiler only knows `useVirtualizer` as incompatible; without this it memoizes the
+  // rendered items on the virtualizer's identity and the list stops following the scroll.
+  "use no memo";
   const listRef = useRef<HTMLDivElement>(null);
   const sought = useRef(false);
   const focused = useRef(false);
@@ -154,7 +172,7 @@ const VirtualMessages = ({
     (index: number) => messages[index]?.messageKey ?? index,
     [messages],
   );
-  // oxlint-disable-next-line react/incompatible-library -- the compiler leaves this component unmemoized, as TanStack Virtual needs
+  // oxlint-disable-next-line react/incompatible-library -- "use no memo" keeps this component unmemoized, as TanStack Virtual needs
   const virtualizer = useWindowVirtualizer({
     count: messages.length,
     estimateSize: () => 180,
@@ -174,14 +192,14 @@ const VirtualMessages = ({
   }, [layoutReady, messageKey, messages, scrollMargin, virtualizer]);
   useLayoutEffect(() => {
     if (!sought.current || focused.current) return;
-    const target = listRef.current?.querySelector<HTMLElement>(".message-target");
+    const target = listRef.current?.querySelector<HTMLElement>("[data-targeted]");
     if (target === undefined || target === null) return;
     target.focus({ preventScroll: true });
     focused.current = true;
   });
 
   return (
-    <div ref={listRef} className="thread" style={{ height: virtualizer.getTotalSize() }}>
+    <div ref={listRef} className="relative" style={{ height: virtualizer.getTotalSize() }}>
       {virtualizer.getVirtualItems().map((item) => {
         const message = messages[item.index];
         if (message === undefined) return null;
@@ -253,12 +271,14 @@ export const MessageThread = ({
   return (
     <>
       {pages.hasPreviousPage && (
-        <div className="thread-foot">
+        <div className="pt-3">
           <Button
             size="sm"
-            loading={pages.isFetchingPreviousPage}
+            variant="outline"
+            disabled={pages.isFetchingPreviousPage}
             onClick={() => void pages.fetchPreviousPage()}
           >
+            {pages.isFetchingPreviousPage && <Spinner data-icon="inline-start" />}
             Load earlier messages
           </Button>
         </div>
@@ -278,7 +298,7 @@ export const MessageThread = ({
         query={query}
         layoutReady={layoutReady}
         actions={(message) => (
-          <div className="row">
+          <div className="flex flex-wrap items-center gap-2">
             <SelectForExport
               label={`Select ${message.role} message ${message.seq + 1} for export`}
               messageKey={message.messageKey}
@@ -292,12 +312,14 @@ export const MessageThread = ({
         )}
       />
       {pages.hasNextPage && (
-        <div className="thread-foot">
+        <div className="pt-3">
           <Button
             size="sm"
-            loading={pages.isFetchingNextPage}
+            variant="outline"
+            disabled={pages.isFetchingNextPage}
             onClick={() => void pages.fetchNextPage()}
           >
+            {pages.isFetchingNextPage && <Spinner data-icon="inline-start" />}
             Load more messages
           </Button>
         </div>

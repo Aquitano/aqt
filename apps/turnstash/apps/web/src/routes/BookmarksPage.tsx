@@ -1,5 +1,6 @@
 import type { BookmarkView } from "@aqt/turnstash-api";
-import { Button } from "@cloudflare/kumo";
+import { Button } from "@aqt/ui/components/button";
+import { Spinner } from "@aqt/ui/components/spinner";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Effect } from "effect";
@@ -10,6 +11,7 @@ import { Pending, RequestFailure } from "../components/Async";
 import { BookmarkNoteForm } from "../components/BookmarkNoteForm";
 import { Card } from "../components/Card";
 import { MarkdownExportButton } from "../components/MarkdownExportButton";
+import { Page, PageHead } from "../components/Page";
 import { dateTime } from "../format";
 import { bookmarkPagesQuery, queryKeys } from "../queries";
 
@@ -36,22 +38,28 @@ const Bookmark = ({ bookmark }: { readonly bookmark: BookmarkView }) => {
   });
   const target = bookmark.target;
   return (
-    <article className="bookmark-item">
-      <div className="row">
+    <article className="flex flex-col gap-2 border-b py-4 text-sm last:border-b-0">
+      <div className="flex flex-wrap items-center gap-2">
         <Link
           to="/conversations/$id"
           params={{ id: bookmark.conversationId }}
           search={target.kind === "conversation" ? {} : { message: target.messageKey }}
-          className="bookmark-title"
+          className="font-semibold underline-offset-2 outline-none hover:underline hover:decoration-flame focus-visible:underline"
         >
           {bookmark.conversationTitle ?? "Untitled conversation"}
         </Link>
-        <span className="muted">
+        <span className="text-xs text-muted-foreground">
           {target.kind} · {dateTime(bookmark.createdAt)}
         </span>
       </div>
-      {bookmark.excerpt !== "" && <p className="bookmark-excerpt">{bookmark.excerpt}</p>}
-      {!bookmark.available && <p className="muted">This target is no longer available.</p>}
+      {bookmark.excerpt !== "" && (
+        <p className="wrap-anywhere whitespace-pre-wrap text-muted-foreground">
+          {bookmark.excerpt}
+        </p>
+      )}
+      {!bookmark.available && (
+        <p className="text-xs text-muted-foreground">This target is no longer available.</p>
+      )}
       {editing ? (
         <BookmarkNoteForm
           note={note}
@@ -63,8 +71,10 @@ const Bookmark = ({ bookmark }: { readonly bookmark: BookmarkView }) => {
         />
       ) : (
         <>
-          {bookmark.note !== "" && <p className="bookmark-note">{bookmark.note}</p>}
-          <div className="row">
+          {bookmark.note !== "" && (
+            <p className="wrap-anywhere whitespace-pre-wrap">{bookmark.note}</p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="ghost"
@@ -78,9 +88,10 @@ const Bookmark = ({ bookmark }: { readonly bookmark: BookmarkView }) => {
             <Button
               size="sm"
               variant="ghost"
-              loading={remove.isPending}
+              disabled={remove.isPending}
               onClick={() => remove.mutate()}
             >
+              {remove.isPending && <Spinner data-icon="inline-start" />}
               Delete bookmark
             </Button>
             {bookmark.available && (
@@ -109,16 +120,15 @@ export const BookmarksPage = () => {
   const pages = useInfiniteQuery(bookmarkPagesQuery());
   const items = pages.data?.pages.flatMap((page) => page.items) ?? [];
   return (
-    <main className="main">
-      <div className="page-head">
-        <h1 className="page-title">Bookmarks</h1>
-        <p className="page-sub">Saved conversations, turns and messages.</p>
-      </div>
+    <Page>
+      <PageHead title="Bookmarks" note="Saved conversations, turns and messages." />
       <Card title="Saved bookmarks">
         {pages.isPending && <Pending />}
         {pages.isError && <RequestFailure error={pages.error} />}
         {pages.isSuccess && items.length === 0 && (
-          <p className="muted">Open a conversation to save a bookmark with an optional note.</p>
+          <p className="py-2 text-xs text-muted-foreground">
+            Open a conversation to save a bookmark with an optional note.
+          </p>
         )}
         {items.map((bookmark) => (
           <Bookmark key={bookmark.id} bookmark={bookmark} />
@@ -126,13 +136,15 @@ export const BookmarksPage = () => {
         {pages.hasNextPage && (
           <Button
             size="sm"
-            loading={pages.isFetchingNextPage}
+            variant="outline"
+            disabled={pages.isFetchingNextPage}
             onClick={() => void pages.fetchNextPage()}
           >
+            {pages.isFetchingNextPage && <Spinner data-icon="inline-start" />}
             Load more bookmarks
           </Button>
         )}
       </Card>
-    </main>
+    </Page>
   );
 };

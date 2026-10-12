@@ -1,8 +1,10 @@
 import type { TurnView } from "@aqt/turnstash-api";
-import { Badge } from "@cloudflare/kumo";
+import { Badge } from "@aqt/ui/components/badge";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 
 import { int, usd } from "../format";
 import { BookmarkButton } from "./BookmarkButton";
+import { DataTable, PrimaryTd, Td, Th } from "./DataTable";
 import { SelectForExport, SelectionBar, useExportSelection } from "./ExportSelection";
 
 export const TurnList = ({
@@ -23,44 +25,46 @@ export const TurnList = ({
           onClear={selection.clear}
         />
       )}
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th className="num">#</th>
-            <th>Request</th>
-            <th>Task</th>
-            <th>Model</th>
-            <th>Tools</th>
-            <th className="num">Edits</th>
-            <th className="num">Retries</th>
-            <th className="num">Cost</th>
-            {conversationId !== undefined && <th>Save / export</th>}
-          </tr>
-        </thead>
-        <tbody>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
+            <Th numeric>#</Th>
+            <Th>Request</Th>
+            <Th>Task</Th>
+            <Th>Model</Th>
+            <Th>Tools</Th>
+            <Th numeric>Edits</Th>
+            <Th numeric>Retries</Th>
+            <Th numeric>Cost</Th>
+            {conversationId !== undefined && <Th>Save / export</Th>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {turns.map((turn) => (
-            <tr key={turn.turnIndex}>
-              <td className="num">{turn.turnIndex + 1}</td>
-              <td className="primary">
+            <TableRow key={turn.turnIndex}>
+              <Td numeric>{turn.turnIndex + 1}</Td>
+              <PrimaryTd>
                 {turn.userExcerpt === "" ? (
-                  <span className="muted">no user text</span>
+                  <span className="text-xs text-muted-foreground">no user text</span>
                 ) : (
                   turn.userExcerpt
                 )}
-              </td>
-              <td>
-                <Badge variant="neutral">{turn.category}</Badge>
-                {turn.skill !== null && <span className="muted"> {turn.skill}</span>}
-              </td>
-              <td>{turn.primaryModelId ?? ""}</td>
-              <td className="muted">{turn.tools.join(", ")}</td>
-              <td className="num">{int(turn.edits)}</td>
-              <td className="num">{int(turn.retries)}</td>
-              <td className="num">{usd(turn.costUsd)}</td>
+              </PrimaryTd>
+              <Td>
+                <Badge variant="secondary">{turn.category}</Badge>
+                {turn.skill !== null && (
+                  <span className="text-xs text-muted-foreground"> {turn.skill}</span>
+                )}
+              </Td>
+              <Td>{turn.primaryModelId ?? ""}</Td>
+              <Td className="text-xs text-muted-foreground">{turn.tools.join(", ")}</Td>
+              <Td numeric>{int(turn.edits)}</Td>
+              <Td numeric>{int(turn.retries)}</Td>
+              <Td numeric>{usd(turn.costUsd)}</Td>
               {conversationId !== undefined && (
-                <td>
+                <Td>
                   {turn.messageKey !== null && (
-                    <div className="row">
+                    <div className="flex flex-wrap items-center gap-2">
                       <SelectForExport
                         label={`Select turn ${turn.turnIndex + 1} for export`}
                         messageKey={turn.messageKey}
@@ -72,12 +76,12 @@ export const TurnList = ({
                       />
                     </div>
                   )}
-                </td>
+                </Td>
               )}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </DataTable>
     </>
   );
 };

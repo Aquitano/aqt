@@ -5,14 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>turnstash</title>
     <script>
-      // Resolve the theme before first paint to avoid a flash of the wrong mode.
-      const saved = localStorage.getItem("cb_theme");
-      document.documentElement.dataset.mode =
-        saved === "light" || saved === "dark"
-          ? saved
-          : matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "light";
+      // next-themes applies the theme only once React runs; this avoids a flash of the wrong mode.
+      const saved = localStorage.getItem("theme");
+      const dark =
+        saved === "dark" ||
+        (saved !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.style.colorScheme = dark ? "dark" : "light";
     </script>
   </head>
   <body>

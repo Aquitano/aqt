@@ -1,24 +1,21 @@
-import { Select } from "@cloudflare/kumo";
-
 import { Card } from "../components/Card";
+import { LabeledSelect } from "../components/LabeledSelect";
 import { tokenTotals, useTokenTotal } from "../token-total";
 
 export const DisplaySettings = () => {
   const [tokenTotal, chooseTokenTotal] = useTokenTotal();
   return (
     <Card title="Token totals">
-      <div className="stack">
-        <p className="muted">
+      <div className="flex flex-col gap-6 pt-1.5">
+        <p className="text-xs text-muted-foreground">
           Choose whether dashboard token totals include cached tokens. Saved in this browser.
         </p>
-        <Select<string>
+        <LabeledSelect
           label="Count tokens"
-          size="sm"
+          className="w-36"
           value={tokenTotal}
-          items={[...tokenTotals]}
-          onValueChange={(value) => {
-            if (value !== null) chooseTokenTotal(value);
-          }}
+          options={tokenTotals}
+          onChange={chooseTokenTotal}
         />
       </div>
     </Card>

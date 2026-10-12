@@ -1,11 +1,12 @@
 import type { StatsFilter } from "@aqt/turnstash-api";
-import { Tabs } from "@cloudflare/kumo";
 import { useQuery } from "@tanstack/react-query";
 import { Option, Schema } from "effect";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import { FilterSelect } from "./components/FilterSelect";
+import { PageHead } from "./components/Page";
+import { Segmented } from "./components/Segmented";
 import { type DayRange, isPeriodId, type PeriodId, periodRange, periods, ymd } from "./period";
 import { isProvider, providerOptions } from "./providers";
 import { machinesQuery, rangeFilter } from "./queries";
@@ -144,20 +145,14 @@ export const FilterBar = ({
   const { period, provider, setPeriod, setProvider } = selection ?? filters;
   const machines = useQuery(machinesQuery());
   return (
-    <div className="page-top">
-      <div className="page-head">
-        <h1 className="page-title">{title}</h1>
-        {note !== undefined && <span className="page-sub">{note}</span>}
-      </div>
-      <div className="filterbar">
-        <Tabs
-          variant="segmented"
-          size="sm"
-          tabs={periods.map((entry) => ({ value: entry.id, label: entry.label }))}
+    <div className="flex flex-col gap-3.5">
+      <PageHead title={title} note={note} />
+      <div className="flex flex-wrap items-center gap-2">
+        <Segmented
+          label="Period"
+          options={periods.map((entry) => ({ value: entry.id, label: entry.label }))}
           value={period}
-          onValueChange={(value) => {
-            if (isPeriodId(value)) setPeriod(value);
-          }}
+          onChange={setPeriod}
         />
         {showProvider && (
           <FilterSelect

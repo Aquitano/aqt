@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { Async } from "../components/Async";
+import { Page, PageHead } from "../components/Page";
 import { MachinesTable } from "../components/Tables";
 import { machinesQuery } from "../queries";
 
@@ -8,10 +9,8 @@ export const MachinesPage = () => {
   const machines = useQuery(machinesQuery());
 
   return (
-    <main className="main">
-      <div className="page-head">
-        <h1 className="page-title">Machines</h1>
-      </div>
+    <Page>
+      <PageHead title="Machines" />
       <Async query={machines}>
         {(rows) => (
           <MachinesTable
@@ -25,6 +24,6 @@ export const MachinesPage = () => {
           />
         )}
       </Async>
-    </main>
+    </Page>
   );
 };

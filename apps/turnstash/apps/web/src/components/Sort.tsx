@@ -1,6 +1,9 @@
-import { CaretDownIcon, CaretUpIcon } from "@phosphor-icons/react";
+import { cn } from "cn";
 import { Predicate } from "effect";
+import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+
+import { Th } from "./DataTable";
 
 export interface SortState<K extends string> {
   readonly key: K;
@@ -26,7 +29,7 @@ export const useSort = <A, K extends string>(
   const [sort, setSort] = useState<SortState<K>>(initial);
   const sorted = useMemo(
     () =>
-      [...rows].sort(
+      rows.toSorted(
         (a, b) =>
           (sort.direction === "asc" ? 1 : -1) * compare(pick(a, sort.key), pick(b, sort.key)),
       ),
@@ -62,19 +65,26 @@ export const SortHeader = <K extends string>({
 }) => {
   const active = sort.key === column;
   return (
-    <th
-      className={numeric ? "num" : undefined}
+    <Th
+      numeric={numeric}
       aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
     >
       <button
         type="button"
-        className={active ? "sort is-active" : "sort"}
+        className={cn(
+          "inline-flex cursor-pointer items-center gap-1 rounded-sm outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
+          active && "text-foreground",
+        )}
         onClick={() => onToggle(column)}
       >
         {label}
         {active &&
-          (sort.direction === "asc" ? <CaretUpIcon size={11} /> : <CaretDownIcon size={11} />)}
+          (sort.direction === "asc" ? (
+            <ChevronUpIcon className="size-3" />
+          ) : (
+            <ChevronDownIcon className="size-3" />
+          ))}
       </button>
-    </th>
+    </Th>
   );
 };

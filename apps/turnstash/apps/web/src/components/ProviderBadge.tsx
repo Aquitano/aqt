@@ -1,17 +1,20 @@
 import { providerLabels, type ProviderId } from "@aqt/turnstash-api";
-import { Badge, type BadgeVariant } from "@cloudflare/kumo";
+import { Badge } from "@aqt/ui/components/badge";
 
-const variants: Record<ProviderId, BadgeVariant> = {
-  claude: "orange",
-  codex: "neutral",
-  opencode: "teal",
-  cursor: "blue",
-  copilot: "purple",
-  gemini: "green",
-  pi: "red",
-  antigravity: "blue",
+const dots: Record<ProviderId, string> = {
+  claude: "bg-flame",
+  codex: "bg-foreground",
+  opencode: "bg-chart-5",
+  cursor: "bg-chart-1",
+  copilot: "bg-chart-4",
+  gemini: "bg-success",
+  pi: "bg-destructive",
+  antigravity: "bg-chart-2",
 };
 
 export const ProviderBadge = ({ provider }: { readonly provider: ProviderId }) => (
-  <Badge variant={variants[provider]}>{providerLabels[provider]}</Badge>
+  <Badge variant="outline">
+    <span className={`size-1.5 rounded-full ${dots[provider]}`} />
+    {providerLabels[provider]}
+  </Badge>
 );

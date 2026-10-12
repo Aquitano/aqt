@@ -1,8 +1,11 @@
 import type { AllocationRow, Analysis } from "@aqt/turnstash-api";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 
 import { Async } from "../components/Async";
 import { Card } from "../components/Card";
+import { DataTable, Td, Th } from "../components/DataTable";
+import { Page } from "../components/Page";
 import { ShareCell, shareOf } from "../components/ShareCell";
 import { useCollapse } from "../components/Tables";
 import { FilterBar, useFilters } from "../filters";
@@ -23,26 +26,26 @@ const AllocationTable = ({
   return (
     <Card title={title} note={note}>
       {rows.length === 0 ? (
-        <span className="card-note">Nothing observed in this period.</span>
+        <p className="py-2 text-xs text-muted-foreground">Nothing observed in this period.</p>
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th className="num">Turns</th>
-              <th className="num">Est. cost</th>
-            </tr>
-          </thead>
-          <tbody>
+        <DataTable>
+          <TableHeader>
+            <TableRow>
+              <Th>Name</Th>
+              <Th numeric>Turns</Th>
+              <Th numeric>Est. cost</Th>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {collapse.shown.map((row) => (
-              <tr key={row.name}>
+              <TableRow key={row.name}>
                 <ShareCell label={row.name} share={shareOf(row.estimatedCostUsd, total)} />
-                <td className="num">{int(row.turns)}</td>
-                <td className="num">{usd(row.estimatedCostUsd)}</td>
-              </tr>
+                <Td numeric>{int(row.turns)}</Td>
+                <Td numeric>{usd(row.estimatedCostUsd)}</Td>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </DataTable>
       )}
       {collapse.toggle}
     </Card>
@@ -53,40 +56,40 @@ const CategoryTable = ({ analysis }: { readonly analysis: Analysis }) => {
   const total = analysis.attributedCostUsd + analysis.unattributedCostUsd;
   return (
     <Card title="By task" note={`${usd(analysis.attributedCostUsd)} attributed to turns`}>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Task</th>
-            <th className="num">Turns</th>
-            <th className="num">Edit turns</th>
-            <th className="num">Retries</th>
-            <th className="num">Cost</th>
-          </tr>
-        </thead>
-        <tbody>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
+            <Th>Task</Th>
+            <Th numeric>Turns</Th>
+            <Th numeric>Edit turns</Th>
+            <Th numeric>Retries</Th>
+            <Th numeric>Cost</Th>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {analysis.byCategory.map((row) => (
-            <tr key={row.category}>
+            <TableRow key={row.category}>
               <ShareCell label={row.category} share={shareOf(row.costUsd, total)} />
-              <td className="num">{int(row.turns)}</td>
-              <td className="num">{int(row.editTurns)}</td>
-              <td className="num">{int(row.retries)}</td>
-              <td className="num">{usd(row.costUsd)}</td>
-            </tr>
+              <Td numeric>{int(row.turns)}</Td>
+              <Td numeric>{int(row.editTurns)}</Td>
+              <Td numeric>{int(row.retries)}</Td>
+              <Td numeric>{usd(row.costUsd)}</Td>
+            </TableRow>
           ))}
           {analysis.unattributedCostUsd > 0 && (
-            <tr>
+            <TableRow>
               <ShareCell
                 label="not attributed to a turn"
                 share={shareOf(analysis.unattributedCostUsd, total)}
               />
-              <td className="num"></td>
-              <td className="num"></td>
-              <td className="num"></td>
-              <td className="num">{usd(analysis.unattributedCostUsd)}</td>
-            </tr>
+              <Td numeric />
+              <Td numeric />
+              <Td numeric />
+              <Td numeric>{usd(analysis.unattributedCostUsd)}</Td>
+            </TableRow>
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </DataTable>
     </Card>
   );
 };
@@ -95,34 +98,32 @@ const ModelTable = ({ analysis }: { readonly analysis: Analysis }) => {
   const total = analysis.byModel.reduce((sum, row) => sum + row.costUsd, 0);
   return (
     <Card title="By model" note="the model that answered the turn first">
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Model</th>
-            <th className="num">Turns</th>
-            <th className="num">Edit turns</th>
-            <th className="num">Retries per edit turn</th>
-            <th className="num">Cost per turn</th>
-            <th className="num">Cache hit</th>
-            <th className="num">Cost</th>
-          </tr>
-        </thead>
-        <tbody>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
+            <Th>Model</Th>
+            <Th numeric>Turns</Th>
+            <Th numeric>Edit turns</Th>
+            <Th numeric>Retries per edit turn</Th>
+            <Th numeric>Cost per turn</Th>
+            <Th numeric>Cache hit</Th>
+            <Th numeric>Cost</Th>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {analysis.byModel.map((row) => (
-            <tr key={row.modelId}>
+            <TableRow key={row.modelId}>
               <ShareCell label={row.modelId} share={shareOf(row.costUsd, total)} />
-              <td className="num">{int(row.turns)}</td>
-              <td className="num">{int(row.editTurns)}</td>
-              <td className="num">
-                {row.editTurns === 0 ? "" : (row.retries / row.editTurns).toFixed(2)}
-              </td>
-              <td className="num">{row.turns === 0 ? "" : usd(row.costUsd / row.turns)}</td>
-              <td className="num">{row.cacheHitRate === null ? "" : pct(row.cacheHitRate)}</td>
-              <td className="num">{usd(row.costUsd)}</td>
-            </tr>
+              <Td numeric>{int(row.turns)}</Td>
+              <Td numeric>{int(row.editTurns)}</Td>
+              <Td numeric>{row.editTurns === 0 ? "" : (row.retries / row.editTurns).toFixed(2)}</Td>
+              <Td numeric>{row.turns === 0 ? "" : usd(row.costUsd / row.turns)}</Td>
+              <Td numeric>{row.cacheHitRate === null ? "" : pct(row.cacheHitRate)}</Td>
+              <Td numeric>{usd(row.costUsd)}</Td>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </DataTable>
     </Card>
   );
 };
@@ -132,14 +133,14 @@ export const AnalysisPage = () => {
   const analysis = useQuery(analysisQuery(filters.stats));
 
   return (
-    <main className="main">
+    <Page>
       <FilterBar title="Analysis" note="turns are classified by rules, allocations are estimates" />
       <Async query={analysis}>
         {(data) => (
           <>
             <CategoryTable analysis={data} />
             <ModelTable analysis={data} />
-            <div className="tables-grid">
+            <div className="grid grid-cols-1 gap-x-10 gap-y-9 lg:grid-cols-2">
               <AllocationTable
                 title="By tool"
                 rows={data.byTool}
@@ -164,6 +165,6 @@ export const AnalysisPage = () => {
           </>
         )}
       </Async>
-    </main>
+    </Page>
   );
 };

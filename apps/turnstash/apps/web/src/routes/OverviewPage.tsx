@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { Async } from "../components/Async";
+import { Page } from "../components/Page";
 import { StatsView } from "../components/StatsView";
 import { FilterBar, useFilters } from "../filters";
 import { heatmapRange } from "../period";
@@ -17,7 +18,7 @@ export const OverviewPage = () => {
   );
 
   return (
-    <main className="main">
+    <Page>
       <FilterBar title="Overview" note={stats.data?.range === null ? "all time" : undefined} />
       <Async query={stats}>
         {(data) => (
@@ -30,6 +31,6 @@ export const OverviewPage = () => {
           />
         )}
       </Async>
-    </main>
+    </Page>
   );
 };

@@ -1,8 +1,10 @@
 import type { ConversationSummary } from "@aqt/turnstash-api";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { Link } from "@tanstack/react-router";
 import { useCallback } from "react";
 
 import { dateTime, int, shortId, usd } from "../format";
+import { DataTable, PrimaryTd, Td } from "./DataTable";
 import { ProviderBadge } from "./ProviderBadge";
 import { SortHeader, useSort } from "./Sort";
 
@@ -30,9 +32,9 @@ export const ConversationsTable = ({
   );
 
   return (
-    <table className="data-table">
-      <thead>
-        <tr>
+    <DataTable>
+      <TableHeader>
+        <TableRow>
           <SortHeader label="Conversation" column="title" sort={sort} onToggle={toggle} />
           <SortHeader label="Provider" column="provider" sort={sort} onToggle={toggle} />
           <SortHeader label="Started" column="startedAt" sort={sort} onToggle={toggle} />
@@ -51,34 +53,37 @@ export const ConversationsTable = ({
             numeric
           />
           <SortHeader label="Cost" column="costUsd" sort={sort} onToggle={toggle} numeric />
-        </tr>
-      </thead>
-      <tbody>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {sorted.map((row) => (
-          <tr key={row.id}>
-            <td className="primary" title={row.projectPath ?? row.conversationKey}>
+          <TableRow key={row.id}>
+            <PrimaryTd title={row.projectPath ?? row.conversationKey}>
               <Link to="/conversations/$id" params={{ id: row.id }}>
                 {conversationLabel(row)}
               </Link>
               {row.title !== null && row.projectKey !== null && (
-                <span className="muted"> {row.projectKey}</span>
+                <span className="text-xs text-muted-foreground"> {row.projectKey}</span>
               )}
               {showShare && (
-                <span className="share">
-                  <i style={{ width: `${peak > 0 ? (row.costUsd / peak) * 100 : 0}%` }} />
+                <span className="mt-1 block h-0.5 overflow-hidden bg-muted">
+                  <span
+                    className="block h-full bg-flame"
+                    style={{ width: `${peak > 0 ? (row.costUsd / peak) * 100 : 0}%` }}
+                  />
                 </span>
               )}
-            </td>
-            <td>
+            </PrimaryTd>
+            <Td>
               <ProviderBadge provider={row.provider} />
-            </td>
-            <td title={row.startedAt}>{dateTime(row.startedAt)}</td>
-            <td className="num">{int(row.messageCount)}</td>
-            <td className="num">{int(row.requestCount)}</td>
-            <td className="num">{usd(row.costUsd)}</td>
-          </tr>
+            </Td>
+            <Td title={row.startedAt}>{dateTime(row.startedAt)}</Td>
+            <Td numeric>{int(row.messageCount)}</Td>
+            <Td numeric>{int(row.requestCount)}</Td>
+            <Td numeric>{usd(row.costUsd)}</Td>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </DataTable>
   );
 };

@@ -1,4 +1,6 @@
-import { Button } from "@cloudflare/kumo";
+import { Button } from "@aqt/ui/components/button";
+import { Checkbox } from "@aqt/ui/components/checkbox";
+import { Label } from "@aqt/ui/components/label";
 import { useState } from "react";
 
 import { MarkdownExportButton } from "./MarkdownExportButton";
@@ -29,7 +31,7 @@ export const SelectionBar = ({
 }) => {
   if (selected.size === 0) return null;
   return (
-    <div className="selection-bar row">
+    <div className="flex flex-wrap items-center gap-2 py-3">
       <span>{`${selected.size} ${kind} selected`}</span>
       <MarkdownExportButton
         conversationId={conversationId}
@@ -52,13 +54,12 @@ export const SelectForExport = ({
   readonly messageKey: string;
   readonly selection: ReturnType<typeof useExportSelection>;
 }) => (
-  <label className="export-option">
-    <input
-      type="checkbox"
+  <Label className="gap-1.5 text-xs font-normal whitespace-nowrap">
+    <Checkbox
       aria-label={label}
       checked={selection.selected.has(messageKey)}
-      onChange={(event) => selection.toggle(messageKey, event.target.checked)}
+      onCheckedChange={(checked) => selection.toggle(messageKey, checked)}
     />
     Select
-  </label>
+  </Label>
 );

@@ -1,12 +1,24 @@
 import type { DayRow } from "@aqt/turnstash-api";
+import type { CSSVariables } from "@aqt/ui/lib/utils";
+import { cn } from "cn";
 import { useMemo, useState } from "react";
-import type { CSSProperties } from "react";
 
 import { useFilters } from "../filters";
 import { usd } from "../format";
 import { heatmapDays, heatmapWeeks, ymd } from "../period";
+import { Card } from "./Card";
 
 const weekdayLabels = ["Mon", "", "Wed", "", "Fri", "", ""];
+
+// The month strip and every weekday row are separate grids sharing one column template, so the
+// columns line up without the cells needing a fixed size. A year of 8px cells needs about 600px;
+// phones get smaller cells to keep the current weeks on screen.
+const track =
+  "grid grid-cols-[22px_repeat(var(--weeks),minmax(4px,1fr))] gap-0.5 sm:grid-cols-[26px_repeat(var(--weeks),minmax(8px,1fr))] sm:gap-[3px]";
+const swatch = "aspect-square rounded-[2px]";
+const legendSwatch = "size-[11px] flex-none rounded-[2px]";
+const noData = "border border-dashed border-border";
+const heat = ["bg-heat-0", "bg-heat-1", "bg-heat-2", "bg-heat-3", "bg-heat-4", "bg-heat-5"];
 
 // Five discrete steps rather than a continuous alpha ramp. Continuous shading
 // over a dark card composites every cheap day to the same indistinguishable
@@ -28,7 +40,7 @@ interface Cell {
 // peak day is at the mercy of one outlier: with an $80 day in the window every
 // ordinary day lands in the bottom step and the grid reads as one flat colour.
 const cutPoints = (costs: ReadonlyArray<number>): ReadonlyArray<number> => {
-  const sorted = costs.filter((cost) => cost > 0).sort((a, b) => a - b);
+  const sorted = costs.filter((cost) => cost > 0).toSorted((a, b) => a - b);
   if (sorted.length === 0) return [];
   return Array.from({ length: levels - 1 }, (_, index) => {
     const quantile = (index + 1) / levels;
@@ -125,28 +137,19 @@ export const Heatmap = ({
     [daily, firstDay, today],
   );
 
-  // The month strip and every weekday row are separate grids sharing one column
-  // template, so the columns line up without the cells needing a fixed size.
-  // SAFETY: CSSProperties has no index signature for custom properties, and React passes the
-  // declaration through to the style attribute unchanged.
-  const track = { "--heatmap-weeks": heatmapWeeks } as CSSProperties;
+  const weeksStyle: CSSVariables = { "--weeks": heatmapWeeks };
 
   return (
-    <section className="card">
-      <div className="card-head">
-        <h2 className="card-title">Activity</h2>
-        <span className="card-note">last {heatmapWeeks} weeks</span>
-      </div>
-
+    <Card title="Activity" note={`last ${heatmapWeeks} weeks`}>
       <div
-        className="heatmap"
-        style={track}
+        className="relative mt-3 flex flex-col gap-1"
+        style={weeksStyle}
         // Delegated rather than a handler per cell: 364 closures to say the same
         // thing, and the browser's own title tooltip takes a second to appear on
         // a grid whose whole point is a quick scan.
         onMouseOver={(event) => {
           const cell =
-            event.target instanceof HTMLElement ? event.target.closest(".heatmap-cell") : null;
+            event.target instanceof HTMLElement ? event.target.closest("[role=gridcell]") : null;
           const text = cell?.getAttribute("aria-label");
           if (cell === null || text === null || text === undefined) return setTip(null);
           const box = cell.getBoundingClientRect();
@@ -156,7 +159,7 @@ export const Heatmap = ({
         }}
         onMouseLeave={() => setTip(null)}
       >
-        <div className="heatmap-months" aria-hidden>
+        <div className={cn(track, "h-3 text-[10px] leading-3 text-muted-foreground")} aria-hidden>
           {months.map((month) => (
             <span key={`${month.col}-${month.label}`} style={{ gridColumn: month.col + 2 }}>
               {month.label}
@@ -165,28 +168,25 @@ export const Heatmap = ({
         </div>
 
         <div
-          className="heatmap-grid"
+          className="flex flex-col gap-0.5 sm:gap-[3px]"
           role="grid"
           aria-label={`Daily spend, last ${heatmapWeeks} weeks`}
         >
-          {weekdayLabels.map((weekday, row) => (
-            <div className="heatmap-row" role="row" key={weekday === "" ? `row-${row}` : weekday}>
-              <span className="heatmap-weekday" role="rowheader">
+          {weekdayLabels.map((weekday, index) => (
+            <div className={track} role="row" key={weekday === "" ? `row-${index}` : weekday}>
+              <span className="self-center text-[10px] text-muted-foreground" role="rowheader">
                 {weekday}
               </span>
               {weeks.map((week) => {
-                const cell = week[row];
+                const cell = week[index];
                 if (cell === undefined) return null;
-                if (cell.future)
-                  return (
-                    <span key={cell.date} className="heatmap-cell is-future" role="gridcell" />
-                  );
+                if (cell.future) return <span key={cell.date} className={swatch} role="gridcell" />;
                 return (
                   <span
                     key={cell.date}
                     role="gridcell"
                     aria-label={describe(cell)}
-                    className={`heatmap-cell${cell.noData ? " is-nodata" : ` is-l${cell.level}`}`}
+                    className={cn(swatch, cell.noData ? noData : heat[cell.level])}
                   />
                 );
               })}
@@ -196,7 +196,7 @@ export const Heatmap = ({
 
         {tip !== null && (
           <span
-            className="heatmap-tip"
+            className="pointer-events-none absolute z-5 -mt-1.5 rounded-md bg-foreground px-2 py-1 text-[11px] whitespace-nowrap text-background"
             style={{ left: tip.x, top: tip.y, transform: `translate(${tip.shift}, -100%)` }}
             role="tooltip"
           >
@@ -205,17 +205,17 @@ export const Heatmap = ({
         )}
       </div>
 
-      <div className="heatmap-legend">
-        <span className="heatmap-cell is-nodata" /> no data
-        <span className="heatmap-cell is-l0" /> $0
-        <span className="legend-ramp">
+      <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <span className={cn(legendSwatch, noData)} /> no data
+        <span className={cn(legendSwatch, heat[0])} /> $0
+        <span className="ml-3 flex items-center gap-1">
           less
           {Array.from({ length: levels }, (_, index) => (
-            <span key={index} className={`heatmap-cell is-l${index + 1}`} />
+            <span key={index} className={cn(legendSwatch, heat[index + 1])} />
           ))}
           more
         </span>
       </div>
-    </section>
+    </Card>
   );
 };

@@ -6,21 +6,38 @@ import type {
   SubscriptionPlanInput,
   SubscriptionPlanPatch,
 } from "@aqt/turnstash-api";
-import { Badge, Button, Dialog, Input, Select } from "@cloudflare/kumo";
-import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@aqt/ui/components/dialog";
+import { Field, FieldLabel } from "@aqt/ui/components/field";
+import { Input } from "@aqt/ui/components/input";
+import { Spinner } from "@aqt/ui/components/spinner";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { cn } from "cn";
 import { Effect } from "effect";
-import { useState } from "react";
-import type { ChangeEvent, ReactElement, ReactNode } from "react";
+import { PencilIcon, Trash2Icon } from "lucide-react";
+import { useId, useState } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { api } from "../api";
 import { Async, RequestFailure } from "../components/Async";
 import { Card } from "../components/Card";
+import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
+import { LabeledSelect } from "../components/LabeledSelect";
 import { money, usd } from "../format";
 import { addDays, ymd } from "../period";
 import { currencies, planPresets } from "../plans";
 import type { PlanPreset } from "../plans";
-import { isProvider, providerOptions } from "../providers";
+import { providerOptions } from "../providers";
 import { plansQuery, queryKeys } from "../queries";
 
 const customPlan = "custom";
@@ -51,6 +68,20 @@ const parseDraft = (draft: PlanDraft) => {
     : null;
 };
 
+const LabeledInput = ({
+  label,
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Input>, "id"> & { readonly label: string }) => {
+  const id = useId();
+  return (
+    <Field className={cn("w-32 gap-2", className)}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input id={id} className="h-8 md:text-[13px]" {...props} />
+    </Field>
+  );
+};
+
 const PresetSelect = ({
   presets,
   provider,
@@ -69,19 +100,18 @@ const PresetSelect = ({
       preset.monthlyPrice === Number(draft.monthlyPrice),
   );
   return (
-    <Select<string>
+    <LabeledSelect
       label="Start from"
-      size="sm"
-      className="preset-select"
+      className="w-72.5"
       value={matching?.id ?? customPlan}
-      items={[
+      options={[
         { value: customPlan, label: "Custom plan" },
         ...presets.map((preset) => ({
           value: preset.id,
           label: `${preset.label} · ${usd(preset.monthlyPrice)}`,
         })),
       ]}
-      onValueChange={(next) => {
+      onChange={(next) => {
         const chosen = presets.find((preset) => preset.id === next) ?? null;
         onChange(
           chosen === null
@@ -102,37 +132,28 @@ const PlanFields = ({
   readonly onChange: (draft: PlanDraft) => void;
 }) => (
   <>
-    <Input
-      size="sm"
+    <LabeledInput
       label="Plan"
       placeholder="Max 20x"
       value={draft.name}
-      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-        onChange({ ...draft, name: event.target.value })
-      }
+      onChange={(event) => onChange({ ...draft, name: event.target.value })}
     />
-    <Input
-      size="sm"
+    <LabeledInput
       label="Monthly price"
       inputMode="decimal"
-      className="price-field"
+      className="w-27.5"
       value={draft.monthlyPrice}
-      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-        onChange({ ...draft, monthlyPrice: event.target.value })
-      }
+      onChange={(event) => onChange({ ...draft, monthlyPrice: event.target.value })}
     />
-    <Select<string>
+    <LabeledSelect
       label="Currency"
-      size="sm"
-      className="currency-select"
+      className="w-20"
       value={draft.currency}
-      items={[...new Set([...currencies, draft.currency])].map((currency) => ({
+      options={[...new Set([...currencies, draft.currency])].map((currency) => ({
         value: currency,
         label: currency,
       }))}
-      onValueChange={(next) => {
-        if (next !== null) onChange({ ...draft, currency: next });
-      }}
+      onChange={(currency) => onChange({ ...draft, currency })}
     />
   </>
 );
@@ -161,8 +182,8 @@ const NewPeriod = ({
   const plan = parseDraft(draft);
 
   return (
-    <div className="stack">
-      <div className="filters">
+    <div className="flex flex-col gap-3 pt-1.5">
+      <div className="flex flex-wrap items-end gap-2">
         <PresetSelect
           presets={planPresets}
           provider={provider}
@@ -172,36 +193,29 @@ const NewPeriod = ({
             if (preset !== null) setProvider(preset.provider);
           }}
         />
-        <Select<string>
+        <LabeledSelect
           label="Provider"
-          size="sm"
-          className="fixed-select"
+          className="w-42.5"
           value={provider}
-          items={providerOptions}
-          onValueChange={(next) => {
-            if (next !== null && isProvider(next)) setProvider(next);
-          }}
+          options={providerOptions}
+          onChange={setProvider}
         />
         <PlanFields draft={draft} onChange={setDraft} />
-        <Input
-          size="sm"
+        <LabeledInput
           label="Started on"
           type="date"
           value={startedOn}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => setStartedOn(event.target.value)}
+          onChange={(event) => setStartedOn(event.target.value)}
         />
-        <Input
-          size="sm"
+        <LabeledInput
           label="Ended on"
           type="date"
           value={endedOn}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => setEndedOn(event.target.value)}
+          onChange={(event) => setEndedOn(event.target.value)}
         />
         <Button
           size="sm"
-          variant="primary"
-          loading={create.isPending}
-          disabled={plan === null || startedOn === ""}
+          disabled={create.isPending || plan === null || startedOn === ""}
           onClick={() => {
             if (plan !== null)
               create.mutate({
@@ -212,6 +226,7 @@ const NewPeriod = ({
               });
           }}
         >
+          {create.isPending && <Spinner data-icon="inline-start" />}
           Add period
         </Button>
       </div>
@@ -230,24 +245,24 @@ const PlanDialog = ({
 }: {
   readonly title: string;
   readonly trigger: ReactElement;
-  readonly label?: string;
+  readonly label: ReactNode;
   readonly onSaved: () => void;
   readonly children: (done: () => void) => ReactNode;
 }) => {
   const [open, setOpen] = useState(false);
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger render={trigger}>{label}</Dialog.Trigger>
-      <Dialog size="lg" className="p-6">
-        <div className="card-head">
-          <Dialog.Title className="card-title">{title}</Dialog.Title>
-        </div>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={trigger}>{label}</DialogTrigger>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
         {children(() => {
           setOpen(false);
           onSaved();
         })}
-      </Dialog>
-    </Dialog.Root>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -264,17 +279,13 @@ const DialogActions = ({
 }) => (
   <>
     {error !== null && <RequestFailure error={error} />}
-    <div className="row">
-      <Button
-        variant="primary"
-        loading={pending}
-        disabled={onSubmit === null}
-        onClick={onSubmit ?? undefined}
-      >
+    <DialogFooter className="pt-2">
+      <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+      <Button disabled={pending || onSubmit === null} onClick={onSubmit ?? undefined}>
+        {pending && <Spinner data-icon="inline-start" />}
         {label}
       </Button>
-      <Dialog.Close render={<Button />}>Cancel</Dialog.Close>
-    </div>
+    </DialogFooter>
   </>
 );
 
@@ -298,8 +309,8 @@ const ChangePlanForm = ({
   const next = parseDraft(draft);
 
   return (
-    <div className="stack">
-      <p className="muted">
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-muted-foreground">
         On {plan.name} at {money(plan.monthlyPrice, plan.currency)} a month since {plan.startedOn}.
       </p>
       <PresetSelect
@@ -308,19 +319,18 @@ const ChangePlanForm = ({
         draft={draft}
         onChange={setDraft}
       />
-      <div className="filters">
+      <div className="flex flex-wrap items-end gap-2">
         <PlanFields draft={draft} onChange={setDraft} />
       </div>
-      <Input
-        size="sm"
+      <LabeledInput
         label="Effective on"
         type="date"
         min={firstDay}
         value={effectiveOn}
-        onChange={(event: ChangeEvent<HTMLInputElement>) => setEffectiveOn(event.target.value)}
+        onChange={(event) => setEffectiveOn(event.target.value)}
       />
       {next !== null && effectiveOn >= firstDay && (
-        <p className="muted">
+        <p className="text-xs text-muted-foreground">
           {plan.name} ends on {addDays(effectiveOn, -1)} and {next.name} starts on {effectiveOn}.
         </p>
       )}
@@ -353,15 +363,16 @@ const EndPlanForm = ({
   });
 
   return (
-    <div className="stack">
-      <p className="muted">The end date is the last day {plan.name} covered.</p>
-      <Input
-        size="sm"
+    <div className="flex flex-col gap-4">
+      <p className="text-xs text-muted-foreground">
+        The end date is the last day {plan.name} covered.
+      </p>
+      <LabeledInput
         label="Ended on"
         type="date"
         min={plan.startedOn}
         value={endedOn}
-        onChange={(event: ChangeEvent<HTMLInputElement>) => setEndedOn(event.target.value)}
+        onChange={(event) => setEndedOn(event.target.value)}
       />
       <DialogActions
         label="End subscription"
@@ -391,27 +402,27 @@ const EditPeriodForm = ({
   const next = parseDraft(draft);
 
   return (
-    <div className="stack">
-      <div className="filters">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end gap-2">
         <PlanFields draft={draft} onChange={setDraft} />
       </div>
-      <div className="filters">
-        <Input
-          size="sm"
+      <div className="flex flex-wrap items-end gap-2">
+        <LabeledInput
           label="Started on"
           type="date"
           value={startedOn}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => setStartedOn(event.target.value)}
+          onChange={(event) => setStartedOn(event.target.value)}
         />
-        <Input
-          size="sm"
+        <LabeledInput
           label="Ended on"
           type="date"
           value={endedOn}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => setEndedOn(event.target.value)}
+          onChange={(event) => setEndedOn(event.target.value)}
         />
       </div>
-      <p className="muted">Leave Ended on empty while you still pay for the plan.</p>
+      <p className="text-xs text-muted-foreground">
+        Leave Ended on empty while you still pay for the plan.
+      </p>
       <DialogActions
         label="Save period"
         pending={save.isPending}
@@ -435,12 +446,12 @@ const openEnd = "9999-12-31";
 // The server refuses new overlaps, but periods saved before that check can still overlap, so the timeline
 // flags any period that starts before an earlier one ends.
 const timeline = (periods: ReadonlyArray<SubscriptionPlan>): ReadonlyArray<TimelineRow> => {
-  const sorted = [...periods].sort((a, b) => a.startedOn.localeCompare(b.startedOn));
+  const sorted = periods.toSorted((a, b) => a.startedOn.localeCompare(b.startedOn));
   return sorted.flatMap((plan, index): ReadonlyArray<TimelineRow> => {
     const reach = sorted
       .slice(0, index)
       .map((earlier) => earlier.endedOn ?? openEnd)
-      .sort()
+      .toSorted()
       .at(-1);
     const period: TimelineRow = {
       kind: "period",
@@ -480,47 +491,56 @@ const ProviderTimeline = ({
         current === undefined ? "no current plan" : `${current.name} since ${current.startedOn}`
       }
     >
-      <table className="data-table plans-table">
-        <thead>
-          <tr>
-            <th>Plan</th>
-            <th>From</th>
-            <th>To</th>
-            <th className="num">Monthly</th>
-            <th className="num">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {timeline(periods).map((row) =>
-            row.kind === "gap" ? (
-              <tr key={`gap:${row.from}`} className="plan-gap">
-                <td className="muted">No plan for {dayCount(row.from, row.to)} days</td>
-                <td className="muted">{row.from}</td>
-                <td className="muted">{row.to}</td>
-                <td />
-                <td />
-              </tr>
-            ) : (
-              <tr key={row.plan.id}>
-                <td className="primary">
+      {/* Fixed columns so every provider's timeline lines up with the next one. */}
+      <DataTable className="table-fixed">
+        <TableHeader>
+          <TableRow>
+            <Th>Plan</Th>
+            <Th className="w-[15%]">From</Th>
+            <Th className="w-[15%]">To</Th>
+            <Th numeric className="w-[12%]">
+              Monthly
+            </Th>
+            <Th numeric className="w-52.5">
+              Actions
+            </Th>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {timeline(periods).map((row) => {
+            if (row.kind === "gap")
+              return (
+                <TableRow key={`gap:${row.from}`} className="text-xs text-muted-foreground">
+                  <Td>No plan for {dayCount(row.from, row.to)} days</Td>
+                  <Td>{row.from}</Td>
+                  <Td>{row.to}</Td>
+                  <Td />
+                  <Td />
+                </TableRow>
+              );
+            const label = `${row.plan.name} from ${row.plan.startedOn}`;
+            const deleting = remove.isPending && remove.variables === row.plan.id;
+            return (
+              <TableRow key={row.plan.id}>
+                <PrimaryTd>
                   {row.plan.name}
                   {row.overlaps && (
                     <>
                       {" "}
-                      <Badge variant="red">overlaps an earlier period</Badge>
+                      <Badge variant="destructive">overlaps an earlier period</Badge>
                     </>
                   )}
-                </td>
-                <td>{row.plan.startedOn}</td>
-                <td>{row.plan.endedOn ?? "now"}</td>
-                <td className="num">{money(row.plan.monthlyPrice, row.plan.currency)}</td>
-                <td className="num">
-                  <div className="row">
+                </PrimaryTd>
+                <Td>{row.plan.startedOn}</Td>
+                <Td>{row.plan.endedOn ?? "now"}</Td>
+                <Td numeric>{money(row.plan.monthlyPrice, row.plan.currency)}</Td>
+                <Td numeric>
+                  <div className="flex items-center justify-end gap-1.5">
                     {row.plan.endedOn === null && (
                       <>
                         <PlanDialog
                           title={`Change ${providerLabels[provider]} plan`}
-                          trigger={<Button size="xs" variant="primary" />}
+                          trigger={<Button size="xs" />}
                           label="Change plan"
                           onSaved={onSaved}
                         >
@@ -528,7 +548,7 @@ const ProviderTimeline = ({
                         </PlanDialog>
                         <PlanDialog
                           title={`End ${row.plan.name}`}
-                          trigger={<Button size="xs" />}
+                          trigger={<Button size="xs" variant="outline" />}
                           label="End"
                           onSaved={onSaved}
                         >
@@ -537,33 +557,31 @@ const ProviderTimeline = ({
                       </>
                     )}
                     <PlanDialog
-                      title={`Edit ${row.plan.name} from ${row.plan.startedOn}`}
+                      title={`Edit ${label}`}
                       trigger={
-                        <Button
-                          size="xs"
-                          icon={<PencilSimpleIcon />}
-                          aria-label={`Edit ${row.plan.name} from ${row.plan.startedOn}`}
-                        />
+                        <Button size="icon-xs" variant="outline" aria-label={`Edit ${label}`} />
                       }
+                      label={<PencilIcon />}
                       onSaved={onSaved}
                     >
                       {(done) => <EditPeriodForm plan={row.plan} onSaved={done} />}
                     </PlanDialog>
                     <Button
-                      size="xs"
-                      variant="secondary-destructive"
-                      icon={<TrashIcon />}
-                      aria-label={`Delete ${row.plan.name} from ${row.plan.startedOn}`}
-                      loading={remove.isPending && remove.variables === row.plan.id}
+                      size="icon-xs"
+                      variant="destructive"
+                      aria-label={`Delete ${label}`}
+                      disabled={deleting}
                       onClick={() => remove.mutate(row.plan.id)}
-                    />
+                    >
+                      {deleting ? <Spinner /> : <Trash2Icon />}
+                    </Button>
                   </div>
-                </td>
-              </tr>
-            ),
-          )}
-        </tbody>
-      </table>
+                </Td>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </DataTable>
       {remove.isError && <RequestFailure error={remove.error} />}
     </Card>
   );

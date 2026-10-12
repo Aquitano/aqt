@@ -1,43 +1,41 @@
 import type { TimelineEvent } from "@aqt/turnstash-api";
-import { Badge, Button } from "@cloudflare/kumo";
-import { Chart } from "@cloudflare/kumo/components/chart";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@aqt/ui/components/chart";
+import { Spinner } from "@aqt/ui/components/spinner";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { BarChart, LineChart } from "echarts/charts";
-import {
-  DataZoomComponent,
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-} from "echarts/components";
-import * as echarts from "echarts/core";
-import { CanvasRenderer } from "echarts/renderers";
 import { Match } from "effect";
 import { useMemo, useState } from "react";
+import { Bar, Brush, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts";
 
 import { isTimelineChanged } from "../api";
 import { dateTime, int, preciseUsd } from "../format";
 import { timelinePagesQuery } from "../queries";
-import { useTheme } from "../theme";
 import { Pending, RequestFailure } from "./Async";
+import { chartRow } from "./ChartRow";
+import { DataTable, Td, Th } from "./DataTable";
 
-echarts.use([
-  BarChart,
-  LineChart,
-  DataZoomComponent,
-  GridComponent,
-  LegendComponent,
-  TooltipComponent,
-  CanvasRenderer,
-]);
+const chartConfig = {
+  cumulative: { label: "Cumulative priced cost", color: "var(--flame)" },
+  cost: { label: "Request cost", color: "var(--chart-1)" },
+} satisfies ChartConfig;
 
 const eventLabel = (event: TimelineEvent) =>
   event.kind === "request" ? `Request · ${event.modelId}` : `Tool · ${event.toolName}`;
 
 const eventColor = (event: TimelineEvent) => {
-  if (event.kind === "request") return event.costUsd === null ? "#8b5cf6" : "#f6821f";
-  if (event.toolStatus === "error") return "#ef4444";
-  return event.toolStatus === "ok" ? "#14b8a6" : "#9ca3af";
+  if (event.kind === "request") return event.costUsd === null ? "var(--chart-4)" : "var(--flame)";
+  if (event.toolStatus === "error") return "var(--destructive)";
+  return event.toolStatus === "ok" ? "var(--chart-5)" : "var(--muted-foreground)";
 };
 
 const toolStatusLabel = (event: TimelineEvent) =>
@@ -45,6 +43,54 @@ const toolStatusLabel = (event: TimelineEvent) =>
     Match.when("error", () => "Failed"),
     Match.when("ok", () => "OK"),
     Match.orElse(() => "Status unknown"),
+  );
+
+interface Point {
+  readonly order: number;
+  readonly label: string;
+  readonly color: string;
+  readonly messageKey: string | null;
+  readonly cumulative: number;
+  readonly cost: number | null;
+}
+
+// Recharts types the row behind each dot and bar as `any`; it is always one of the chart's points.
+interface DotProps {
+  readonly cx?: number | undefined;
+  readonly cy?: number | undefined;
+  readonly payload?: Point;
+}
+
+const pointDot = ({ cx, cy, payload }: DotProps) => (
+  <circle
+    cx={cx}
+    cy={cy}
+    r={3.5}
+    fill="var(--background)"
+    stroke={payload?.color}
+    strokeWidth={2}
+  />
+);
+
+// The hovered point's dot sits on top of the plain one, so it is the one that takes the click.
+// Recharts rebinds DOM event props (onClick, onSelect, ...) on this element to its own payload.
+const ActiveDot = ({
+  cx,
+  cy,
+  payload,
+  onPick,
+}: DotProps & { readonly onPick: (point: Point) => void }) =>
+  payload === undefined ? null : (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={5}
+      fill={payload.color}
+      stroke="var(--background)"
+      strokeWidth={2}
+      className="cursor-pointer"
+      onClick={() => onPick(payload)}
+    />
   );
 
 export const SessionTimeline = ({
@@ -57,64 +103,40 @@ export const SessionTimeline = ({
   const pages = useInfiniteQuery(timelinePagesQuery(conversationId));
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { mode } = useTheme();
+
   const [unlinkedEvent, setUnlinkedEvent] = useState<string | null>(null);
   const events = useMemo(
     () => (pages.data?.pages ?? []).flatMap((page) => page.items),
     [pages.data],
   );
-  const options = useMemo(
-    () => ({
-      animation: false,
-      backgroundColor: "transparent",
-      legend: { data: ["Cumulative priced cost", "Request cost"] },
-      grid: { left: 70, right: 24, top: 40, bottom: 80 },
-      tooltip: { trigger: "item" as const, renderMode: "richText" as const },
-      xAxis: {
-        type: "category" as const,
-        name: "Event order",
-        data: events.map((_, index) => String(index + 1)),
-      },
-      yAxis: {
-        type: "value" as const,
-        min: 0,
-        axisLabel: { formatter: (value: number) => preciseUsd(value) },
-      },
-      dataZoom: [{ type: "slider" as const, start: 0, end: 100 }],
-      series: [
-        {
-          name: "Cumulative priced cost",
-          type: "line" as const,
-          step: "end" as const,
-          showSymbol: true,
-          symbolSize: 8,
-          lineStyle: { color: "#f6821f" },
-          data: events.map((event) => ({
-            name: eventLabel(event),
-            value: event.cumulativeCostUsd,
-            itemStyle: { color: eventColor(event) },
-          })),
-        },
-        {
-          name: "Request cost",
-          type: "bar" as const,
-          itemStyle: { color: "#3b82f6" },
-          data: events.map((event) => ({
-            name: eventLabel(event),
-            value: event.kind === "request" ? event.costUsd : null,
-          })),
-        },
-      ],
-    }),
+  const points = useMemo(
+    () =>
+      events.map((event, index): Point => ({
+        order: index + 1,
+        label: eventLabel(event),
+        color: eventColor(event),
+        messageKey: event.messageKey,
+        cumulative: event.cumulativeCostUsd,
+        cost: event.kind === "request" ? event.costUsd : null,
+      })),
     [events],
   );
+  const pick = (point: Point) => {
+    if (point.messageKey === null) setUnlinkedEvent(point.label);
+    else
+      void navigate({
+        to: "/conversations/$id",
+        params: { id: conversationId },
+        search: { message: point.messageKey },
+      });
+  };
 
   if (pages.isPending) return <Pending />;
   if (pages.data === undefined)
     return (
-      <div className="stack">
+      <div className="flex flex-col items-start gap-6">
         <RequestFailure error={pages.error ?? new Error("Could not load the timeline.")} />
-        <Button size="sm" onClick={() => void pages.refetch()}>
+        <Button size="sm" variant="outline" onClick={() => void pages.refetch()}>
           Retry timeline
         </Button>
       </div>
@@ -122,99 +144,168 @@ export const SessionTimeline = ({
   const timelineChanged = pages.error !== null && isTimelineChanged(pages.error);
   const summary = pages.data.pages.at(-1);
   if (summary === undefined || summary.totalEvents === 0)
-    return <p className="muted">No model requests or tool executions recorded.</p>;
+    return (
+      <p className="text-xs text-muted-foreground">
+        No model requests or tool executions recorded.
+      </p>
+    );
 
   return (
-    <div className="stack">
-      <p className="card-note">
+    <div className="flex flex-col gap-6">
+      <p className="text-xs text-muted-foreground">
         {preciseUsd(summary.pricedCostUsd)} priced request cost · {int(summary.unpricedRequests)}{" "}
         unpriced requests · {int(events.length)} of {int(summary.totalEvents)} events loaded. Tool
         events add no cost. Unknown times appear last. The chart uses event order, not elapsed time.
       </p>
-      <div
+      <ChartContainer
+        config={chartConfig}
+        className="aspect-auto h-80 w-full"
         role="img"
         aria-label="Cumulative priced request cost and individual request costs in event order. Use the event table below for transcript links and request inspection."
       >
-        <Chart
-          echarts={echarts}
-          options={options}
-          height={280}
-          isDarkMode={mode === "dark"}
-          onEvents={{
-            click: (params) => {
-              const event = params.dataIndex === undefined ? undefined : events[params.dataIndex];
-              if (event === undefined) return;
-              if (event.messageKey === null) setUnlinkedEvent(eventLabel(event));
-              else
-                void navigate({
-                  to: "/conversations/$id",
-                  params: { id: conversationId },
-                  search: { message: event.messageKey },
-                });
-            },
-          }}
-        />
-      </div>
+        <ComposedChart data={points} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+          <CartesianGrid vertical={false} />
+          <XAxis
+            dataKey="order"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            minTickGap={16}
+            height={44}
+            label={{ value: "Event order", position: "insideBottom", offset: 4 }}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            width={72}
+            domain={[0, "auto"]}
+            tickFormatter={preciseUsd}
+          />
+          <ChartTooltip
+            content={
+              <ChartTooltipContent
+                labelFormatter={(_, payload: ReadonlyArray<{ readonly payload?: Point }>) =>
+                  payload[0]?.payload?.label
+                }
+                formatter={chartRow(preciseUsd)}
+              />
+            }
+          />
+          <ChartLegend verticalAlign="top" content={<ChartLegendContent />} />
+          <Bar
+            dataKey="cost"
+            name={chartConfig.cost.label}
+            fill="var(--color-cost)"
+            radius={[3, 3, 0, 0]}
+            maxBarSize={32}
+            isAnimationActive={false}
+            className="cursor-pointer"
+            onClick={({ payload }: { readonly payload?: Point }) => {
+              if (payload !== undefined) pick(payload);
+            }}
+          />
+          <Line
+            dataKey="cumulative"
+            name={chartConfig.cumulative.label}
+            type="stepAfter"
+            stroke="var(--color-cumulative)"
+            strokeWidth={2}
+            isAnimationActive={false}
+            dot={pointDot}
+            activeDot={<ActiveDot onPick={pick} />}
+          />
+          <Brush
+            dataKey="order"
+            height={28}
+            travellerWidth={8}
+            stroke="var(--border)"
+            fill="transparent"
+          >
+            <ComposedChart>
+              <Line
+                dataKey="cumulative"
+                type="stepAfter"
+                stroke="var(--color-cumulative)"
+                dot={false}
+                activeDot={false}
+                isAnimationActive={false}
+              />
+            </ComposedChart>
+          </Brush>
+        </ComposedChart>
+      </ChartContainer>
       {unlinkedEvent !== null && (
-        <p role="status" className="muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {unlinkedEvent}: no associated transcript message is recorded.
         </p>
       )}
-      <div className="timeline-table-scroll">
-        <table className="data-table">
+      <div className="max-h-120 overflow-auto">
+        <DataTable>
           <caption className="sr-only">
             Session events in chronological order. Equal timestamps use event type and source key.
             Events without times appear last.
           </caption>
-          <thead>
-            <tr>
-              <th scope="col">Time</th>
-              <th scope="col">Event</th>
-              <th scope="col" className="num">
+          <TableHeader>
+            <TableRow>
+              <Th scope="col" className="sm:top-0">
+                Time
+              </Th>
+              <Th scope="col" className="sm:top-0">
+                Event
+              </Th>
+              <Th scope="col" numeric className="sm:top-0">
                 Request cost
-              </th>
-              <th scope="col" className="num">
+              </Th>
+              <Th scope="col" numeric className="sm:top-0">
                 Cumulative priced
-              </th>
-              <th scope="col">Source</th>
-            </tr>
-          </thead>
-          <tbody>
+              </Th>
+              <Th scope="col" className="sm:top-0">
+                Source
+              </Th>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {events.map((event) => (
-              <tr key={event.eventKey}>
-                <td title={event.timestamp ?? "No timestamp recorded"}>
+              <TableRow key={event.eventKey}>
+                <Td title={event.timestamp ?? "No timestamp recorded"}>
                   {event.timestamp === null ? "Unknown time" : dateTime(event.timestamp)}
-                </td>
-                <td>
+                </Td>
+                <Td>
                   <span>{eventLabel(event)}</span>
                   {event.previousModelId !== null && (
-                    <div className="muted">Model changed from {event.previousModelId}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Model changed from {event.previousModelId}
+                    </div>
                   )}
                   {event.kind === "tool" && (
                     <div>
-                      <Badge variant={event.toolStatus === "error" ? "error" : "neutral"}>
+                      <Badge variant={event.toolStatus === "error" ? "destructive" : "secondary"}>
                         {toolStatusLabel(event)}
                       </Badge>
                     </div>
                   )}
-                </td>
-                <td className="num" title={event.unpricedReason ?? undefined}>
+                </Td>
+                <Td numeric title={event.unpricedReason ?? undefined}>
                   {event.kind === "tool"
                     ? "No separate cost"
                     : event.costUsd === null
                       ? "Unpriced"
                       : preciseUsd(event.costUsd)}
-                </td>
-                <td className="num">
+                </Td>
+                <Td numeric>
                   {preciseUsd(event.cumulativeCostUsd)}
                   {event.cumulativeUnpricedRequests > 0 && (
-                    <div className="muted">+ {int(event.cumulativeUnpricedRequests)} unpriced</div>
+                    <div className="text-xs text-muted-foreground">
+                      + {int(event.cumulativeUnpricedRequests)} unpriced
+                    </div>
                   )}
-                </td>
-                <td>
-                  <div className="row">
+                </Td>
+                <Td>
+                  <div className="flex flex-wrap items-center gap-2">
                     {event.messageKey === null ? (
-                      <span className="muted">No transcript association</span>
+                      <span className="text-xs text-muted-foreground">
+                        No transcript association
+                      </span>
                     ) : (
                       <Link
                         to="/conversations/$id"
@@ -236,18 +327,19 @@ export const SessionTimeline = ({
                       </Button>
                     )}
                   </div>
-                </td>
-              </tr>
+                </Td>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </DataTable>
       </div>
       {pages.isError && (
-        <div className="stack">
+        <div className="flex flex-col items-start gap-6">
           <RequestFailure error={pages.error} />
           <Button
             size="sm"
-            loading={pages.isFetching}
+            variant="outline"
+            disabled={pages.isFetching}
             onClick={() =>
               void queryClient.resetQueries({
                 queryKey: timelinePagesQuery(conversationId).queryKey,
@@ -255,17 +347,20 @@ export const SessionTimeline = ({
               })
             }
           >
+            {pages.isFetching && <Spinner data-icon="inline-start" />}
             Reload timeline
           </Button>
         </div>
       )}
       {pages.hasNextPage && !timelineChanged && (
-        <div className="thread-foot">
+        <div className="pt-3">
           <Button
             size="sm"
-            loading={pages.isFetchingNextPage}
+            variant="outline"
+            disabled={pages.isFetchingNextPage}
             onClick={() => void pages.fetchNextPage()}
           >
+            {pages.isFetchingNextPage && <Spinner data-icon="inline-start" />}
             {pages.isFetchNextPageError ? "Retry loading events" : "Load more events"}
           </Button>
         </div>

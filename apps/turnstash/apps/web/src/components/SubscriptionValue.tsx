@@ -1,8 +1,10 @@
 import { providerLabels } from "@aqt/turnstash-api";
 import type { PlanCost, SubscriptionValue } from "@aqt/turnstash-api";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 
 import { moneyList, usd } from "../format";
 import { Card } from "./Card";
+import { DataTable, Td, Th } from "./DataTable";
 import { ShareCell, shareOf } from "./ShareCell";
 
 const signedUsd = (value: number) => (value < 0 ? `-${usd(-value)}` : usd(value));
@@ -21,45 +23,43 @@ export const SubscriptionValueTable = ({
   const totalApi = rows.reduce((sum, row) => sum + row.apiUsd, 0);
   return (
     <Card title="Subscription value" note="API-equivalent spend against plan cost for this period">
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Provider</th>
-            <th className="num">Plan cost</th>
-            <th className="num">API-equivalent</th>
-            <th className="num">Value</th>
-            <th className="num">Saved</th>
-          </tr>
-        </thead>
-        <tbody>
+      <DataTable>
+        <TableHeader>
+          <TableRow>
+            <Th>Provider</Th>
+            <Th numeric>Plan cost</Th>
+            <Th numeric>API-equivalent</Th>
+            <Th numeric>Value</Th>
+            <Th numeric>Saved</Th>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => {
             const planUsd = usdOnly(row.planCosts);
             return (
-              <tr key={row.provider}>
+              <TableRow key={row.provider}>
                 <ShareCell
                   label={providerLabels[row.provider]}
                   sub={row.plans.join(", ")}
                   share={shareOf(row.apiUsd, totalApi)}
                 />
-                <td className="num">{moneyList(row.planCosts)}</td>
-                <td className="num">{usd(row.apiUsd)}</td>
+                <Td numeric>{moneyList(row.planCosts)}</Td>
+                <Td numeric>{usd(row.apiUsd)}</Td>
                 {planUsd === null ? (
-                  <td className="num muted" colSpan={2}>
+                  <Td numeric colSpan={2} className="text-xs text-muted-foreground">
                     plan not billed in USD
-                  </td>
+                  </Td>
                 ) : (
                   <>
-                    <td className="num">
-                      {planUsd > 0 ? `${(row.apiUsd / planUsd).toFixed(1)}x` : ""}
-                    </td>
-                    <td className="num">{signedUsd(row.apiUsd - planUsd)}</td>
+                    <Td numeric>{planUsd > 0 ? `${(row.apiUsd / planUsd).toFixed(1)}x` : ""}</Td>
+                    <Td numeric>{signedUsd(row.apiUsd - planUsd)}</Td>
                   </>
                 )}
-              </tr>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </DataTable>
     </Card>
   );
 };

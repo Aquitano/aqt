@@ -1,5 +1,5 @@
 import type { BookmarkTarget } from "@aqt/turnstash-api";
-import { Button } from "@cloudflare/kumo";
+import { Button } from "@aqt/ui/components/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Effect } from "effect";
 import { useState } from "react";
@@ -29,7 +29,7 @@ export const BookmarkButton = ({
     },
   });
   return (
-    <div className="bookmark-action">
+    <div className="flex flex-col items-start gap-2">
       <Button
         size="sm"
         variant="ghost"

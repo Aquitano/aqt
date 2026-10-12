@@ -4,6 +4,7 @@ import { useParams } from "@tanstack/react-router";
 import { Async } from "../components/Async";
 import { Card } from "../components/Card";
 import { CommitList } from "../components/CommitList";
+import { Page } from "../components/Page";
 import { StatsView } from "../components/StatsView";
 import { FilterBar, useFilters } from "../filters";
 import { projectQuery } from "../queries";
@@ -16,7 +17,7 @@ export const ProjectPage = () => {
   const previous = usePreviousOverall(filters.range, { projectKey: key });
 
   return (
-    <main className="main">
+    <Page>
       <FilterBar
         title={key}
         note={detail.data?.projectPath ?? undefined}
@@ -35,6 +36,6 @@ export const ProjectPage = () => {
           </>
         )}
       </Async>
-    </main>
+    </Page>
   );
 };

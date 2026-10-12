@@ -1,14 +1,23 @@
 import type { ConversationListQuery } from "@aqt/turnstash-api";
-import { Button, Empty, Input } from "@cloudflare/kumo";
-import { ChatsIcon } from "@phosphor-icons/react";
+import { Button } from "@aqt/ui/components/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@aqt/ui/components/empty";
+import { Input } from "@aqt/ui/components/input";
+import { Spinner } from "@aqt/ui/components/spinner";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { MessagesSquareIcon } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ChangeEvent } from "react";
 
 import { Pending, RequestFailure } from "../components/Async";
 import { Card } from "../components/Card";
 import { ConversationsTable } from "../components/ConversationsTable";
 import { FilterSelect } from "../components/FilterSelect";
+import { Page } from "../components/Page";
 import { FilterBar, useFilters } from "../filters";
 import { conversationPagesQuery, projectsQuery } from "../queries";
 
@@ -33,7 +42,7 @@ export const ConversationsPage = () => {
   const apply = () => setQ(text.trim());
 
   return (
-    <main className="main">
+    <Page>
       <FilterBar title="Conversations">
         <FilterSelect
           label="Project"
@@ -46,16 +55,16 @@ export const ConversationsPage = () => {
           onChange={setProjectKey}
         />
         <Input
-          size="sm"
           aria-label="Title contains"
           placeholder="Title contains"
+          className="h-8 w-36 md:text-[13px]"
           value={text}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => setText(event.target.value)}
+          onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") apply();
           }}
         />
-        <Button size="sm" onClick={apply}>
+        <Button size="sm" variant="outline" onClick={apply}>
           Filter
         </Button>
       </FilterBar>
@@ -64,12 +73,15 @@ export const ConversationsPage = () => {
       {pages.isError && <RequestFailure error={pages.error} />}
       {pages.isSuccess &&
         (rows.length === 0 ? (
-          <Empty
-            size="lg"
-            icon={<ChatsIcon size={48} />}
-            title="No conversations match"
-            description="Widen the period or clear a filter."
-          />
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <MessagesSquareIcon />
+              </EmptyMedia>
+              <EmptyTitle>No conversations match</EmptyTitle>
+              <EmptyDescription>Widen the period or clear a filter.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <Card
             title="Conversations"
@@ -77,18 +89,20 @@ export const ConversationsPage = () => {
           >
             <ConversationsTable rows={rows} />
             {pages.hasNextPage && (
-              <div className="table-foot">
+              <div className="flex items-center gap-2 pt-2">
                 <Button
                   size="sm"
-                  loading={pages.isFetchingNextPage}
+                  variant="outline"
+                  disabled={pages.isFetchingNextPage}
                   onClick={() => void pages.fetchNextPage()}
                 >
+                  {pages.isFetchingNextPage && <Spinner data-icon="inline-start" />}
                   Load 50 more
                 </Button>
               </div>
             )}
           </Card>
         ))}
-    </main>
+    </Page>
   );
 };

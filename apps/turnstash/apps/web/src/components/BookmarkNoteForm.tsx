@@ -1,4 +1,6 @@
-import { Button, Input } from "@cloudflare/kumo";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
+import { Spinner } from "@aqt/ui/components/spinner";
 
 export const BookmarkNoteForm = ({
   note,
@@ -18,14 +20,14 @@ export const BookmarkNoteForm = ({
   readonly placeholder?: string;
 }) => (
   <form
-    className="bookmark-form"
+    className="flex flex-wrap items-center gap-2"
     onSubmit={(event) => {
       event.preventDefault();
       onSubmit();
     }}
   >
     <Input
-      size="sm"
+      className="h-8 w-auto min-w-48 flex-1"
       aria-label="Bookmark note"
       placeholder={placeholder}
       maxLength={1000}
@@ -33,10 +35,11 @@ export const BookmarkNoteForm = ({
       onChange={(event) => onNoteChange(event.target.value)}
       autoFocus
     />
-    <Button size="sm" type="submit" loading={pending}>
+    <Button size="sm" variant="outline" type="submit" disabled={pending}>
+      {pending && <Spinner data-icon="inline-start" />}
       {submitLabel}
     </Button>
-    <Button size="sm" variant="ghost" onClick={onCancel}>
+    <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
       Cancel
     </Button>
   </form>

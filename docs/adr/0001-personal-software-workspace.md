@@ -82,6 +82,8 @@ The tokens keep gallery's warm neutrals and add a `--brand` accent each app can 
 
 Turnstash keeps Effect v4 and Effect Schema instead of ArkType, because its HTTP API, server and agent are built on Effect. Effect stays pinned at `4.0.0-rc.116`, and a root override holds `@effect/platform-node-shared` on the same release. Its stricter anti-slop settings are overrides in `apps/turnstash/.oxlintrc.json`; the Effect rules it brought live in `tools/oxlint/anti-slop/effect`, enabled for turnstash only. The server tests need ParadeDB: `mise run turnstash:db` starts it locally, and the `turnstash` workflow runs it as a service.
 
+The web UI moved from Cloudflare Kumo and ECharts to `@aqt/ui`, with Recharts for every chart including the spend-flow Sankey, and React Compiler on.
+
 Releases are tagged `turnstash/vX.Y.Z` and are never marked latest, because Notch's update feed follows the latest release. The server image keeps its `ghcr.io/aquitano/aqt-turnstash-server` name and builds from the workspace root with its own `Dockerfile.dockerignore`.
 
 ## Toolchain versions (2026-09-05)

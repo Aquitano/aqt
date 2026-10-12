@@ -1,5 +1,8 @@
 import type { ExportSelection } from "@aqt/turnstash-api";
-import { Button } from "@cloudflare/kumo";
+import { Button } from "@aqt/ui/components/button";
+import { Checkbox } from "@aqt/ui/components/checkbox";
+import { Label } from "@aqt/ui/components/label";
+import { Spinner } from "@aqt/ui/components/spinner";
 import { useMutation } from "@tanstack/react-query";
 import { Effect } from "effect";
 import { useState } from "react";
@@ -37,19 +40,21 @@ export const MarkdownExportButton = ({
     },
   });
   return (
-    <div className="export-action">
-      <div className="row">
-        <Button size="sm" loading={download.isPending} onClick={() => download.mutate()}>
+    <div className="flex flex-col items-start gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={download.isPending}
+          onClick={() => download.mutate()}
+        >
+          {download.isPending && <Spinner data-icon="inline-start" />}
           {label}
         </Button>
-        <label className="export-option">
-          <input
-            type="checkbox"
-            checked={includeTools}
-            onChange={(event) => setIncludeTools(event.target.checked)}
-          />
+        <Label className="gap-1.5 text-xs font-normal whitespace-nowrap">
+          <Checkbox checked={includeTools} onCheckedChange={setIncludeTools} />
           Include tool output
-        </label>
+        </Label>
       </div>
       {download.isError && <RequestFailure error={download.error} />}
     </div>

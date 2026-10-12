@@ -1,11 +1,14 @@
 import { providerLabels } from "@aqt/turnstash-api";
 import type { MachineDetail } from "@aqt/turnstash-api";
-import { Badge } from "@cloudflare/kumo";
+import { Badge } from "@aqt/ui/components/badge";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 
 import { Async } from "../components/Async";
 import { Card } from "../components/Card";
+import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
+import { Page } from "../components/Page";
 import { StatsView } from "../components/StatsView";
 import { FilterBar, useFilters } from "../filters";
 import { dateTime, int } from "../format";
@@ -21,30 +24,30 @@ const Streams = ({ detail }: { readonly detail: MachineDetail }) => (
         : `${int(detail.streamCount)} streams synced from this machine`
     }
   >
-    <table className="data-table">
-      <thead>
-        <tr>
-          <th>Stream</th>
-          <th>Provider</th>
-          <th>Last seen</th>
-          <th className="num">Records</th>
-        </tr>
-      </thead>
-      <tbody>
+    <DataTable>
+      <TableHeader>
+        <TableRow>
+          <Th>Stream</Th>
+          <Th>Provider</Th>
+          <Th>Last seen</Th>
+          <Th numeric>Records</Th>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {detail.streams.map((stream) => (
-          <tr key={`${stream.provider}:${stream.streamId}`}>
-            <td className="primary mono" title={stream.streamId}>
+          <TableRow key={`${stream.provider}:${stream.streamId}`}>
+            <PrimaryTd className="font-mono text-xs" title={stream.streamId}>
               {stream.streamId}
-            </td>
-            <td>
-              <Badge variant="neutral">{providerLabels[stream.provider]}</Badge>
-            </td>
-            <td>{dateTime(stream.lastSeenAt)}</td>
-            <td className="num">{int(stream.records)}</td>
-          </tr>
+            </PrimaryTd>
+            <Td>
+              <Badge variant="secondary">{providerLabels[stream.provider]}</Badge>
+            </Td>
+            <Td>{dateTime(stream.lastSeenAt)}</Td>
+            <Td numeric>{int(stream.records)}</Td>
+          </TableRow>
         ))}
-      </tbody>
-    </table>
+      </TableBody>
+    </DataTable>
   </Card>
 );
 
@@ -55,7 +58,7 @@ export const MachinePage = () => {
   const previous = usePreviousOverall(filters.range, { machineId: id });
 
   return (
-    <main className="main">
+    <Page>
       <FilterBar
         title={detail.data?.machine.name ?? "Machine"}
         note={
@@ -74,6 +77,6 @@ export const MachinePage = () => {
           </>
         )}
       </Async>
-    </main>
+    </Page>
   );
 };

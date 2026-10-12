@@ -1,8 +1,10 @@
 import type { CommitView } from "@aqt/turnstash-api";
-import { Badge } from "@cloudflare/kumo";
+import { Badge } from "@aqt/ui/components/badge";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { Link } from "@tanstack/react-router";
 
 import { dateTime, usd } from "../format";
+import { DataTable, PrimaryTd, Td, Th } from "./DataTable";
 
 const commitUrl = (commit: CommitView): string | null => {
   if (commit.remote === null) return null;
@@ -21,26 +23,26 @@ export const CommitList = ({
   readonly commits: ReadonlyArray<CommitView>;
   readonly showConversation?: boolean;
 }) => (
-  <table className="data-table">
-    <thead>
-      <tr>
-        <th>Commit</th>
-        <th>Subject</th>
-        <th>Branch</th>
-        <th>Authored</th>
-        {showConversation && <th>Conversation</th>}
-        <th className="num" title="Spent in the conversation since its previous commit">
+  <DataTable>
+    <TableHeader>
+      <TableRow>
+        <Th>Commit</Th>
+        <Th>Subject</Th>
+        <Th>Branch</Th>
+        <Th>Authored</Th>
+        {showConversation && <Th>Conversation</Th>}
+        <Th numeric title="Spent in the conversation since its previous commit">
           Cost
-        </th>
-      </tr>
-    </thead>
-    <tbody>
+        </Th>
+      </TableRow>
+    </TableHeader>
+    <TableBody>
       {commits.map((commit) => {
         const url = commitUrl(commit);
         const short = commit.sha.slice(0, 10);
         return (
-          <tr key={`${commit.repo}:${commit.sha}`}>
-            <td className="mono nowrap">
+          <TableRow key={`${commit.repo}:${commit.sha}`}>
+            <Td className="font-mono text-xs">
               {url === null ? (
                 short
               ) : (
@@ -48,25 +50,23 @@ export const CommitList = ({
                   {short}
                 </a>
               )}
-            </td>
-            <td className="primary" title={commit.subject}>
-              {commit.subject}
-            </td>
-            <td>
-              <Badge variant={commit.onDefaultBranch ? "success" : "neutral"}>{commit.ref}</Badge>
-            </td>
-            <td className="nowrap">{dateTime(commit.authoredAt)}</td>
+            </Td>
+            <PrimaryTd title={commit.subject}>{commit.subject}</PrimaryTd>
+            <Td>
+              <Badge variant={commit.onDefaultBranch ? "success" : "secondary"}>{commit.ref}</Badge>
+            </Td>
+            <Td>{dateTime(commit.authoredAt)}</Td>
             {showConversation && (
-              <td>
+              <Td>
                 <Link to="/conversations/$id" params={{ id: commit.conversationId }}>
                   open
                 </Link>
-              </td>
+              </Td>
             )}
-            <td className="num">{usd(commit.costUsd)}</td>
-          </tr>
+            <Td numeric>{usd(commit.costUsd)}</Td>
+          </TableRow>
         );
       })}
-    </tbody>
-  </table>
+    </TableBody>
+  </DataTable>
 );

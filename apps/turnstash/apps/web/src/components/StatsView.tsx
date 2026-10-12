@@ -1,6 +1,13 @@
 import type { Overall, Stats, StatsDaily } from "@aqt/turnstash-api";
-import { Empty } from "@cloudflare/kumo";
-import { ChartBarIcon } from "@phosphor-icons/react";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@aqt/ui/components/empty";
+import { ChartColumnIcon } from "lucide-react";
 
 import { Card } from "./Card";
 import { ConversationsTable } from "./ConversationsTable";
@@ -28,17 +35,22 @@ export const StatsView = ({
 }) => {
   if (stats.overall.conversations === 0) {
     return (
-      <Empty
-        size="lg"
-        icon={<ChartBarIcon size={48} />}
-        title="Nothing recorded"
-        description={
-          stats.range === null
-            ? "No machine has pushed logs to this archive yet. Enrol one and run:"
-            : "No requests in this period. Widen the period or push fresh logs:"
-        }
-        commandLine="turnstash sync"
-      />
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <ChartColumnIcon />
+          </EmptyMedia>
+          <EmptyTitle>Nothing recorded</EmptyTitle>
+          <EmptyDescription>
+            {stats.range === null
+              ? "No machine has pushed logs to this archive yet. Enrol one and run:"
+              : "No requests in this period. Widen the period or push fresh logs:"}
+          </EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <code className="rounded-md bg-muted px-2 py-1 font-mono text-xs">turnstash sync</code>
+        </EmptyContent>
+      </Empty>
     );
   }
 
@@ -55,7 +67,7 @@ export const StatsView = ({
       {showSubscriptions && stats.subscriptions.length > 0 && (
         <SubscriptionValueTable rows={stats.subscriptions} />
       )}
-      <div className="tables-grid">
+      <div className="grid grid-cols-1 gap-x-10 gap-y-9 lg:grid-cols-2">
         {!hideProjects && stats.byProject.length > 0 && <ProjectsTable rows={stats.byProject} />}
         {stats.byModel.length > 0 && <ModelsTable rows={stats.byModel} />}
       </div>
@@ -67,7 +79,7 @@ export const StatsView = ({
           <ConversationsTable rows={stats.topConversations} showShare />
         </Card>
       )}
-      <div className="tables-grid">
+      <div className="grid grid-cols-1 gap-x-10 gap-y-9 lg:grid-cols-2">
         {stats.byProvider.length > 0 && <ProvidersTable rows={stats.byProvider} />}
         {!hideMachines && stats.byMachine.length > 0 && (
           <MachinesTable

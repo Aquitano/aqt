@@ -1,17 +1,18 @@
-import { Button, LinkButton, SensitiveInput } from "@cloudflare/kumo";
-import { ArrowsClockwiseIcon, FlameIcon, MoonIcon, SunIcon } from "@phosphor-icons/react";
+import { Button } from "@aqt/ui/components/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@aqt/ui/components/card";
+import { ThemeToggle } from "@aqt/ui/components/theme-toggle";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet } from "@tanstack/react-router";
+import { FlameIcon, RefreshCwIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { ChangeEvent, KeyboardEvent } from "react";
 
 import { readToken, writeToken } from "../api";
 import { FiltersProvider } from "../filters";
 import { int } from "../format";
 import { dashboardSessionQuery, healthQuery } from "../queries";
-import { ThemeProvider, useTheme } from "../theme";
 import { TokenTotalProvider } from "../token-total";
 import { Pending, RequestFailure } from "./Async";
+import { SecretInput } from "./SecretInput";
 
 const navItems = [
   { to: "/", label: "Overview" },
@@ -23,13 +24,14 @@ const navItems = [
   { to: "/settings", label: "Settings" },
 ] as const;
 
+const column = "mx-auto w-full max-w-310 px-4 sm:px-6";
+
 const useSignedOut = () => {
   const session = useQuery(dashboardSessionQuery());
   return session.data?.mode === "oidc" && session.data.user === null;
 };
 
 const Header = () => {
-  const { mode, toggle } = useTheme();
   const session = useQuery(dashboardSessionQuery());
   const signedOut = useSignedOut();
   const queryClient = useQueryClient();
@@ -41,66 +43,61 @@ const Header = () => {
   };
 
   return (
-    <header className="header">
-      <Link to="/" className="brand">
-        <FlameIcon size={18} weight="fill" />
-        <span>turnstash</span>
-      </Link>
-      {!signedOut && (
-        <nav className="nav">
-          {navItems.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              activeOptions={{ exact: item.to === "/" }}
-              activeProps={{ className: "is-active" }}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-      )}
-      <div className="spacer" />
-      <div className="controls">
-        {session.data?.mode === "token" && (
-          <SensitiveInput
-            size="sm"
-            placeholder="Access token"
-            aria-label="Access token"
-            value={token}
-            className="token-field"
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setToken(event.target.value)}
-            onKeyDown={(event: KeyboardEvent) => {
-              if (event.key === "Enter") apply();
-            }}
-          />
-        )}
-        {session.data?.user && (
-          <form action="/auth/logout" method="post" className="session">
-            <span className="session-name">{session.data.user.name}</span>
-            <Button size="sm" variant="ghost" type="submit">
-              Sign out
-            </Button>
-          </form>
-        )}
+    <header className="sticky top-0 z-20 border-b bg-background">
+      <div className={`${column} flex h-12 items-center gap-1`}>
+        <Link
+          to="/"
+          className="mr-2 inline-flex shrink-0 items-center gap-2 text-[15px] font-semibold tracking-tight sm:mr-5"
+        >
+          <FlameIcon className="size-4.5 fill-flame text-flame" />
+          <span className="max-sm:hidden">turnstash</span>
+        </Link>
         {!signedOut && (
-          <Button
-            size="sm"
-            shape="square"
-            variant="ghost"
-            aria-label="Reload data"
-            icon={<ArrowsClockwiseIcon />}
-            onClick={apply}
-          />
+          // The fade on phones shows the navigation continues past the edge.
+          <nav className="flex h-full min-w-0 [scrollbar-width:none] gap-0.5 overflow-x-auto max-sm:mask-r-from-[calc(100%-24px)]">
+            {navItems.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                activeOptions={{ exact: item.to === "/" }}
+                className="inline-flex h-full items-center border-b-2 border-transparent px-2.5 text-[13px] whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[status=active]:border-flame data-[status=active]:text-foreground"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
         )}
-        <Button
-          size="sm"
-          shape="square"
-          variant="ghost"
-          aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          icon={mode === "dark" ? <SunIcon /> : <MoonIcon />}
-          onClick={toggle}
-        />
+        <div className="flex-1" />
+        <div className="flex shrink-0 items-center gap-1.5">
+          {session.data?.mode === "token" && (
+            <SecretInput
+              placeholder="Access token"
+              aria-label="Access token"
+              value={token}
+              className="w-28 sm:w-40"
+              onChange={(event) => setToken(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") apply();
+              }}
+            />
+          )}
+          {session.data?.user && (
+            <form action="/auth/logout" method="post" className="flex items-center gap-1.5">
+              <span className="max-w-56 truncate text-[13px] text-muted-foreground max-sm:hidden">
+                {session.data.user.name}
+              </span>
+              <Button size="sm" variant="ghost" type="submit">
+                Sign out
+              </Button>
+            </form>
+          )}
+          {!signedOut && (
+            <Button size="icon-sm" variant="ghost" aria-label="Reload data" onClick={apply}>
+              <RefreshCwIcon />
+            </Button>
+          )}
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );
@@ -120,36 +117,43 @@ const RepricingNotice = () => {
   if (repricing === null) return null;
   const share = repricing.total === 0 ? 0 : repricing.done / repricing.total;
   return (
-    <div className="notice" role="status">
-      <i style={{ width: `${Math.min(100, share * 100)}%` }} />
-      <span>
+    <div role="status" className="relative border-b bg-warning/10 text-[13px]">
+      <div className={`${column} py-2`}>
         Applying new prices: {int(repricing.done)} of {int(repricing.total)} requests. Totals switch
         over when every request is priced.
-      </span>
+      </div>
+      <span
+        className="absolute -bottom-px left-0 h-0.5 bg-flame"
+        style={{ width: `${Math.min(100, share * 100)}%` }}
+      />
     </div>
   );
 };
 
 const SignIn = () => (
-  <main className="signin">
-    <div className="signin-panel">
-      <FlameIcon size={32} weight="fill" className="signin-mark" />
-      <h1 className="signin-title">Sign in to Turnstash</h1>
-      <p className="signin-text">
-        Your archive of coding-agent sessions and what they cost. Sign in with your authentik
-        account to open it.
-      </p>
-      <LinkButton href="/auth/login" variant="primary" className="signin-button">
-        Sign in with authentik
-      </LinkButton>
-    </div>
+  <main className="grid flex-1 place-items-center px-4 pt-12 pb-24 sm:px-6">
+    <Card className="w-full max-w-sm text-center">
+      <CardHeader className="justify-items-center">
+        <FlameIcon className="mb-1.5 size-8 fill-flame text-flame" />
+        <CardTitle className="text-xl">Sign in to Turnstash</CardTitle>
+        <CardDescription>
+          Your archive of coding-agent sessions and what they cost. Sign in with your authentik
+          account to open it.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Button className="w-full" nativeButton={false} render={<a href="/auth/login" />}>
+          Sign in with authentik
+        </Button>
+      </CardContent>
+    </Card>
   </main>
 );
 
 const Footer = () => {
   const health = useQuery(healthQuery());
   return (
-    <footer className="footer">
+    <footer className={`${column} mt-auto py-4 text-xs text-muted-foreground`}>
       turnstash{health.data === undefined ? "" : ` ${health.data.version}`}
     </footer>
   );
@@ -159,7 +163,12 @@ const Dashboard = () => {
   const session = useQuery(dashboardSessionQuery());
   const signedOut = useSignedOut();
   if (session.isPending) return <Pending />;
-  if (session.isError) return <RequestFailure error={session.error} />;
+  if (session.isError)
+    return (
+      <div className={`${column} py-7`}>
+        <RequestFailure error={session.error} />
+      </div>
+    );
   if (signedOut) return <SignIn />;
   return (
     <>
@@ -170,15 +179,13 @@ const Dashboard = () => {
 };
 
 export const Layout = () => (
-  <ThemeProvider>
-    <TokenTotalProvider>
-      <FiltersProvider>
-        <div className="page">
-          <Header />
-          <Dashboard />
-          <Footer />
-        </div>
-      </FiltersProvider>
-    </TokenTotalProvider>
-  </ThemeProvider>
+  <TokenTotalProvider>
+    <FiltersProvider>
+      <div className="flex min-h-screen flex-col">
+        <Header />
+        <Dashboard />
+        <Footer />
+      </div>
+    </FiltersProvider>
+  </TokenTotalProvider>
 );

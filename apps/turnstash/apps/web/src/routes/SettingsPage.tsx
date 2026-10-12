@@ -1,7 +1,8 @@
-import { Tabs } from "@cloudflare/kumo";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
+import { Page, PageHead } from "../components/Page";
+import { Segmented } from "../components/Segmented";
 import { DisplaySettings } from "../settings/DisplaySettings";
 import { MachinesSettings } from "../settings/MachinesSettings";
 import { PlansSettings } from "../settings/PlansSettings";
@@ -18,8 +19,6 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["value"];
 
-const isTabId = (value: string): value is TabId => tabs.some((tab) => tab.value === value);
-
 const panels: Record<TabId, () => ReactNode> = {
   display: DisplaySettings,
   machines: MachinesSettings,
@@ -33,20 +32,12 @@ export const SettingsPage = () => {
   const Panel = panels[tab];
 
   return (
-    <main className="main">
-      <div className="page-head">
-        <h1 className="page-title">Settings</h1>
-        <Tabs
-          variant="segmented"
-          size="sm"
-          tabs={tabs.map((entry) => ({ value: entry.value, label: entry.label }))}
-          value={tab}
-          onValueChange={(value) => {
-            if (isTabId(value)) setTab(value);
-          }}
-        />
-      </div>
+    <Page>
+      <PageHead
+        title="Settings"
+        note={<Segmented label="Settings section" options={tabs} value={tab} onChange={setTab} />}
+      />
       <Panel />
-    </main>
+    </Page>
   );
 };

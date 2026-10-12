@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { PrimaryTd } from "./DataTable";
+
 export const shareOf = (value: number, total: number) => (total > 0 ? value / total : 0);
 
 export const totalCost = (rows: ReadonlyArray<{ readonly costUsd: number }>) =>
@@ -14,11 +16,11 @@ export const ShareCell = ({
   readonly share: number;
   readonly sub?: string | null;
 }) => (
-  <td className="primary">
+  <PrimaryTd>
     {label}
-    {sub !== null && <span className="muted"> {sub}</span>}
-    <span className="share">
-      <i style={{ width: `${Math.min(100, share * 100)}%` }} />
+    {sub !== null && <span className="text-xs text-muted-foreground"> {sub}</span>}
+    <span className="mt-1 block h-0.5 overflow-hidden bg-muted">
+      <span className="block h-full bg-flame" style={{ width: `${Math.min(100, share * 100)}%` }} />
     </span>
-  </td>
+  </PrimaryTd>
 );

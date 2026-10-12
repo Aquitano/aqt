@@ -1,14 +1,27 @@
 import type { SearchQuery } from "@aqt/turnstash-api";
-import { Badge, Button, Empty, Input } from "@cloudflare/kumo";
-import { MagnifyingGlassIcon } from "@phosphor-icons/react";
+import { Badge } from "@aqt/ui/components/badge";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@aqt/ui/components/empty";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@aqt/ui/components/input-group";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { ChangeEvent } from "react";
 
 import { Pending, RequestFailure } from "../components/Async";
 import { Card } from "../components/Card";
 import { FilterSelect } from "../components/FilterSelect";
+import { Page } from "../components/Page";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { Snippet } from "../components/Snippet";
 import { FilterBar, useFilters } from "../filters";
@@ -43,7 +56,7 @@ export const SearchPage = () => {
   const results = useQuery(searchQuery(query));
 
   return (
-    <main className="main">
+    <Page>
       <FilterBar
         title="Search"
         showMachine={false}
@@ -69,60 +82,76 @@ export const SearchPage = () => {
         <FilterSelect
           label="Message role"
           anyLabel="All roles"
+          className="w-32"
           value={state.role ?? null}
           options={roles.map((role) => ({ value: role, label: role }))}
           onChange={(value) => update({ role: roles.find((role) => role === value) })}
         />
-        <Input
-          size="sm"
-          aria-label="Search words"
-          className="search-field"
-          placeholder="Search every transcript"
-          value={text}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") update({ q: text.trim() });
-          }}
-        />
-        <Button size="sm" icon={<MagnifyingGlassIcon />} onClick={() => update({ q: text.trim() })}>
-          Search
-        </Button>
+        <InputGroup className="h-8 w-auto max-w-120 min-w-60 flex-1">
+          <InputGroupInput
+            aria-label="Search words"
+            placeholder="Search every transcript"
+            className="md:text-[13px]"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") update({ q: text.trim() });
+            }}
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton className="text-[13px]" onClick={() => update({ q: text.trim() })}>
+              <SearchIcon />
+              Search
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
       </FilterBar>
 
       {term === "" && (
-        <Empty
-          size="lg"
-          icon={<MagnifyingGlassIcon size={48} />}
-          title="Search the archive"
-          description="Type words and press Enter. Every message in the period is searched."
-        />
+        <Empty>
+          <EmptyHeader>
+            <EmptyMedia variant="icon">
+              <SearchIcon />
+            </EmptyMedia>
+            <EmptyTitle>Search the archive</EmptyTitle>
+            <EmptyDescription>
+              Type words and press Enter. Every message in the period is searched.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
       {term !== "" && results.isPending && <Pending />}
       {results.isError && <RequestFailure error={results.error} />}
       {term !== "" && results.isSuccess && (
         <Card title={`Results for ${term}`} note={`${results.data.hits.length} hits`}>
           {results.data.hits.length === 0 && (
-            <span className="card-note">Nothing matched. Try fewer or different words.</span>
+            <p className="py-3 text-xs text-muted-foreground">
+              Nothing matched. Try fewer or different words.
+            </p>
           )}
           {results.data.hits.map((hit) => (
-            <div className="result" key={hit.messageId}>
-              <div className="row">
+            <div
+              className="flex flex-col gap-1.5 border-b py-3 last:border-b-0"
+              key={hit.messageId}
+            >
+              <div className="flex flex-wrap items-center gap-2">
                 <Link
                   to="/conversations/$id"
                   params={{ id: hit.conversationId }}
                   search={{ message: hit.messageKey, q: term }}
+                  className="text-sm font-semibold underline-offset-2 outline-none hover:underline hover:decoration-flame focus-visible:underline"
                 >
                   {hit.title ?? hit.projectKey ?? shortId(hit.conversationId, 12)}
                 </Link>
                 <ProviderBadge provider={hit.provider} />
-                <Badge variant="neutral">{hit.role}</Badge>
-                <span className="card-note">{dateTime(hit.createdAt)}</span>
+                <Badge variant="secondary">{hit.role}</Badge>
+                <span className="text-xs text-muted-foreground">{dateTime(hit.createdAt)}</span>
               </div>
               <Snippet text={hit.snippet} />
             </div>
           ))}
         </Card>
       )}
-    </main>
+    </Page>
   );
 };

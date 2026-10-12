@@ -5,36 +5,36 @@ import type {
   PricingRuleView,
   UnpricedModelRow,
 } from "@aqt/turnstash-api";
-import { Button, Input, Tabs } from "@cloudflare/kumo";
-import { TrashIcon } from "@phosphor-icons/react";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
+import { Spinner } from "@aqt/ui/components/spinner";
+import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Effect } from "effect";
+import { Trash2Icon } from "lucide-react";
 import { useRef, useState } from "react";
-import type { ChangeEvent } from "react";
 
 import { api } from "../api";
 import { Async, RequestFailure } from "../components/Async";
 import { Card } from "../components/Card";
+import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
+import { Segmented } from "../components/Segmented";
 import { int, relativeTime } from "../format";
 import { rulesQuery, unpricedModelsQuery } from "../queries";
 
 type Kind = PricingRule["kind"];
 type Reason = Extract<PricingRule, { kind: "unpriced" }>["reason"];
 
-const kindOptions: ReadonlyArray<{ value: Kind; label: string }> = [
+const kindOptions: ReadonlyArray<{ readonly value: Kind; readonly label: string }> = [
   { value: "alias", label: "Price as another model" },
   { value: "rate", label: "Custom rates" },
   { value: "unpriced", label: "Not billed per token" },
 ];
-const reasonOptions: ReadonlyArray<{ value: Reason; label: string }> = [
+const reasonOptions: ReadonlyArray<{ readonly value: Reason; readonly label: string }> = [
   { value: "subscription", label: "Subscription" },
   { value: "free", label: "Free tier" },
   { value: "local", label: "Runs locally" },
 ];
-const isKind = (value: string): value is Kind =>
-  kindOptions.some((option) => option.value === value);
-const isReason = (value: string): value is Reason =>
-  reasonOptions.some((option) => option.value === value);
 
 const optionalRate = (value: string): number | undefined =>
   value.trim() === "" ? undefined : Number(value);
@@ -107,42 +107,33 @@ const NewRule = ({
     placeholder?: string,
   ) => (
     <Input
-      size="sm"
       aria-label={label}
       inputMode="decimal"
+      className="h-8 w-44 md:text-[13px]"
       placeholder={`${label}${placeholder === undefined ? "" : `, ${placeholder}`}`}
       value={value}
-      onChange={(event: ChangeEvent<HTMLInputElement>) => set(event.target.value)}
+      onChange={(event) => set(event.target.value)}
     />
   );
 
   return (
-    <div className="stack">
-      <div className="filters" style={{ alignItems: "center" }}>
+    <div className="flex flex-col gap-3 pt-1.5">
+      <div className="flex flex-wrap items-center gap-2 *:max-w-full">
         <Input
-          size="sm"
-          width={280}
           aria-label="Model as it appears in logs"
           placeholder="model as it appears in logs"
+          className="h-8 w-70 md:text-[13px]"
           value={model}
-          onChange={(event: ChangeEvent<HTMLInputElement>) => onModelChange(event.target.value)}
+          onChange={(event) => onModelChange(event.target.value)}
         />
-        <Tabs
-          variant="segmented"
-          size="sm"
-          tabs={kindOptions.map((option) => ({ value: option.value, label: option.label }))}
-          value={kind}
-          onValueChange={(next) => {
-            if (isKind(next)) setKind(next);
-          }}
-        />
+        <Segmented label="Rule kind" options={kindOptions} value={kind} onChange={setKind} />
         {kind === "alias" && (
           <Input
-            size="sm"
             aria-label="Price as"
             placeholder="price as, e.g. claude-opus-5"
+            className="h-8 w-60 md:text-[13px]"
             value={target}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setTarget(event.target.value)}
+            onChange={(event) => setTarget(event.target.value)}
           />
         )}
         {kind === "rate" && (
@@ -154,25 +145,16 @@ const NewRule = ({
           </>
         )}
         {kind === "unpriced" && (
-          <Tabs
-            variant="segmented"
-            size="sm"
-            tabs={reasonOptions.map((option) => ({ value: option.value, label: option.label }))}
-            value={reason}
-            onValueChange={(next) => {
-              if (isReason(next)) setReason(next);
-            }}
-          />
+          <Segmented label="Reason" options={reasonOptions} value={reason} onChange={setReason} />
         )}
         <Button
           size="sm"
-          variant="primary"
-          loading={save.isPending}
-          disabled={model.trim() === "" || ready === null}
+          disabled={save.isPending || model.trim() === "" || ready === null}
           onClick={() => {
             if (ready !== null) save.mutate({ model: model.trim(), rule: ready });
           }}
         >
+          {save.isPending && <Spinner data-icon="inline-start" />}
           Save rule
         </Button>
       </div>
@@ -211,35 +193,36 @@ const RulesTable = ({
   readonly onDelete: (model: string) => void;
   readonly deleting: string | null;
 }) => (
-  <table className="data-table">
-    <thead>
-      <tr>
-        <th>Model</th>
-        <th>Rule</th>
-        <th>Updated</th>
-        <th className="num">Actions</th>
-      </tr>
-    </thead>
-    <tbody>
+  <DataTable>
+    <TableHeader>
+      <TableRow>
+        <Th>Model</Th>
+        <Th>Rule</Th>
+        <Th>Updated</Th>
+        <Th numeric>Actions</Th>
+      </TableRow>
+    </TableHeader>
+    <TableBody>
       {rows.map((row) => (
-        <tr key={row.model}>
-          <td className="primary">{row.model}</td>
-          <td>{describe(row.rule)}</td>
-          <td>{relativeTime(row.updatedAt)}</td>
-          <td className="num">
+        <TableRow key={row.model}>
+          <PrimaryTd>{row.model}</PrimaryTd>
+          <Td>{describe(row.rule)}</Td>
+          <Td>{relativeTime(row.updatedAt)}</Td>
+          <Td numeric>
             <Button
-              size="xs"
-              variant="secondary-destructive"
-              icon={<TrashIcon />}
+              size="icon-xs"
+              variant="destructive"
               aria-label={`Delete rule for ${row.model}`}
-              loading={deleting === row.model}
+              disabled={deleting === row.model}
               onClick={() => onDelete(row.model)}
-            />
-          </td>
-        </tr>
+            >
+              {deleting === row.model ? <Spinner /> : <Trash2Icon />}
+            </Button>
+          </Td>
+        </TableRow>
       ))}
-    </tbody>
-  </table>
+    </TableBody>
+  </DataTable>
 );
 
 const UnpricedTable = ({
@@ -249,34 +232,34 @@ const UnpricedTable = ({
   readonly rows: ReadonlyArray<UnpricedModelRow>;
   readonly onPick: (model: string) => void;
 }) => (
-  <table className="data-table">
-    <thead>
-      <tr>
-        <th>Model</th>
-        <th>Provider</th>
-        <th>Reason</th>
-        <th>Last seen</th>
-        <th className="num">Requests</th>
-        <th className="num">Actions</th>
-      </tr>
-    </thead>
-    <tbody>
+  <DataTable>
+    <TableHeader>
+      <TableRow>
+        <Th>Model</Th>
+        <Th>Provider</Th>
+        <Th>Reason</Th>
+        <Th>Last seen</Th>
+        <Th numeric>Requests</Th>
+        <Th numeric>Actions</Th>
+      </TableRow>
+    </TableHeader>
+    <TableBody>
       {rows.map((row) => (
-        <tr key={`${row.provider}:${row.modelRaw}`}>
-          <td className="primary">{row.modelRaw}</td>
-          <td>{providerLabels[row.provider]}</td>
-          <td>{row.reason ?? "pending"}</td>
-          <td>{relativeTime(row.lastSeenAt)}</td>
-          <td className="num">{int(row.requests)}</td>
-          <td className="num">
-            <Button size="xs" onClick={() => onPick(row.modelRaw)}>
+        <TableRow key={`${row.provider}:${row.modelRaw}`}>
+          <PrimaryTd>{row.modelRaw}</PrimaryTd>
+          <Td>{providerLabels[row.provider]}</Td>
+          <Td>{row.reason ?? "pending"}</Td>
+          <Td>{relativeTime(row.lastSeenAt)}</Td>
+          <Td numeric>{int(row.requests)}</Td>
+          <Td numeric>
+            <Button size="xs" variant="outline" onClick={() => onPick(row.modelRaw)}>
               Add rule
             </Button>
-          </td>
-        </tr>
+          </Td>
+        </TableRow>
       ))}
-    </tbody>
-  </table>
+    </TableBody>
+  </DataTable>
 );
 
 export const PricingRulesSettings = () => {
@@ -292,7 +275,8 @@ export const PricingRulesSettings = () => {
   };
   const refresh = () => void queryClient.invalidateQueries();
   const remove = useMutation({
-    mutationFn: (model: string) => Effect.runPromise(api.admin.deleteRule({ query: { model } })),
+    mutationFn: (target: string) =>
+      Effect.runPromise(api.admin.deleteRule({ query: { model: target } })),
     onSuccess: refresh,
   });
 
@@ -310,9 +294,9 @@ export const PricingRulesSettings = () => {
         {(rows) => (
           <Card title="Pricing rules" note={`${rows.length} rules`}>
             {rows.length === 0 ? (
-              <span className="card-note">
+              <p className="pt-1.5 text-xs text-muted-foreground">
                 No rules yet. Built-in aliases and LiteLLM rates apply.
-              </span>
+              </p>
             ) : (
               <RulesTable
                 rows={rows}
@@ -328,7 +312,7 @@ export const PricingRulesSettings = () => {
         {(rows) => (
           <Card title="Unpriced models" note={`${rows.length} models without a rate`}>
             {rows.length === 0 ? (
-              <span className="card-note">Every request has a price.</span>
+              <p className="pt-1.5 text-xs text-muted-foreground">Every request has a price.</p>
             ) : (
               <UnpricedTable rows={rows} onPick={pick} />
             )}
