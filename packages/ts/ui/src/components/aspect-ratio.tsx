@@ -4,9 +4,10 @@ import { cn } from "cn";
 function AspectRatio({
   ratio,
   className,
+  style,
   ...props
 }: React.ComponentProps<"div"> & { ratio: number }) {
-  const ratioStyle: CSSVariables = { "--ratio": ratio };
+  const ratioStyle: CSSVariables = { ...style, "--ratio": ratio };
 
   return (
     <div
