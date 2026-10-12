@@ -143,7 +143,7 @@ export function ArtistDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="flex max-h-[min(90svh,46rem)] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{editing ? "Edit artist" : "New artist"}</DialogTitle>
           <DialogDescription>
@@ -152,7 +152,7 @@ export function ArtistDialog({
               : "Bio, dates and nationality appear on the artist's wall in the 3D museum."}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-3">
+        <div className="-m-1 flex min-h-0 flex-col gap-3 overflow-y-auto overscroll-contain p-1">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="artist-name">Name</Label>
             <Input
