@@ -11,27 +11,27 @@
   "dependencies": {
     "@aqt/turnstash-api": "workspace:*",
     "@aqt/ui": "workspace:*",
-    "@tanstack/react-query": "^5.104.1",
-    "@tanstack/react-router": "^1.170.41",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
     "@tanstack/react-virtual": "^3.14.14",
-    "cn": "^0.4.0",
-    "effect": "4.0.0-rc.116",
+    "cn": "catalog:",
+    "effect": "catalog:",
     "lucide-react": "catalog:",
     "next-themes": "catalog:",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "recharts": "3.8.0"
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "recharts": "catalog:"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
-    "@rolldown/plugin-babel": "^0.2.4",
-    "@tailwindcss/vite": "^4.3.3",
-    "@types/react": "^19.3.0",
+    "@rolldown/plugin-babel": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "@vitejs/plugin-react": "^6.1.1",
-    "babel-plugin-react-compiler": "^1.0.0",
-    "tailwindcss": "^4.3.3",
+    "@vitejs/plugin-react": "catalog:",
+    "babel-plugin-react-compiler": "catalog:",
+    "tailwindcss": "catalog:",
     "typescript": "catalog:",
-    "vite": "^8.3.2"
+    "vite": "catalog:"
   }
 }

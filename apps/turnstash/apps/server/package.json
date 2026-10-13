@@ -17,11 +17,11 @@
     "@aqt/turnstash-core": "workspace:*",
     "@aqt/turnstash-pricing": "workspace:*",
     "@aqt/turnstash-providers": "workspace:*",
-    "@effect/platform-bun": "4.0.0-rc.116",
-    "@effect/sql-pg": "4.0.0-rc.116",
+    "@effect/platform-bun": "catalog:",
+    "@effect/sql-pg": "catalog:",
     "countries-and-timezones": "^3.10.0",
     "drizzle-orm": "1.0.0-rc.5-5935859",
-    "effect": "4.0.0-rc.116",
+    "effect": "catalog:",
     "openid-client": "^6.8.8"
   },
   "devDependencies": {

@@ -12,7 +12,7 @@ import {
 import { MachineId, sha256Hex } from "@aqt/turnstash-core";
 import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { type Context, Effect, Layer, Redacted } from "effect";
-import type { HttpServerRequest } from "effect/unstable/http";
+import type { HttpServerRequest } from "effect/http";
 
 import { ServerConfig } from "./config.ts";
 import { authorizeDashboard } from "./dashboard-auth.ts";

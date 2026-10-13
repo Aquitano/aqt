@@ -1,7 +1,7 @@
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core/errors";
 import { Effect, Schema } from "effect";
-import { HttpServerResponse } from "effect/unstable/http";
-import { SqlError } from "effect/unstable/sql/SqlError";
+import { HttpServerResponse } from "effect/http";
+import { SqlError } from "effect/sql/SqlError";
 
 import { failureSummary } from "./db/errors.ts";
 

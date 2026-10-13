@@ -1,8 +1,8 @@
+import { Button } from "@aqt/ui/components/button";
+import { Card, CardContent } from "@aqt/ui/components/card";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useId, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import type { Message } from "@/lib/api";
 
 function groupingReason(mail: NonNullable<Message["mail"]>) {

@@ -1,8 +1,8 @@
 import { Api } from "@aqt/turnstash-api";
 import { batchLimits, type IngestBatch, type MachineId, type Tombstone } from "@aqt/turnstash-core";
 import { Effect, Option, type Redacted, Schedule } from "effect";
-import { HttpClient, HttpClientError, HttpClientRequest } from "effect/unstable/http";
-import { HttpApiClient } from "effect/unstable/httpapi";
+import { HttpClient, HttpClientError, HttpClientRequest } from "effect/http";
+import { HttpApiClient } from "effect/http-api";
 
 import { AgentState } from "./state.ts";
 

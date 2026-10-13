@@ -1,24 +1,32 @@
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@aqt/ui/components/select";
+import { cn } from "@aqt/ui/lib/utils";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { MessagesSquare } from "lucide-react";
 import { useState } from "react";
 
 import type { Selection } from "@/components/detail-pane";
 import { MailboxSelect } from "@/components/mailbox-select";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { browseThreads, BROWSE_PAGE, type SourceStat, type ThreadGroup } from "@/lib/api";
 import { fmtDate, SourceBadge, threadTitle } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/views/search";
 
 export const ALL_SOURCES = "__all__";
+
+type Order = "asc" | "desc";
+
+const ORDERS: { value: Order; label: string }[] = [
+  { value: "desc", label: "newest first" },
+  { value: "asc", label: "oldest first" },
+];
 
 function groupTitle(g: ThreadGroup) {
   return g.thread_id
@@ -68,7 +76,7 @@ function GroupRow({
       </div>
       <div className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">
         {threaded && g.sender ? (
-          <span className="text-muted-foreground/70">{g.sender.split("<")[0].trim()}: </span>
+          <span className="text-muted-foreground/70">{g.sender.replace(/<.*/, "").trim()}: </span>
         ) : null}
         {g.preview}
       </div>
@@ -89,7 +97,7 @@ export function BrowseView({
   source: string;
   onSourceChange: (s: string) => void;
 }) {
-  const [order, setOrder] = useState<"asc" | "desc">("desc");
+  const [order, setOrder] = useState<Order>("desc");
   const [mailbox, setMailbox] = useState<{ source: string; id?: number }>({ source });
   const mailboxId = mailbox.source === source ? mailbox.id : undefined;
 
@@ -108,35 +116,52 @@ export function BrowseView({
   });
 
   const groups = q.data?.pages.flat() ?? [];
+  const sources = [
+    { value: ALL_SOURCES, label: "all sources" },
+    ...stats.map((s) => ({ value: s.source, label: s.source })),
+  ];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 gap-2 px-3 pt-3 pb-2">
-        <Select value={source} onValueChange={onSourceChange}>
-          <SelectTrigger size="sm" className="flex-1 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_SOURCES}>all sources</SelectItem>
-            {stats.map((s) => (
-              <SelectItem key={s.source} value={s.source}>
-                {s.source}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <Select
-          value={order}
-          onValueChange={(v) => {
-            if (v === "asc" || v === "desc") setOrder(v);
+          items={sources}
+          value={source}
+          onValueChange={(next) => {
+            if (next !== null) onSourceChange(next);
           }}
         >
           <SelectTrigger size="sm" className="flex-1 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="desc">newest first</SelectItem>
-            <SelectItem value="asc">oldest first</SelectItem>
+            <SelectGroup>
+              {sources.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+        <Select
+          items={ORDERS}
+          value={order}
+          onValueChange={(next) => {
+            if (next !== null) setOrder(next);
+          }}
+        >
+          <SelectTrigger size="sm" className="flex-1 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {ORDERS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
           </SelectContent>
         </Select>
       </div>

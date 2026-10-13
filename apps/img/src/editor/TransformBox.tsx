@@ -1,7 +1,6 @@
+import { cn } from "@aqt/ui/lib/utils";
 import { motion } from "motion/react";
 import { useRef, type PointerEvent as ReactPointerEvent } from "react";
-
-import { cn } from "@/lib/utils";
 
 import {
   CORNERS,

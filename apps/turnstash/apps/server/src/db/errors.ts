@@ -1,6 +1,6 @@
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core/errors";
 import { Cause, Option, Schema } from "effect";
-import { isSqlError, type SqlErrorReason } from "effect/unstable/sql/SqlError";
+import { isSqlError, type SqlErrorReason } from "effect/sql/SqlError";
 
 const hasSqlState = Schema.is(
   Schema.Struct({ code: Schema.String.check(Schema.isPattern(/^[0-9A-Z]{5}$/)) }),

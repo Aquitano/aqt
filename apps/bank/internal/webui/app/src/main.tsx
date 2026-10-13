@@ -1,11 +1,16 @@
+import { ThemeProvider } from "@aqt/ui/components/theme-provider";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import "./index.css";
 import App from "./App.tsx";
 
-createRoot(document.getElementById("root")!).render(
+const container = document.getElementById("root");
+if (container === null) throw new Error("index.html is missing the #root element");
+
+createRoot(container).render(
   <StrictMode>
-    <App />
+    <ThemeProvider forcedTheme="dark">
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 );

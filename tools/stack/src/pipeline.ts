@@ -1,14 +1,13 @@
 import { resolve } from "node:path";
 
 import type { Config } from "./config.ts";
-import { REQUIRED_LANDING_COMPONENTS, validateProjectName } from "./config.ts";
+import { validateProjectName } from "./config.ts";
 import { buildMiseTasks, validateMiseNamespace } from "./mise.ts";
 import type { ShellRunner } from "./shell.ts";
 import { buildCi, getTemplates } from "./templates.ts";
 
-// Bump these together with a real scaffold/build smoke test.
+// Bump together with a real scaffold/build smoke test.
 export const NEXT_GENERATOR = "create-next-app@16.3.8";
-export const SHADCN_CLI = "shadcn@4.21.1";
 export const WORKSPACE_ROOT = resolve(import.meta.dir, "../../..");
 
 export type StepRunner = (
@@ -35,6 +34,8 @@ export async function scaffold(
   ) {
     throw new Error("Run the generator from its aqt workspace checkout.");
   }
+  const catalog = rootPackage.workspaces?.catalog ?? {};
+  const catalogDependency = (name: string) => (catalog[name] ? `${name}@catalog:` : name);
   if (await shell.exists(projectPath)) throw new Error(`App already exists: ${projectPath}`);
   if (config.ci && (await shell.exists(workflowPath))) {
     throw new Error(`Workflow already exists: ${workflowPath}`);
@@ -96,11 +97,21 @@ export async function scaffold(
       pkg.scripts.test = "vitest run";
       pkg.scripts["test:watch"] = "vitest";
     }
+    if (config.ui) {
+      pkg.dependencies ??= {};
+      pkg.dependencies["@aqt/ui"] = "workspace:*";
+    }
     pkg.devDependencies ??= {};
     pkg.devDependencies["@aqt/config"] = "workspace:*";
     const typescript = rootPackage.devDependencies?.typescript;
     if (!typescript) throw new Error("The workspace must declare a TypeScript version.");
     pkg.devDependencies.typescript = typescript;
+    for (const dependencies of [pkg.dependencies, pkg.devDependencies]) {
+      if (!dependencies) continue;
+      for (const name of Object.keys(dependencies)) {
+        if (catalog[name]) dependencies[name] = "catalog:";
+      }
+    }
     await shell.writeFile(`${projectPath}/package.json`, JSON.stringify(pkg, null, 2) + "\n");
 
     await Promise.all(
@@ -113,50 +124,21 @@ export async function scaffold(
     await shell.spawn("bun", ["install"], { cwd: workspaceRoot });
     const dependencies = ["arktype", "@t3-oss/env-nextjs"];
     if (config.hono) dependencies.push("hono", "@hono/standard-validator");
-    if (config.themes) dependencies.push("next-themes", "lucide-react");
-    await shell.install(dependencies, { cwd: projectPath });
+    await shell.install(dependencies.map(catalogDependency), { cwd: projectPath });
     if (config.testing) {
       await shell.install(
         [
           "vitest",
           "@vitejs/plugin-react",
-          "vite-tsconfig-paths",
           "jsdom",
           "@testing-library/react",
           "@testing-library/jest-dom",
           "@testing-library/user-event",
-        ],
+        ].map(catalogDependency),
         { cwd: projectPath, dev: true },
       );
     }
   });
-
-  if (config.shadcn) {
-    await runStep("Adding Base UI components", async () => {
-      await shell.spawn(
-        "bunx",
-        [
-          "--bun",
-          SHADCN_CLI,
-          "init",
-          "--base",
-          "base",
-          "--preset",
-          "nova",
-          "--no-monorepo",
-          "--yes",
-        ],
-        { cwd: projectPath },
-      );
-      const components = [...new Set([...config.shadcnComponents, ...REQUIRED_LANDING_COMPONENTS])];
-      await shell.spawn("bunx", ["--bun", SHADCN_CLI, "add", ...components, "--yes"], {
-        cwd: projectPath,
-      });
-      await shell.spawn("bunx", ["--bun", SHADCN_CLI, "migrate", "cn", "--yes"], {
-        cwd: projectPath,
-      });
-    });
-  }
 
   if (config.ci) {
     await runStep("Adding app CI workflow", async () => {

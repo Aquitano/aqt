@@ -1,10 +1,11 @@
+import { Button } from "@aqt/ui/components/button";
+import { Tabs, TabsList, TabsTrigger } from "@aqt/ui/components/tabs";
+import { cn } from "@aqt/ui/lib/utils";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Landmark } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { DetailPane } from "@/components/detail-pane";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getStats } from "@/lib/api";
 import {
   isView,
@@ -18,7 +19,6 @@ import {
   writeSelection,
   type View,
 } from "@/lib/navigation";
-import { cn } from "@/lib/utils";
 import { AttachmentsView } from "@/views/attachments";
 import { ALL_SOURCES, BrowseView } from "@/views/browse";
 import { CollectionsView } from "@/views/collections";
@@ -115,7 +115,7 @@ function Shell() {
           <Tabs
             value={view === "attachments" ? "media-files" : view}
             onValueChange={(value) => {
-              if (isView(value)) setView(value);
+              if (typeof value === "string" && isView(value)) setView(value);
             }}
           >
             <TabsList className="w-max">
@@ -178,7 +178,7 @@ function Shell() {
                 className="shrink-0 px-4 pt-4"
                 value={view}
                 onValueChange={(value) => {
-                  if (isView(value)) setView(value);
+                  if (typeof value === "string" && isView(value)) setView(value);
                 }}
               >
                 <TabsList>

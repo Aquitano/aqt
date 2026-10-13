@@ -3,27 +3,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "turbo dev -F '@aqt/gallery-*'",
-    "build": "turbo build -F '@aqt/gallery-*'",
-    "dev:web": "turbo -F @aqt/gallery-web dev",
-    "dev:server": "turbo -F @aqt/gallery-server dev",
-    "db:push": "turbo -F @aqt/gallery-db db:push",
-    "db:studio": "turbo -F @aqt/gallery-db db:studio",
-    "db:generate": "turbo -F @aqt/gallery-db db:generate",
-    "db:migrate": "turbo -F @aqt/gallery-db db:migrate",
+    "dev": "bun run --parallel --filter '@aqt/gallery-*' dev",
+    "build": "bun run --filter '@aqt/gallery-*' build",
+    "dev:web": "bun run --cwd apps/web dev",
+    "dev:server": "bun run --cwd apps/server dev",
+    "db:push": "bun run --cwd packages/db db:push",
+    "db:studio": "bun run --cwd packages/db db:studio",
+    "db:generate": "bun run --cwd packages/db db:generate",
+    "db:migrate": "bun run --cwd packages/db db:migrate",
     "check": "oxlint --type-aware",
-    "typecheck": "turbo typecheck -F '@aqt/gallery-*'",
+    "typecheck": "bun run --filter '@aqt/gallery-*' typecheck",
     "test": "bun test apps/server/src packages/gallery-layout/src apps/web/src"
-  },
-  "dependencies": {
-    "@aqt/gallery-env": "workspace:*",
-    "dotenv": "catalog:",
-    "zod": "catalog:"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
-    "typescript": "catalog:",
-    "wrangler": "^4.147.0"
+    "typescript": "catalog:"
   }
 }

@@ -1,7 +1,7 @@
 import { providerIds } from "@aqt/turnstash-core";
 import { sql } from "drizzle-orm";
 import { Cause, Config, Effect, Layer, Metric, Schedule } from "effect";
-import { Otlp, OtlpSerialization } from "effect/unstable/observability";
+import { Otlp, OtlpSerialization } from "effect/observability";
 
 import { serverVersion } from "./config.ts";
 import { Db } from "./db/client.ts";

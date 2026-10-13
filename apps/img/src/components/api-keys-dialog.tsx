@@ -1,9 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   Dialog,
   DialogContent,
@@ -11,8 +6,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+} from "@aqt/ui/components/dialog";
+import { Input } from "@aqt/ui/components/input";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+
 import { apiKeysQuery } from "@/lib/queries";
 import { rejectFailures } from "@/lib/server-error";
 import * as apiKeyFns from "@/server/fns/api-keys";
@@ -26,7 +26,7 @@ export function ApiKeysDialog() {
   const keys = useQuery({ ...apiKeysQuery(), enabled: open });
 
   const create = useMutation({
-    mutationFn: (name: string) => rejectFailures(apiKeyFns.create({ data: { name } })),
+    mutationFn: (keyName: string) => rejectFailures(apiKeyFns.create({ data: { name: keyName } })),
     onSuccess: (created) => {
       setFresh({ name: created.name, key: created.key });
       setName("");
@@ -49,10 +49,8 @@ export function ApiKeysDialog() {
         if (!next) setFresh(null);
       }}
     >
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="API keys">
-          <KeyRound />
-        </Button>
+      <DialogTrigger render={<Button variant="ghost" size="icon" aria-label="API keys" />}>
+        <KeyRound />
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

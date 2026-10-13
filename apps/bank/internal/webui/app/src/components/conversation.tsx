@@ -1,3 +1,28 @@
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "@aqt/ui/components/attachment";
+import { Avatar, AvatarFallback } from "@aqt/ui/components/avatar";
+import { Bubble, BubbleContent } from "@aqt/ui/components/bubble";
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+  MessageGroup,
+  MessageHeader,
+} from "@aqt/ui/components/message";
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "@aqt/ui/components/message-scroller";
+import { cn } from "@aqt/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Paperclip } from "lucide-react";
 import { memo, useState, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
@@ -6,34 +31,9 @@ import remarkGfm from "remark-gfm";
 
 import { FilePreview } from "@/components/file-preview";
 import { MessageProvenance } from "@/components/message-provenance";
-import {
-  Attachment,
-  AttachmentContent,
-  AttachmentDescription,
-  AttachmentMedia,
-  AttachmentTitle,
-} from "@/components/ui/attachment";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import {
-  Message,
-  MessageAvatar,
-  MessageContent,
-  MessageFooter,
-  MessageGroup,
-  MessageHeader,
-} from "@/components/ui/message";
-import {
-  MessageScroller,
-  MessageScrollerButton,
-  MessageScrollerContent,
-  MessageScrollerProvider,
-  MessageScrollerViewport,
-} from "@/components/ui/message-scroller";
 import { getMessageBranch, getMessageParent, type Message as BankMessage } from "@/lib/api";
 import { fmtDay, fmtTime, isMarkdownSource, isMe, Linkified, sourceHue } from "@/lib/format";
 import { messageLink } from "@/lib/navigation";
-import { cn } from "@/lib/utils";
 
 function initials(name: string) {
   const words = name.replace(/<.*/, "").trim().split(/\s+/);
@@ -233,7 +233,7 @@ interface Run {
   day: string;
   sender: string;
   me: boolean;
-  messages: BankMessage[];
+  messages: [BankMessage, ...BankMessage[]];
 }
 
 function buildRuns(messages: BankMessage[]): Run[] {
@@ -292,7 +292,7 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
             className={cn(
               run.me &&
                 "*:data-[slot=bubble-content]:bg-(--bubble-me)! *:data-[slot=bubble-content]:text-(--bubble-me-foreground)!",
-              m.id === flashId && "rounded-xl ring-2 ring-amber-400/70",
+              m.id === flashId && "rounded-3xl ring-2 ring-amber-400/70",
             )}
           >
             <BubbleContent>
@@ -423,11 +423,12 @@ export function Conversation({
     }
   }, [messages, flashId]);
 
-  if (messages.length === 1 && !flashId)
+  const [first] = messages;
+  if (first && messages.length === 1 && !flashId)
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex shrink-0 items-center gap-2 px-6">{navigation}</div>
-        <DocumentView title={title} meta={meta} m={messages[0]} />
+        <DocumentView title={title} meta={meta} m={first} />
       </div>
     );
 
@@ -450,7 +451,7 @@ export function Conversation({
           <MessageScrollerViewport ref={viewportRef}>
             <MessageScrollerContent className="mx-auto w-full max-w-3xl gap-0 px-6 py-5">
               {runs.map((run, i) => {
-                const sep = i === 0 || runs[i - 1].day !== run.day;
+                const sep = runs[i - 1]?.day !== run.day;
                 return (
                   <div key={run.messages[0].id} className="contents">
                     {sep && <DaySeparator day={run.day} />}

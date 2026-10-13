@@ -6,7 +6,7 @@ import { normalizers } from "@aqt/turnstash-providers";
 import { BunHttpClient, BunHttpServer } from "@effect/platform-bun";
 import { eq } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
-import { HttpRouter } from "effect/unstable/http";
+import { HttpRouter } from "effect/http";
 
 import { AuthLive } from "../src/auth.ts";
 import { createBookmark, deleteBookmark, listBookmarks, updateBookmark } from "../src/bookmarks.ts";

@@ -15,8 +15,8 @@ import {
   Result,
   Schema,
 } from "effect";
-import { HttpRouter } from "effect/unstable/http";
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from "effect/unstable/httpapi";
+import { HttpRouter } from "effect/http";
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from "effect/http-api";
 
 import { MachineAuthLive } from "../src/auth.ts";
 import { ServerConfigLive } from "../src/config.ts";

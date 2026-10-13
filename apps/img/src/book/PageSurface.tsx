@@ -1,7 +1,7 @@
+import { cn } from "@aqt/ui/lib/utils";
 import type { CSSProperties, ReactNode } from "react";
 
 import type { PageSide } from "@/domain/element";
-import { cn } from "@/lib/utils";
 
 import { PAPER, PAPER_GRAIN } from "./materials";
 

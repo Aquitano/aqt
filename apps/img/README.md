@@ -65,8 +65,8 @@ bindings in `wrangler.jsonc`.
 
 ## CLI and MCP
 
-`cli/` is a bun workspace with a command line client for the JSON API. It runs
-straight from source:
+`cli/` is a workspace package with a command line client for the JSON API. It
+runs straight from source; run these from `apps/img`:
 
 ```sh
 alias album="bun $(pwd)/cli/src/main.ts"
@@ -84,7 +84,7 @@ and the book's JSON schema as resources, so an agent can lay out a book. For
 Claude Code:
 
 ```sh
-claude mcp add album -- bun /path/to/aqt-img/cli/src/main.ts mcp
+claude mcp add album -- bun "$(pwd)/cli/src/main.ts" mcp
 ```
 
 Config lives in `~/.config/album/config.json`; `ALBUM_URL` and `ALBUM_API_KEY`

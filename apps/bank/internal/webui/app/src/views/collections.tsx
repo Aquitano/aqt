@@ -1,3 +1,11 @@
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@aqt/ui/components/card";
+import { Field, FieldGroup, FieldLabel } from "@aqt/ui/components/field";
+import { Input } from "@aqt/ui/components/input";
+import { Spinner } from "@aqt/ui/components/spinner";
+import { Textarea } from "@aqt/ui/components/textarea";
+import { cn } from "@aqt/ui/lib/utils";
 import {
   useInfiniteQuery,
   useMutation,
@@ -17,13 +25,6 @@ import {
   recordedDate,
   SourceLabel,
 } from "@/components/library-common";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
 import { RequestError } from "@/lib/api";
 import { appendEntry, moveEntry } from "@/lib/collection-entries";
 import { keepLatest, useDraft } from "@/lib/draft";
@@ -43,7 +44,6 @@ import {
   type SnapshotSummary,
 } from "@/lib/library-api";
 import { select, useLibraryFilters, type Selection } from "@/lib/navigation";
-import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/views/search";
 
 const KINDS = ["playlist", "watchlist", "library", "list"];
@@ -661,7 +661,7 @@ export function CollectionDetail({ id }: { id: string }) {
                 .map((snapshot) => (
                   <HistoricalSnapshot key={snapshot.id} collectionId={id} snapshot={snapshot} />
                 ))}
-            {history.data?.pages[0].length === 0 && (
+            {history.data?.pages[0]?.length === 0 && (
               <p className="text-sm text-muted-foreground">No earlier snapshots are available.</p>
             )}
             {history.hasNextPage && (
