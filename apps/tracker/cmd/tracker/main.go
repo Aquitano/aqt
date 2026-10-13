@@ -188,6 +188,7 @@ func cmdServe(ctx context.Context, args []string) error {
 		Addr:              *listen,
 		Handler:           ingest.New(st, m, log, proc.Wake, authenticator, os.Getenv("TRACKER_EXTENSION_ID")).Handler(),
 		ReadHeaderTimeout: 15 * time.Second,
+		IdleTimeout:       2 * time.Minute,
 	}
 
 	go m.Refresh(ctx, st, 30*time.Second, func(err error) { log.Warn("metrics refresh", "err", err) })

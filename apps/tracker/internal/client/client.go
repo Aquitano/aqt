@@ -48,6 +48,10 @@ var ErrSignedOut = errors.New("no stored token: run 'tracker login'")
 const (
 	discoveryTimeout = 10 * time.Second
 	healthTimeout    = 5 * time.Second
+	// requestTimeout bounds each call to the server or the token endpoint, so
+	// one that accepts and never answers fails instead of hanging the CLI or
+	// the agent's sync loop. A forget over a large host is the slowest call.
+	requestTimeout = time.Minute
 )
 
 func DefaultTokenPath() (string, error) {
@@ -67,6 +71,7 @@ func Login(ctx context.Context, c Config, out io.Writer) error {
 	if c.ClientID == "" {
 		return errors.New("TRACKER_OIDC_CLIENT_ID is not set")
 	}
+	ctx = oidc.ClientContext(ctx, &http.Client{Timeout: requestTimeout})
 	cfg, err := oauthConfig(ctx, c)
 	if err != nil {
 		return err
@@ -135,7 +140,7 @@ func New(ctx context.Context, c Config) (*Client, error) {
 		return nil, fmt.Errorf("TRACKER_SERVER_URL: %w", err)
 	}
 	if !c.Authenticated() {
-		return &Client{base: base.String(), http: http.DefaultClient}, nil
+		return &Client{base: base.String(), http: &http.Client{Timeout: requestTimeout}}, nil
 	}
 	s, err := load(c.TokenPath)
 	if err != nil {
@@ -144,7 +149,9 @@ func New(ctx context.Context, c Config) (*Client, error) {
 	if s.Issuer != c.Issuer || s.ClientID != c.ClientID {
 		return nil, fmt.Errorf("stored token is for %s, configured issuer is %s: run 'tracker login'", s.Issuer, c.Issuer)
 	}
-	return &Client{base: base.String(), http: oauth2.NewClient(ctx, s.tokens(ctx, c.TokenPath))}, nil
+	hc := oauth2.NewClient(ctx, s.tokens(ctx, c.TokenPath))
+	hc.Timeout = requestTimeout
+	return &Client{base: base.String(), http: hc}, nil
 }
 
 // Bearer returns the access token of the session stored at path, refreshed
@@ -163,7 +170,11 @@ func Bearer(ctx context.Context, path string) (string, error) {
 	return token.AccessToken, nil
 }
 
+// tokens refreshes through a client with a timeout of its own: a refresh runs
+// on ctx, which for the CLI is the one its client was built with, not the
+// request's, so no request deadline reaches it.
 func (s session) tokens(ctx context.Context, path string) oauth2.TokenSource {
+	ctx = oidc.ClientContext(ctx, &http.Client{Timeout: requestTimeout})
 	cfg := oauth2.Config{
 		ClientID: s.ClientID,
 		Endpoint: oauth2.Endpoint{DeviceAuthURL: s.DeviceAuthURL, TokenURL: s.TokenURL},
