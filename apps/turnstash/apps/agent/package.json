@@ -24,9 +24,9 @@
     "@aqt/turnstash-api": "workspace:*",
     "@aqt/turnstash-core": "workspace:*",
     "@aqt/turnstash-providers": "workspace:*",
-    "@effect/platform-bun": "4.0.0-rc.116",
+    "@effect/platform-bun": "4.0.2",
     "@types/bun": "catalog:",
-    "effect": "4.0.0-rc.116",
+    "effect": "4.0.2",
     "typescript": "catalog:"
   }
 }
