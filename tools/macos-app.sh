@@ -79,13 +79,17 @@ case "$mode" in
         cleanup_install() {
             result=$?
             trap - EXIT HUP INT TERM
-            # A signal or failed move after removing the old app must restore it.
-            if [ -e "$staging/previous.app" ] || [ -L "$staging/previous.app" ]; then
-                if [ ! -e "$install_target" ] && [ ! -L "$install_target" ]; then
-                    if ! mv "$staging/previous.app" "$install_target"; then
-                        echo "error: restore failed; previous app retained at $staging/previous.app" >&2
+            # Keep the previous app until replacement and launch both succeed.
+            if [ "$result" -ne 0 ] && { [ -e "$staging/previous.app" ] || [ -L "$staging/previous.app" ]; }; then
+                if [ -e "$install_target" ] || [ -L "$install_target" ]; then
+                    if ! mv "$install_target" "$staging/failed.app"; then
+                        echo "error: rollback failed; previous app retained at $staging/previous.app" >&2
                         exit 1
                     fi
+                fi
+                if ! mv "$staging/previous.app" "$install_target"; then
+                    echo "error: restore failed; previous app retained at $staging/previous.app" >&2
+                    exit 1
                 fi
             fi
             rm -rf "$staging"
