@@ -93,6 +93,7 @@ type Derivation struct {
 	Status           string    `bun:"status"`
 	Attempts         int       `bun:"attempts"`
 	ClaimedAt        time.Time `bun:"claimed_at,nullzero"`
+	RetryAt          time.Time `bun:"retry_at,nullzero"`
 	LastError        string    `bun:"last_error,nullzero"`
 	ErrorClass       string    `bun:"error_class,nullzero"`
 	RecordID         int64     `bun:"record_id,nullzero"`

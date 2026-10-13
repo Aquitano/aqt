@@ -59,7 +59,7 @@ func TestEnrichDedupRetriesVersionsAndSearch(t *testing.T) {
 		if string(data) == "bad image" && fail {
 			return ai.Result{}, errors.New("try again")
 		}
-		return ai.Result{Text: "yellow submarine", ReportedModel: p.key.Model}, nil
+		return ai.Result{Text: "yellow submarine <underwater> & blue sea", ReportedModel: p.key.Model}, nil
 	}
 	o := enrich.Options{Config: cfg, Provider: p, Limit: 20, Mounts: map[string]disk.Volume{vols[0].ID: {Fingerprint: testVolume, Root: root}}}
 	run := func() enrich.Summary {
@@ -92,6 +92,9 @@ func TestEnrichDedupRetriesVersionsAndSearch(t *testing.T) {
 		t.Fatalf("hits %+v %v", hits, err)
 	}
 	for _, h := range hits {
+		if !strings.Contains(h.Snippet, "<underwater> & blue sea") {
+			t.Errorf("snippet contains encoded HTML: %q", h.Snippet)
+		}
 		if len(h.Places) == 0 {
 			t.Fatalf("missing copies: %+v", h)
 		}

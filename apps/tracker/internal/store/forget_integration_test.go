@@ -13,7 +13,7 @@ import (
 )
 
 func TestForgetHostDeletesEverythingRecordedForIt(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	device := uuid.Must(uuid.NewV7())
 	at := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
 	page, sub, kept := urlKey(t, "https://example.com/a"), urlKey(t, "https://blog.example.com/post"), urlKey(t, "https://notexample.com/b")
@@ -56,14 +56,14 @@ func TestForgetHostDeletesEverythingRecordedForIt(t *testing.T) {
 		`select count(*) from derivations`:                                                2,
 		`select count(*) from derivations where status = 'pending' and record_id is null`: 1,
 	} {
-		if n := storetest.QueryInt(t, schema, query); n != want {
+		if n := storetest.QueryInt(t, dsn, query); n != want {
 			t.Errorf("%s: %d, want %d", query, n, want)
 		}
 	}
 }
 
 func TestADerivationForgottenWhileItRanWritesNoRecord(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	device, pv := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	page := urlKey(t, "https://example.com/a")
 	at := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
@@ -79,7 +79,7 @@ func TestADerivationForgottenWhileItRanWritesNoRecord(t *testing.T) {
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
-	if n := storetest.QueryInt(t, schema, `select (select count(*) from records) + (select count(*) from urls)`); n != 0 {
+	if n := storetest.QueryInt(t, dsn, `select (select count(*) from records) + (select count(*) from urls)`); n != 0 {
 		t.Errorf("%d records and urls rows written for a forgotten page", n)
 	}
 }

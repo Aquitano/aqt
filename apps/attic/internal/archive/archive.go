@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unicode/utf8"
@@ -129,8 +130,8 @@ func List(ctx context.Context, p string, open Opener, o Options, emit func(Membe
 	res, err = l.list(ctx, p, open, "", 1)
 	// A read that failed anywhere, a nested archive's included, says the disk
 	// faltered; the listing is dropped and the next scan tries again.
-	if err == nil && l.watch.err != nil {
-		err = UnreadableError{l.watch.err}
+	if readErr := l.watch.failure(); err == nil && readErr != nil {
+		err = UnreadableError{readErr}
 	}
 	return res, err
 }
@@ -167,6 +168,7 @@ func (f fatal) Unwrap() error { return f.err }
 // stretches of a solid archive without calling back.
 type watch struct {
 	ctx context.Context
+	mu  sync.Mutex
 	err error
 }
 
@@ -174,9 +176,20 @@ type watch struct {
 // from a corrupt header or a decompressor's complaint is the archive's doing
 // and gets classified as such.
 func (w *watch) note(err error) {
-	if w.err == nil && errors.As(err, new(syscall.Errno)) {
+	if !errors.As(err, new(syscall.Errno)) {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.err == nil {
 		w.err = err
 	}
+}
+
+func (w *watch) failure() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.err
 }
 
 type watchedFile struct {
@@ -256,13 +269,14 @@ func (l *lister) list(ctx context.Context, p string, open Opener, prefix string,
 		})
 	}
 	var stop fatal
+	readErr := l.watch.failure()
 	switch {
 	case ctx.Err() != nil:
 		return res, ctx.Err()
 	case errors.As(err, &stop):
 		return res, stop.err
-	case l.watch.err != nil:
-		return res, UnreadableError{l.watch.err}
+	case readErr != nil:
+		return res, UnreadableError{readErr}
 	case err == nil:
 		res.Status = Listed
 	case volumeMissing(err) && level == 1:
