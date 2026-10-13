@@ -1,6 +1,6 @@
 module github.com/aquitano/aqt/apps/tracker
 
-go 1.27.1
+go 1.27.2
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.3
@@ -41,7 +41,7 @@ require (
 	go.opentelemetry.io/otel v1.47.0 // indirect
 	go.opentelemetry.io/otel/trace v1.47.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	mellium.im/sasl v0.3.2 // indirect
 )

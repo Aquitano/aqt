@@ -2,28 +2,23 @@ name: extract
 on:
   push:
     branches: [main]
-    paths: ["packages/go/extract/**", ".golangci.yml", ".github/workflows/extract.yml"]
+    paths: ["packages/go/extract/**", ".golangci.yml", "mise.toml", ".github/workflows/extract.yml"]
   pull_request:
-    paths: ["packages/go/extract/**", ".golangci.yml", ".github/workflows/extract.yml"]
+    paths: ["packages/go/extract/**", ".golangci.yml", "mise.toml", ".github/workflows/extract.yml"]
 permissions:
   contents: read
 concurrency:
   group: extract-${{ github.ref }}
   cancel-in-progress: true
+env:
+  # Otherwise mise run installs every tool in mise.toml, not only the ones the job asked for.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 jobs:
   check:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: packages/go/extract
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: jdx/mise-action@v5
         with:
-          go-version-file: packages/go/extract/go.mod
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-          working-directory: packages/go/extract
-      - run: go vet ./...
-      - run: go test -race ./...
+          install_args: go golangci-lint
+      - run: mise run shared:go

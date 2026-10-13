@@ -1,4 +1,8 @@
 version: "2"
+run:
+  # App checks run shared:go alongside their own lint, and a second instance would otherwise
+  # give up after five seconds instead of waiting its turn.
+  allow-serial-runners: true
 linters:
   default: standard
   enable:

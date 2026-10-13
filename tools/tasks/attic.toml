@@ -1,14 +1,22 @@
 ["attic:check"]
-depends = ["shared:go", "attic:go", "attic:go:unix"]
+depends = ["shared:go", "attic:go", "attic:go:unix", "attic:go:windows"]
 
 ["attic:go"]
 dir = "apps/attic"
-run = ["go vet ./...", "go test ./...", "golangci-lint run"]
+run = ["go vet ./...", "go test -race ./...", "golangci-lint run"]
+# The race detector needs cgo, which Windows only has with a C compiler installed.
+run_windows = ["go vet ./...", "go test ./...", "golangci-lint run"]
 
 ["attic:go:unix"]
-description = "Vet and lint the Unix build that CI tests"
+description = "Vet and lint the Linux build"
 dir = "apps/attic"
 env = { GOOS = "linux" }
+run = ["go vet ./...", "golangci-lint run"]
+
+["attic:go:windows"]
+description = "Vet and lint the Windows build, where scanning runs"
+dir = "apps/attic"
+env = { GOOS = "windows" }
 run = ["go vet ./...", "golangci-lint run"]
 
 ["attic:db"]
