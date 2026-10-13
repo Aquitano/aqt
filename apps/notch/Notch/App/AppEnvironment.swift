@@ -50,7 +50,10 @@ final class AppEnvironment {
     init() {
         let diagnostics = Diagnostics()
         let persistence = Persistence(onFailure: { diagnostics.report(source: "Storage", $0) })
-        let settings = Settings(store: PreferencesStore(persistence: persistence, diagnostics: diagnostics))
+        let settings = Settings(
+            store: PreferencesStore(persistence: persistence, diagnostics: diagnostics),
+            diagnostics: diagnostics
+        )
         let notch = NotchCoordinator()
         notch.defaultTab = { settings.resolvedDefaultTab(for: $0) }
         let imageCache = ImageCache()
@@ -67,7 +70,7 @@ final class AppEnvironment {
 
         self.media = MediaManager(activities: activities, imageCache: imageCache, settings: settings)
         self.audioVisualizer = AudioVisualizerManager()
-        self.hud = HUDManager(settings: settings, audio: audio)
+        self.hud = HUDManager(settings: settings, audio: audio, diagnostics: diagnostics)
         let tray = TrayManager(
             persistence: persistence,
             imageCache: imageCache,

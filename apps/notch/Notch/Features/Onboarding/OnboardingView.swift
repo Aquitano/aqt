@@ -16,8 +16,7 @@ struct OnboardingView: View {
     let onFinish: () -> Void
 
     var body: some View {
-        @Bindable var settings = settings
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             header
                 .padding(.top, 28)
                 .padding(.bottom, 20)
@@ -48,7 +47,7 @@ struct OnboardingView: View {
                 .padding(.vertical, 16)
 
             VStack(spacing: 10) {
-                Toggle(isOn: $settings.general.launchAtLogin) {
+                Toggle(isOn: launchAtLoginBinding) {
                     toggleLabel(
                         symbol: "power",
                         title: "Launch at login",
@@ -142,6 +141,13 @@ struct OnboardingView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { settings.launchesAtLogin },
+            set: { settings.setLaunchAtLogin($0) }
+        )
     }
 
     private var agentsEnabledBinding: Binding<Bool> {

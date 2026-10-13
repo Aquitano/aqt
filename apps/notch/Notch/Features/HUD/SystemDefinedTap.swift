@@ -22,10 +22,12 @@ final class SystemDefinedTap: @unchecked Sendable {
     /// included. `fine` mirrors the system's Shift+Option quarter-step chord.
     /// Return true to swallow the event (honoured in consuming mode only).
     var onMediaKey: ((MediaKey, _ fine: Bool) -> Bool)?
+    var onFailure: (() -> Void)?
 
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
     private var consuming = false
+    private var recovery = EventTapRecovery()
     /// Key codes whose key-down we swallowed; the matching key-up is swallowed
     /// too so the system never sees half a key press.
     private var swallowedKeyCodes = Set<Int>()
@@ -36,7 +38,7 @@ final class SystemDefinedTap: @unchecked Sendable {
     @discardableResult
     func start(consuming: Bool) -> Bool {
         if tap != nil {
-            guard consuming != self.consuming else { return true }
+            guard consuming != self.consuming else { return isEnabled }
             stop()
         }
         // Don't call the request variants here: at launch they yank System
@@ -57,7 +59,7 @@ final class SystemDefinedTap: @unchecked Sendable {
                 guard let refcon else { return Unmanaged.passUnretained(event) }
                 let me = Unmanaged<SystemDefinedTap>.fromOpaque(refcon).takeUnretainedValue()
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                    me.reEnable()
+                    me.recoverFromSystemDisable()
                     return Unmanaged.passUnretained(event)
                 }
                 return me.handle(event) ? nil : Unmanaged.passUnretained(event)
@@ -87,6 +89,7 @@ final class SystemDefinedTap: @unchecked Sendable {
         source = nil
         tap = nil
         swallowedKeyCodes.removeAll()
+        recovery = EventTapRecovery()
     }
 
     var isEnabled: Bool {
@@ -94,8 +97,15 @@ final class SystemDefinedTap: @unchecked Sendable {
         return CGEvent.tapIsEnabled(tap: tap)
     }
 
-    private func reEnable() {
+    private func recoverFromSystemDisable() {
         guard let tap else { return }
+        swallowedKeyCodes.removeAll()
+        guard recovery.shouldReenable(at: ProcessInfo.processInfo.systemUptime) else {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            Log.hud.error("Media-key tap disabled repeatedly; toggle the HUD off and on to retry")
+            onFailure?()
+            return
+        }
         CGEvent.tapEnable(tap: tap, enable: true)
     }
 
