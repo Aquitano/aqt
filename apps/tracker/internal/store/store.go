@@ -28,9 +28,12 @@ type Store struct {
 	db *bun.DB
 }
 
-// Open connects and migrates.
+// Open connects and migrates. A statement runs until its context's deadline:
+// pgdriver's default socket timeouts would cut a long migration, reprocess or
+// forget off at 10 s. A DSN's read_timeout and write_timeout still apply.
 func Open(ctx context.Context, dsn string) (*Store, error) {
-	return New(ctx, sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn))))
+	return New(ctx, sql.OpenDB(pgdriver.NewConnector(
+		pgdriver.WithReadTimeout(0), pgdriver.WithWriteTimeout(0), pgdriver.WithDSN(dsn))))
 }
 
 // New migrates an already opened database; Open is the usual entry point,
