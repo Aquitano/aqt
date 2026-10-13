@@ -157,14 +157,19 @@ func cmdServe(ctx context.Context, args []string) error {
 	if *workers < 1 {
 		return errors.New("workers must be at least 1")
 	}
+	authConfig := auth.Config{
+		Issuer:   os.Getenv("TRACKER_OIDC_ISSUER"),
+		Audience: os.Getenv("TRACKER_OIDC_AUDIENCE"),
+	}
+	// Without auth the Host check is the only gate, and the client sets Host.
+	if !authConfig.Enabled() && !ingest.LoopbackHost(*listen) {
+		return fmt.Errorf("refusing to listen on %s without authentication: set TRACKER_OIDC_ISSUER and TRACKER_OIDC_AUDIENCE, or listen on a loopback address", *listen)
+	}
 	log := logger()
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	authenticator, err := auth.New(ctx, auth.Config{
-		Issuer:   os.Getenv("TRACKER_OIDC_ISSUER"),
-		Audience: os.Getenv("TRACKER_OIDC_AUDIENCE"),
-	})
+	authenticator, err := auth.New(ctx, authConfig)
 	if err != nil {
 		return err
 	}
