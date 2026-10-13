@@ -44,8 +44,9 @@ Put mise flags before the task name, for example `mise run -n check` to preview 
 Dependabot covers Bun, Go modules, Dockerfiles, Compose images and GitHub Actions.
 Tooling updates are separate from application dependencies. Check catalog entries with
 `bun outdated` after each update and keep related Effect packages on one version.
-Swift dependencies declared in XcodeGen `project.yml` files are pinned exactly and
-checked by the weekly `swift-dependencies` workflow; Dependabot does not read XcodeGen manifests.
+The weekly `swift-dependencies` workflow checks version-tagged Swift dependencies
+in XcodeGen `project.yml` files. It skips dependencies pinned to audited Git revisions,
+which require manual review. Dependabot does not read XcodeGen manifests.
 
 Database images share the same ParadeDB extension version. Keep each deployment's
 PostgreSQL major unchanged when updating an image: turnstash uses 17, and bank,

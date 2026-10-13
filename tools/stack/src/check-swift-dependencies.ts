@@ -29,6 +29,7 @@ const results = await Promise.all(
     if (!repository) throw new Error(`Unsupported release source for ${name} in ${path}`);
     const response = await fetch(`https://api.github.com/repos/${repository}/releases/latest`, {
       headers,
+      signal: AbortSignal.timeout(30_000),
     });
     if (!response.ok) throw new Error(`${name}: GitHub returned ${response.status}`);
     const body: unknown = await response.json();
