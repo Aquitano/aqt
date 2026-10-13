@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/natefinch/atomic"
 	"golang.org/x/oauth2"
 
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
@@ -231,22 +232,14 @@ func save(path string, s session) error {
 	if err != nil {
 		return err
 	}
-	// Write and rename: a crash mid-write would otherwise leave a truncated
-	// file that only `tracker logout` clears, and a fresh 0600 temp file also
-	// tightens the permissions of a session written before this.
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".token-*.json")
-	if err != nil {
+	// A crash mid-write would otherwise leave a truncated file that only
+	// `tracker logout` clears.
+	if err := atomic.WriteFile(path, bytes.NewReader(raw)); err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(raw); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
+	// atomic keeps the mode of the file it replaces, so a session written
+	// with looser permissions before this is tightened here.
+	return os.Chmod(path, 0o600)
 }
 
 // Healthy reports whether the server answers /healthz, which it does only

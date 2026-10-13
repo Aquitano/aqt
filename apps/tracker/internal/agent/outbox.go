@@ -11,6 +11,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/natefinch/atomic"
 )
 
 const outboxCapacity = 10_000
@@ -141,7 +143,7 @@ func (o *Outbox) Status() (pending, dropped int, err error) {
 func (o *Outbox) compact() {
 	lines, err := encodeLines(o.events)
 	if err == nil {
-		err = replaceFile(o.path, lines)
+		err = atomic.WriteFile(o.path, bytes.NewReader(lines))
 	}
 	o.err, o.rewrite = err, err != nil
 	if err == nil {
@@ -170,22 +172,4 @@ func appendFile(path string, data []byte) error {
 		return err
 	}
 	return f.Close()
-}
-
-// replaceFile writes and renames, so a crash leaves the old queue or the new
-// one, never half of either.
-func replaceFile(path string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".outbox-*.jsonl")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
 }
