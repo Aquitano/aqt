@@ -8,7 +8,7 @@ final class FileWatcher {
     private let url: URL
     private let onChange: () -> Void
     private var source: DispatchSourceFileSystemObject?
-    private var retry: DispatchWorkItem?
+    private var retry: Task<Void, Never>?
     private var retryDelay = 0.5
     /// The file was replaced; whatever changed until the path re-opens was
     /// never observed.
@@ -60,9 +60,16 @@ final class FileWatcher {
 
     private func retryOpen() {
         retry?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.open() }
-        retry = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + retryDelay, execute: work)
+        let delay = retryDelay
+        retry = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.open()
+        }
         retryDelay = min(retryDelay * 2, 30)
     }
 }

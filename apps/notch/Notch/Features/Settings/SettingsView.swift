@@ -22,6 +22,8 @@ struct SettingsView: View {
     @State private var displays: [DisplayDescriptor] = []
     @State private var customizedDisplayKey = ""
 
+    @State private var accessibilityTrusted = AXIsProcessTrusted()
+
     var body: some View {
         TabView {
             Tab("General", systemImage: "gearshape") {
@@ -625,8 +627,6 @@ extension SettingsView {
     }
 
     // MARK: - HUD
-
-    @State private var accessibilityTrusted = AXIsProcessTrusted()
 
     private var hudSection: some View {
         Section {
