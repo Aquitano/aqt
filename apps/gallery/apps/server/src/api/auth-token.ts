@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { AuthSession } from "@aqt/gallery-auth";
 import { db } from "@aqt/gallery-db";
 import { apiToken } from "@aqt/gallery-db/schema/tokens";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 
 /** Every personal access token starts with this so we can cheaply tell a PAT
  * apart from a Clerk bearer/session token before touching the database. */
@@ -61,7 +61,15 @@ export async function sessionFromApiToken(headers: Headers): Promise<AuthSession
         await db
           .update(apiToken)
           .set({ lastUsedAt: new Date(now) })
-          .where(eq(apiToken.id, row.id));
+          .where(
+            and(
+              eq(apiToken.id, row.id),
+              or(
+                isNull(apiToken.lastUsedAt),
+                lt(apiToken.lastUsedAt, new Date(now - LAST_USED_RESOLUTION_MS)),
+              ),
+            ),
+          );
       } catch {
         /* ignore — telemetry only */
       }
