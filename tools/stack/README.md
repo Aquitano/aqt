@@ -25,8 +25,8 @@ Every app gets:
 
 Optional features:
 
-- shadcn components built on Base UI, with `cn` for class names. Components stay in
-  the app until another app needs them.
+- Components, tokens, fonts and themes from the shared `@aqt/ui` package.
+  App-specific blocks can use shadcn while reusing those components.
 - Hono routes with ArkType request validation and a typed RPC client. The sample
   users API uses an unauthenticated in-memory store; replace it before deployment.
 - A theme provider and dark-mode toggle.

@@ -1,8 +1,5 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
 import {
   Select,
   SelectContent,
@@ -10,8 +7,13 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@aqt/ui/components/select";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+
 import { addContactAlias, getContacts, getStats, removeContactAlias } from "@/lib/api";
+
+const ALL_SOURCES = "__all__";
 
 export function refreshContacts(client: QueryClient) {
   return Promise.all([
@@ -33,10 +35,15 @@ export function AliasScope({
   onChange: (source: string) => void;
   disabled?: boolean;
 }) {
+  const items = [
+    { value: ALL_SOURCES, label: "All sources" },
+    ...sources.map((value) => ({ value, label: value })),
+  ];
   return (
     <Select
-      value={source || "__all__"}
-      onValueChange={(value) => onChange(value === "__all__" ? "" : value)}
+      items={items}
+      value={source || ALL_SOURCES}
+      onValueChange={(value) => onChange(value === null || value === ALL_SOURCES ? "" : value)}
       disabled={disabled}
     >
       <SelectTrigger aria-label="Identity source" className="w-full">
@@ -44,10 +51,9 @@ export function AliasScope({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          <SelectItem value="__all__">All sources</SelectItem>
-          {sources.map((value) => (
-            <SelectItem key={value} value={value}>
-              {value}
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
             </SelectItem>
           ))}
         </SelectGroup>

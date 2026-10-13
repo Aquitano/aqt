@@ -1,7 +1,6 @@
+import { Alert, AlertDescription, AlertTitle } from "@aqt/ui/components/alert";
+import { Button } from "@aqt/ui/components/button";
 import type { ReactNode } from "react";
-
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 
 export function DraftRecovery({
   newer,

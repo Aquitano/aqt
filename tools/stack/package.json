@@ -10,11 +10,11 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
-    "arktype": "^2.2.8"
+    "arktype": "catalog:"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
-    "@types/bun": "^1.4.2",
-    "typescript": "7.0.2"
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
   }
 }

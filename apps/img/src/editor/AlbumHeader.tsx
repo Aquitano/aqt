@@ -1,15 +1,15 @@
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@aqt/ui/components/popover";
+import { Switch } from "@aqt/ui/components/switch";
+import { ThemeToggle } from "@aqt/ui/components/theme-toggle";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Check, ChevronLeft, Copy, Link2, Pencil } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 
-import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Switch } from "@/components/ui/switch";
 import { albumQuery, albumsQuery } from "@/lib/queries";
 import * as albumFns from "@/server/fns/albums";
 import * as shareFns from "@/server/fns/share";
@@ -26,10 +26,14 @@ export function AlbumHeader({ canEdit }: AlbumHeaderProps) {
   const setMode = useEditor((state) => state.setMode);
   return (
     <header className="flex items-center gap-2 px-4 py-3">
-      <Button variant="ghost" size="icon" asChild aria-label="Back to albums">
-        <Link to="/albums">
-          <ChevronLeft />
-        </Link>
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Back to albums"
+        nativeButton={false}
+        render={<Link to="/albums" />}
+      >
+        <ChevronLeft />
       </Button>
       <Title />
       <div className="ml-auto flex items-center gap-2">
@@ -138,11 +142,9 @@ function SharePopover() {
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Link2 data-icon="inline-start" />
-          Share
-        </Button>
+      <PopoverTrigger render={<Button variant="outline" size="sm" />}>
+        <Link2 data-icon="inline-start" />
+        Share
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-80 flex-col gap-4">
         <div className="flex items-center justify-between gap-4">

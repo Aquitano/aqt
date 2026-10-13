@@ -2,15 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { rejects } from "node:assert/strict";
 
 import type { Config } from "../config.ts";
-import { scaffold, NEXT_GENERATOR, SHADCN_CLI } from "../pipeline.ts";
+import { scaffold, NEXT_GENERATOR } from "../pipeline.ts";
 import { packageManifest, type PackageManifest, type ShellRunner } from "../shell.ts";
 
 const ROOT = "/workspace";
 const APP = `${ROOT}/apps/example`;
 const config: Config = {
   projectName: "example",
-  shadcn: true,
-  shadcnComponents: ["input"],
+  ui: true,
   hono: true,
   themes: true,
   testing: true,
@@ -21,7 +20,18 @@ class RecordingShell implements ShellRunner {
   files = new Map<string, string>([
     [
       `${ROOT}/package.json`,
-      JSON.stringify({ name: "aqt", devDependencies: { typescript: "7.0.2" } }),
+      JSON.stringify({
+        name: "aqt",
+        devDependencies: { typescript: "catalog:" },
+        workspaces: {
+          catalog: {
+            typescript: "7.0.2",
+            react: "^19.3.0",
+            "react-dom": "^19.3.0",
+            arktype: "^2.2.8",
+          },
+        },
+      }),
     ],
     [`${ROOT}/packages/ts/config/package.json`, "{}"],
     [
@@ -48,7 +58,7 @@ class RecordingShell implements ShellRunner {
         `${APP}/package.json`,
         JSON.stringify({
           name: "example",
-          dependencies: { next: "16.3.4" },
+          dependencies: { next: "16.3.4", react: "19.2.8", "react-dom": "19.2.8" },
           devDependencies: { typescript: "^5", "babel-plugin-react-compiler": "1" },
         }),
       );
@@ -79,7 +89,7 @@ class RecordingShell implements ShellRunner {
 const step = async (_label: string, fn: () => Promise<void>) => fn();
 
 describe("workspace scaffold", () => {
-  test("creates an app with shared tooling, Base UI, ArkType, and root CI", async () => {
+  test("creates an app with shared tooling, @aqt/ui, ArkType, and root CI", async () => {
     const shell = new RecordingShell();
     await scaffold(config, shell, step, ROOT);
     const create = shell.calls[0]!;
@@ -90,23 +100,23 @@ describe("workspace scaffold", () => {
     const pkg = await shell.readPackageJson(`${APP}/package.json`);
     expect(pkg.name).toBe("@aqt/example");
     expect(pkg.devDependencies?.["@aqt/config"]).toBe("workspace:*");
-    expect(pkg.devDependencies?.typescript).toBe("7.0.2");
+    expect(pkg.devDependencies?.typescript).toBe("catalog:");
+    expect(pkg.dependencies?.react).toBe("catalog:");
+    expect(pkg.dependencies?.["react-dom"]).toBe("catalog:");
     expect(pkg.dependencies?.next).toBe("16.3.4");
+    expect(pkg.dependencies?.["@aqt/ui"]).toBe("workspace:*");
     expect(pkg.scripts?.check).toContain("bun run test");
     expect(pkg.scripts?.typecheck).toContain("next typegen");
     expect(shell.calls.some((c) => c.command === "git")).toBe(false);
-    expect(shell.calls.some((c) => c.args.includes("arktype"))).toBe(true);
+    expect(shell.calls.some((c) => c.args.includes("arktype@catalog:"))).toBe(true);
     expect(shell.calls.some((c) => c.args.includes("@hono/standard-validator"))).toBe(true);
-    const init = shell.calls.find((c) => c.args.includes(SHADCN_CLI) && c.args.includes("init"));
-    expect(init?.args).toContain("base");
-    expect(init?.args).toContain("--no-monorepo");
     expect(shell.files.has(`${ROOT}/.github/workflows/example.yml`)).toBe(true);
     expect(shell.files.has(`${APP}/.github/workflows/ci.yml`)).toBe(false);
     expect(shell.calls.at(-1)?.args).toEqual(["run", "-n", "example:check"]);
     expect(shell.files.get(`${ROOT}/tools/tasks/example.toml`)).toContain('run = "bun run check"');
     expect(shell.calls.some((c) => c.args[0] === "install" && c.cwd === ROOT)).toBe(true);
     const commands = JSON.stringify(shell.calls);
-    for (const obsolete of ["prettier", "valibot", "git", "--eslint"])
+    for (const obsolete of ["prettier", "valibot", "git", "--eslint", "shadcn"])
       expect(commands).not.toContain(`"${obsolete}"`);
   });
 
@@ -116,7 +126,7 @@ describe("workspace scaffold", () => {
     shell.files.set(`${ROOT}/tools/tasks/other.toml`, existingFragment);
     shell.existingTasks.push("other:dev");
     await scaffold(
-      { ...config, shadcn: false, hono: false, themes: false, testing: false, ci: false },
+      { ...config, ui: false, hono: false, themes: false, testing: false, ci: false },
       shell,
       step,
       ROOT,
@@ -124,7 +134,7 @@ describe("workspace scaffold", () => {
     const pkg = await shell.readPackageJson(`${APP}/package.json`);
     expect(pkg.scripts?.test).toBeUndefined();
     expect(pkg.scripts?.check).not.toContain("bun run test");
-    expect(shell.calls.some((c) => c.args.includes(SHADCN_CLI))).toBe(false);
+    expect(pkg.dependencies?.["@aqt/ui"]).toBeUndefined();
     expect(shell.files.has(`${ROOT}/.github/workflows/example.yml`)).toBe(false);
     expect(shell.files.has(`${APP}/src/lib/hono/index.ts`)).toBe(false);
     expect(shell.files.has(`${ROOT}/tools/tasks/example.toml`)).toBe(true);

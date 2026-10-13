@@ -276,7 +276,7 @@ const paper = () =>
 const lightDesk = await desk();
 const lightPaper = await paper();
 await page.getByRole("button", { name: /^theme$/i }).click();
-await page.getByRole("menuitem", { name: /^dark$/i }).click();
+await page.getByRole("menuitemradio", { name: /^dark$/i }).click();
 await page.waitForTimeout(600);
 const darkDesk = await desk();
 const darkPaper = await paper();

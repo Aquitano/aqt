@@ -1,19 +1,15 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileUp, Search, ShieldAlert } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
-
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@aqt/ui/components/alert";
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+} from "@aqt/ui/components/empty";
+import { Field, FieldGroup, FieldLabel } from "@aqt/ui/components/field";
+import { Input } from "@aqt/ui/components/input";
 import {
   Select,
   SelectContent,
@@ -21,7 +17,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@aqt/ui/components/select";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { FileUp, Search, ShieldAlert } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+
 import { uploadFiles, type LibraryFilters as Filters, type RecordedDate } from "@/lib/library-api";
 
 export const ITEM_KINDS = [
@@ -98,7 +98,13 @@ export function Choice({
   id?: string;
 }) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select
+      items={options}
+      value={value}
+      onValueChange={(next) => {
+        if (next !== null) onChange(next);
+      }}
+    >
       <SelectTrigger id={id} aria-label={label} className="w-full min-w-0">
         <SelectValue />
       </SelectTrigger>

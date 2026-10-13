@@ -40,7 +40,7 @@ check(
 );
 const lightBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 await toggle.click();
-await page.getByRole("menuitem", { name: /^dark$/i }).click();
+await page.getByRole("menuitemradio", { name: /^dark$/i }).click();
 await page.waitForTimeout(400);
 const dark = await page.evaluate(() => ({
   classed: document.documentElement.classList.contains("dark"),
@@ -50,7 +50,7 @@ check(dark.classed, "the toggle puts the app in dark mode");
 check(dark.bg !== lightBg, "dark mode changes the chrome background", `${lightBg} -> ${dark.bg}`);
 await shot(page, "03-shelf-dark");
 await toggle.click();
-await page.getByRole("menuitem", { name: /^light$/i }).click();
+await page.getByRole("menuitemradio", { name: /^light$/i }).click();
 await page.waitForTimeout(300);
 
 // Rename lives on the album page, not the shelf.

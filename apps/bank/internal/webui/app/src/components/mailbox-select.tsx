@@ -1,5 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
-
 import {
   Select,
   SelectContent,
@@ -7,8 +5,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@aqt/ui/components/select";
+import { useQuery } from "@tanstack/react-query";
+
 import { getMailboxes } from "@/lib/api";
+
+const ALL_FOLDERS = "all";
 
 export function MailboxSelect({
   source,
@@ -25,11 +27,21 @@ export function MailboxSelect({
     enabled: Boolean(source),
   });
   if (!source) return null;
+  const items = [
+    { value: ALL_FOLDERS, label: "All observed folders" },
+    ...(query.data ?? []).map((folder) => ({
+      value: String(folder.id),
+      label: `${folder.path} (${folder.kind}, ${folder.n})`,
+    })),
+  ];
   return (
     <div className="flex flex-col gap-1">
       <Select
-        value={value ? String(value) : "all"}
-        onValueChange={(selected) => onChange(selected === "all" ? undefined : Number(selected))}
+        items={items}
+        value={value ? String(value) : ALL_FOLDERS}
+        onValueChange={(selected) =>
+          onChange(selected === null || selected === ALL_FOLDERS ? undefined : Number(selected))
+        }
         disabled={query.isPending || query.isError}
       >
         <SelectTrigger size="sm" aria-label="Historically observed folder">
@@ -37,10 +49,9 @@ export function MailboxSelect({
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectItem value="all">All observed folders</SelectItem>
-            {query.data?.map((folder) => (
-              <SelectItem key={folder.id} value={String(folder.id)}>
-                {folder.path} ({folder.kind}, {folder.n})
+            {items.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
               </SelectItem>
             ))}
           </SelectGroup>

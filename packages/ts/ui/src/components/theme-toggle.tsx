@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from "@aqt/ui/components/button";
 import {
   DropdownMenu,
@@ -27,7 +29,7 @@ function ThemeToggle() {
       <DropdownMenuContent align="end">
         <DropdownMenuRadioGroup value={theme ?? "system"} onValueChange={setTheme}>
           {THEMES.map(({ value, label, Icon }) => (
-            <DropdownMenuRadioItem key={value} value={value}>
+            <DropdownMenuRadioItem key={value} value={value} closeOnClick>
               <Icon />
               {label}
             </DropdownMenuRadioItem>

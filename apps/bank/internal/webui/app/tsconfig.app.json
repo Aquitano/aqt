@@ -9,8 +9,7 @@
     },
     "allowArbitraryExtensions": true,
     "moduleDetection": "force",
-    "erasableSyntaxOnly": true,
-    "noUncheckedIndexedAccess": false
+    "erasableSyntaxOnly": true
   },
   "include": ["src"]
 }

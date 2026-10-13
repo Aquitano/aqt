@@ -1,11 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserPlus } from "lucide-react";
-import { useState } from "react";
-
-import { AliasScope, refreshContacts } from "@/components/contact-editor";
-import type { Selection } from "@/components/detail-pane";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
 import {
   Select,
   SelectContent,
@@ -13,8 +7,15 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
+} from "@aqt/ui/components/select";
+import { Spinner } from "@aqt/ui/components/spinner";
+import { cn } from "@aqt/ui/lib/utils";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { UserPlus } from "lucide-react";
+import { useState } from "react";
+
+import { AliasScope, refreshContacts } from "@/components/contact-editor";
+import type { Selection } from "@/components/detail-pane";
 import {
   createContact,
   addContactAlias,
@@ -24,7 +25,6 @@ import {
   type ContactSuggestion,
 } from "@/lib/api";
 import { isMe, SourceBadge } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/views/search";
 
 // "Pocket" <team@x.com> -> Pocket; bare identities get title-cased words
@@ -49,7 +49,7 @@ function SuggestionRow({ s, contacts }: { s: ContactSuggestion; contacts: Contac
   const qc = useQueryClient();
   const [target, setTarget] = useState("new");
   const [name, setName] = useState(suggestedName(s));
-  const [source, setSource] = useState(s.sources.length === 1 ? s.sources[0] : "");
+  const [source, setSource] = useState(s.sources.length === 1 ? (s.sources[0] ?? "") : "");
   const [created, setCreated] = useState<string | null>(null);
   const add = useMutation({
     mutationFn: async () => {
@@ -62,6 +62,10 @@ function SuggestionRow({ s, contacts }: { s: ContactSuggestion; contacts: Contac
     },
     onSettled: () => refreshContacts(qc),
   });
+  const targets = [
+    { value: "new", label: "Create a new contact" },
+    ...contacts.map((contact) => ({ value: `c:${contact.name}`, label: contact.name })),
+  ];
   return (
     <details className="rounded-lg px-2.5 py-2">
       <summary className="cursor-pointer">
@@ -86,8 +90,11 @@ function SuggestionRow({ s, contacts }: { s: ContactSuggestion; contacts: Contac
         }}
       >
         <Select
+          items={targets}
           value={target}
-          onValueChange={setTarget}
+          onValueChange={(next) => {
+            if (next !== null) setTarget(next);
+          }}
           disabled={add.isPending || created !== null}
         >
           <SelectTrigger className="col-span-2 w-full" aria-label={`Contact for ${s.identity}`}>
@@ -95,10 +102,9 @@ function SuggestionRow({ s, contacts }: { s: ContactSuggestion; contacts: Contac
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="new">Create a new contact</SelectItem>
-              {contacts.map((contact) => (
-                <SelectItem key={contact.name} value={`c:${contact.name}`}>
-                  {contact.name}
+              {targets.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
                 </SelectItem>
               ))}
             </SelectGroup>

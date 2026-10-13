@@ -1,28 +1,28 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus, Trash2, Upload } from "lucide-react";
-import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
-import { toast } from "sonner";
-
-import { Button } from "@/components/ui/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty";
+} from "@aqt/ui/components/empty";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@aqt/ui/components/sheet";
+import { Skeleton } from "@aqt/ui/components/skeleton";
+import { cn } from "@aqt/ui/lib/utils";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ImagePlus, Trash2, Upload } from "lucide-react";
+import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { toast } from "sonner";
+
 import { photoUrl, resizePhoto } from "@/lib/image";
 import { photosQuery } from "@/lib/queries";
 import { ServerError, rejectFailures } from "@/lib/server-error";
-import { cn } from "@/lib/utils";
 import type { Photo } from "@/server/db/schema";
 import * as photoFns from "@/server/fns/photos";
 
@@ -115,18 +115,19 @@ export function PhotoLibrary() {
   };
 
   return (
-    <Sheet open={open} onOpenChange={(next) => setPanel(next ? "photos" : null)} modal={false}>
-      <SheetContent
-        side="right"
-        className="w-full sm:max-w-sm"
-        onInteractOutside={(event) => event.preventDefault()}
-      >
+    <Sheet
+      open={open}
+      onOpenChange={(next) => setPanel(next ? "photos" : null)}
+      modal={false}
+      disablePointerDismissal
+    >
+      <SheetContent side="right" data-modeless className="data-[side=right]:w-full">
         <SheetHeader>
           <SheetTitle>Photos</SheetTitle>
           <SheetDescription>Click a photo to place it, or drag it onto a page.</SheetDescription>
         </SheetHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 px-6 pb-6">
           <label
             data-testid="dropzone"
             className={cn(

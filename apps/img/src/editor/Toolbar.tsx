@@ -1,3 +1,18 @@
+import { Button } from "@aqt/ui/components/button";
+import { Card } from "@aqt/ui/components/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@aqt/ui/components/dialog";
+import { Separator } from "@aqt/ui/components/separator";
+import { Slider } from "@aqt/ui/components/slider";
+import { ToggleGroup, ToggleGroupItem } from "@aqt/ui/components/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@aqt/ui/components/tooltip";
+import { cn } from "@aqt/ui/lib/utils";
 import {
   AlignCenter,
   AlignLeft,
@@ -15,20 +30,6 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
-import { Slider } from "@/components/ui/slider";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   MAX_TEXT_SIZE,
   MIN_TEXT_SIZE,
@@ -39,7 +40,6 @@ import {
   type PhotoFrame,
   type TextElement,
 } from "@/domain/element";
-import { cn } from "@/lib/utils";
 
 import { CAPTION_COLORS, targetPage, textElementFor } from "./place";
 import { useEditor, useEditorTemporal, type SaveStatus } from "./store";
@@ -152,10 +152,9 @@ function PhotoControls({ element, spreadId }: { element: PhotoElement; spreadId:
   const updateElement = useEditor((state) => state.updateElement);
   return (
     <ToggleGroup
-      type="single"
       size="sm"
-      value={element.frame}
-      onValueChange={(frame) =>
+      value={[element.frame]}
+      onValueChange={([frame]) =>
         photoFrame.allows(frame) && updateElement(spreadId, element.id, { frame })
       }
       aria-label="Frame"
@@ -175,10 +174,9 @@ function TextControls({ element, spreadId }: { element: TextElement; spreadId: s
   return (
     <>
       <ToggleGroup
-        type="single"
         size="sm"
-        value={element.font}
-        onValueChange={(font) => textFont.allows(font) && patch({ font })}
+        value={[element.font]}
+        onValueChange={([font]) => textFont.allows(font) && patch({ font })}
         aria-label="Font"
       >
         <ToggleGroupItem
@@ -197,7 +195,7 @@ function TextControls({ element, spreadId }: { element: TextElement; spreadId: s
         max={MAX_TEXT_SIZE}
         step={2}
         value={[element.size]}
-        onValueChange={([size]) => size !== undefined && patch({ size })}
+        onValueChange={(value) => patch({ size: typeof value === "number" ? value : value[0] })}
       />
       <div className="flex items-center gap-1" role="radiogroup" aria-label="Colour">
         {CAPTION_COLORS.map((color) => (
@@ -217,10 +215,9 @@ function TextControls({ element, spreadId }: { element: TextElement; spreadId: s
         ))}
       </div>
       <ToggleGroup
-        type="single"
         size="sm"
-        value={element.align}
-        onValueChange={(align) => textAlign.allows(align) && patch({ align })}
+        value={[element.align]}
+        onValueChange={([align]) => textAlign.allows(align) && patch({ align })}
         aria-label="Alignment"
       >
         <ToggleGroupItem value="left" aria-label="Align left">
@@ -282,19 +279,21 @@ function SaveDot() {
   const status = useEditor((state) => state.saveStatus);
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span
-          role="status"
-          aria-label={SAVE_LABEL[status]}
-          data-status={status}
-          className={cn(
-            "mx-2 inline-block size-2 rounded-full",
-            status === "saved" && "bg-muted-foreground/40",
-            status === "saving" && "animate-pulse bg-primary",
-            status === "error" && "bg-destructive",
-          )}
-        />
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <span
+            role="status"
+            aria-label={SAVE_LABEL[status]}
+            data-status={status}
+            className={cn(
+              "mx-2 inline-block size-2 rounded-full",
+              status === "saved" && "bg-muted-foreground/40",
+              status === "saving" && "animate-pulse bg-primary",
+              status === "error" && "bg-destructive",
+            )}
+          />
+        }
+      />
       <TooltipContent>{SAVE_LABEL[status]}</TooltipContent>
     </Tooltip>
   );
@@ -310,16 +309,18 @@ type IconButtonProps = {
 function IconButton({ label, onClick, disabled, children }: IconButtonProps) {
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={label}
-          onClick={onClick}
-          disabled={disabled}
-        >
-          {children}
-        </Button>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            onClick={onClick}
+            disabled={disabled}
+          />
+        }
+      >
+        {children}
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>

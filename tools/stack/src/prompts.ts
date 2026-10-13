@@ -1,7 +1,7 @@
-import { confirm, multiselect, text } from "@clack/prompts";
+import { confirm, text } from "@clack/prompts";
 
 import type { Config } from "./config.ts";
-import { DEFAULT_SHADCN_COMPONENTS, SHADCN_COMPONENTS, validateProjectName } from "./config.ts";
+import { validateProjectName } from "./config.ts";
 import { unwrap } from "./helpers.ts";
 
 export async function promptConfig(): Promise<Config> {
@@ -13,27 +13,17 @@ export async function promptConfig(): Promise<Config> {
     }),
   );
 
-  const useShadcn = unwrap(await confirm({ message: "Add shadcn/ui?", initialValue: true }));
-
-  let shadcnComponents: string[] = [];
-  if (useShadcn) {
-    shadcnComponents = unwrap(
-      await multiselect({
-        message: "Select shadcn/ui components to install",
-        options: SHADCN_COMPONENTS,
-        initialValues: DEFAULT_SHADCN_COMPONENTS,
-        required: false,
-      }),
-    );
-  }
+  const useUi = unwrap(
+    await confirm({ message: "Use the shared @aqt/ui components?", initialValue: true }),
+  );
 
   const useHono = unwrap(
     await confirm({ message: "Add Hono.js API backend?", initialValue: true }),
   );
 
-  const useThemes = unwrap(
-    await confirm({ message: "Add dark mode (next-themes + toggle)?", initialValue: true }),
-  );
+  const useThemes =
+    useUi &&
+    unwrap(await confirm({ message: "Add a light/dark theme toggle?", initialValue: true }));
 
   const useTesting = unwrap(
     await confirm({ message: "Add testing (Vitest + Testing Library)?", initialValue: true }),
@@ -45,8 +35,7 @@ export async function promptConfig(): Promise<Config> {
 
   return {
     projectName,
-    shadcn: useShadcn,
-    shadcnComponents,
+    ui: useUi,
     hono: useHono,
     themes: useThemes,
     testing: useTesting,

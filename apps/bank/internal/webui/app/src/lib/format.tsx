@@ -1,5 +1,7 @@
 // Display helpers shared across views: source badges, dates, query highlighting.
 
+import type { ReactNode } from "react";
+
 const SOURCE_HUES = new Map([
   ["whatsapp", 130],
   ["gmail", 10],
@@ -59,27 +61,36 @@ function shortUrl(url: string) {
   return bare.length > 60 ? bare.slice(0, 57) + "…" : bare;
 }
 
+function replaceMatches(
+  text: string,
+  pattern: RegExp,
+  render: (match: string, offset: number) => ReactNode,
+): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let start = 0;
+  for (const match of text.matchAll(pattern)) {
+    nodes.push(text.slice(start, match.index), render(match[0], match.index));
+    start = match.index + match[0].length;
+  }
+  nodes.push(text.slice(start));
+  return nodes;
+}
+
 // Plain text with URLs turned into links, displayed shortened so tracking
 // URLs stop dominating the layout.
 export function Linkified({ text }: { text: string }) {
-  const parts = text.split(URL_RE);
-  const urls = text.match(URL_RE) ?? [];
   return (
     <>
-      {parts.map((part, i) => (
-        <span key={i}>
-          {part}
-          {urls[i] && (
-            <a
-              href={urls[i]}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="break-all text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
-            >
-              {shortUrl(urls[i])}
-            </a>
-          )}
-        </span>
+      {replaceMatches(text, URL_RE, (url, offset) => (
+        <a
+          key={offset}
+          href={url}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="break-all text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+        >
+          {shortUrl(url)}
+        </a>
       ))}
     </>
   );
@@ -106,21 +117,17 @@ export function fmtDate(d: string) {
 export function Highlight({ text, query }: { text: string; query?: string }) {
   const words = (query ?? "").split(/\s+/).filter((w) => w.length > 1);
   if (!words.length) return <>{text}</>;
-  const re = new RegExp(
-    `(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
-    "gi",
-  );
+  const re = new RegExp(words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "gi");
   return (
     <>
-      {text.split(re).map((part, i) =>
-        i % 2 === 1 ? (
-          <mark key={i} className="bg-transparent font-semibold text-amber-500 dark:text-amber-300">
-            {part}
-          </mark>
-        ) : (
-          part
-        ),
-      )}
+      {replaceMatches(text, re, (word, offset) => (
+        <mark
+          key={offset}
+          className="bg-transparent font-semibold text-amber-500 dark:text-amber-300"
+        >
+          {word}
+        </mark>
+      ))}
     </>
   );
 }
