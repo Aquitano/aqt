@@ -265,6 +265,9 @@ func TestAttachmentSearchPreservesPagesAndCombinedTextModes(t *testing.T) {
 	if err != nil || len(rows) != 0 {
 		t.Fatalf("search index retained replaced text: %+v %v", rows, err)
 	}
+	if err = st.DeleteBlobText(ctx, sum); err != nil {
+		t.Fatal(err)
+	}
 	if err = st.PutBlobText(ctx, store.BlobText{SHA256: sum, Text: "nebula", Status: "failed"}); err != nil {
 		t.Fatal(err)
 	}

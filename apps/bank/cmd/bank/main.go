@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -14,11 +13,14 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/tabwriter"
 	"time"
 	// Embedded so a container without tzdata still resolves the local zone.
@@ -91,6 +93,8 @@ Usage:
   bank query --schema                         list tables and columns
   bank fetch <sha256> [-o path]               write an attachment to a file
   bank verify [--heal] [--source s] [--json]  check archive integrity, optionally repair
+  bank version                              print the build revision
+  bank healthcheck [url]                      check server and database health
   bank serve [--listen addr]                  HTTP API (default 127.0.0.1:8480)
   bank ui [--listen addr] [--no-open]         local archive browser (default
                                               127.0.0.1:8481; needs BANK_URL)
@@ -139,20 +143,28 @@ Thread flags:
   --json         includes has_before, has_after, and attachments
 
 Environment:
+  BANK_QUERY_DATABASE_URL  separate restricted login for ad-hoc SQL
   DATABASE_URL   default postgres://bank:bank@localhost:5433/bank
   BANK_DATA_DIR  default ~/.local/share/aqt-bank (blobs/, archive/, inbox/)
   BANK_URL       talk to a remote 'bank serve' instead of Postgres
   BANK_TOKEN     bearer token for BANK_URL (see 'bank token new')
 `
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	if len(os.Args) < 2 {
 		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
+		return 2
 	}
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	var err error
 	switch os.Args[1] {
+	case "version", "--version":
+		fmt.Println(buildVersion())
+	case "healthcheck":
+		err = cmdHealthcheck(ctx, os.Args[2:])
 	case "auth":
 		err = cmdAuth(ctx, os.Args[2:])
 	case "sync":
@@ -194,19 +206,23 @@ func main() {
 	case "serve":
 		err = cmdServe(ctx, os.Args[2:])
 	case "ui":
-		err = cmdUI(os.Args[2:])
+		err = cmdUI(ctx, os.Args[2:])
 	case "token":
 		err = cmdToken(os.Args[2:])
 	case "help", "--help", "-h":
 		fmt.Print(usage)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", os.Args[1], usage)
-		os.Exit(2)
+		return 2
+	}
+	if errors.Is(err, errCommandHelp) {
+		return 0
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "bank:", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func dataDir() string {
@@ -228,7 +244,17 @@ func openStore(ctx context.Context) (*store.Store, error) {
 	if url == "" {
 		url = "postgres://bank:bank@localhost:5433/bank?sslmode=disable"
 	}
-	return store.Open(ctx, url)
+	st, err := store.Open(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	if queryURL := os.Getenv("BANK_QUERY_DATABASE_URL"); queryURL != "" {
+		if err := st.ConfigureQuery(ctx, queryURL); err != nil {
+			st.Close()
+			return nil, err
+		}
+	}
+	return st, nil
 }
 
 // local is everything an importer needs when the CLI talks to Postgres
@@ -253,24 +279,33 @@ func openLocal(ctx context.Context) (*local, func(), error) {
 }
 
 func cmdAuth(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("auth", flag.ExitOnError)
-	port := fs.Int("port", 0, "")
-	bind := fs.String("bind", "127.0.0.1", "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Port int    `name:"port"`
+		Bind string `name:"bind" default:"127.0.0.1"`
+	}{}
+	port := &options.Port
+	bind := &options.Bind
+	if err := parseCommand("auth", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 || fs.Arg(0) != "gmail" {
+
+	if len(options.Args) != 1 || commandArg(options.Args, 0) != "gmail" {
 		return fmt.Errorf("usage: bank auth gmail [--port n] [--bind addr]")
 	}
 	return gmail.Authorize(ctx, dataDir(), *bind, *port)
 }
 
 func cmdSync(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("sync", flag.ExitOnError)
-	full := fs.Bool("full", false, "")
-	if err := fs.Parse(args); err != nil {
+	options := struct {
+		CommandArguments
+		Full bool `name:"full"`
+	}{}
+	full := &options.Full
+	if err := parseCommand("sync", &options, args); err != nil {
 		return err
 	}
+
 	if client.FromEnv() != nil {
 		return fmt.Errorf("sync reads the OAuth token beside the blob store and writes rows, blobs and raw mail together; run it on the server, not through BANK_URL")
 	}
@@ -302,30 +337,49 @@ func printSyncResult(res gmail.SyncResult) {
 }
 
 func cmdSearch(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("search", flag.ExitOnError)
-	kind := fs.String("kind", "", "")
-	account := fs.String("account", "", "")
+	options := struct {
+		CommandArguments
+		Kind          string `name:"kind"`
+		Account       string `name:"account"`
+		Source        string `name:"source"`
+		From          string `name:"from"`
+		To            string `name:"to"`
+		Person        string `name:"person"`
+		MailboxID     int64  `name:"mailbox-id"`
+		Subject       string `name:"subject"`
+		HasAttachment string `name:"has-attachment" help:"true or false"`
+		Match         string `name:"match" default:"any"`
+		Since         string `name:"since"`
+		Until         string `name:"until"`
+		Fuzzy         int    `name:"fuzzy" default:"1"`
+		Limit         int    `name:"limit" default:"20"`
+		Offset        int    `name:"offset"`
+		JSON          bool   `name:"json"`
+	}{}
 	var o store.SearchOpts
 	var since, until string
 	var asJSON bool
-	fs.StringVar(&o.Source, "source", "", "")
-	fs.StringVar(&o.From, "from", "", "")
-	fs.StringVar(&o.To, "to", "", "")
-	fs.StringVar(&o.Person, "person", "", "")
-	fs.Int64Var(&o.MailboxID, "mailbox-id", 0, "")
-	fs.StringVar(&o.Subject, "subject", "", "")
-	attachment := fs.String("has-attachment", "", "true or false")
-	fs.StringVar(&o.Match, "match", "any", "")
-	fs.StringVar(&since, "since", "", "")
-	fs.StringVar(&until, "until", "", "")
-	fs.IntVar(&o.Fuzzy, "fuzzy", 1, "")
-	fs.IntVar(&o.Limit, "limit", 20, "")
-	fs.IntVar(&o.Offset, "offset", 0, "")
-	fs.BoolVar(&asJSON, "json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	kind := &options.Kind
+	account := &options.Account
+	attachment := &options.HasAttachment
+	if err := parseCommand("search", &options, args); err != nil {
 		return err
 	}
-	query := strings.Join(fs.Args(), " ")
+	o.Source = options.Source
+	o.From = options.From
+	o.To = options.To
+	o.Person = options.Person
+	o.MailboxID = options.MailboxID
+	o.Subject = options.Subject
+	o.Match = options.Match
+	since = options.Since
+	until = options.Until
+	o.Fuzzy = options.Fuzzy
+	o.Limit = options.Limit
+	o.Offset = options.Offset
+	asJSON = options.JSON
+
+	query := strings.Join(options.Args, " ")
 	if *attachment != "" {
 		value, err := strconv.ParseBool(*attachment)
 		if err != nil || (*attachment != "true" && *attachment != "false") {
@@ -374,12 +428,12 @@ func cmdSearch(ctx context.Context, args []string) error {
 		printMorePages(len(groups), o.Limit, o.Offset)
 		return nil
 	}
-	options := library.ListOptions{Query: query, Source: o.Source, Account: *account, Kind: *kind, Since: since, Until: until, Limit: o.Limit, Offset: o.Offset}
+	findOptions := library.ListOptions{Query: query, Source: o.Source, Account: *account, Kind: *kind, Since: since, Until: until, Limit: o.Limit, Offset: o.Offset}
 	var result catalog.Result
 	if remote, ok := b.(*client.Client); ok {
-		result, err = remote.Find(ctx, query, o, options)
+		result, err = remote.Find(ctx, query, o, findOptions)
 	} else {
-		result, err = catalog.Find(ctx, b, query, o, options)
+		result, err = catalog.Find(ctx, b, query, o, findOptions)
 	}
 	if err != nil {
 		return err
@@ -406,23 +460,34 @@ func printMorePages(got, limit, offset int) {
 }
 
 func cmdThread(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("thread", flag.ExitOnError)
-	source := fs.String("source", "", "")
+	options := struct {
+		CommandArguments
+		Source  string `name:"source"`
+		Limit   int    `name:"limit"`
+		Before  int64  `name:"before"`
+		After   int64  `name:"after"`
+		Around  int64  `name:"around"`
+		Latest  bool   `name:"latest"`
+		Current bool   `name:"current"`
+		JSON    bool   `name:"json"`
+	}{}
 	var o store.ThreadOpts
-	fs.IntVar(&o.Limit, "limit", 0, "")
-	fs.Int64Var(&o.Before, "before", 0, "")
-	fs.Int64Var(&o.After, "after", 0, "")
-	fs.Int64Var(&o.Around, "around", 0, "")
-	fs.BoolVar(&o.Latest, "latest", false, "")
-	fs.BoolVar(&o.Current, "current", false, "")
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	source := &options.Source
+	asJSON := &options.JSON
+	if err := parseCommand("thread", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() == 0 {
+	o.Limit = options.Limit
+	o.Before = options.Before
+	o.After = options.After
+	o.Around = options.Around
+	o.Latest = options.Latest
+	o.Current = options.Current
+
+	if len(options.Args) == 0 {
 		return fmt.Errorf("usage: bank thread <id> [--source s] [--around id|--before id|--after id|--latest] [--limit n] [--json]")
 	}
-	threadID := strings.Join(fs.Args(), " ")
+	threadID := strings.Join(options.Args, " ")
 
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
@@ -481,16 +546,21 @@ func cmdThread(ctx context.Context, args []string) error {
 }
 
 func cmdShow(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("show", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	provenance := fs.Bool("provenance", false, "show archive, folder, and mail grouping evidence")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		JSON       bool `name:"json"`
+		Provenance bool `name:"provenance" help:"show archive, folder, and mail grouping evidence"`
+	}{}
+	asJSON := &options.JSON
+	provenance := &options.Provenance
+	if err := parseCommand("show", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+
+	if len(options.Args) != 1 {
 		return fmt.Errorf("usage: bank show <id|ref> [--json] [--provenance]")
 	}
-	arg := fs.Arg(0)
+	arg := commandArg(options.Args, 0)
 
 	remote := client.FromEnv() != nil
 	b, closeBackend, err := openBackend(ctx)
@@ -619,11 +689,15 @@ func openBackend(ctx context.Context) (backend, func(), error) {
 }
 
 func cmdStats(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("stats", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	if err := fs.Parse(args); err != nil {
+	options := struct {
+		CommandArguments
+		JSON bool `name:"json"`
+	}{}
+	asJSON := &options.JSON
+	if err := parseCommand("stats", &options, args); err != nil {
 		return err
 	}
+
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
 		return err
@@ -684,14 +758,18 @@ func anyStale(stats []store.SourceStats) bool {
 // — the context that turns "search found nothing" into either "it did not
 // happen" or "that period was never imported".
 func cmdCoverage(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("coverage", flag.ExitOnError)
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+	}{}
+
+	if err := parseCommand("coverage", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() < 1 {
+
+	if len(options.Args) < 1 {
 		return fmt.Errorf("usage: bank coverage <source> <text>   (empty text clears the note)")
 	}
-	source, text := fs.Arg(0), strings.Join(fs.Args()[1:], " ")
+	source, text := commandArg(options.Args, 0), strings.Join(options.Args[1:], " ")
 	if err := archive.ValidSource(source); err != nil {
 		return err
 	}
@@ -721,30 +799,36 @@ where c.table_schema = 'public' and t.table_type = 'BASE TABLE'
 order by c.table_name, c.ordinal_position`
 
 func cmdQuery(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("query", flag.ExitOnError)
-	limit := fs.Int("limit", 0, "")
-	asJSON := fs.Bool("json", false, "")
-	schema := fs.Bool("schema", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Limit  int  `name:"limit"`
+		JSON   bool `name:"json"`
+		Schema bool `name:"schema"`
+	}{}
+	limit := &options.Limit
+	asJSON := &options.JSON
+	schema := &options.Schema
+	if err := parseCommand("query", &options, args); err != nil {
 		return err
 	}
+
 	var query string
 	switch {
 	case *schema:
-		if fs.NArg() != 0 {
+		if len(options.Args) != 0 {
 			return fmt.Errorf("--schema takes no query argument")
 		}
 		query = schemaSQL
-	case fs.NArg() != 1:
+	case len(options.Args) != 1:
 		return fmt.Errorf("usage: bank query <sql|-> [--limit n] [--json], or bank query --schema")
-	case fs.Arg(0) == "-":
+	case commandArg(options.Args, 0) == "-":
 		b, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return err
 		}
 		query = string(b)
 	default:
-		query = fs.Arg(0)
+		query = commandArg(options.Args, 0)
 	}
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
@@ -802,15 +886,19 @@ func queryCell(v any) string {
 }
 
 func cmdFetch(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("fetch", flag.ExitOnError)
-	out := fs.String("o", "", "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		O string `name:"o" short:"o"`
+	}{}
+	out := &options.O
+	if err := parseCommand("fetch", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+
+	if len(options.Args) != 1 {
 		return fmt.Errorf("usage: bank fetch <sha256> [-o path]")
 	}
-	sum := fs.Arg(0)
+	sum := commandArg(options.Args, 0)
 	if err := blob.ValidDigest(sum); err != nil {
 		return err
 	}
@@ -850,13 +938,19 @@ func cmdFetch(ctx context.Context, args []string) error {
 }
 
 func cmdVerify(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("verify", flag.ExitOnError)
-	heal := fs.Bool("heal", false, "")
-	source := fs.String("source", "", "")
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Heal   bool   `name:"heal"`
+		Source string `name:"source"`
+		JSON   bool   `name:"json"`
+	}{}
+	heal := &options.Heal
+	source := &options.Source
+	asJSON := &options.JSON
+	if err := parseCommand("verify", &options, args); err != nil {
 		return err
 	}
+
 	if client.FromEnv() != nil {
 		return fmt.Errorf("verify reads the archive and blob store directly; run it on the server, not through BANK_URL")
 	}
@@ -900,11 +994,15 @@ func cmdVerify(ctx context.Context, args []string) error {
 }
 
 func cmdServe(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	listen := fs.String("listen", "127.0.0.1:8480", "")
-	if err := fs.Parse(args); err != nil {
+	options := struct {
+		CommandArguments
+		Listen string `name:"listen" default:"127.0.0.1:8480"`
+	}{}
+	listen := &options.Listen
+	if err := parseCommand("serve", &options, args); err != nil {
 		return err
 	}
+
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
 		return err
@@ -915,19 +1013,25 @@ func cmdServe(ctx context.Context, args []string) error {
 	}
 	srv := server.New(d.st, d.blobs, dataDir(), d.archiveDir)
 	fmt.Printf("bank serve: listening on %s\n", *listen)
-	return srv.ListenAndServe(*listen)
+	return srv.ListenAndServe(ctx, *listen)
 }
 
 // cmdUI starts the local archive browser: the embedded page plus a proxy that
 // signs /v1 requests with BANK_TOKEN, so the token stays out of the browser.
-func cmdUI(args []string) error {
-	fs := flag.NewFlagSet("ui", flag.ExitOnError)
-	listen := fs.String("listen", "127.0.0.1:8481", "")
-	noOpen := fs.Bool("no-open", false, "")
-	allowedHost := fs.String("allowed-host", "", "hostname accepted by the local UI proxy")
-	if err := fs.Parse(args); err != nil {
+func cmdUI(ctx context.Context, args []string) error {
+	options := struct {
+		CommandArguments
+		Listen      string `name:"listen" default:"127.0.0.1:8481"`
+		NoOpen      bool   `name:"no-open"`
+		AllowedHost string `name:"allowed-host" help:"hostname accepted by the local UI proxy"`
+	}{}
+	listen := &options.Listen
+	noOpen := &options.NoOpen
+	allowedHost := &options.AllowedHost
+	if err := parseCommand("ui", &options, args); err != nil {
 		return err
 	}
+
 	base := os.Getenv("BANK_URL")
 	if base == "" {
 		return fmt.Errorf("ui needs BANK_URL (and BANK_TOKEN) pointing at a 'bank serve'; on the server box, set BANK_URL=http://127.0.0.1:8480")
@@ -954,7 +1058,7 @@ func cmdUI(args []string) error {
 	}
 	srv := &http.Server{Addr: *listen, Handler: webui.Handler(apiBase, os.Getenv("BANK_TOKEN"), acceptedHosts...),
 		ReadHeaderTimeout: 15 * time.Second}
-	return srv.ListenAndServe()
+	return server.Run(ctx, srv)
 }
 
 func openBrowser(u string) {
@@ -1012,23 +1116,6 @@ func cmdToken(args []string) error {
 	return nil
 }
 
-// parseFlagsAnywhere lets flags follow positional args (bank search foo --json).
-func parseFlagsAnywhere(fs *flag.FlagSet, args []string) error {
-	var positional []string
-	for len(args) > 0 {
-		if err := fs.Parse(args); err != nil {
-			return err
-		}
-		args = fs.Args()
-		if len(args) == 0 {
-			break
-		}
-		positional = append(positional, args[0])
-		args = args[1:]
-	}
-	return fs.Parse(positional)
-}
-
 func parseDate(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil
@@ -1060,4 +1147,55 @@ func excerpt(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
+}
+
+var version = "dev"
+
+func buildVersion() string {
+	if version != "dev" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		revision, dirty := "", false
+		for _, setting := range info.Settings {
+			if setting.Key == "vcs.revision" {
+				revision = setting.Value
+			}
+			if setting.Key == "vcs.modified" {
+				dirty = setting.Value == "true"
+			}
+		}
+		if revision != "" {
+			if dirty {
+				revision += "-dirty"
+			}
+			return revision
+		}
+	}
+	return version
+}
+
+func cmdHealthcheck(ctx context.Context, args []string) error {
+	address := "http://127.0.0.1:8480/healthz"
+	if len(args) > 1 {
+		return fmt.Errorf("usage: bank healthcheck [url]")
+	}
+	if len(args) == 1 {
+		address = args[0]
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	if err != nil {
+		return err
+	}
+	response, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck: %s", response.Status)
+	}
+	return nil
 }

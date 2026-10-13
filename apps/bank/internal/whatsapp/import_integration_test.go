@@ -69,7 +69,7 @@ func TestImportBareTextExportKeepsSiblingMedia(t *testing.T) {
 
 func TestImportBareTextExportRefusesToLeaveTheExportDirectory(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	root := t.TempDir()
 	secretPath := filepath.Join(root, "secret.txt")
 	if err := os.WriteFile(secretPath, []byte("SECRET"), 0o600); err != nil {
@@ -95,7 +95,7 @@ func TestImportBareTextExportRefusesToLeaveTheExportDirectory(t *testing.T) {
 	if res.MissingMedia != 2 {
 		t.Errorf("unsafe names should be reported as missing media: %+v", res)
 	}
-	if n := storetest.CountAttachments(t, schema); n != 0 {
+	if n := storetest.CountAttachments(t, dsn); n != 0 {
 		t.Errorf("%d attachment rows exist", n)
 	}
 	if _, err := os.Stat(secretPath); err != nil {

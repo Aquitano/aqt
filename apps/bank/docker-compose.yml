@@ -44,6 +44,8 @@ services:
     build:
       context: ../..
       dockerfile: apps/bank/Dockerfile
+      args:
+        VERSION: ${BANK_VERSION:-dev}
     image: aqt-bank:local
     # Extraction parses decades of hostile attachments; a bug that slips the
     # in-process limits must not take the box (and Postgres) down with it.
@@ -54,6 +56,7 @@ services:
     environment:
       DATABASE_URL: postgres://bank:${POSTGRES_PASSWORD:-bank}@db:5432/bank?sslmode=disable
       BANK_DATA_DIR: /data
+      BANK_QUERY_DATABASE_URL: ${BANK_QUERY_DATABASE_URL:-}
       # Dates and WhatsApp export timestamps are read in local time; without
       # this the container would read them as UTC and shift them.
       TZ: ${TZ:-UTC}
@@ -76,8 +79,13 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    # No healthcheck: the image has no shell or HTTP client to run one with,
-    # which is the point of it. /healthz is there for an external prober.
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/bank", "healthcheck"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 35s
 
   # The OCR worker. It drains blob_text's needs_ocr queue on a timer and
   # writes the text back — nothing calls it and it calls nothing, so the
@@ -97,6 +105,8 @@ services:
     build:
       context: ../..
       dockerfile: apps/bank/Dockerfile
+      args:
+        VERSION: ${BANK_VERSION:-dev}
       target: ocr
     image: aqt-bank-ocr:local
     mem_limit: 2g

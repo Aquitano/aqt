@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -72,15 +71,19 @@ func cmdContact(ctx context.Context, args []string) error {
 }
 
 func contactAdd(ctx context.Context, b backend, args []string) error {
-	fs := flag.NewFlagSet("contact add", flag.ExitOnError)
-	note := fs.String("note", "", "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Note string `name:"note"`
+	}{}
+	note := &options.Note
+	if err := parseCommand("contact add", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+
+	if len(options.Args) != 1 {
 		return errors.New("usage: bank contact add <name> [--note text]")
 	}
-	c, err := b.CreateContact(ctx, fs.Arg(0), *note)
+	c, err := b.CreateContact(ctx, commandArg(options.Args, 0), *note)
 	if err != nil {
 		return err
 	}
@@ -101,11 +104,15 @@ func contactRemove(ctx context.Context, b backend, args []string) error {
 }
 
 func contactList(ctx context.Context, b backend, args []string) error {
-	fs := flag.NewFlagSet("contact list", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		JSON bool `name:"json"`
+	}{}
+	asJSON := &options.JSON
+	if err := parseCommand("contact list", &options, args); err != nil {
 		return err
 	}
+
 	contacts, err := b.ListContacts(ctx)
 	if err != nil {
 		return err
@@ -138,17 +145,21 @@ func aliasStrings(aliases []store.ContactAlias) []string {
 }
 
 func contactShow(ctx context.Context, b backend, args []string) error {
-	fs := flag.NewFlagSet("contact show", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		JSON bool `name:"json"`
+	}{}
+	asJSON := &options.JSON
+	if err := parseCommand("contact show", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+
+	if len(options.Args) != 1 {
 		return errors.New("usage: bank contact show <name> [--json]")
 	}
-	d, err := b.GetContactDetail(ctx, fs.Arg(0))
+	d, err := b.GetContactDetail(ctx, commandArg(options.Args, 0))
 	if err != nil {
-		return contactErr(fs.Arg(0), err)
+		return contactErr(commandArg(options.Args, 0), err)
 	}
 	if *asJSON {
 		return printJSON(d)
@@ -229,21 +240,31 @@ func knownSources(ctx context.Context, b backend) (map[string]bool, error) {
 }
 
 func contactMessages(ctx context.Context, b backend, args []string) error {
-	fs := flag.NewFlagSet("contact messages", flag.ExitOnError)
+	options := struct {
+		CommandArguments
+		Source string `name:"source"`
+		Since  string `name:"since"`
+		Until  string `name:"until"`
+		Limit  int    `name:"limit" default:"50"`
+		Before int64  `name:"before"`
+		Offset int    `name:"offset"`
+		JSON   bool   `name:"json"`
+	}{}
 	var o store.ContactMessagesOpts
 	var since, until string
 	var asJSON bool
-	fs.StringVar(&o.Source, "source", "", "")
-	fs.StringVar(&since, "since", "", "")
-	fs.StringVar(&until, "until", "", "")
-	fs.IntVar(&o.Limit, "limit", 50, "")
-	fs.Int64Var(&o.Before, "before", 0, "")
-	fs.IntVar(&o.Offset, "offset", 0, "")
-	fs.BoolVar(&asJSON, "json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	if err := parseCommand("contact messages", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+	o.Source = options.Source
+	since = options.Since
+	until = options.Until
+	o.Limit = options.Limit
+	o.Before = options.Before
+	o.Offset = options.Offset
+	asJSON = options.JSON
+
+	if len(options.Args) != 1 {
 		return errors.New("usage: bank contact messages <name> [flags]")
 	}
 	var err error
@@ -253,9 +274,9 @@ func contactMessages(ctx context.Context, b backend, args []string) error {
 	if o.Until, err = parseDate(until); err != nil {
 		return err
 	}
-	msgs, err := b.ContactMessages(ctx, fs.Arg(0), o)
+	msgs, err := b.ContactMessages(ctx, commandArg(options.Args, 0), o)
 	if err != nil {
-		return contactErr(fs.Arg(0), err)
+		return contactErr(commandArg(options.Args, 0), err)
 	}
 	if asJSON {
 		return printJSON(msgs)
@@ -279,12 +300,17 @@ func contactMessages(ctx context.Context, b backend, args []string) error {
 }
 
 func contactSuggest(ctx context.Context, b backend, args []string) error {
-	fs := flag.NewFlagSet("contact suggest", flag.ExitOnError)
-	limit := fs.Int("limit", 20, "")
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Limit int  `name:"limit" default:"20"`
+		JSON  bool `name:"json"`
+	}{}
+	limit := &options.Limit
+	asJSON := &options.JSON
+	if err := parseCommand("contact suggest", &options, args); err != nil {
 		return err
 	}
+
 	out, err := b.SuggestIdentities(ctx, *limit)
 	if err != nil {
 		return err
@@ -319,24 +345,28 @@ type contactEntry struct {
 // reported and skipped: the file is the owner's, and one alias another contact
 // already claims must not cost the rest of it.
 func contactImport(ctx context.Context, b backend, args []string) error {
-	fs := flag.NewFlagSet("contact import", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		JSON bool `name:"json"`
+	}{}
+	asJSON := &options.JSON
+	if err := parseCommand("contact import", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+
+	if len(options.Args) != 1 {
 		return errors.New("usage: bank contact import <file|-> [--json]")
 	}
-	input, err := readInput(fs.Arg(0))
+	input, err := readInput(commandArg(options.Args, 0))
 	if err != nil {
 		return err
 	}
 	entries, err := decodeJSONEntries[contactEntry](input)
 	if err != nil {
-		return fmt.Errorf("%s: %w", fs.Arg(0), err)
+		return fmt.Errorf("%s: %w", commandArg(options.Args, 0), err)
 	}
 	if len(entries) == 0 {
-		return fmt.Errorf("%s holds no contacts", fs.Arg(0))
+		return fmt.Errorf("%s holds no contacts", commandArg(options.Args, 0))
 	}
 	known, err := knownSources(ctx, b)
 	if err != nil {

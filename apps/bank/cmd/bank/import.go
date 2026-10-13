@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/sha256"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -45,14 +44,20 @@ func cmdImport(ctx context.Context, args []string) error {
 	if kind == "inbox" {
 		return cmdImportInbox(ctx, args[1:])
 	}
-	fs := flag.NewFlagSet("import "+kind, flag.ExitOnError)
-	source := fs.String("source", defaultSource(kind), "")
-	mailbox := fs.String("mailbox", "", "historical mailbox observation for an EML or MBOX file")
-	noExtract := fs.Bool("no-extract", false, "")
-	if err := parseFlagsAnywhere(fs, args[1:]); err != nil {
+	options := struct {
+		CommandArguments
+		Source    string `name:"source" default:"${source}"`
+		Mailbox   string `name:"mailbox" help:"historical mailbox observation for an EML or MBOX file"`
+		NoExtract bool   `name:"no-extract"`
+	}{}
+	source := &options.Source
+	mailbox := &options.Mailbox
+	noExtract := &options.NoExtract
+	if err := parseCommand("import "+kind, &options, args[1:], map[string]string{"source": fmt.Sprint(defaultSource(kind))}); err != nil {
 		return err
 	}
-	if fs.NArg() == 0 {
+
+	if len(options.Args) == 0 {
 		return fmt.Errorf("usage: bank import %s <path>...", kind)
 	}
 	if *source != "" {
@@ -64,10 +69,10 @@ func cmdImport(ctx context.Context, args []string) error {
 		if kind != "eml" && kind != "mbox" {
 			return fmt.Errorf("--mailbox requires eml or mbox")
 		}
-		return importMailboxFiles(ctx, kind, *source, *mailbox, fs.Args(), *noExtract)
+		return importMailboxFiles(ctx, kind, *source, *mailbox, options.Args, *noExtract)
 	}
 	if c := client.FromEnv(); c != nil {
-		return importRemote(ctx, c, kind, *source, fs.Args())
+		return importRemote(ctx, c, kind, *source, options.Args)
 	}
 
 	d, closeStore, err := openLocal(ctx)
@@ -75,7 +80,7 @@ func cmdImport(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeStore()
-	for _, path := range fs.Args() {
+	for _, path := range options.Args {
 		res, err := importLocal(ctx, d, kind, *source, path)
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
@@ -182,12 +187,17 @@ func archiveJSON(archiveDir, path string, input []byte) (string, error) {
 }
 
 func cmdImportInbox(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("import inbox", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	noExtract := fs.Bool("no-extract", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		JSON      bool `name:"json"`
+		NoExtract bool `name:"no-extract"`
+	}{}
+	asJSON := &options.JSON
+	noExtract := &options.NoExtract
+	if err := parseCommand("import inbox", &options, args); err != nil {
 		return err
 	}
+
 	if client.FromEnv() != nil {
 		return fmt.Errorf("import inbox reads the server's own drop zone; run it there, not through BANK_URL")
 	}
@@ -255,19 +265,27 @@ const healBodiesKind = "mbox"
 // whatever today's importer does better than the one that first read the file
 // — messages it used to drop, threads it used to key wrong.
 func cmdReimport(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("reimport", flag.ExitOnError)
-	noExtract := fs.Bool("no-extract", false, "")
-	asJSON := fs.Bool("json", false, "")
-	healBodies := fs.Bool("heal-bodies", false, "")
-	apply := fs.Bool("apply", false, "")
-	source := fs.String("source", "", "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		NoExtract  bool   `name:"no-extract"`
+		JSON       bool   `name:"json"`
+		HealBodies bool   `name:"heal-bodies"`
+		Apply      bool   `name:"apply"`
+		Source     string `name:"source"`
+	}{}
+	noExtract := &options.NoExtract
+	asJSON := &options.JSON
+	healBodies := &options.HealBodies
+	apply := &options.Apply
+	source := &options.Source
+	if err := parseCommand("reimport", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+
+	if len(options.Args) != 1 {
 		return fmt.Errorf("usage: bank reimport <%s> [--no-extract] [--json]", strings.Join(reimportKinds, "|"))
 	}
-	kind := fs.Arg(0)
+	kind := commandArg(options.Args, 0)
 	if client.FromEnv() != nil {
 		return fmt.Errorf("reimport replays the server's own archive; run it there, not through BANK_URL")
 	}

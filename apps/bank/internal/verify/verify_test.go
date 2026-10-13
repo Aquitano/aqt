@@ -52,7 +52,7 @@ func TestVerifyChecksMailContextDigests(t *testing.T) {
 
 type fixture struct {
 	st         *store.Store
-	schema     string
+	dsn        string
 	blobs      *blob.Store
 	archiveDir string
 	messageID  int64
@@ -61,7 +61,7 @@ type fixture struct {
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	root := t.TempDir()
 	blobs, err := blob.New(filepath.Join(root, "blobs"))
 	if err != nil {
@@ -80,7 +80,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil || id == 0 {
 		t.Fatalf("message not found: %d %v", id, err)
 	}
-	return &fixture{st: st, schema: schema, blobs: blobs, archiveDir: archiveDir, messageID: id}
+	return &fixture{st: st, dsn: dsn, blobs: blobs, archiveDir: archiveDir, messageID: id}
 }
 
 func (f *fixture) run(t *testing.T, heal bool) Report {
@@ -168,7 +168,7 @@ func TestCorruptBlobIsFoundAndHealed(t *testing.T) {
 func TestWrongSizeIsHealedWithoutTheRawInput(t *testing.T) {
 	f := newFixture(t)
 	a := f.attachments(t)[0]
-	storetest.Exec(t, f.schema, `update attachments set size_bytes = 99999 where id = $1`, a.ID)
+	storetest.Exec(t, f.dsn, `update attachments set size_bytes = 99999 where id = $1`, a.ID)
 
 	if k := kinds(f.run(t, false)); k[WrongSize] != 1 {
 		t.Fatalf("a lying size_bytes was not detected: %v", k)
@@ -184,7 +184,7 @@ func TestWrongSizeIsHealedWithoutTheRawInput(t *testing.T) {
 func TestMissingAttachmentRowIsFoundAndHealed(t *testing.T) {
 	f := newFixture(t)
 	lost := f.attachments(t)[0]
-	storetest.Exec(t, f.schema, `delete from attachments where id = $1`, lost.ID)
+	storetest.Exec(t, f.dsn, `delete from attachments where id = $1`, lost.ID)
 
 	if k := kinds(f.run(t, false)); k[MissingAttachments] != 1 {
 		t.Fatalf("a message missing an attachment row was not detected: %v", k)
@@ -205,7 +205,7 @@ func TestMissingAttachmentRowIsFoundAndHealed(t *testing.T) {
 // against the zip's own files is what makes it healable.
 func TestWhatsAppZipMediaIsHealed(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	root := t.TempDir()
 	blobs, err := blob.New(filepath.Join(root, "blobs"))
 	if err != nil {
@@ -240,7 +240,7 @@ func TestWhatsAppZipMediaIsHealed(t *testing.T) {
 	if err != nil || res.Attachments != 1 {
 		t.Fatalf("import = %+v, %v", res, err)
 	}
-	msgID := storetest.QueryInt(t, schema, `select message_id from attachments limit 1`)
+	msgID := storetest.QueryInt(t, dsn, `select message_id from attachments limit 1`)
 	_, atts, err := st.GetMessage(ctx, msgID)
 	if err != nil || len(atts) != 1 {
 		t.Fatalf("attachments = %v, %v", atts, err)

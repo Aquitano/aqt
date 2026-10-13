@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -28,19 +27,30 @@ import (
 // the box serving the archive: `bank extract --ocr` against a remote BANK_URL
 // runs the tools on this machine and stores only the text.
 func cmdExtract(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("extract", flag.ExitOnError)
-	var statuses stringList
-	fs.Var(&statuses, "status", "")
-	ocr := fs.Bool("ocr", false, "")
-	lang := fs.String("lang", "eng", "")
-	source := fs.String("source", "", "")
-	limit := fs.Int("limit", 0, "")
-	watch := fs.Bool("watch", false, "")
-	interval := fs.Duration("interval", defaultWatchInterval, "")
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Status   []string      `name:"status" sep:"none"`
+		Ocr      bool          `name:"ocr"`
+		Lang     string        `name:"lang" default:"eng"`
+		Source   string        `name:"source"`
+		Limit    int           `name:"limit"`
+		Watch    bool          `name:"watch"`
+		Interval time.Duration `name:"interval" default:"${interval}"`
+		JSON     bool          `name:"json"`
+	}{}
+	var statuses []string
+	ocr := &options.Ocr
+	lang := &options.Lang
+	source := &options.Source
+	limit := &options.Limit
+	watch := &options.Watch
+	interval := &options.Interval
+	asJSON := &options.JSON
+	if err := parseCommand("extract", &options, args, map[string]string{"interval": fmt.Sprint(defaultWatchInterval)}); err != nil {
 		return err
 	}
+	statuses = options.Status
+
 	for _, s := range statuses {
 		if err := blobtext.ValidRunStatus(s); err != nil {
 			return err
@@ -274,11 +284,15 @@ func cmdAttachment(ctx context.Context, args []string) error {
 // attachments — and, in the needs_ocr row, exactly how much OCR would add.
 // That number is what should decide whether running OCR is worth it.
 func cmdAttachmentStats(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("attachment stats", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	if err := fs.Parse(args); err != nil {
+	options := struct {
+		CommandArguments
+		JSON bool `name:"json"`
+	}{}
+	asJSON := &options.JSON
+	if err := parseCommand("attachment stats", &options, args); err != nil {
 		return err
 	}
+
 	b, closeBackend, err := openAttachments(ctx)
 	if err != nil {
 		return err
@@ -313,15 +327,22 @@ func printExtractionStats(stats []store.ExtractionStat) {
 }
 
 func cmdAttachmentList(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("attachment list", flag.ExitOnError)
-	var statuses stringList
-	fs.Var(&statuses, "status", "")
-	source := fs.String("source", "", "")
-	limit := fs.Int("limit", 50, "")
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Status []string `name:"status" sep:"none"`
+		Source string   `name:"source"`
+		Limit  int      `name:"limit" default:"50"`
+		JSON   bool     `name:"json"`
+	}{}
+	var statuses []string
+	source := &options.Source
+	limit := &options.Limit
+	asJSON := &options.JSON
+	if err := parseCommand("attachment list", &options, args); err != nil {
 		return err
 	}
+	statuses = options.Status
+
 	// The same check `bank extract --source` makes: a malformed source names
 	// nothing, and an empty listing reads as an archive with no attachments.
 	if *source != "" {
@@ -356,17 +377,23 @@ func cmdAttachmentList(ctx context.Context, args []string) error {
 // language it does not — gets into the archive; it lands as "manual", which
 // no automatic pass overwrites.
 func cmdAttachmentText(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("attachment text", flag.ExitOnError)
-	set := fs.String("set", "", "")
-	clear := fs.Bool("clear", false, "")
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Set   string `name:"set"`
+		Clear bool   `name:"clear"`
+		JSON  bool   `name:"json"`
+	}{}
+	set := &options.Set
+	clear := &options.Clear
+	asJSON := &options.JSON
+	if err := parseCommand("attachment text", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+
+	if len(options.Args) != 1 {
 		return fmt.Errorf("usage: bank attachment text <sha256> [--set <file|-> | --clear] [--json]")
 	}
-	sum := strings.ToLower(fs.Arg(0))
+	sum := strings.ToLower(commandArg(options.Args, 0))
 	if err := store.ValidSHA256(sum); err != nil {
 		return err
 	}
@@ -446,13 +473,6 @@ func readTextInput(path string) (string, error) {
 	return string(b), err
 }
 
-// stringList collects a repeatable flag, so --status can be given more than once.
-type stringList []string
-
-func (l *stringList) String() string { return strings.Join(*l, ",") }
-
-func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
-
 func humanBytes(n int64) string {
 	const unit = 1024
 	if n < unit {
@@ -463,7 +483,7 @@ func humanBytes(n int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f%c", float64(n)/float64(div), "KMGT"[exp])
+	return fmt.Sprintf("%.1f%c", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 func humanCount(n int64) string {

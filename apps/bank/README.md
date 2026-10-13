@@ -83,7 +83,7 @@ When Postgres lives on a VPS, run the server there in a container (`COMPOSE_PROF
 ```sh
 export BANK_URL=http://vps.tailnet.ts.net:8480
 # through the server's own image, so the digest lands in the file it reads
-export BANK_TOKEN=$(ssh vps 'cd /opt/aqt-bank && docker compose run --rm -T bank token new laptop')
+export BANK_TOKEN=$(ssh vps 'cd /opt/aqt/apps/bank && docker compose run --rm -T bank token new laptop')
 
 ./bank import whatsapp "WhatsApp Chat with Alice.zip"   # uploaded to the VPS
 ./bank fetch 9f86d081... -o photo.jpg                   # attachment bytes back
@@ -120,7 +120,16 @@ see [IMAP.md](IMAP.md) and [imap.example.json](imap.example.json). The collector
 runs beside Bridge or on another client machine and uploads to `BANK_URL`.
 It keeps local checkpoints, retries failures and preserves mailbox read flags.
 
-Schema migrations are embedded and run automatically on startup.
+Schema migrations are embedded and run automatically through Tern on startup.
+Existing filename-based history is checked and baselined once without replaying
+applied migrations. See [DEPLOY.md](DEPLOY.md) before upgrading.
+
+Ad-hoc SQL requires `BANK_QUERY_DATABASE_URL`, a separate restricted login created
+with [deploy/query-role.sql](deploy/query-role.sql). It never falls back to the
+import connection. The login has SELECT on public tables and sequences, schema USAGE, and no write,
+server-file, program-execution, or administrative grants. READ ONLY transactions,
+a 15-second timeout and a row cap provide additional limits. Other read commands
+work without this setting.
 
 ## Retrieve conversation history
 
@@ -132,7 +141,7 @@ LinkedIn conversations use the export's conversation ID. Run `bank reimport link
 
 ## Check database behavior
 
-`go test -race ./...` uses the development database from `DATABASE_URL`. Local tests skip database cases when no server is listening. Set `BANK_REQUIRE_DB=1` to require them. CI always requires the database and starts the same pinned ParadeDB image as Compose.
+`go test -race ./...` uses pgtestdb to clone a private database per test from the development server in `DATABASE_URL`. The configured login must be a superuser so it can create databases, install the search extension and provision a restricted query-test login. Local tests skip database cases when no server is listening. Set `BANK_REQUIRE_DB=1` to require them. CI always requires the database and starts the same pinned ParadeDB image as Compose.
 
 The retrieval cases in `internal/store/search_quality_integration_test.go` check exact and fuzzy ranking, all-word matches across fields, phrase order, and attachment-only matches. Run them with `go test ./internal/store -run TestSearchRetrievalCases`.
 

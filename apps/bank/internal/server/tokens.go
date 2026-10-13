@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/aquitano/aqt/apps/bank/internal/atomicfile"
 )
 
 // Tokens live in one line-oriented file, "<name>:<sha256 of the token>", so the
@@ -48,23 +50,7 @@ func writeTokens(dataDir string, entries []tokenEntry) error {
 	for _, e := range entries {
 		fmt.Fprintf(&b, "%s:%s\n", e.Name, e.Hash)
 	}
-	tmp, err := os.CreateTemp(dataDir, ".tokens-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.WriteString(b.String()); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), TokensPath(dataDir))
+	return atomicfile.Write(TokensPath(dataDir), strings.NewReader(b.String()))
 }
 
 // NewToken generates a token for name and stores only its digest. The returned

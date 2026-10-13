@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,20 +21,28 @@ func cmdMail(ctx context.Context, args []string) error {
 	if command != "rebuild" && command != "mailboxes" && command != "conflict" {
 		return fmt.Errorf("unknown mail command %q", command)
 	}
-	flags := flag.NewFlagSet("mail "+command, flag.ContinueOnError)
-	source := flags.String("source", "", "")
-	asJSON := flags.Bool("json", false, "")
-	apply := flags.Bool("apply", false, "write projections (rebuild only)")
-	before := flags.Int64("before", 0, "")
-	limit := flags.Int("limit", 100, "")
-	if err := parseFlagsAnywhere(flags, args[1:]); err != nil {
+	options := struct {
+		CommandArguments
+		Source string `name:"source"`
+		JSON   bool   `name:"json"`
+		Apply  bool   `name:"apply" help:"write projections (rebuild only)"`
+		Before int64  `name:"before"`
+		Limit  int    `name:"limit" default:"100"`
+	}{}
+	source := &options.Source
+	asJSON := &options.JSON
+	apply := &options.Apply
+	before := &options.Before
+	limit := &options.Limit
+	if err := parseCommand("mail "+command, &options, args[1:]); err != nil {
 		return err
 	}
+
 	if err := archive.ValidSource(*source); err != nil {
 		return err
 	}
 	if command == "rebuild" {
-		if flags.NArg() != 0 {
+		if len(options.Args) != 0 {
 			return fmt.Errorf("rebuild takes no positional arguments")
 		}
 		if client.FromEnv() != nil {
@@ -68,7 +75,7 @@ func cmdMail(ctx context.Context, args []string) error {
 	}
 	defer closeBackend()
 	if command == "mailboxes" {
-		if flags.NArg() != 0 {
+		if len(options.Args) != 0 {
 			return fmt.Errorf("mailboxes takes no positional arguments")
 		}
 		mailboxes, err := backend.ListMailboxes(ctx, *source)
@@ -83,10 +90,10 @@ func cmdMail(ctx context.Context, args []string) error {
 		}
 		return nil
 	}
-	if flags.NArg() != 1 || *before < 0 || *limit < 1 || *limit > store.MaxThreadMessages {
+	if len(options.Args) != 1 || *before < 0 || *limit < 1 || *limit > store.MaxThreadMessages {
 		return fmt.Errorf("usage: bank mail conflict <key> --source <source> [--before id] [--limit n]")
 	}
-	page, err := backend.MailConflictMessages(ctx, *source, flags.Arg(0), *before, *limit)
+	page, err := backend.MailConflictMessages(ctx, *source, commandArg(options.Args, 0), *before, *limit)
 	if err != nil {
 		return err
 	}

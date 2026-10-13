@@ -134,7 +134,7 @@ func TestIngestHealsAttachmentsOnReimport(t *testing.T) {
 
 func TestIngestHealsOnlyMissingAttachments(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	blobs, _ := blobStore(t)
 	raw := []byte(twoAttachmentMail)
 	opts := IngestOpts{Source: "proton", RawRef: "proton/two.eml"}
@@ -155,7 +155,7 @@ func TestIngestHealsOnlyMissingAttachments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	storetest.Exec(t, schema, `delete from attachments where id = $1`, all[0].ID)
+	storetest.Exec(t, dsn, `delete from attachments where id = $1`, all[0].ID)
 
 	res, err := Ingest(ctx, st, blobs, raw, opts)
 	if err != nil {

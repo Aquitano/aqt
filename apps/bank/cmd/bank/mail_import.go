@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,21 +13,27 @@ import (
 )
 
 func cmdImportMailTree(ctx context.Context, args []string) error {
-	flags := flag.NewFlagSet("import mail-tree", flag.ContinueOnError)
-	source := flags.String("source", "", "mail account source")
-	layout := flags.String("layout", "", "eml or thunderbird")
-	noExtract := flags.Bool("no-extract", false, "skip attachment text extraction")
-	if err := parseFlagsAnywhere(flags, args); err != nil {
+	options := struct {
+		CommandArguments
+		Source    string `name:"source" help:"mail account source"`
+		Layout    string `name:"layout" help:"eml or thunderbird"`
+		NoExtract bool   `name:"no-extract" help:"skip attachment text extraction"`
+	}{}
+	source := &options.Source
+	layout := &options.Layout
+	noExtract := &options.NoExtract
+	if err := parseCommand("import mail-tree", &options, args); err != nil {
 		return err
 	}
-	if flags.NArg() != 1 || (*layout != "eml" && *layout != "thunderbird") {
+
+	if len(options.Args) != 1 || (*layout != "eml" && *layout != "thunderbird") {
 		return fmt.Errorf("usage: bank import mail-tree --source <source> --layout eml|thunderbird <root>")
 	}
 	if err := archive.ValidSource(*source); err != nil {
 		return err
 	}
 	return withMailImporter(ctx, *source, *noExtract, func(importFile func(string, string, eml.MailImportContext) error) error {
-		return eml.WalkMailTree(filepath.Clean(flags.Arg(0)), *layout, importFile, func(path, reason string) {
+		return eml.WalkMailTree(filepath.Clean(commandArg(options.Args, 0)), *layout, importFile, func(path, reason string) {
 			fmt.Fprintf(os.Stderr, "bank: skip %s: %s\n", path, reason)
 		})
 	})

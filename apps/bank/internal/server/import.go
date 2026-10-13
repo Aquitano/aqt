@@ -29,6 +29,12 @@ import (
 	"github.com/aquitano/aqt/packages/go/extract"
 )
 
+// JSON imports decode in memory; two 16 MiB requests leave room for decoded
+// records and extraction inside the 2 GiB server container.
+const maxJSONUpload = 16 << 20
+
+var jsonImports = make(chan struct{}, 2)
+
 // Uploads are always single files: directory inputs stay a client concern, the
 // CLI walks them and posts one file per request.
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
@@ -52,9 +58,43 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if kind == "json" {
-		body, err := io.ReadAll(r.Body)
+		if r.ContentLength > maxJSONUpload {
+			writeErr(w, http.StatusRequestEntityTooLarge, "JSON import exceeds 16 MiB")
+			return
+		}
+		select {
+		case jsonImports <- struct{}{}:
+			defer func() { <-jsonImports }()
+		case <-r.Context().Done():
+			return
+		}
+		timeout := s.jsonReadTimeout
+		if timeout <= 0 {
+			timeout = time.Minute
+		}
+		controller := http.NewResponseController(w)
+		if err := controller.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSONUpload))
 		if err != nil {
+			var tooLarge *http.MaxBytesError
+			if errors.As(err, &tooLarge) {
+				writeErr(w, http.StatusRequestEntityTooLarge, "JSON import exceeds 16 MiB")
+				return
+			}
+			if os.IsTimeout(err) {
+				writeErr(w, http.StatusRequestTimeout, "JSON upload body timed out")
+				return
+			}
 			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		// Keep a failed body's deadline in place for net/http's cleanup reads.
+		// Successful uploads may spend longer importing after the body is read.
+		if err := controller.SetReadDeadline(time.Time{}); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		res, err := s.importJSON(r.Context(), source, body)
@@ -119,6 +159,9 @@ func (s *Server) extractAfterImport(received time.Time) {
 	}
 	s.extraction.mu.Lock()
 	defer s.extraction.mu.Unlock()
+	if s.extraction.stopping {
+		return
+	}
 	if !s.extraction.running || received.Before(s.extraction.since) {
 		s.extraction.since = received
 	}
@@ -134,12 +177,14 @@ func (s *Server) extractAfterImport(received time.Time) {
 }
 
 type extraction struct {
-	mu      sync.Mutex
-	running bool
-	again   bool
-	since   time.Time
-	arrived time.Time
-	done    sync.WaitGroup
+	ctx      context.Context
+	stopping bool
+	mu       sync.Mutex
+	running  bool
+	again    bool
+	since    time.Time
+	arrived  time.Time
+	done     sync.WaitGroup
 }
 
 // extractUntilCurrent refreshes, after each pass, only what changed since the
@@ -148,6 +193,10 @@ type extraction struct {
 // committed after a refresh is covered by starting the next window no later
 // than its arrival.
 func (s *Server) extractUntilCurrent() {
+	ctx := s.extraction.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	var refreshSince time.Time
 	for {
 		s.extraction.mu.Lock()
@@ -158,10 +207,10 @@ func (s *Server) extractUntilCurrent() {
 		s.extraction.arrived = time.Time{}
 		s.extraction.mu.Unlock()
 		started := time.Now()
-		backlog := s.extractPending(context.Background(), since, refreshSince)
+		backlog := s.extractPending(ctx, since, refreshSince)
 		refreshSince = started
 		s.extraction.mu.Lock()
-		again := backlog || s.extraction.again
+		again := !s.extraction.stopping && (backlog || s.extraction.again)
 		s.extraction.again = false
 		s.extraction.running = again
 		s.extraction.mu.Unlock()

@@ -153,7 +153,7 @@ func TestMailRebuildFindsGmailRawWithoutMessageID(t *testing.T) {
 
 func TestMailReimportLeavesUnchangedThreadRowsAlone(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	blobs, err := blob.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -174,9 +174,9 @@ func TestMailReimportLeavesUnchangedThreadRowsAlone(t *testing.T) {
 		union all select xmin from mail_details union all select xmin from mail_thread_edges
 		union all select xmin from mailboxes) written`
 	ingest()
-	before := storetest.QueryInt(t, schema, versions)
+	before := storetest.QueryInt(t, dsn, versions)
 	ingest()
-	if after := storetest.QueryInt(t, schema, versions); after != before {
+	if after := storetest.QueryInt(t, dsn, versions); after != before {
 		t.Fatal("re-importing an unchanged thread rewrote its thread rows")
 	}
 }
@@ -308,7 +308,7 @@ func TestConcurrentMailObservationsAndNormalizedNodes(t *testing.T) {
 
 func TestMailRebuildReadOnlyRecoveryAndNewContext(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	root := t.TempDir()
 	archiveDir := filepath.Join(root, "archive")
 	blobs, err := blob.New(filepath.Join(root, "blobs"))
@@ -325,9 +325,9 @@ func TestMailRebuildReadOnlyRecoveryAndNewContext(t *testing.T) {
 	}
 	id, _ := st.FindByEmailMessageID(ctx, "recover", "two@example.com")
 	original, _ := st.GetMessageDetail(ctx, id)
-	storetest.Exec(t, schema, `truncate mailboxes,mailbox_messages,mail_details,mail_thread_edges,mail_thread_nodes,mail_thread_aliases,mail_thread_conflicts,mail_rebuild_progress`)
-	storetest.Exec(t, schema, `update messages set thread_id=''`)
-	readOnly, err := store.OpenReadOnly(ctx, storetest.SchemaDSN(t, schema))
+	storetest.Exec(t, dsn, `truncate mailboxes,mailbox_messages,mail_details,mail_thread_edges,mail_thread_nodes,mail_thread_aliases,mail_thread_conflicts,mail_rebuild_progress`)
+	storetest.Exec(t, dsn, `update messages set thread_id=''`)
+	readOnly, err := store.OpenReadOnly(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +440,7 @@ func TestSplitAliasesSurviveReimportAndLimitedCorrections(t *testing.T) {
 
 func TestMailRebuildPreviewIncludesEarlierProposals(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	root := t.TempDir()
 	for index, name := range []string{"a", "b"} {
 		header := ""
@@ -460,7 +460,7 @@ func TestMailRebuildPreviewIncludesEarlierProposals(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	readOnly, err := store.OpenReadOnly(ctx, storetest.SchemaDSN(t, schema))
+	readOnly, err := store.OpenReadOnly(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}

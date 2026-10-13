@@ -104,3 +104,15 @@ func TestValidateRejectsUnsafeSource(t *testing.T) {
 		t.Errorf("ordinary source rejected: %v", err)
 	}
 }
+
+func TestRemoteEntryLimitBoundsSmallObjects(t *testing.T) {
+	for _, input := range []string{"[{},{},{}]", "{}\n{}\n{}"} {
+		if _, err := parseEntriesBounded([]byte(input), 2); err == nil {
+			t.Fatalf("accepted too many entries: %s", input)
+		}
+		entries, err := parseEntriesBounded([]byte(input), 3)
+		if err != nil || len(entries) != 3 {
+			t.Fatalf("at limit: %d entries, %v", len(entries), err)
+		}
+	}
+}

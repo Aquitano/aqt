@@ -327,3 +327,30 @@ func TestBackfillDispatchAndQuarantineDoNotRace(t *testing.T) {
 		t.Errorf("%d ids in the persisted quarantine, want %d", n, total/2)
 	}
 }
+
+func TestSyncPreservesCoverageAndOtherState(t *testing.T) {
+	ctx := context.Background()
+	st, blobs, archiveDir := syncFixture(t)
+	if err := st.SetCoverage(ctx, "gmail", "archive since 2011"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetSyncState(ctx, "gmail", []byte(`{"custom":"keep"}`)); err != nil {
+		t.Fatal(err)
+	}
+	g := &stubGmail{t: t, historyID: "100", ids: []string{}}
+	g.start(t)
+	if _, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := st.GetSyncState(ctx, "gmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(raw, &state); err != nil {
+		t.Fatal(err)
+	}
+	if state["coverage"] != "archive since 2011" || state["custom"] != "keep" || state["history_id"] != "100" {
+		t.Fatalf("sync overwrote state: %s", raw)
+	}
+}

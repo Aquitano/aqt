@@ -19,7 +19,8 @@ COPY packages/go/extract /src/packages/go/extract
 COPY apps/bank ./
 # CGO off keeps the binary static, which is what makes the distroless base
 # work; -trimpath keeps build paths out of it.
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bank ./cmd/bank
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/bank ./cmd/bank
 
 # The image the OCR worker runs from (the `ocr` compose profile). It carries
 # tesseract and poppler — a C++ image stack and a libc — which is exactly why

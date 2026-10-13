@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"net/url"
 	"os"
@@ -17,18 +16,22 @@ import (
 )
 
 func cmdIMAP(ctx context.Context, args []string) error {
-	flags := flag.NewFlagSet("imap", flag.ContinueOnError)
-	configPath := flags.String("config", "", "JSON account configuration")
-	once := flags.Bool("once", false, "sync once and exit")
-	check := flags.Bool("check", false, "authenticate and list folders without importing")
-	status := flags.Bool("status", false, "read local sync status without connecting")
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return nil
-		}
+	options := struct {
+		CommandArguments
+		Config string `name:"config" help:"JSON account configuration"`
+		Once   bool   `name:"once" help:"sync once and exit"`
+		Check  bool   `name:"check" help:"authenticate and list folders without importing"`
+		Status bool   `name:"status" help:"read local sync status without connecting"`
+	}{}
+	configPath := &options.Config
+	once := &options.Once
+	check := &options.Check
+	status := &options.Status
+	if err := parseCommand("imap", &options, args); err != nil {
 		return err
 	}
-	if *configPath == "" || flags.NArg() != 0 || (*once && (*check || *status)) || (*check && *status) {
+
+	if *configPath == "" || len(options.Args) != 0 || (*once && (*check || *status)) || (*check && *status) {
 		return fmt.Errorf("usage: bank imap --config <file> [--once | --check | --status]")
 	}
 	config, err := imapsync.LoadConfig(*configPath)

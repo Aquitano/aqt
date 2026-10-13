@@ -42,7 +42,7 @@ func TestContextFreeImportPreservesPOSIXFilenames(t *testing.T) {
 
 func TestMailContextRecoveryAndFilters(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	root := t.TempDir()
 	blobs, err := blob.New(filepath.Join(root, "blobs"))
 	if err != nil {
@@ -67,11 +67,11 @@ func TestMailContextRecoveryAndFilters(t *testing.T) {
 		t.Fatal(err)
 	}
 	observation.Mailbox, observation.RelativePath = "Work", "Work/message.eml"
-	storetest.Exec(t, schema, "alter table mailbox_messages rename to unavailable_memberships")
+	storetest.Exec(t, dsn, "alter table mailbox_messages rename to unavailable_memberships")
 	if _, err := ImportEmlPath(ctx, st, blobs, archiveDir, "mail", input, observation); err == nil {
 		t.Fatal("metadata failure was acknowledged")
 	}
-	storetest.Exec(t, schema, "alter table unavailable_memberships rename to mailbox_messages")
+	storetest.Exec(t, dsn, "alter table unavailable_memberships rename to mailbox_messages")
 	result, err = ImportEmlPath(ctx, st, blobs, archiveDir, "mail", input, observation)
 	if err != nil || result.Duplicates != 1 || result.MailContextVersion != 1 {
 		t.Fatalf("retry: %+v, %v", result, err)

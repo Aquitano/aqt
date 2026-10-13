@@ -99,10 +99,15 @@ bank stats --json
 
 For questions search cannot answer — counts, trends, group-bys, joins — `bank query`
 runs one SQL statement against the archive and returns `{columns, rows, truncated}`.
-It is safe by construction: the statement runs in a READ ONLY transaction (any write
-or DDL fails), under a 15s statement timeout, capped at 100 rows (`--limit` up to
-10000), and a second `;`-chained statement is rejected. It works both locally and
-over `BANK_URL`.
+The server authenticates SQL with a separate restricted PostgreSQL login. It
+requires `BANK_QUERY_DATABASE_URL`; missing configuration disables ad-hoc queries.
+The login has SELECT on public tables and sequences, with schema USAGE. It
+must have no role memberships, write, administrative,
+server-file, or program-execution privileges. A READ ONLY transaction, 15s timeout,
+100-row default cap and single-statement protocol add limits. `--limit` can raise
+the cap to 10000. This depends on the documented database role configuration;
+a READ ONLY transaction alone does not prevent a privileged login from running
+server-side programs or reading server files. Queries work locally and over `BANK_URL`.
 
 - **The row cap is silent in the text form.** 100 rows is the default and the text table gives no visible sign it was hit (the warning goes to stderr). Always `--json` and check `truncated`, or pass an explicit `--limit`; treating a capped page as the whole answer is how a count comes out wrong.
 - Start with `bank query --schema` to see the tables and columns; do not guess names.
