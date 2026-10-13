@@ -1,6 +1,6 @@
 [tools]
 bun = "1.4.2"
-go = "1.27.1"
+go = "1.27.2"
 golangci-lint = "2.14.0"
 swiftformat = "0.63.1"
 swiftlint = { version = "0.65.1", os = ["linux", "macos"] }

@@ -1,6 +1,6 @@
 module github.com/aquitano/aqt/apps/tracker
 
-go 1.27.1
+go 1.27.2
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.3

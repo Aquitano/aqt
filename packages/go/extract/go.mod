@@ -1,5 +1,5 @@
 module github.com/aquitano/aqt/packages/go/extract
 
-go 1.27.1
+go 1.27.2
 
 require golang.org/x/text v0.42.0
