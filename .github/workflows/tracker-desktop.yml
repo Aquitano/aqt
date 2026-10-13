@@ -6,6 +6,7 @@ on:
       [
         "apps/tracker/desktop/**",
         "tools/macos-app.sh",
+        "tools/swiftlint.sh",
         ".swiftformat",
         ".swiftlint.yml",
         ".swiftlint-baseline.json",
@@ -18,6 +19,7 @@ on:
       [
         "apps/tracker/desktop/**",
         "tools/macos-app.sh",
+        "tools/swiftlint.sh",
         ".swiftformat",
         ".swiftlint.yml",
         ".swiftlint-baseline.json",
