@@ -75,7 +75,7 @@ const LabeledInput = ({
 }: Omit<ComponentProps<typeof Input>, "id"> & { readonly label: string }) => {
   const id = useId();
   return (
-    <Field className={cn("w-32", className)}>
+    <Field className={cn(props.type === "date" ? "w-36" : "w-32", className)}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input id={id} className="h-8" {...props} />
     </Field>
@@ -102,7 +102,7 @@ const PresetSelect = ({
   return (
     <LabeledSelect
       label="Start from"
-      className="w-72.5"
+      className="w-60"
       value={matching?.id ?? customPlan}
       options={[
         { value: customPlan, label: "Custom plan" },

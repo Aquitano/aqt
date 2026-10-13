@@ -21,7 +21,7 @@ export const SettingsPage = () => (
       <PageHead
         title="Settings"
         note={
-          <TabsList aria-label="Settings section" className="h-8 max-w-full overflow-x-auto">
+          <TabsList aria-label="Settings section">
             {tabs.map(({ value, label }) => (
               <TabsTrigger
                 key={value}
