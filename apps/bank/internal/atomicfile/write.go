@@ -1,7 +1,8 @@
-// Package atomicfile writes complete files and preserves existing permissions.
+// Package atomicfile atomically replaces credential files with owner-only access.
 package atomicfile
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,8 +12,13 @@ import (
 )
 
 func Write(path string, reader io.Reader) error {
-	// atomic.WriteFile creates new files with mode 0600, preserves an existing
-	// mode and fsyncs contents before replacement. It does not sync the directory.
+	// Tighten the old file before atomic.WriteFile copies its mode to the new
+	// file, so fresh credentials are never installed with broader permissions.
+	if err := os.Chmod(path, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	// New files start at 0600. The library fsyncs their contents, but the
+	// containing directory still needs syncing after replacement.
 	if err := atomic.WriteFile(path, reader); err != nil {
 		return err
 	}

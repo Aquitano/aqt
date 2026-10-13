@@ -13,7 +13,7 @@ type brokenReader struct{}
 
 func (brokenReader) Read([]byte) (int, error) { return 0, errors.New("interrupted") }
 
-func TestWritePreservesCompleteFileAndPermissions(t *testing.T) {
+func TestWritePreservesCompleteFileAndRestrictsPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "token")
 	if err := Write(path, strings.NewReader("old")); err != nil {
 		t.Fatal(err)
@@ -36,8 +36,8 @@ func TestWritePreservesCompleteFileAndPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err = os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0640 {
-		t.Fatalf("existing permissions lost: %v, %v", info, err)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("replacement permissions are not owner-only: %v, %v", info, err)
 	}
 	entries, err := os.ReadDir(filepath.Dir(path))
 	if err != nil || len(entries) != 1 {
