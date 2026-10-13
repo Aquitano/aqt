@@ -32,9 +32,10 @@ To work in Xcode instead, run `xcodegen generate`, open `Notch.xcodeproj`, and c
 Notch scheme. Quit any already-running Notch instance before using Xcode Run; macOS prohibits
 multiple instances of this app.
 
-The sole Swift package dependency is the audited `mediaremote-adapter`, pinned to an exact
-revision in `project.yml`. It is embedded as a runtime bridge and deliberately not linked into
-the app binary. All other features use system frameworks.
+Swift package dependencies are pinned exactly in `project.yml`, since the generated project and
+its `Package.resolved` are not checked in: Sparkle by version, and the audited
+`mediaremote-adapter` by revision. The adapter is embedded as a runtime bridge and deliberately
+not linked into the app binary. All other features use system frameworks.
 
 ### Signing
 
