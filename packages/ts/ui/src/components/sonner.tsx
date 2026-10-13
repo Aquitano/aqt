@@ -19,11 +19,12 @@ const toasterStyle: CSSVariables = {
 };
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme } = useTheme();
+  const { theme, forcedTheme } = useTheme();
+  const activeTheme = forcedTheme ?? theme;
 
   return (
     <Sonner
-      theme={theme === "light" || theme === "dark" ? theme : "system"}
+      theme={activeTheme === "light" || activeTheme === "dark" ? activeTheme : "system"}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,
