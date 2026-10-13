@@ -11,7 +11,7 @@ docker compose up -d --wait        # ParadeDB on 127.0.0.1:5436, or: mise run at
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 ```
 
-`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. Migrations run on start.
+`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. Migrations run on start through tern. Existing databases keep their `schema_migrations` history and adopt `schema_version` after validating that history. Unknown or missing migration entries stop startup before any schema changes.
 
 ## Use
 
@@ -121,4 +121,4 @@ exclude = ["/Games/"]
 mise run attic:check                # vet, test and lint, Windows and Linux builds
 ```
 
-The integration tests use real ExifTool and Tesseract when installed; CI requires both plus Poppler, and a separate Windows job tests subprocess cleanup. HTTP and Codex providers use local test doubles, with no paid API calls. Tests run against the compose database in a throwaway schema and skip when nothing listens on the port. `ATTIC_REQUIRE_DB=1` or `CI` makes a missing database a failure.
+The integration tests use real ExifTool and Tesseract when installed; CI requires both plus Poppler, and a separate Windows job tests subprocess cleanup. HTTP and Codex providers use local test doubles, with no paid API calls. Set `ATTIC_TEST_DATABASE_URL` to a disposable ParadeDB server with permission to create databases and roles. pgtestdb clones a migrated template for each test and drops successful test databases. Failed test databases remain available for inspection. Tests skip when the variable is unset, unless `ATTIC_REQUIRE_DB=1` or `CI` requires them. `DATABASE_URL` only configures the application.

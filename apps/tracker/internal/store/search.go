@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"regexp"
 	"strings"
 	"time"
@@ -62,7 +63,7 @@ func (s *Store) Search(ctx context.Context, o SearchOpts) ([]Hit, error) {
 	}
 	hits := make([]Hit, 0, len(rows))
 	for _, row := range rows {
-		if row.Snippet == "" {
+		if row.Snippet = html.UnescapeString(row.Snippet); row.Snippet == "" {
 			row.Snippet = cutSnippet(row.SearchText, o.Query, snippetWidth)
 		}
 		row.Visits = visits[row.ID]
@@ -72,7 +73,8 @@ func (s *Store) Search(ctx context.Context, o SearchOpts) ([]Hit, error) {
 }
 
 // pg_search produces no snippet for a fuzzy match, so a window around the
-// first query term stands in.
+// first query term stands in. What it does produce is escaped as HTML; with
+// empty highlight tags, unescaping that is lossless and leaves plain text.
 const snippetWidth = 160
 
 type hitRow struct {
