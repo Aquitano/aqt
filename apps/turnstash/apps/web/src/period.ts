@@ -1,3 +1,5 @@
+import type { DayRow } from "@aqt/turnstash-api";
+
 export type PeriodId = "all" | "today" | "7d" | "30d" | "month" | "6mo";
 
 export interface DayRange {
@@ -74,7 +76,7 @@ export const heatmapDays = (now = new Date()): ReadonlyArray<ReadonlyArray<strin
   const sunday = now.getDate() + ((7 - now.getDay()) % 7);
   const start = sunday - (heatmapWeeks * 7 - 1);
   return Array.from({ length: heatmapWeeks }, (_, week) =>
-    Array.from({ length: 7 }, (_, weekday) =>
+    Array.from({ length: 7 }, (_day, weekday) =>
       ymd(new Date(now.getFullYear(), now.getMonth(), start + week * 7 + weekday)),
     ),
   );
@@ -84,3 +86,27 @@ export const heatmapRange = (now = new Date()): DayRange => ({
   from: ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - heatmapWeeks * 7)),
   to: ymd(now),
 });
+
+// The server returns only days with activity, in date order; a chart with one bar per day needs
+// the quiet days between them too, or an eleven-day gap looks like one.
+export const withQuietDays = (daily: ReadonlyArray<DayRow>): ReadonlyArray<DayRow> => {
+  const first = daily.at(0);
+  const last = daily.at(-1);
+  if (first === undefined || last === undefined) return daily;
+  const byDate = new Map(daily.map((day) => [day.date, day]));
+  const days: Array<DayRow> = [];
+  for (let date = first.date; date <= last.date; date = addDays(date, 1))
+    days.push(
+      byDate.get(date) ?? {
+        date,
+        requests: 0,
+        conversations: 0,
+        costUsd: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      },
+    );
+  return days;
+};

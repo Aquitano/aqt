@@ -8,6 +8,7 @@ import {
   heatmapWeeks,
   periodRange,
   previousRange,
+  withQuietDays,
   ymd,
 } from "../src/period.ts";
 
@@ -60,9 +61,9 @@ test("heatmapRange covers 52 weeks back from today", () => {
   expect(heatmapRange(march15)).toEqual({ from: "2025-03-16", to: "2026-03-15" });
 });
 
-describe("heatmapDays", () => {
-  const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
+const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();
 
+describe("heatmapDays", () => {
   test("every week runs Monday to Sunday and the last one holds today", () => {
     for (const now of [new Date(2026, 2, 15), new Date(2026, 2, 16), new Date(2026, 2, 19)]) {
       const weeks = heatmapDays(now);
@@ -87,6 +88,27 @@ describe("heatmapDays", () => {
       else process.env.TZ = zone;
     }
   });
+});
+
+const recordedDay = (date: string, costUsd: number) => ({
+  date,
+  requests: 1,
+  conversations: 1,
+  costUsd,
+  inputTokens: 1,
+  outputTokens: 1,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+});
+
+test("withQuietDays fills the days between recorded ones with zeros", () => {
+  const days = withQuietDays([recordedDay("2026-10-30", 2), recordedDay("2026-11-02", 5)]);
+  expect(days.map((row) => [row.date, row.costUsd])).toEqual([
+    ["2026-10-30", 2],
+    ["2026-10-31", 0],
+    ["2026-11-01", 0],
+    ["2026-11-02", 5],
+  ]);
 });
 
 describe("format", () => {

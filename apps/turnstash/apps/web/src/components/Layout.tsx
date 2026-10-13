@@ -51,7 +51,7 @@ const Header = () => {
           className="mr-2 inline-flex shrink-0 items-center gap-2 text-base font-semibold tracking-tight sm:mr-5"
         >
           <FlameIcon className="size-4.5 fill-primary text-primary" />
-          <span className="max-sm:hidden">turnstash</span>
+          <span className="max-sm:sr-only">turnstash</span>
         </Link>
         {!signedOut && (
           // The fade on phones shows the navigation continues past the edge.

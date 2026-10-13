@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { compact, usd } from "../format";
+import { withQuietDays } from "../period";
 import { chartRow } from "./ChartRow";
 import { Section } from "./Section";
 import { Segmented } from "./Segmented";
@@ -44,7 +45,7 @@ export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> })
   const [metric, setMetric] = useState<Metric>("cost");
   const money = metric === "cost";
   const series = seriesOf[metric];
-  const days = daily.map((row) => ({ ...row, day: dayLabel(row.date) }));
+  const days = withQuietDays(daily);
 
   return (
     <Section
@@ -59,7 +60,13 @@ export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> })
       >
         <BarChart data={days} margin={{ left: 0, right: 0 }}>
           <CartesianGrid vertical={false} />
-          <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} />
+          <XAxis
+            dataKey={(row: DayRow) => dayLabel(row.date)}
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            minTickGap={24}
+          />
           <YAxis
             tickLine={false}
             axisLine={false}
