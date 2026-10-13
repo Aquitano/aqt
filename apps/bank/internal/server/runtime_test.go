@@ -1,8 +1,10 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -37,23 +39,83 @@ func TestInternalErrorsDoNotExposeDetails(t *testing.T) {
 	}
 }
 
-func TestJSONUploadLimit(t *testing.T) {
-	s := &Server{}
-	request := httptest.NewRequest("POST", "/v1/import/json", strings.NewReader("unused"))
-	request.SetPathValue("kind", "json")
-	request.ContentLength = maxJSONUpload + 1
-	response := httptest.NewRecorder()
-	s.handleImport(response, request)
-	if response.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("status %d", response.Code)
+func newJSONTestServer(t *testing.T, timeout time.Duration) (*httptest.Server, string) {
+	t.Helper()
+	dir := t.TempDir()
+	token, err := NewToken(dir, "test")
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Unknown content lengths, as used by chunked requests, hit the same cap.
-	request = httptest.NewRequest("POST", "/v1/import/json", io.LimitReader(zeroReader{}, maxJSONUpload+1))
-	request.SetPathValue("kind", "json")
-	response = httptest.NewRecorder()
-	s.handleImport(response, request)
-	if response.Code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("chunked status %d", response.Code)
+	s := &Server{dataDir: dir, jsonReadTimeout: timeout}
+	srv := httptest.NewServer(s.Handler())
+	t.Cleanup(srv.Close)
+	srv.Client().Timeout = 5 * time.Second
+	return srv, token
+}
+
+func postOversizedJSON(t *testing.T, srv *httptest.Server, token string, contentLength int64) {
+	t.Helper()
+	request, err := http.NewRequest("POST", srv.URL+"/v1/import/json", io.LimitReader(zeroReader{}, maxJSONUpload+1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.ContentLength = contentLength
+	response, err := srv.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status %d, want 413", response.StatusCode)
+	}
+}
+
+func TestJSONUploadLimit(t *testing.T) {
+	srv, token := newJSONTestServer(t, 0)
+	postOversizedJSON(t, srv, token, maxJSONUpload+1)
+	// Chunked uploads with no advertised length must hit the same cap.
+	postOversizedJSON(t, srv, token, -1)
+}
+
+func TestStalledJSONUploadsReleaseImportSlots(t *testing.T) {
+	srv, token := newJSONTestServer(t, 2*time.Second)
+	var stalled []net.Conn
+	for range cap(jsonImports) {
+		conn, err := net.DialTimeout("tcp", strings.TrimPrefix(srv.URL, "http://"), time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = conn.Close() })
+		if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		_, err = fmt.Fprintf(conn, "POST /v1/import/json HTTP/1.1\r\nHost: bank\r\nAuthorization: Bearer %s\r\nContent-Length: 100\r\n\r\n{", token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stalled = append(stalled, conn)
+	}
+	deadline := time.Now().Add(time.Second)
+	for len(jsonImports) != cap(jsonImports) {
+		if time.Now().After(deadline) {
+			t.Fatal("stalled requests did not occupy both import slots")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	// This complete chunked body must acquire a slot before reaching its size
+	// limit. It needs no database and cannot pass while both slots stay held.
+	postOversizedJSON(t, srv, token, -1)
+	for _, conn := range stalled {
+		response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		if err != nil || response.StatusCode != http.StatusRequestTimeout {
+			t.Fatalf("stalled upload response: status=%d body=%q err=%v", response.StatusCode, body, err)
+		}
 	}
 }
 

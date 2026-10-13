@@ -68,6 +68,15 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		}
+		timeout := s.jsonReadTimeout
+		if timeout <= 0 {
+			timeout = time.Minute
+		}
+		controller := http.NewResponseController(w)
+		if err := controller.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSONUpload))
 		if err != nil {
 			var tooLarge *http.MaxBytesError
@@ -75,7 +84,17 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 				writeErr(w, http.StatusRequestEntityTooLarge, "JSON import exceeds 16 MiB")
 				return
 			}
+			if os.IsTimeout(err) {
+				writeErr(w, http.StatusRequestTimeout, "JSON upload body timed out")
+				return
+			}
 			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		// Keep a failed body's deadline in place for net/http's cleanup reads.
+		// Successful uploads may spend longer importing after the body is read.
+		if err := controller.SetReadDeadline(time.Time{}); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 		res, err := s.importJSON(r.Context(), source, body)

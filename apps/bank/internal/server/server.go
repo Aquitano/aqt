@@ -44,12 +44,13 @@ type reader interface {
 }
 
 type Server struct {
-	db         *store.Store // importers need the concrete store
-	read       reader
-	blobs      *blob.Store
-	archiveDir string
-	dataDir    string
-	extraction extraction
+	db              *store.Store // importers need the concrete store
+	read            reader
+	blobs           *blob.Store
+	archiveDir      string
+	dataDir         string
+	jsonReadTimeout time.Duration
+	extraction      extraction
 }
 
 func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server {
