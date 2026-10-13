@@ -1,4 +1,5 @@
 import Foundation
+import KeyboardShortcuts
 import NotchCore
 import Observation
 
@@ -40,11 +41,6 @@ final class Settings {
         didSet { persist() }
     }
 
-    /// True while the Settings recorder is capturing a chord. Not persisted;
-    /// the AppDelegate suspends the live registration so the current chord can
-    /// be re-typed without toggling the notch.
-    var isRecordingHotkey = false
-
     @ObservationIgnored private let store: PreferencesStore
 
     init(store: PreferencesStore) {
@@ -62,6 +58,7 @@ final class Settings {
         widgets = loaded.widgets
         agents = loaded.agents
         Haptics.isEnabled = general.hapticFeedback
+        importLegacyHotkey()
     }
 
     var snapshot: Preferences {
@@ -79,6 +76,16 @@ final class Settings {
 
     private func persist() {
         store.save(snapshot)
+    }
+
+    /// Runs once: saving the document drops the chord from it.
+    private func importLegacyHotkey() {
+        guard let legacy = store.legacyHotkey() else { return }
+        KeyboardShortcuts.setShortcut(
+            KeyboardShortcuts.Shortcut(carbonKeyCode: legacy.keyCode, carbonModifiers: legacy.modifiers),
+            for: .toggleNotch
+        )
+        persist()
     }
 
     private func generalChanged(from old: Preferences.General) {

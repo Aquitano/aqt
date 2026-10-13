@@ -40,6 +40,18 @@ struct PreferencesTests {
         #expect(imported.notch.tabLayout.contains(.home))
     }
 
+    @Test func legacyHotkeyIsReadUntilTheDocumentIsSavedAgain() throws {
+        let older = Data("""
+        {"version": 1, "general": {"hotkeyEnabled": true, "hotkeyKeyCode": 45, "hotkeyModifiers": 6144}}
+        """.utf8)
+        let hotkey = try #require(LegacyHotkey(document: older))
+        #expect(hotkey.keyCode == 45)
+        #expect(hotkey.modifiers == 6144)
+
+        let resaved = try JSONEncoder().encode(Preferences.decode(older))
+        #expect(LegacyHotkey(document: resaved) == nil)
+    }
+
     @Test func roundTripThroughEncoder() throws {
         var prefs = Preferences()
         prefs.display.placement = .all

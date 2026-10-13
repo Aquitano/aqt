@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 import NotchCore
 import Sparkle
 import SwiftUI
@@ -10,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: NotchWindowController!
     private var statusItem: NSStatusItem!
     private var onboardingWindow: NSWindow?
-    private let hotKey = HotKey()
     private var hotkeyObserver: Task<Void, Never>?
     private var trayMenuObserver: Task<Void, Never>?
     private var clearTrayMenuItem: NSMenuItem?
@@ -56,24 +56,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Hotkey
 
     private func setupHotkey() {
-        hotKey.onPress = { [weak self] in self?.toggleNotch() }
-        // Re-register whenever the chord changes, and suspend while the Settings
-        // recorder is capturing so the current chord can be re-typed without
-        // toggling the notch mid-recording.
         let settings = env.settings
-        hotkeyObserver = watch({
-            (
-                settings.general.hotkeyEnabled,
-                settings.general.hotkeyKeyCode,
-                settings.general.hotkeyModifiers,
-                settings.isRecordingHotkey
-            )
-        }) { [weak self] enabled, keyCode, modifiers, recording in
-            guard let self else { return }
-            if enabled, !recording {
-                self.hotKey.register(keyCode: UInt32(keyCode), modifiers: UInt32(modifiers))
-            } else {
-                self.hotKey.unregister()
+        hotkeyObserver = watch({ settings.general.hotkeyEnabled }) { [weak self] enabled in
+            KeyboardShortcuts.removeHandler(for: .toggleNotch)
+            if enabled {
+                KeyboardShortcuts.onKeyDown(for: .toggleNotch) { self?.toggleNotch() }
             }
         }
     }
@@ -202,4 +189,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension Notification.Name {
     /// Present the welcome tour (posted by Settings; AppDelegate owns the window).
     static let showOnboarding = Notification.Name("app.notch.showOnboarding")
+}
+
+extension KeyboardShortcuts.Name {
+    static let toggleNotch = Self("toggleNotch", initial: .init(.n, modifiers: [.control, .option]))
 }

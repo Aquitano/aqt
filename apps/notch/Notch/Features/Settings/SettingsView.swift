@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import KeyboardShortcuts
 import NotchCore
 import SwiftUI
 
@@ -297,7 +298,7 @@ struct SettingsView: View {
             Toggle("Haptic feedback", isOn: $settings.general.hapticFeedback)
             Toggle("Toggle notch with a keyboard shortcut", isOn: $settings.general.hotkeyEnabled)
             if settings.general.hotkeyEnabled {
-                HotkeyRecorderView()
+                KeyboardShortcuts.Recorder("Shortcut", name: .toggleNotch)
             }
             Button("Show Welcome Tour…") {
                 NotificationCenter.default.post(name: .showOnboarding, object: nil)

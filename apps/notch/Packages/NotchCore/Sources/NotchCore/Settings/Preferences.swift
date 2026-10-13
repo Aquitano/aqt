@@ -46,9 +46,6 @@ package struct Preferences: Codable, Equatable {
         package var hapticFeedback = true
         package var hasCompletedOnboarding = false
         package var hotkeyEnabled = false
-        /// Carbon virtual key code + modifier mask for the toggle-notch hotkey.
-        package var hotkeyKeyCode = 45 // kVK_ANSI_N
-        package var hotkeyModifiers = 6144 // controlKey | optionKey
     }
 
     package struct Notch: Codable, Equatable {
@@ -229,8 +226,6 @@ extension Preferences {
         bool("hapticFeedback", &p.general.hapticFeedback)
         bool("hasCompletedOnboarding", &p.general.hasCompletedOnboarding)
         bool("hotkeyEnabled", &p.general.hotkeyEnabled)
-        int("hotkeyKeyCode", &p.general.hotkeyKeyCode)
-        int("hotkeyModifiers", &p.general.hotkeyModifiers)
 
         if let stored = defaults.stringArray(forKey: "widgetLayout") {
             p.notch.widgetLayout = stored.compactMap(WidgetKind.init(rawValue:))
@@ -322,6 +317,23 @@ extension Preferences {
     }
 }
 
+/// The toggle-notch chord, a Carbon key code and modifier mask, that preference
+/// documents from before KeyboardShortcuts store under `general`.
+package struct LegacyHotkey {
+    package let keyCode: Int
+    package let modifiers: Int
+
+    package init?(document data: Data) {
+        guard let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let general = document["general"] as? [String: Any],
+              let keyCode = general["hotkeyKeyCode"] as? Int,
+              let modifiers = general["hotkeyModifiers"] as? Int
+        else { return nil }
+        self.keyCode = keyCode
+        self.modifiers = modifiers
+    }
+}
+
 /// Reads and writes the preferences document. Kept apart from `Settings` so the
 /// document format is testable without the observable object.
 package struct PreferencesStore {
@@ -370,5 +382,12 @@ package struct PreferencesStore {
 
     package func save(_ preferences: Preferences) {
         persistence.save(preferences, to: Self.fileName)
+    }
+
+    /// Saving any document drops the chord, since `General` no longer has it.
+    package func legacyHotkey() -> LegacyHotkey? {
+        // load() has already reported a file that cannot be read.
+        guard let data = try? persistence.loadData(from: Self.fileName) else { return nil }
+        return LegacyHotkey(document: data)
     }
 }

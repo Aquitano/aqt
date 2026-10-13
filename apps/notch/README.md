@@ -33,9 +33,9 @@ Notch scheme. Quit any already-running Notch instance before using Xcode Run; ma
 multiple instances of this app.
 
 Swift package dependencies are pinned exactly in `project.yml`, since the generated project and
-its `Package.resolved` are not checked in: Sparkle by version, and the audited
-`mediaremote-adapter` by revision. The adapter is embedded as a runtime bridge and deliberately
-not linked into the app binary. All other features use system frameworks.
+its `Package.resolved` are not checked in: Sparkle and KeyboardShortcuts by version, and the
+audited `mediaremote-adapter` by revision. The adapter is embedded as a runtime bridge and
+deliberately not linked into the app binary. All other features use system frameworks.
 
 ### Signing
 
@@ -124,8 +124,8 @@ Features/       One folder per feature: model, manager, services and views toget
   Widgets/        Battery, Calendar, Weather, Bluetooth, Focus, Shortcuts, Note, Clock
   Settings/       Preferences document, Settings (live), SettingsView
   Onboarding/
-Platform/       Shared adapters and utilities: Persistence, Diagnostics, ImageCache, HotKey,
-                LoginItem, Haptics, Keychain, Logging, watch()
+Platform/       Shared adapters and utilities: Persistence, Diagnostics, ImageCache, LoginItem,
+                Haptics, Keychain, Logging, watch()
 ```
 
 **Iconography:** custom controls and status glyphs use one crisp 7×7 pixel system,
