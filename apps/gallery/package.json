@@ -15,15 +15,9 @@
     "typecheck": "bun run --filter '@aqt/gallery-*' typecheck",
     "test": "bun test apps/server/src packages/gallery-layout/src apps/web/src"
   },
-  "dependencies": {
-    "@aqt/gallery-env": "workspace:*",
-    "dotenv": "catalog:",
-    "zod": "catalog:"
-  },
   "devDependencies": {
     "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
-    "typescript": "catalog:",
-    "wrangler": "^4.147.0"
+    "typescript": "catalog:"
   }
 }
