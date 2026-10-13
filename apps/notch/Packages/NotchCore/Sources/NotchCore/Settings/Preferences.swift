@@ -42,7 +42,6 @@ package struct Preferences: Codable, Equatable {
 
     package struct General: Codable, Equatable {
         package init() {}
-        package var launchAtLogin = false
         package var hapticFeedback = true
         package var hasCompletedOnboarding = false
         package var hotkeyEnabled = false
@@ -325,9 +324,21 @@ package struct LegacyHotkey {
 
     package init?(document data: Data) {
         guard let document = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let general = document["general"] as? [String: Any],
-              let keyCode = general["hotkeyKeyCode"] as? Int,
-              let modifiers = general["hotkeyModifiers"] as? Int
+              let general = document["general"] as? [String: Any]
+        else { return nil }
+        self.init(values: general)
+    }
+
+    package init?(defaults: UserDefaults) {
+        self.init(values: defaults.dictionaryRepresentation())
+    }
+
+    private init?(values: [String: Any]) {
+        guard values["hotkeyKeyCode"] != nil || values["hotkeyModifiers"] != nil else { return nil }
+        let keyCode = values["hotkeyKeyCode"] as? Int ?? 45
+        let modifiers = values["hotkeyModifiers"] as? Int ?? 6144
+        guard (0 ... Int(UInt16.max)).contains(keyCode),
+              (0 ... Int(UInt32.max)).contains(modifiers)
         else { return nil }
         self.keyCode = keyCode
         self.modifiers = modifiers
@@ -384,10 +395,17 @@ package struct PreferencesStore {
         persistence.save(preferences, to: Self.fileName)
     }
 
-    /// Saving any document drops the chord, since `General` no longer has it.
+    /// Read before load() can create the first document from older defaults.
+    /// A document without a chord has already migrated; old defaults then stay ignored.
     package func legacyHotkey() -> LegacyHotkey? {
-        // load() has already reported a file that cannot be read.
-        guard let data = try? persistence.loadData(from: Self.fileName) else { return nil }
-        return LegacyHotkey(document: data)
+        do {
+            if let data = try persistence.loadData(from: Self.fileName) {
+                return LegacyHotkey(document: data)
+            }
+            return legacyDefaults.flatMap { LegacyHotkey(defaults: $0) }
+        } catch {
+            // load() reports the unreadable preferences file.
+            return nil
+        }
     }
 }

@@ -52,6 +52,30 @@ struct PreferencesTests {
         #expect(LegacyHotkey(document: resaved) == nil)
     }
 
+    @Test func legacyDefaultsHotkeySurvivesTheFirstDocumentWrite() throws {
+        let suite = "PreferencesTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(40, forKey: "hotkeyKeyCode")
+        defaults.set(768, forKey: "hotkeyModifiers")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = PreferencesStore(persistence: Persistence(rootDirectory: root), legacyDefaults: defaults)
+
+        let hotkey = try #require(store.legacyHotkey())
+        _ = store.load()
+        #expect(hotkey.keyCode == 40)
+        #expect(hotkey.modifiers == 768)
+        #expect(store.legacyHotkey() == nil, "the new document must not reimport stale UserDefaults")
+    }
+
+    @Test func malformedLegacyHotkeyCannotOverflowCarbonValues() {
+        for fields in ["\"hotkeyKeyCode\": -1", "\"hotkeyModifiers\": -1", "\"hotkeyKeyCode\": 999999"] {
+            let data = Data("{\"general\": {\(fields)}}".utf8)
+            #expect(LegacyHotkey(document: data) == nil)
+        }
+    }
+
     @Test func roundTripThroughEncoder() throws {
         var prefs = Preferences()
         prefs.display.placement = .all

@@ -46,6 +46,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         true
     }
 
+    func applicationDidBecomeActive(_: Notification) {
+        env.settings.refreshLaunchAtLogin()
+    }
+
     func applicationWillTerminate(_: Notification) {
         windowController?.stop()
         env.agents.stop()

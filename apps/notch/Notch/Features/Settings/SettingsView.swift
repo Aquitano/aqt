@@ -5,9 +5,7 @@ import NotchCore
 import SwiftUI
 
 /// Content of the standard Settings window: System Settings-style toolbar tabs,
-/// each a grouped Form binding directly to the shared `Settings` object; the
-/// login-item toggle additionally syncs the real `SMAppService` registration so
-/// the preference and the OS agree.
+/// each a grouped Form binding directly to the shared `Settings` object.
 struct SettingsView: View {
     @Bindable var settings: Settings
     @Environment(AgentManager.self) private var agents
@@ -292,9 +290,10 @@ struct SettingsView: View {
 
     private var generalSection: some View {
         Section("General") {
-            // The SMAppService registration is driven from the Settings model, so
-            // this toggle and the in-notch one stay in sync.
-            Toggle("Launch at Login", isOn: $settings.general.launchAtLogin)
+            Toggle("Launch at Login", isOn: Binding(
+                get: { settings.launchesAtLogin },
+                set: { settings.setLaunchAtLogin($0) }
+            ))
             Toggle("Haptic feedback", isOn: $settings.general.hapticFeedback)
             Toggle("Toggle notch with a keyboard shortcut", isOn: $settings.general.hotkeyEnabled)
             if settings.general.hotkeyEnabled {
