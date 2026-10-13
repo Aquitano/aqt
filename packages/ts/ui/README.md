@@ -14,7 +14,7 @@ Import the stylesheet once from the app's own CSS, then the components by path:
 import { Button } from "@aqt/ui/components/button";
 ```
 
-Wrap the app in `ThemeProvider` from `@aqt/ui/components/theme-provider`. It follows the system theme by default and stores the choice; `ThemeToggle` switches between light, dark and system. Pass `defaultTheme="dark"` to start an app dark.
+Wrap the app in `ThemeProvider` from `@aqt/ui/components/theme-provider`. It follows the system theme by default and stores the choice; `ThemeToggle` switches between light, dark and system. Pass `defaultTheme="dark"` to start an app dark, or `forcedTheme="dark"` to keep it dark.
 
 ## Accent colour
 
@@ -37,7 +37,7 @@ For a chart shadcn lacks, such as a Sankey, copy the component's source from Kum
 
 ## Add or update components
 
-Run the shadcn CLI from this directory: `bunx --bun shadcn@latest add <name>`. To compare an installed component with upstream, use `add <name> --diff src/components/<name>.tsx`. Upstream code is formatted with `bunx --no-install vp fmt` and has to pass the strict lint rules for `packages/`. Three kinds of local change sit on top of upstream and must survive an update: the badge's `success` and `warning` variants and the alert's `warning` variant, which use the `--success` and `--warning` tokens; the fixes the strict lint required in chart, sidebar, sonner and a few others; and fixes for upstream bugs. `AspectRatio` and `ToggleGroup` merge a caller's `style` instead of losing `--ratio` and `--gap`, `CalendarDayButton` attaches the ref it focuses, `Tabs` and `ToggleGroup` pass `orientation` on to Base UI instead of only setting `data-orientation`, and an `InputGroupAddon` click focuses a textarea as well as an input.
+Run the shadcn CLI from this directory: `bunx --bun shadcn@latest add <name>`. To compare an installed component with upstream, use `add <name> --diff src/components/<name>.tsx`. Upstream code is formatted with `bunx --no-install vp fmt` and has to pass the strict lint rules for `packages/`. Three kinds of local change sit on top of upstream and must survive an update: the badge's `success` and `warning` variants and the alert's `warning` variant, which use the `--success` and `--warning` tokens; the fixes the strict lint required in chart, sidebar, sonner and a few others; and fixes for upstream bugs. `AspectRatio` and `ToggleGroup` merge a caller's `style` instead of losing `--ratio` and `--gap`, `CalendarDayButton` attaches the ref it focuses, `Tabs` and `ToggleGroup` pass `orientation` on to Base UI instead of only setting `data-orientation`, an `InputGroupAddon` click focuses a textarea as well as an input, and the `Toaster` follows a forced theme.
 
 ## Preview
 
