@@ -102,7 +102,9 @@ func (p *Processor) RunOnce(ctx context.Context) (busy bool, err error) {
 	rec, fail := p.derive(ctx, d)
 	elapsed := time.Since(start)
 	p.metrics.ExtractDuration.WithLabelValues(d.Extractor).Observe(elapsed.Seconds())
-	writeCtx := context.WithoutCancel(ctx)
+	// Finalize a cancelled job without leaving shutdown blocked on the database.
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
 	log := p.log.With("extractor", d.Extractor, "version", d.ExtractorVersion,
 		"raw_hash", hex.EncodeToString(d.RawHash), "attempts", d.Attempts, "ms", elapsed.Milliseconds())
 	if fail != nil {
