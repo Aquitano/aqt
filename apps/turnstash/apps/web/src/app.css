@@ -1,21 +1,22 @@
 @import "@aqt/ui/styles/globals.css";
 
-/* One accent per theme. Light mode needs the deeper flame for white button text to reach 4.5:1;
-   dark mode takes the brighter flame with dark text, which also keeps the heatmap steps apart. */
+/* A deeper flame than #f6821f, so white button text keeps 4.5:1 contrast. */
 :root {
   --brand: #c2510a;
   --brand-foreground: oklch(0.985 0 0);
+  --heat: var(--primary);
   --heat-0: var(--muted);
-  --heat-1: color-mix(in oklab, var(--primary) 34%, var(--background));
-  --heat-2: color-mix(in oklab, var(--primary) 50%, var(--background));
-  --heat-3: color-mix(in oklab, var(--primary) 67%, var(--background));
-  --heat-4: color-mix(in oklab, var(--primary) 84%, var(--background));
-  --heat-5: var(--primary);
+  --heat-1: color-mix(in oklab, var(--heat) 34%, var(--background));
+  --heat-2: color-mix(in oklab, var(--heat) 50%, var(--background));
+  --heat-3: color-mix(in oklab, var(--heat) 67%, var(--background));
+  --heat-4: color-mix(in oklab, var(--heat) 84%, var(--background));
+  --heat-5: var(--heat);
 }
 
+/* On a dark background the deep flame leaves the low heatmap steps near black, so the ramp tops out
+   at the bright one. */
 .dark {
-  --brand: #f6821f;
-  --brand-foreground: oklch(0.205 0 0);
+  --heat: #f6821f;
 }
 
 @theme inline {
