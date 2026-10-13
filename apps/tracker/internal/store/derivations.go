@@ -210,7 +210,7 @@ func (s *Store) Reprocess(ctx context.Context, o ReprocessOpts) (int64, error) {
 			}
 		case o.Failed:
 			r, err := tx.NewUpdate().Model((*Derivation)(nil)).
-				Set("status = ?", StatusPending).Set("attempts = 0").Set("last_error = null").
+				Set("status = ?", StatusPending).Set("attempts = 0").Set("retry_at = null").Set("last_error = null").
 				Set("error_class = null").Set("updated_at = now()").
 				Where("status = ? and extractor in (?)", StatusFailed, bun.List(names)).Exec(ctx)
 			if err != nil {

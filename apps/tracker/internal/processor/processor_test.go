@@ -262,10 +262,14 @@ func TestFailuresAreClassifiedAndRetriedByPolicy(t *testing.T) {
 		`select count(*) from derivations where status = 'failed' and error_class = 'panic' and attempts = $1`, store.MaxAttempts); n != 1 {
 		t.Errorf("panic should be retried up to %d attempts and then fail (%d rows)", store.MaxAttempts, n)
 	}
+	storetest.QueryInt(t, dsn, `with delayed as (update derivations set retry_at = now() + interval '1 hour' returning 1) select count(*) from delayed`)
 	queued, err := st.Reprocess(context.Background(), store.ReprocessOpts{Failed: true,
 		Targets: []store.ExtractorVersion{{Name: fake.Name, Version: fakeVersion}}})
 	if err != nil || queued != 2 {
 		t.Errorf("reprocess --failed queued %d (%v), want 2", queued, err)
+	}
+	if n := drain(t, p); n != 2 {
+		t.Errorf("reprocess --failed made %d jobs due, want 2", n)
 	}
 }
 
