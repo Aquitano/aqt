@@ -7,7 +7,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"sort"
+	"io/fs"
 	"strconv"
 	"strings"
 	"time"
@@ -18,15 +18,18 @@ import (
 )
 
 //go:embed migrations/*.sql
-var migrations embed.FS
+var migrationFiles embed.FS
+
+// Migrations is the schema history Open applies, one numbered file per step.
+var Migrations, _ = fs.Sub(migrationFiles, "migrations")
 
 // migrationLock is an arbitrary but fixed advisory-lock key ("bankmig"). Every
-// process takes it before touching schema_migrations, so two commands starting
-// against an unmigrated database cannot both run the same DDL.
+// process takes it before converting legacy migration history or applying DDL.
 const migrationLock int64 = 0x62616e6b6d6967
 
 type Store struct {
-	pool *pgxpool.Pool
+	pool      *pgxpool.Pool
+	queryPool *pgxpool.Pool
 }
 
 type Message struct {
@@ -166,7 +169,14 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Close() { s.pool.Close() }
+func (s *Store) Close() {
+	if s.queryPool != nil {
+		s.queryPool.Close()
+	}
+	s.pool.Close()
+}
+
+func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 func OpenReadOnly(ctx context.Context, databaseURL string) (*Store, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
@@ -183,68 +193,6 @@ func OpenReadOnly(ctx context.Context, databaseURL string) (*Store, error) {
 		return nil, err
 	}
 	return &Store{pool: pool}, nil
-}
-
-// migrate applies pending migrations under a session-level advisory lock, so
-// concurrent startups serialize instead of racing check-then-apply. A failure
-// releases the lock with the schema untouched: the migration runs in a
-// transaction and is only recorded when its DDL committed.
-func (s *Store) migrate(ctx context.Context) error {
-	conn, err := s.pool.Acquire(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Release()
-	if _, err := conn.Exec(ctx, `select pg_advisory_lock($1)`, migrationLock); err != nil {
-		return err
-	}
-	defer func() {
-		_, _ = conn.Exec(context.WithoutCancel(ctx), `select pg_advisory_unlock($1)`, migrationLock)
-	}()
-
-	if _, err := conn.Exec(ctx,
-		`create table if not exists schema_migrations (filename text primary key, applied_at timestamptz not null default now())`); err != nil {
-		return err
-	}
-	entries, err := migrations.ReadDir("migrations")
-	if err != nil {
-		return err
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		var applied bool
-		if err := conn.QueryRow(ctx,
-			`select exists (select 1 from schema_migrations where filename = $1)`, name).Scan(&applied); err != nil {
-			return err
-		}
-		if applied {
-			continue
-		}
-		sql, err := migrations.ReadFile("migrations/" + name)
-		if err != nil {
-			return err
-		}
-		tx, err := conn.Begin(ctx)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, string(sql)); err != nil {
-			tx.Rollback(ctx)
-			return fmt.Errorf("%s: %w", name, err)
-		}
-		if _, err := tx.Exec(ctx, `insert into schema_migrations (filename) values ($1)`, name); err != nil {
-			tx.Rollback(ctx)
-			return fmt.Errorf("%s: %w", name, err)
-		}
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("%s: %w", name, err)
-		}
-	}
-	return nil
 }
 
 // InsertMessages inserts a batch atomically and returns one id per input, in
@@ -570,7 +518,7 @@ func (s *Store) GetSyncState(ctx context.Context, source string) ([]byte, error)
 func (s *Store) SetSyncState(ctx context.Context, source string, state []byte) error {
 	_, err := s.pool.Exec(ctx, `
 		insert into sync_state (source, state) values ($1, $2)
-		on conflict (source) do update set state = excluded.state, updated_at = now()`,
+		on conflict (source) do update set state = sync_state.state || excluded.state, updated_at = now()`,
 		source, state)
 	return err
 }

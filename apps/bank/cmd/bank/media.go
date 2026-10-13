@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"mime"
@@ -99,28 +98,43 @@ func cmdLibrary(ctx context.Context, args []string) error {
 		fmt.Println(libraryUsage)
 		return nil
 	}
-	fs := flag.NewFlagSet("library "+action, flag.ContinueOnError)
+	options := struct {
+		CommandArguments
+		Match             string `name:"match" default:"any"`
+		Source            string `name:"source"`
+		Account           string `name:"account"`
+		Kind              string `name:"kind"`
+		ItemID            string `name:"item-id"`
+		Since             string `name:"since"`
+		Until             string `name:"until"`
+		Limit             int    `name:"limit" default:"50"`
+		Offset            int    `name:"offset"`
+		JSON              bool   `name:"json"`
+		MaxSensitivity    string `name:"max-sensitivity" default:"normal"`
+		AllowConfidential bool   `name:"allow-confidential"`
+		NoExtract         bool   `name:"no-extract"`
+	}{}
 	o := library.ListOptions{}
-	fs.StringVar(&o.Match, "match", "any", "")
-	fs.StringVar(&o.Source, "source", "", "")
-	fs.StringVar(&o.Account, "account", "", "")
-	fs.StringVar(&o.Kind, "kind", "", "")
-	fs.StringVar(&o.ItemID, "item-id", "", "")
-	fs.StringVar(&o.Since, "since", "", "")
-	fs.StringVar(&o.Until, "until", "", "")
-	fs.IntVar(&o.Limit, "limit", 50, "")
-	fs.IntVar(&o.Offset, "offset", 0, "")
-	fs.Bool("json", false, "")
-	maxSensitivity := fs.String("max-sensitivity", "normal", "")
-	allowConfidential := fs.Bool("allow-confidential", false, "")
-	noExtract := fs.Bool("no-extract", false, "")
-	if err := parseFlagsAnywhere(fs, args[1:]); err != nil {
+	maxSensitivity := &options.MaxSensitivity
+	allowConfidential := &options.AllowConfidential
+	noExtract := &options.NoExtract
+	if err := parseCommand("library "+action, &options, args[1:]); err != nil {
 		return err
 	}
+	o.Match = options.Match
+	o.Source = options.Source
+	o.Account = options.Account
+	o.Kind = options.Kind
+	o.ItemID = options.ItemID
+	o.Since = options.Since
+	o.Until = options.Until
+	o.Limit = options.Limit
+	o.Offset = options.Offset
+
 	if err := o.Validate(); err != nil {
 		return err
 	}
-	args = fs.Args()
+	args = options.Args
 	if action == "upload" {
 		return uploadLibrary(ctx, args, o, *noExtract)
 	}

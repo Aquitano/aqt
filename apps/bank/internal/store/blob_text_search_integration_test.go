@@ -15,8 +15,8 @@ import (
 
 func TestBlobTextSearchMigrationPreservesOversizedDocuments(t *testing.T) {
 	ctx := context.Background()
-	schema := storetest.NewSchema(t)
-	conn, err := pgx.Connect(ctx, storetest.SchemaDSN(t, schema))
+	dsn := storetest.NewEmpty(t)
+	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestBlobTextSearchMigrationPreservesOversizedDocuments(t *testing.T) {
 	if _, err = conn.Exec(ctx, `insert into blob_text(sha256,text,status) select $1,'phrase head ' || string_agg('term'||g,' ') || ' suffixneedle','ok' from generate_series(1,300000)g`, sum); err != nil {
 		t.Fatal(err)
 	}
-	st := storetest.Open(t, schema)
+	st := storetest.Open(t, dsn)
 	var oversized bool
 	if err = conn.QueryRow(ctx, `select search_vector is null from blob_text where sha256=$1`, sum).Scan(&oversized); err != nil || !oversized {
 		t.Fatalf("oversized vector not guarded: %t %v", oversized, err)
@@ -88,7 +88,7 @@ func TestBlobTextSearchMigrationPreservesOversizedDocuments(t *testing.T) {
 	if _, err = st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: []library.File{outsideFile}}); err != nil {
 		t.Fatal(err)
 	}
-	storetest.Exec(t, schema, `alter function blob_text_query_vector(text,text) rename to original_blob_text_query_vector;
+	storetest.Exec(t, dsn, `alter function blob_text_query_vector(text,text) rename to original_blob_text_query_vector;
  create function blob_text_query_vector(document text,query text) returns tsvector language plpgsql stable as $$
  begin
  if document like 'outside scope %' then raise exception 'parsed an excluded document'; end if;

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"time"
 
@@ -11,13 +10,19 @@ import (
 )
 
 func cmdReports(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("reports", flag.ContinueOnError)
-	before := fs.Int64("before", 0, "")
-	limit := fs.Int("limit", 50, "")
-	asJSON := fs.Bool("json", false, "")
-	if err := fs.Parse(args); err != nil {
+	options := struct {
+		CommandArguments
+		Before int64 `name:"before"`
+		Limit  int   `name:"limit" default:"50"`
+		JSON   bool  `name:"json"`
+	}{}
+	before := &options.Before
+	limit := &options.Limit
+	asJSON := &options.JSON
+	if err := parseCommand("reports", &options, args); err != nil {
 		return err
 	}
+
 	if *before < 0 || *limit < 1 || *limit > 100 {
 		return fmt.Errorf("before must be nonnegative and limit must be 1-100")
 	}
@@ -43,20 +48,32 @@ func cmdReports(ctx context.Context, args []string) error {
 }
 
 func cmdAttachmentFind(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("attachment find", flag.ContinueOnError)
+	options := struct {
+		CommandArguments
+		Filename string `name:"filename"`
+		Text     string `name:"text"`
+		Type     string `name:"type"`
+		Person   string `name:"person"`
+		Since    string `name:"since"`
+		Until    string `name:"until"`
+		Offset   int    `name:"offset"`
+		Limit    int    `name:"limit" default:"50"`
+		JSON     bool   `name:"json"`
+	}{}
 	var o store.AttachmentFilter
-	fs.StringVar(&o.Filename, "filename", "", "")
-	fs.StringVar(&o.Text, "text", "", "")
-	fs.StringVar(&o.FileType, "type", "", "")
-	fs.StringVar(&o.Person, "person", "", "")
-	since := fs.String("since", "", "")
-	until := fs.String("until", "", "")
-	fs.IntVar(&o.Offset, "offset", 0, "")
-	fs.IntVar(&o.Limit, "limit", 50, "")
-	asJSON := fs.Bool("json", false, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	since := &options.Since
+	until := &options.Until
+	asJSON := &options.JSON
+	if err := parseCommand("attachment find", &options, args); err != nil {
 		return err
 	}
+	o.Filename = options.Filename
+	o.Text = options.Text
+	o.FileType = options.Type
+	o.Person = options.Person
+	o.Offset = options.Offset
+	o.Limit = options.Limit
+
 	if o.Offset < 0 || o.Offset > store.MaxSearchOffset || o.Limit < 1 || o.Limit > 100 {
 		return fmt.Errorf("invalid pagination")
 	}
@@ -92,16 +109,21 @@ func cmdAttachmentFind(ctx context.Context, args []string) error {
 }
 
 func cmdAttachmentMessages(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("attachment messages", flag.ContinueOnError)
-	offset := fs.Int("offset", 0, "")
-	limit := fs.Int("limit", 50, "")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Offset int `name:"offset"`
+		Limit  int `name:"limit" default:"50"`
+	}{}
+	offset := &options.Offset
+	limit := &options.Limit
+	if err := parseCommand("attachment messages", &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+
+	if len(options.Args) != 1 {
 		return fmt.Errorf("usage: bank attachment messages <sha256> [--offset N] [--limit N]")
 	}
-	if err := blob.ValidDigest(fs.Arg(0)); err != nil {
+	if err := blob.ValidDigest(commandArg(options.Args, 0)); err != nil {
 		return err
 	}
 	if *offset < 0 || *offset > store.MaxSearchOffset || *limit < 1 || *limit > 100 {
@@ -112,7 +134,7 @@ func cmdAttachmentMessages(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeBackend()
-	messages, err := b.AttachmentMessages(ctx, fs.Arg(0), *offset, *limit)
+	messages, err := b.AttachmentMessages(ctx, commandArg(options.Args, 0), *offset, *limit)
 	if err != nil {
 		return err
 	}

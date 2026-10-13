@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -101,19 +102,38 @@ func (s *Server) Handler() http.Handler {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		if s.db == nil {
+			writeErr(w, http.StatusServiceUnavailable, "database unavailable")
+			return
+		}
+		if err := s.db.Ping(ctx); err != nil {
+			writeErr(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
 	mux.Handle("/v1/", s.requireToken(v1))
 	return mux
 }
 
-func (s *Server) ListenAndServe(addr string) error {
+func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
+	workCtx, cancelWork := context.WithCancel(context.Background())
+	s.extraction.ctx = workCtx
+	defer func() {
+		s.extraction.mu.Lock()
+		s.extraction.stopping = true
+		cancelWork()
+		s.extraction.mu.Unlock()
+		s.extraction.done.Wait()
+	}()
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 15 * time.Second,
 	}
-	return srv.ListenAndServe()
+	return Run(ctx, srv)
 }
 
 func (s *Server) requireToken(next http.Handler) http.Handler {
@@ -372,6 +392,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
+	if status >= 500 {
+		slog.Error("HTTP request failed", "status", status, "error", msg)
+		msg = http.StatusText(status)
+	}
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 

@@ -61,7 +61,7 @@ func TestMalformedIdentifiersDoNotBreakInsertion(t *testing.T) {
 
 func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	const n = 1005 // crosses the store's protocol-batch boundary
 	at := time.Date(2024, 5, 13, 21, 8, 0, 0, time.UTC)
 	messages := make([]store.Message, 0, n+1)
@@ -81,7 +81,7 @@ func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
 		t.Fatalf("ids have wrong shape or duplicate result: first=%d last-new=%d duplicate=%d len=%d",
 			ids[0], ids[n-1], ids[n], len(ids))
 	}
-	if rows := storetest.QueryInt(t, schema, `select count(*) from messages where source = 'batch'`); rows != n {
+	if rows := storetest.QueryInt(t, dsn, `select count(*) from messages where source = 'batch'`); rows != n {
 		t.Fatalf("rows = %d, want %d", rows, n)
 	}
 
@@ -275,7 +275,7 @@ func TestStatsReportFreshness(t *testing.T) {
 
 func TestCoverageNotesAndStaleness(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	if _, err := st.InsertMessage(ctx, msg("whatsapp", "w1", store.Message{Body: "hi"})); err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestCoverageNotesAndStaleness(t *testing.T) {
 	}
 	// ingested_at defaults to now, so staleness needs a row that was written
 	// long enough ago to count.
-	storetest.Exec(t, schema,
+	storetest.Exec(t, dsn,
 		`update messages set ingested_at = now() - interval '90 days' where source = 'whatsapp'`)
 
 	if err := st.SetCoverage(ctx, "whatsapp", "only the chats exported in 2025-08; nothing before"); err != nil {

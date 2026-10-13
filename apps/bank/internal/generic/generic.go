@@ -75,7 +75,11 @@ func importUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, d
 			return res, err
 		}
 	}
-	entries, err := parseEntries(input)
+	limit := 0
+	if !allowAttachmentPaths {
+		limit = MaxRemoteEntries
+	}
+	entries, err := parseEntriesBounded(input, limit)
 	if err != nil {
 		return res, err
 	}
@@ -230,9 +234,15 @@ func validate(e entry) error {
 	return nil
 }
 
+// MaxRemoteEntries bounds decoded structs, including tiny empty objects that
+// would otherwise expand a small HTTP body into gigabytes of allocations.
+const MaxRemoteEntries = 10000
+
 // parseEntries accepts a JSON array, a single object, or a stream of
 // whitespace/newline-delimited objects (NDJSON).
-func parseEntries(input []byte) ([]entry, error) {
+func parseEntries(input []byte) ([]entry, error) { return parseEntriesBounded(input, 0) }
+
+func parseEntriesBounded(input []byte, limit int) ([]entry, error) {
 	dec := json.NewDecoder(bytes.NewReader(input))
 	dec.UseNumber()
 	tok, err := dec.Token()
@@ -245,6 +255,9 @@ func parseEntries(input []byte) ([]entry, error) {
 	if d, ok := tok.(json.Delim); ok && d == '[' {
 		var out []entry
 		for dec.More() {
+			if limit > 0 && len(out) >= limit {
+				return nil, fmt.Errorf("JSON import exceeds %d entries; split the input", limit)
+			}
 			var e entry
 			if err := dec.Decode(&e); err != nil {
 				return nil, err
@@ -268,6 +281,9 @@ func parseEntries(input []byte) ([]entry, error) {
 			return out, nil
 		} else if err != nil {
 			return nil, err
+		}
+		if limit > 0 && len(out) >= limit {
+			return nil, fmt.Errorf("JSON import exceeds %d entries; split the input", limit)
 		}
 		out = append(out, e)
 	}

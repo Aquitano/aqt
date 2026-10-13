@@ -11,8 +11,8 @@ import (
 
 func TestLibraryOversizedPagesAndNotesRemainSearchable(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
-	conn, err := pgx.Connect(ctx, storetest.SchemaDSN(t, schema))
+	st, dsn := storetest.NewNamed(t)
+	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestLibraryOversizedPagesAndNotesRemainSearchable(t *testing.T) {
 
 func TestPersonalCollectionSnapshotFollowsRevisionDespiteClockChanges(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	item := libraryItem("clock-change")
 	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func TestPersonalCollectionSnapshotFollowsRevisionDespiteClockChanges(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	storetest.Exec(t, schema, `update library_snapshots set captured='{"precision":"instant","value":"9999-01-01T00:00:00Z"}' where id=$1`, collection.Snapshot.ID)
+	storetest.Exec(t, dsn, `update library_snapshots set captured='{"precision":"instant","value":"9999-01-01T00:00:00Z"}' where id=$1`, collection.Snapshot.ID)
 	updated, err := st.EditLibraryCollection(ctx, collection.ID, library.CollectionEdit{ExpectedRevision: collection.Revision, Title: "Empty", Entries: []library.Entry{}})
 	if err != nil {
 		t.Fatal(err)

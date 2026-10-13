@@ -10,7 +10,7 @@ import (
 
 func TestSearchRetrievalCases(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	corpus := []store.Message{
 		{ExternalID: "invoice", Subject: "Hetzner invoice", Body: "Your monthly hosting bill", Sender: "billing@example.com"},
 		{ExternalID: "noise", Subject: "Weekend plans", Body: "invoice"},
@@ -28,7 +28,7 @@ func TestSearchRetrievalCases(t *testing.T) {
 		}
 		byID[id] = m.ExternalID
 	}
-	storetest.Exec(t, schema, `update messages set attachment_text='signed orbital contract' where external_id='attachment'`)
+	storetest.Exec(t, dsn, `update messages set attachment_text='signed orbital contract' where external_id='attachment'`)
 	cases := []struct {
 		name, query, mode, first string
 		count                    int

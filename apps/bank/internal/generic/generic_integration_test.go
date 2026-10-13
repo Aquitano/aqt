@@ -15,7 +15,7 @@ import (
 
 func TestImportHealsAttachmentsOnReimport(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 
 	work := t.TempDir()
 	first := filepath.Join(work, "report.pdf")
@@ -77,7 +77,7 @@ func TestImportHealsAttachmentsOnReimport(t *testing.T) {
 	if err != nil || len(atts) != 2 {
 		t.Fatalf("attachments = %+v, err = %v", atts, err)
 	}
-	storetest.Exec(t, schema, `delete from attachments where id = $1`, atts[1].ID)
+	storetest.Exec(t, dsn, `delete from attachments where id = $1`, atts[1].ID)
 	res, err = Import(ctx, st, blobs, "notes", "json/one.json", input, now, true)
 	if err != nil {
 		t.Fatal(err)

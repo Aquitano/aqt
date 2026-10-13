@@ -84,10 +84,10 @@ func TestBlobTextRoundTrip(t *testing.T) {
 
 func TestListBlobsNewestFirstAcrossLibraryAndMail(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	id := seedMessage(t, st, "old", "Old message", "old.pdf", digestA)
-	storetest.Exec(t, schema, `update messages set ingested_at='1999-01-01'`)
-	storetest.Exec(t, schema, `update attachments set ingested_at=null`)
+	storetest.Exec(t, dsn, `update messages set ingested_at='1999-01-01'`)
+	storetest.Exec(t, dsn, `update attachments set ingested_at=null`)
 	files := []library.File{}
 	for i := range 201 {
 		files = append(files, library.File{Identity: library.Identity{Source: "files", Account: "owner", ExternalID: fmt.Sprint(i)}, SHA256: fmt.Sprintf("%064x", i+1), Filename: fmt.Sprintf("old-%d.txt", i), MimeType: "text/plain", SizeBytes: 1})
@@ -95,7 +95,7 @@ func TestListBlobsNewestFirstAcrossLibraryAndMail(t *testing.T) {
 	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
 		t.Fatal(err)
 	}
-	storetest.Exec(t, schema, `update library_files set ingested_at='2000-01-01'`)
+	storetest.Exec(t, dsn, `update library_files set ingested_at='2000-01-01'`)
 	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "fresh.pdf", MimeType: "application/pdf", SizeBytes: 1, SHA256: digestB}); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestRefreshAttachmentTextSharesOneExtractionAcrossMessages(t *testing.T) {
 // extracted content, and leaves the rest to a full refresh.
 func TestRefreshAttachmentTextSinceCoversRecentChanges(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	sharing := seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
 	seedMessage(t, st, "m2", "forwarded", "invoice.pdf", digestA)
 	untouched := seedMessage(t, st, "m3", "old mail", "scan.pdf", digestB)
@@ -174,8 +174,8 @@ func TestRefreshAttachmentTextSinceCoversRecentChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	storetest.Exec(t, schema, `update attachments set ingested_at = now() - interval '1 hour' where message_id in ($1, $2)`, sharing, untouched)
-	storetest.Exec(t, schema, `update blob_text set extracted_at = now() - interval '1 hour' where sha256 = $1`, digestB)
+	storetest.Exec(t, dsn, `update attachments set ingested_at = now() - interval '1 hour' where message_id in ($1, $2)`, sharing, untouched)
+	storetest.Exec(t, dsn, `update blob_text set extracted_at = now() - interval '1 hour' where sha256 = $1`, digestB)
 
 	if n, err := st.RefreshAttachmentText(ctx, time.Now().Add(-time.Minute)); err != nil || n != 2 {
 		t.Fatalf("scoped refresh: %d rows, %v; want the recent message and the one sharing its content", n, err)
@@ -338,5 +338,29 @@ func TestValidSHA256(t *testing.T) {
 		if err := store.ValidSHA256(bad); err == nil {
 			t.Errorf("ValidSHA256(%q) accepted", bad)
 		}
+	}
+}
+
+func TestLateExtractionCannotOverwriteManualText(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Status: "manual", Text: "corrected"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, status := range []string{"ok", "empty", "needs_ocr", "failed"} {
+		if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Status: status, Text: "late worker"}); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.GetBlobText(ctx, digestA)
+		if err != nil || got.Status != "manual" || got.Text != "corrected" {
+			t.Fatalf("manual text overwritten: %+v, %v", got, err)
+		}
+	}
+	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Status: "manual", Text: "second correction"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.GetBlobText(ctx, digestA)
+	if err != nil || got.Text != "second correction" {
+		t.Fatalf("manual replacement failed: %+v, %v", got, err)
 	}
 }

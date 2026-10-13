@@ -1,6 +1,6 @@
-// Package storetest gives tests a real ParadeDB to run against, isolated in a
-// throwaway schema. Search, migrations and dedup all live in SQL, so a fake
-// store would only prove the fake works.
+// Package storetest gives tests a real ParadeDB to run against: pgtestdb clones
+// a database per test from a template it migrates once. Search, migrations and
+// dedup all live in SQL, so a fake store would only prove the fake works.
 //
 // Tests skip only when nothing is listening at all — the machine that has not
 // started the compose stack. A database that answers and refuses (wrong
@@ -10,73 +10,22 @@ package storetest
 
 import (
 	"context"
+	"database/sql"
 	"errors"
-	"fmt"
 	"net"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/peterldowns/pgtestdb"
+	"github.com/peterldowns/pgtestdb/migrators/common"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
-
-var (
-	counter atomic.Int64
-	sweep   sync.Once
-)
-
-// schemaPrefix marks a schema as this package's to drop. The creation time is
-// in the name because a schema has no catalog timestamp, and a test process
-// that dies — a panic, a deliberately triggered data race — never runs its
-// cleanup. Without a sweep those schemas accumulate in the developer's own
-// database forever.
-const schemaPrefix = "banktest_"
-
-// staleAfter is comfortably longer than any test run, so a sweep can never
-// remove a schema another run is still using.
-const staleAfter = time.Hour
-
-func dropStaleSchemas(t *testing.T, conn *pgx.Conn) {
-	ctx := context.Background()
-	rows, err := conn.Query(ctx,
-		`select nspname from pg_namespace where nspname like $1`, schemaPrefix+"%")
-	if err != nil {
-		return
-	}
-	var stale []string
-	// Read after the query, so every schema the query returned was created
-	// before it: a sibling test process can never look like the future.
-	now := time.Now().Unix()
-	cutoff := now - int64(staleAfter.Seconds())
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			continue
-		}
-		parts := strings.Split(strings.TrimPrefix(name, schemaPrefix), "_")
-		created, err := strconv.ParseInt(parts[0], 10, 64)
-		// An unparseable name is from an older layout, and is stale by
-		// definition: nothing running now would have made it. A timestamp in
-		// the future is the same kind of debris — a clock skew or a hand-made
-		// schema — and without this it would outlive every sweep.
-		if err != nil || created < cutoff || created > now {
-			stale = append(stale, name)
-		}
-	}
-	rows.Close()
-	for _, name := range stale {
-		if _, err := conn.Exec(ctx, "drop schema "+name+" cascade"); err != nil {
-			t.Logf("sweep %s: %v", name, err)
-		}
-	}
-}
 
 // DSN is the development database, matching the CLI's own default.
 func DSN() string {
@@ -86,69 +35,35 @@ func DSN() string {
 	return "postgres://bank:bank@localhost:5433/bank?sslmode=disable"
 }
 
-// New returns a migrated Store on a schema of its own, dropped when the test
-// finishes.
+// New returns a Store on a migrated database of its own, dropped when the
+// test passes.
 func New(t *testing.T) *store.Store {
 	t.Helper()
 	st, _ := NewNamed(t)
 	return st
 }
 
-// NewNamed is New plus the schema name, for tests that also need to reach past
-// the Store API — to seed damage, or to assert on rows it does not expose.
+// NewNamed is New plus the database's connection string, for tests that also
+// need to reach past the Store API — to seed damage, or to assert on rows it
+// does not expose.
 func NewNamed(t *testing.T) (*store.Store, string) {
 	t.Helper()
-	schema := NewSchema(t)
-	return open(t, SchemaDSN(t, schema)), schema
+	dsn := database(t, migrator{})
+	return Open(t, dsn), dsn
 }
 
-// NewSchema creates an empty schema and registers its cleanup, for tests that
-// need to seed a pre-migration state before opening a Store.
-func NewSchema(t *testing.T) string {
+// NewEmpty returns a database no migration has touched, for tests that need
+// to seed a pre-migration state before opening a Store.
+func NewEmpty(t *testing.T) string {
+	t.Helper()
+	return database(t, pgtestdb.NoopMigrator{})
+}
+
+// Exec runs setup SQL against a test database before or beside a Store.
+func Exec(t *testing.T, dsn, sql string, args ...any) {
 	t.Helper()
 	ctx := context.Background()
-	admin, err := pgx.Connect(ctx, DSN())
-	if err != nil {
-		if unreachable(err) && os.Getenv("BANK_REQUIRE_DB") != "1" && os.Getenv("CI") == "" {
-			t.Skipf("no database at %s: %v", redacted(DSN()), err)
-		}
-		t.Fatalf("required database at %s is unavailable — fix DATABASE_URL rather than skipping DB-backed tests: %v",
-			redacted(DSN()), err)
-	}
-	sweep.Do(func() { dropStaleSchemas(t, admin) })
-	schema := fmt.Sprintf("%s%d_%d_%d", schemaPrefix, time.Now().Unix(), os.Getpid(), counter.Add(1))
-	if _, err := admin.Exec(ctx, "create schema "+schema); err != nil {
-		admin.Close(ctx)
-		t.Fatalf("create schema: %v", err)
-	}
-	t.Cleanup(func() {
-		if _, err := admin.Exec(context.Background(), "drop schema "+schema+" cascade"); err != nil {
-			t.Logf("drop schema %s: %v", schema, err)
-		}
-		admin.Close(context.Background())
-	})
-	return schema
-}
-
-// SchemaDSN points a connection string at one schema. public and paradedb stay
-// on the path because the extension's operators live there.
-func SchemaDSN(t *testing.T, schema string) string {
-	t.Helper()
-	u, err := url.Parse(DSN())
-	if err != nil {
-		t.Fatalf("DATABASE_URL: %v", err)
-	}
-	q := u.Query()
-	q.Set("search_path", schema+",public,paradedb")
-	u.RawQuery = q.Encode()
-	return u.String()
-}
-
-// Exec runs setup SQL against a schema before or beside a Store.
-func Exec(t *testing.T, schema, sql string, args ...any) {
-	t.Helper()
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, SchemaDSN(t, schema))
+	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -160,10 +75,10 @@ func Exec(t *testing.T, schema, sql string, args ...any) {
 
 // QueryInt runs a single-value integer query, for assertions about rows the
 // Store API does not expose.
-func QueryInt(t *testing.T, schema, sql string, args ...any) int64 {
+func QueryInt(t *testing.T, dsn, sql string, args ...any) int64 {
 	t.Helper()
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, SchemaDSN(t, schema))
+	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
@@ -175,20 +90,84 @@ func QueryInt(t *testing.T, schema, sql string, args ...any) int64 {
 	return n
 }
 
-// Open migrates and returns a Store for an existing schema.
-func Open(t *testing.T, schema string) *store.Store {
-	t.Helper()
-	return open(t, SchemaDSN(t, schema))
-}
-
-func open(t *testing.T, dsn string) *store.Store {
+// Open migrates and returns a Store for an existing test database.
+func Open(t *testing.T, dsn string) *store.Store {
 	t.Helper()
 	st, err := store.Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(st.Close)
+	queryDSN := QueryDSN(t, dsn)
+	Exec(t, dsn, `grant usage on schema public to bank_query_test; grant select on all tables in schema public to bank_query_test; grant select on all sequences in schema public to bank_query_test`)
+	if err := st.ConfigureQuery(context.Background(), queryDSN); err != nil {
+		t.Fatalf("query pool: %v", err)
+	}
 	return st
+}
+
+// CountAttachments answers "did anything get stored?" for tests that assert on
+// the absence of rows.
+func CountAttachments(t *testing.T, dsn string) int64 {
+	t.Helper()
+	return QueryInt(t, dsn, `select count(*) from attachments`)
+}
+
+func database(t *testing.T, m pgtestdb.Migrator) string {
+	t.Helper()
+	if err := reachable(); err != nil {
+		if unreachable(err) && os.Getenv("BANK_REQUIRE_DB") != "1" && os.Getenv("CI") == "" {
+			t.Skipf("no database at %s: %v", redacted(DSN()), err)
+		}
+		t.Fatalf("required database at %s is unavailable — fix DATABASE_URL rather than skipping DB-backed tests: %v",
+			redacted(DSN()), err)
+	}
+	u, err := url.Parse(DSN())
+	if err != nil {
+		t.Fatalf("DATABASE_URL: %v", err)
+	}
+	password, _ := u.User.Password()
+	// The test databases belong to the configured user, as the archive does in
+	// production: a superuser that also provisions the query role.
+	conf := pgtestdb.Config{
+		DriverName:                "pgx",
+		Host:                      u.Hostname(),
+		Port:                      u.Port(),
+		User:                      u.User.Username(),
+		Password:                  password,
+		Database:                  strings.TrimPrefix(u.Path, "/"),
+		Options:                   u.RawQuery,
+		TestRole:                  &pgtestdb.Role{Username: u.User.Username(), Password: password},
+		ForceTerminateConnections: true,
+	}
+	return pgtestdb.Custom(t, conf, m).URL()
+}
+
+var reachable = sync.OnceValue(func() error {
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, DSN())
+	if err != nil {
+		return err
+	}
+	return conn.Close(ctx)
+})
+
+// migrator builds the template every migrated test database is cloned from,
+// through the same Open the binary runs at startup.
+type migrator struct{}
+
+func (migrator) Hash() (string, error) {
+	hash, err := common.HashDirs(store.Migrations, "*.sql", ".")
+	return "tern-v1-" + hash, err
+}
+
+func (migrator) Migrate(ctx context.Context, _ *sql.DB, conf pgtestdb.Config) error {
+	st, err := store.Open(ctx, conf.URL())
+	if err != nil {
+		return err
+	}
+	st.Close()
+	return nil
 }
 
 // unreachable reports whether a connect failure means nothing is listening —
@@ -208,9 +187,43 @@ func redacted(dsn string) string {
 	return dsn
 }
 
-// CountAttachments answers "did anything get stored?" for tests that assert on
-// the absence of rows.
-func CountAttachments(t *testing.T, schema string) int64 {
+// QueryDSN authenticates as a real restricted login, never SET ROLE on the
+// administrator connection. The advisory lock serializes package test binaries.
+func QueryDSN(t *testing.T, dsn string) string {
 	t.Helper()
-	return QueryInt(t, schema, `select count(*) from attachments`)
+	if err := provisionQueryRole(); err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.User = url.UserPassword("bank_query_test", "bank_query_test")
+	return u.String()
 }
+
+var provisionQueryRole = sync.OnceValue(func() error {
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, DSN())
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, `select pg_advisory_xact_lock(726374293);
+ do $$ begin
+ if not exists (select from pg_roles where rolname = 'bank_query_test') then
+ create role bank_query_test login password 'bank_query_test' nosuperuser nocreatedb nocreaterole noreplication nobypassrls;
+
+ end if;
+ end $$;
+ revoke pg_read_all_data from bank_query_test;`)
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+})

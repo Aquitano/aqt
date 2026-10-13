@@ -8,6 +8,7 @@
 package gmail
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -23,6 +24,8 @@ import (
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+
+	"github.com/aquitano/aqt/apps/bank/internal/atomicfile"
 )
 
 const scope = "https://www.googleapis.com/auth/gmail.readonly"
@@ -152,23 +155,7 @@ func saveToken(dataDir string, tok *oauth2.Token) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, ".token-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(raw); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), tokenPath(dataDir))
+	return atomicfile.Write(tokenPath(dataDir), bytes.NewReader(raw))
 }
 
 // persistingSource re-saves the token whenever Google rotates it.
@@ -188,10 +175,10 @@ func (p *persistingSource) Token() (*oauth2.Token, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if tok.AccessToken != p.last {
-		p.last = tok.AccessToken
 		if err := saveToken(p.dataDir, tok); err != nil {
 			return nil, err
 		}
+		p.last = tok.AccessToken
 	}
 	return tok, nil
 }

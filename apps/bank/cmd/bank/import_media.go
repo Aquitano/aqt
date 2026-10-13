@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
@@ -11,18 +10,28 @@ import (
 )
 
 func cmdMediaImport(ctx context.Context, kind string, args []string) error {
-	fs := flag.NewFlagSet("import "+kind, flag.ContinueOnError)
-	source := fs.String("source", "", "source identity")
-	account := fs.String("account", "", "profile or account identity; keep this stable across imports")
-	dateOrder := fs.String("date-order", "", "Netflix slash-date order: mdy (default) or dmy")
-	sensitivity := fs.String("max-sensitivity", "normal", "maximum Markdown sensitivity: normal or personal")
-	confidential := fs.Bool("allow-confidential", false, "explicitly publish confidential Markdown pages")
-	asJSON := fs.Bool("json", false, "print structured results")
-	noExtract := fs.Bool("no-extract", false, "skip file text extraction")
-	if err := parseFlagsAnywhere(fs, args); err != nil {
+	options := struct {
+		CommandArguments
+		Source            string `name:"source" help:"source identity"`
+		Account           string `name:"account" help:"profile or account identity; keep this stable across imports"`
+		DateOrder         string `name:"date-order" help:"Netflix slash-date order: mdy (default) or dmy"`
+		MaxSensitivity    string `name:"max-sensitivity" default:"normal" help:"maximum Markdown sensitivity: normal or personal"`
+		AllowConfidential bool   `name:"allow-confidential" help:"explicitly publish confidential Markdown pages"`
+		JSON              bool   `name:"json" help:"print structured results"`
+		NoExtract         bool   `name:"no-extract" help:"skip file text extraction"`
+	}{}
+	source := &options.Source
+	account := &options.Account
+	dateOrder := &options.DateOrder
+	sensitivity := &options.MaxSensitivity
+	confidential := &options.AllowConfidential
+	asJSON := &options.JSON
+	noExtract := &options.NoExtract
+	if err := parseCommand("import "+kind, &options, args); err != nil {
 		return err
 	}
-	if fs.NArg() == 0 {
+
+	if len(options.Args) == 0 {
 		return fmt.Errorf("usage: bank import %s <path>... [--account NAME] [--json]", kind)
 	}
 	if *dateOrder != "" && (kind != "netflix" || (*dateOrder != "mdy" && *dateOrder != "dmy")) {
@@ -41,7 +50,7 @@ func cmdMediaImport(ctx context.Context, kind string, args []string) error {
 		}
 		defer closeStore()
 	}
-	for _, path := range fs.Args() {
+	for _, path := range options.Args {
 		var result mediaimport.Result
 		var err error
 		switch {

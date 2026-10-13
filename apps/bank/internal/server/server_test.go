@@ -214,8 +214,8 @@ func TestSearchRequiresToken(t *testing.T) {
 	resp.Body.Close()
 
 	resp = get("/healthz", "")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("healthz: status %d, want 200", resp.StatusCode)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("healthz without database: status %d, want 503", resp.StatusCode)
 	}
 	resp.Body.Close()
 

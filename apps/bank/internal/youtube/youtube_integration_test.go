@@ -58,7 +58,7 @@ func takeoutZipFiles(t *testing.T, histories map[string]string) string {
 
 func TestImportFromTakeoutZip(t *testing.T) {
 	ctx := context.Background()
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	archiveDir := filepath.Join(t.TempDir(), "archive")
 
 	res, err := Import(ctx, st, archiveDir, takeoutZip(t, historyJSON))
@@ -104,7 +104,7 @@ func TestImportFromTakeoutZip(t *testing.T) {
 	if got := entries[0].Name(); !strings.HasSuffix(got, "-watch-history.json") {
 		t.Errorf("archived as %q, want a content-hashed watch-history.json", got)
 	}
-	if n := storetest.QueryInt(t, schema,
+	if n := storetest.QueryInt(t, dsn,
 		`select count(*) from messages where raw_ref = $1`, "youtube/"+entries[0].Name()); n != 4 {
 		t.Errorf("%d messages cite the archived history, want 4", n)
 	}

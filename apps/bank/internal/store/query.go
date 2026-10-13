@@ -19,7 +19,7 @@ import (
 const (
 	queryDefaultRows = 100
 	queryMaxRows     = 10000
-	queryTimeout     = "15s"
+	queryTimeout     = 15 * time.Second
 )
 
 // QueryResult is what one ad-hoc SQL query returned. Rows are positional
@@ -42,9 +42,8 @@ func (e *BadQueryError) Unwrap() error { return e.Err }
 
 // Query runs one ad-hoc SQL statement and returns up to limit rows (0 means
 // the default cap). It is the OLAP escape hatch behind `bank query`, held
-// read-only three ways: the transaction is READ ONLY so any write or DDL
-// fails at the executor, a statement_timeout bounds runaway scans, and the
-// extended query protocol rejects a second ';'-chained statement outright.
+// on a separately authenticated, restricted connection. A READ ONLY transaction,
+// statement timeout, row cap and single-statement protocol add resource limits.
 func (s *Store) Query(ctx context.Context, query string, limit int) (QueryResult, error) {
 	if limit == 0 {
 		limit = queryDefaultRows
@@ -52,12 +51,17 @@ func (s *Store) Query(ctx context.Context, query string, limit int) (QueryResult
 	if limit < 1 || limit > queryMaxRows {
 		return QueryResult{}, &BadQueryError{fmt.Errorf("limit must be 1-%d, got %d", queryMaxRows, limit)}
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if s.queryPool == nil {
+		return QueryResult{}, fmt.Errorf("ad-hoc queries require BANK_QUERY_DATABASE_URL with a restricted login role")
+	}
+	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+	tx, err := s.queryPool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return QueryResult{}, err
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
-	if _, err := tx.Exec(ctx, `set local statement_timeout = '`+queryTimeout+`'`); err != nil {
+	if _, err := tx.Exec(ctx, `set local statement_timeout = '`+queryTimeout.String()+`'`); err != nil {
 		return QueryResult{}, err
 	}
 	rows, err := tx.Query(ctx, query)

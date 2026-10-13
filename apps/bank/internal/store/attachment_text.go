@@ -159,7 +159,8 @@ func (s *Store) PutBlobText(ctx context.Context, bt BlobText) error {
 		values ($1, $2, $3, $4, now())
 		on conflict (sha256) do update
 		set text = excluded.text, extractor = excluded.extractor,
-		    status = excluded.status, extracted_at = now()`,
+		    status = excluded.status, extracted_at = now()
+		where blob_text.status <> 'manual' or excluded.status = 'manual'`,
 		bt.SHA256, text, cleanText(bt.Extractor), bt.Status)
 	return err
 }

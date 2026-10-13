@@ -19,7 +19,7 @@ Deliberately not in `/etc/crypttab` with a keyfile — a keyfile on the root dis
 
 ```sh
 cryptsetup open /dev/sdb bankdata && mount /dev/mapper/bankdata /data && \
-    docker compose -f /opt/aqt-bank/docker-compose.yml up -d
+    docker compose -f /opt/aqt/apps/bank/docker-compose.yml up -d
 ```
 
 ## 2. App + database
@@ -28,7 +28,8 @@ Everything runs in containers. The host needs Docker and the repo, and nothing e
 
 ```sh
 apt install docker.io docker-compose-v2
-git clone <repo> /opt/aqt-bank && cd /opt/aqt-bank
+git clone <monorepo-url> /opt/aqt
+cd /opt/aqt/apps/bank
 ```
 
 The data directory holds blobs, raw archives, the inbox and the token file, and must be owned by the uid the container runs as (65532, the image's `nonroot` user):
@@ -38,7 +39,7 @@ mkdir -p /data/aqt-bank /data/pgdata
 chown -R 65532:65532 /data/aqt-bank
 ```
 
-Write `/opt/aqt-bank/.env` (`chmod 600` — it holds the database password):
+Write `/opt/aqt/apps/bank/.env` (`chmod 600` — it holds the database password):
 
 ```sh
 COMPOSE_PROFILES=server           # add ",ocr" to also read scanned documents
@@ -49,10 +50,26 @@ BANK_LISTEN=100.x.y.z:8480        # the box's tailscale address — never 0.0.0.
 TZ=Europe/Berlin                  # date filters and WhatsApp timestamps are local time
 ```
 
-Then bring up both services:
+Start Postgres, then provision the restricted SQL login:
 
 ```sh
-docker compose up -d --build
+docker compose up -d db
+docker compose exec -T db psql -U bank -d bank -v ON_ERROR_STOP=1 < deploy/query-role.sql
+docker compose exec db psql -U bank -d bank
+```
+
+At the psql prompt, run `\password bank_query`, enter a new password twice, then
+run `\q`. The password prompt does not echo or put the password in shell history.
+Add `BANK_QUERY_DATABASE_URL=postgres://bank_query:<URL-encoded-password>@db:5432/bank?sslmode=disable`
+to `.env`. Use a distinct password and percent-encode URL-reserved characters.
+Keep `.env` mode 0600. Do not grant this login membership in the ingestion role,
+server-file roles, or any other role. Do not grant `pg_read_all_data`; it also
+permits reading sensitive system catalogs such as `pg_authid`.
+
+Start the server:
+
+```sh
+BANK_VERSION=$(git rev-parse HEAD) docker compose up -d --build
 docker compose ps
 curl -s http://100.x.y.z:8480/healthz     # {"ok":true}
 ```
@@ -71,7 +88,7 @@ What the server container is allowed to do, and why it is worth having it in a c
 Run CLI commands with the same image, so they see the same data directory and the same database:
 
 ```sh
-cd /opt/aqt-bank
+cd /opt/aqt/apps/bank
 docker compose run --rm bank stats
 docker compose run --rm bank verify
 docker compose run --rm bank token list
@@ -80,12 +97,31 @@ docker compose run --rm bank token list
 ### Upgrading
 
 ```sh
-cd /opt/aqt-bank
+cd /opt/aqt/apps/bank
 docker compose exec -T db pg_dump -U bank -Fc bank > /data/backup/pre-upgrade.dump.tmp &&
     mv /data/backup/pre-upgrade.dump.tmp /data/backup/pre-upgrade.dump &&
-    git pull &&
-    docker compose up -d --build
+    docker compose --profile server --profile ocr stop bank bank-ocr &&
+    git pull
 ```
+
+For the first upgrade to this version, run the query-role provisioning steps
+above and add the query connection to `.env` before rebuilding. The ingestion connection still runs migrations and imports.
+The separate query connection is validated at startup. A missing query URL disables
+ad-hoc SQL; an unsafe configured login fails startup.
+
+```sh
+BANK_VERSION=$(git rev-parse HEAD) docker compose up -d --build
+docker compose exec bank bank healthcheck
+```
+
+Tern now records the migration version in `public.schema_version`. On the first
+startup it checks that the legacy `schema_migrations` filenames form a contiguous
+prefix of the embedded migrations, baselines that version in one transaction,
+and applies only the remaining files. It retains the legacy table for audit.
+A gap or unknown filename fails the upgrade without baselining. Keep the old
+processes stopped during this one-off transition and do not run older binaries
+against a database once later Tern migrations have run. Restore the pre-upgrade
+dump to roll back a schema change.
 
 Migrations run when the server starts, and in any `docker compose run` that opens the database first. Take the dump before that, because no migration has a down step. The chain stops if the dump fails, so a stopped database never leaves a truncated dump behind and never gets upgraded without one.
 
@@ -98,6 +134,18 @@ docker compose run --rm bank verify --source gmail
 ```
 
 Repeat for `proton` and any other mail source. [MAIL.md](MAIL.md) explains the report.
+
+### Health and shutdown
+
+`/healthz` checks the database with a three-second deadline and returns 503 when
+it cannot connect. The image runs `bank healthcheck` itself, so Compose can probe
+the distroless server. `bank version` reports the build revision supplied through
+`BANK_VERSION`. SIGTERM and Ctrl-C stop new requests and allow active requests up
+to 30 seconds before the database pools close.
+
+JSON imports are limited to 16 MiB and 10,000 entries, with at most two decoded
+concurrently. Split larger JSON submissions into separate imports. File
+uploads continue to stream to disk with the existing 16 GiB limit.
 
 ### Text inside attachments
 
@@ -205,7 +253,7 @@ docker compose run --rm bank token revoke laptop
 
 ```sh
 # on the laptop
-export BANK_TOKEN=$(ssh vps 'cd /opt/aqt-bank && docker compose run --rm -T bank token new laptop')
+export BANK_TOKEN=$(ssh vps 'cd /opt/aqt/apps/bank && docker compose run --rm -T bank token new laptop')
 ```
 
 `bank token new` and `bank token list` print the resolved token file to stderr (`token stored in /data/tokens`), which is what to check first when a token is rejected — the digests themselves are never shown. Command substitution captures stdout only, so the token still assigns cleanly; `-T` keeps Docker from allocating a TTY that would corrupt it.
@@ -228,10 +276,10 @@ bank fetch <sha256> -o invoice.pdf
 Every scheduled job runs the same image as a one-off container, so it sees the same volume, the same database and the same timezone as the server.
 
 ```cron
-17 *  * * *  cd /opt/aqt-bank && docker compose run --rm -T bank sync >> /var/log/bank.log 2>&1
-40 3  * * *  cd /opt/aqt-bank && docker compose run --rm -T bank extract >> /var/log/bank.log 2>&1
-*/15 * * * *  cd /opt/aqt-bank && docker compose run --rm -T bank import inbox >> /var/log/bank.log 2>&1
-0 5  * * 0  cd /opt/aqt-bank && docker compose run --rm -T bank import eml /data/inbox/proton >> /var/log/bank.log 2>&1
+17 *  * * *  cd /opt/aqt/apps/bank && docker compose run --rm -T bank sync >> /var/log/bank.log 2>&1
+40 3  * * *  cd /opt/aqt/apps/bank && docker compose run --rm -T bank extract >> /var/log/bank.log 2>&1
+*/15 * * * *  cd /opt/aqt/apps/bank && docker compose run --rm -T bank import inbox >> /var/log/bank.log 2>&1
+0 5  * * 0  cd /opt/aqt/apps/bank && docker compose run --rm -T bank import eml /data/inbox/proton >> /var/log/bank.log 2>&1
 ```
 
 `-T` matters in cron: without a TTY to allocate, Docker otherwise fails.
@@ -259,7 +307,7 @@ restic -r s3:s3.example.com/aqt-bank-backup init   # once; store the restic pass
 # makes any failure skip the restic forget/prune, so old good snapshots survive.
 #!/bin/sh
 set -eu
-docker compose -f /opt/aqt-bank/docker-compose.yml exec -T db pg_dump -U bank -Fc bank > /data/backup/bank.dump.tmp
+docker compose -f /opt/aqt/apps/bank/docker-compose.yml exec -T db pg_dump -U bank -Fc bank > /data/backup/bank.dump.tmp
 mv /data/backup/bank.dump.tmp /data/backup/bank.dump
 restic -r s3:... backup /data/backup/bank.dump /data/aqt-bank
 restic -r s3:... forget --keep-daily 14 --keep-weekly 8 --keep-monthly 24 --prune
@@ -282,7 +330,7 @@ docker compose run --rm bank verify --heal    # rebuild what the archived raw in
 
 For starting the archive over — bad test data, a re-import from scratch — without
 touching what is annoying to rebuild: API tokens, the Gmail OAuth material, and
-the stack itself. Everything below runs on the VPS in `/opt/aqt-bank`.
+the stack itself. Everything below runs on the VPS in `/opt/aqt/apps/bank`.
 
 ```sh
 docker compose stop bank                       # no writes while wiping; db stays up
@@ -306,7 +354,7 @@ tracking state, collection snapshots, edit history, item links, and provenance e
 This includes `library_activity_aliases` and `library_activity_evidence`.
 Library ratings, statuses, notes, tags and collection edits exist only in Postgres,
 not in the raw archive, so a re-import does not bring them back.
-`schema_migrations` stays, so no migration re-runs; `restart identity` resets
+`schema_version` and the legacy `schema_migrations` table stay, so no migration re-runs; `restart identity` resets
 generated row IDs. If a backup cron from §7 is
 live, take one last snapshot first — the wipe is exactly the kind of action the
 backups exist for.
