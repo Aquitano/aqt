@@ -4,16 +4,17 @@ package github
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
@@ -233,10 +234,22 @@ type login struct {
 	Login string `json:"login"`
 }
 
+var (
+	embeddedScript = cascadia.MustCompile(`script[data-target="react-app.embeddedData"]`)
+	issueTitle     = cascadia.MustCompile("[data-testid=issue-title]")
+	issueAuthor    = cascadia.MustCompile("[data-testid=issue-body-header-author]")
+	stateLabel     = cascadia.MustCompile("[data-component=StateLabel]")
+	jsIssueTitle   = cascadia.MustCompile(".js-issue-title")
+	markdownTitle  = cascadia.MustCompile(".markdown-title")
+	author         = cascadia.MustCompile(".author")
+	itemName       = cascadia.MustCompile("[itemprop=name]")
+	itemAuthor     = cascadia.MustCompile("[itemprop=author]")
+	readmeArticle  = cascadia.MustCompile("article.markdown-body")
+	markdown       = cascadia.MustCompile(".markdown-body")
+)
+
 func embeddedData(doc *html.Node) *embedded {
-	script := findNode(doc, func(n *html.Node) bool {
-		return n.Data == "script" && dom.Attr(n, "data-target") == "react-app.embeddedData"
-	})
+	script := embeddedScript.MatchFirst(doc)
 	if script == nil || script.FirstChild == nil {
 		return nil
 	}
@@ -275,16 +288,16 @@ func issueData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 		}
 	}
 	if d.Title == "" {
-		d.Title = dom.Text(findNode(doc, byAttr("data-testid", "issue-title")))
+		d.Title = dom.Text(issueTitle.MatchFirst(doc))
 	}
 	if d.Body == "" {
 		d.Body = markdownBody(doc)
 	}
 	if d.State == "" {
-		d.State = normalizeState(dom.Text(findNode(doc, byAttr("data-component", "StateLabel"))))
+		d.State = normalizeState(dom.Text(stateLabel.MatchFirst(doc)))
 	}
 	if d.Author == "" {
-		d.Author = dom.Text(findNode(doc, byAttr("data-testid", "issue-body-header-author")))
+		d.Author = dom.Text(issueAuthor.MatchFirst(doc))
 	}
 	return d, d.Title != ""
 }
@@ -305,13 +318,13 @@ func pullData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 		}
 	}
 	if d.Title == "" {
-		d.Title = dom.Text(firstOf(doc, byClass("js-issue-title"), byClass("markdown-title")))
+		d.Title = dom.Text(cmp.Or(jsIssueTitle.MatchFirst(doc), markdownTitle.MatchFirst(doc)))
 	}
 	if d.State == "" {
-		d.State = normalizeState(dom.Text(findNode(doc, byAttr("data-component", "StateLabel"))))
+		d.State = normalizeState(dom.Text(stateLabel.MatchFirst(doc)))
 	}
 	if d.Author == "" {
-		d.Author = dom.Text(findNode(doc, byClass("author")))
+		d.Author = dom.Text(author.MatchFirst(doc))
 	}
 	// The pull request payload carries no body; the description is server
 	// rendered as the first comment on the page.
@@ -331,22 +344,26 @@ func repoData(t target, emb *embedded, doc *html.Node) (Data, bool) {
 		for _, topic := range sidebar.Topics {
 			d.Labels = append(d.Labels, topic.Name)
 		}
-	} else if name := dom.Text(findNode(doc, byAttr("itemprop", "name"))); name != "" {
+	} else if name := dom.Text(itemName.MatchFirst(doc)); name != "" {
 		d.Repo = name
-		if owner := dom.Text(findNode(doc, byAttr("itemprop", "author"))); owner != "" {
+		if owner := dom.Text(itemAuthor.MatchFirst(doc)); owner != "" {
 			d.Owner = owner
 		}
 	}
-	readme := dom.Text(findNode(doc, func(n *html.Node) bool {
-		return n.Data == "article" && hasClass(n, "markdown-body")
-	}))
+	readme := dom.Text(readmeArticle.MatchFirst(doc))
 	d.Body = strings.TrimSpace(about + "\n\n" + readme)
 	return d, d.Body != ""
 }
 
 func markdownBody(doc *html.Node) string {
-	return dom.Text(findNode(doc, byClass("markdown-body")))
+	return dom.Text(markdown.MatchFirst(doc))
 }
+
+var (
+	timelineBody   = cascadia.MustCompile(".js-comment-body, [data-testid=markdown-body]")
+	timelineAuthor = cascadia.MustCompile("a.author, a[data-testid=avatar-link]")
+	relativeTime   = cascadia.MustCompile("relative-time")
+)
 
 // comments reads every comment body after the description, in the React
 // issue viewer and in the server-rendered pull request timeline alike. Each
@@ -358,20 +375,18 @@ func comments(doc *html.Node) []Comment {
 	description := true
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode {
-			switch {
-			case hasClass(n, "js-comment-body") || dom.Attr(n, "data-testid") == "markdown-body":
-				if c.Body = dom.Text(n); !description && c.Body != "" {
-					out = append(out, c)
-				}
-				c, description = Comment{}, false
-				return
-			case n.Data == "a" && (hasClass(n, "author") || dom.Attr(n, "data-testid") == "avatar-link"):
-				c.Author = dom.Text(n)
-			case n.Data == "relative-time":
-				if t, err := time.Parse(time.RFC3339, dom.Attr(n, "datetime")); err == nil {
-					c.CreatedAt = t.UTC().Format(time.RFC3339)
-				}
+		switch {
+		case timelineBody.Match(n):
+			if c.Body = dom.Text(n); !description && c.Body != "" {
+				out = append(out, c)
+			}
+			c, description = Comment{}, false
+			return
+		case timelineAuthor.Match(n):
+			c.Author = dom.Text(n)
+		case relativeTime.Match(n):
+			if t, err := time.Parse(time.RFC3339, dom.Attr(n, "datetime")); err == nil {
+				c.CreatedAt = t.UTC().Format(time.RFC3339)
 			}
 		}
 		for child := n.FirstChild; child != nil; child = child.NextSibling {
@@ -387,9 +402,24 @@ func comments(doc *html.Node) []Comment {
 // names is checked against the URL.
 var discussionBody = regexp.MustCompile(`^/([^/]+)/([^/]+)/discussions/(\d+)/body$`)
 
+var (
+	openingPost    = cascadia.MustCompile("[data-url#=(" + discussionBody.String() + ")]")
+	categoryLink   = cascadia.MustCompile(`a[href*="/discussions/categories/"]`)
+	closedState    = cascadia.MustCompile(`.State[title^="Status: Closed"]`)
+	discussionPost = cascadia.MustCompile(".discussions-timeline-scroll-target[id^=discussioncomment-]")
+	threadReply    = cascadia.MustCompile(".js-nested-comment-container, .js-nested-comment-container *")
+	ownComment     = cascadia.MustCompile(".js-discussion-comment")
+	commentHeader  = cascadia.MustCompile(".timeline-comment-header-text")
+	commentBody    = cascadia.MustCompile(".js-comment-body")
+	chosenAnswer   = cascadia.MustCompile(".timeline-chosen-answer")
+	upvoteButton   = cascadia.MustCompile(".js-upvote-button")
+	link           = cascadia.MustCompile("a")
+	span           = cascadia.MustCompile("span")
+)
+
 func discussionData(t target, doc *html.Node) (Data, bool) {
 	d := Data{Kind: KindDiscussion, Owner: t.owner, Repo: t.repo, Number: t.number, Labels: []string{}}
-	opening := findNode(doc, func(n *html.Node) bool { return discussionBody.MatchString(dom.Attr(n, "data-url")) })
+	opening := openingPost.MatchFirst(doc)
 	if opening == nil {
 		return d, false
 	}
@@ -398,14 +428,10 @@ func discussionData(t target, doc *html.Node) (Data, bool) {
 	d.Number, _ = strconv.Atoi(m[3])
 	post := discussionComment(opening)
 	d.Author, d.Body, d.CreatedAt, d.Score = post.Author, post.Body, post.CreatedAt, post.Score
-	d.Title = dom.Text(findNode(doc, byClass("js-issue-title")))
-	d.Category = dom.Text(findNode(doc, func(n *html.Node) bool {
-		return n.Data == "a" && strings.Contains(dom.Attr(n, "href"), "/discussions/categories/")
-	}))
+	d.Title = dom.Text(jsIssueTitle.MatchFirst(doc))
+	d.Category = dom.Text(categoryLink.MatchFirst(doc))
 	d.State = "open"
-	if findNode(doc, func(n *html.Node) bool {
-		return hasClass(n, "State") && strings.HasPrefix(dom.Attr(n, "title"), "Status: Closed")
-	}) != nil {
+	if closedState.MatchFirst(doc) != nil {
 		d.State = "closed"
 	}
 	d.Comments = discussionComments(doc)
@@ -416,82 +442,36 @@ func discussionData(t target, doc *html.Node) (Data, bool) {
 // each with the replies GitHub nests in its thread.
 func discussionComments(doc *html.Node) []Comment {
 	out := []Comment{}
-	var walk func(n *html.Node, nested bool)
-	walk = func(n *html.Node, nested bool) {
-		if n.Type == html.ElementNode {
-			nested = nested || hasClass(n, "js-nested-comment-container")
-			if hasClass(n, "discussions-timeline-scroll-target") && strings.HasPrefix(dom.Attr(n, "id"), "discussioncomment-") {
-				c := discussionComment(n)
-				if last := len(out) - 1; nested && last >= 0 {
-					out[last].Replies = append(out[last].Replies, c)
-				} else {
-					out = append(out, c)
-				}
-			}
-		}
-		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			walk(child, nested)
+	for _, n := range discussionPost.MatchAll(doc) {
+		c := discussionComment(n)
+		if last := len(out) - 1; threadReply.Match(n) && last >= 0 {
+			out[last].Replies = append(out[last].Replies, c)
+		} else {
+			out = append(out, c)
 		}
 	}
-	walk(doc, false)
 	return out
 }
 
 // discussionComment reads one post from its own comment group, which holds
 // none of the replies threaded under it.
 func discussionComment(n *html.Node) Comment {
-	own := findNode(n, byClass("js-discussion-comment"))
-	header := findNode(own, byClass("timeline-comment-header-text"))
+	own := ownComment.MatchFirst(n)
+	header := dom.First(own, commentHeader)
 	c := Comment{
-		Author: dom.Text(findNode(header, func(n *html.Node) bool { return n.Data == "a" })),
-		Body:   dom.Text(findNode(own, byClass("js-comment-body"))),
-		Answer: findNode(own, byClass("timeline-chosen-answer")) != nil,
+		Author: dom.Text(dom.First(header, link)),
+		Body:   dom.Text(dom.First(own, commentBody)),
+		Answer: dom.First(own, chosenAnswer) != nil,
 	}
-	stamp := findNode(header, func(n *html.Node) bool { return n.Data == "relative-time" })
+	stamp := dom.First(header, relativeTime)
 	if t, err := time.Parse(time.RFC3339, dom.Attr(stamp, "datetime")); err == nil {
 		c.CreatedAt = t.UTC().Format(time.RFC3339)
 	}
-	upvotes := findNode(findNode(own, byClass("js-upvote-button")), func(n *html.Node) bool { return n.Data == "span" })
+	upvotes := dom.First(dom.First(own, upvoteButton), span)
 	c.Score, _ = strconv.Atoi(dom.Text(upvotes))
 	return c
 }
 
 func normalizeState(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
-}
-
-func byAttr(key, value string) func(*html.Node) bool {
-	return func(n *html.Node) bool { return dom.Attr(n, key) == value }
-}
-
-func byClass(class string) func(*html.Node) bool {
-	return func(n *html.Node) bool { return hasClass(n, class) }
-}
-
-func firstOf(doc *html.Node, preds ...func(*html.Node) bool) *html.Node {
-	for _, pred := range preds {
-		if n := findNode(doc, pred); n != nil {
-			return n
-		}
-	}
-	return nil
-}
-
-func findNode(n *html.Node, pred func(*html.Node) bool) *html.Node {
-	if n == nil {
-		return nil
-	}
-	if n.Type == html.ElementNode && pred(n) {
-		return n
-	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if found := findNode(c, pred); found != nil {
-			return found
-		}
-	}
-	return nil
-}
-
-func hasClass(n *html.Node, class string) bool {
-	return slices.Contains(strings.Fields(dom.Attr(n, "class")), class)
 }

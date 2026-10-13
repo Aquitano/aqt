@@ -12,9 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
+	"github.com/aquitano/aqt/apps/tracker/internal/extractor/dom"
 )
 
 const Name = "x"
@@ -62,6 +64,24 @@ func (Extractor) Rule() extractor.Rule {
 	}
 }
 
+var (
+	tweet       = cascadia.MustCompile("[data-testid=tweet]:not([data-testid=tweet] *)")
+	threadEntry = cascadia.MustCompile("[data-testid=tweet]:not([data-testid=tweet] *, h2 *), h2:not([data-testid=tweet] *, h2 *)")
+	// quoteCard is the embedded tweet X renders inside a status: a
+	// role="link" box carrying its own timestamp and text or media.
+	quoteCard = cascadia.MustCompile("[role=link]:has(time):has([data-testid=tweetText], [data-testid=tweetPhoto], [data-testid=videoPlayer])")
+	tweetText = cascadia.MustCompile("[data-testid=tweetText]")
+	// A media container nested inside another one is counted once.
+	media       = cascadia.MustCompile("[data-testid=tweetPhoto]:not([data-testid=tweetPhoto] *, [data-testid=videoPlayer] *), [data-testid=videoPlayer]:not([data-testid=tweetPhoto] *, [data-testid=videoPlayer] *)")
+	photo       = cascadia.MustCompile("[data-testid=tweetPhoto]:not([data-testid=tweetPhoto] *)")
+	imgTag      = cascadia.MustCompile("img")
+	link        = cascadia.MustCompile("a")
+	userName    = cascadia.MustCompile("[data-testid=User-Name]")
+	profileLink = cascadia.MustCompile("a[href#=(^/[^/]*$)]")
+	timestamp   = cascadia.MustCompile("time")
+	datedTime   = cascadia.MustCompile(`time[datetime]:not([datetime=""])`)
+)
+
 func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extractor.Record, error) {
 	_, statusID := linkStatus(pageURL.Path)
 	if statusID == "" {
@@ -72,15 +92,15 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 		return extractor.Record{}, err
 	}
 
-	articles := findAll(doc, nil, func(n *html.Node) bool { return testID(n, "tweet") })
+	articles := tweet.MatchAll(doc)
 	i := focalIndex(articles, statusID)
 	if i < 0 {
 		return extractor.Record{}, extractor.ErrNoMatch
 	}
 	focal := articles[i]
 
-	quote := find(focal, nil, isQuoteCard)
-	body := find(focal, quote, isTweetText)
+	quote := quoteCard.MatchFirst(focal)
+	body := outside(tweetText, quote).MatchFirst(focal)
 	images := postImages(focal, quote)
 	if body == nil && len(images) == 0 {
 		return extractor.Record{}, extractor.ErrNoMatch
@@ -97,8 +117,8 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 		PostURL:        postURL,
 		Images:         images,
 		QuotedStatusID: quotedStatusID(quote),
-		MediaCount:     len(findAll(focal, quote, isMedia)),
-		Lang:           attr(body, "lang"),
+		MediaCount:     len(outside(media, quote).MatchAll(focal)),
+		Lang:           dom.Attr(body, "lang"),
 		Ancestors:      conversation(articles[:i], statusID),
 		Replies:        conversation(repliesBelow(doc, focal), statusID),
 	}
@@ -136,9 +156,9 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 func postImages(focal, quote *html.Node) []Image {
 	images := []Image{}
 	seen := map[string]bool{}
-	for _, photo := range findAll(focal, quote, func(n *html.Node) bool { return testID(n, "tweetPhoto") }) {
-		for _, img := range findAll(photo, nil, func(n *html.Node) bool { return isElem(n, "img") }) {
-			u, err := url.Parse(attr(img, "src"))
+	for _, p := range outside(photo, quote).MatchAll(focal) {
+		for _, img := range imgTag.MatchAll(p) {
+			u, err := url.Parse(dom.Attr(img, "src"))
 			if err != nil || u.Scheme != "https" || u.Host != "pbs.twimg.com" || !strings.HasPrefix(u.Path, "/media/") {
 				continue
 			}
@@ -154,7 +174,7 @@ func postImages(focal, quote *html.Node) []Image {
 				continue
 			}
 			seen[src] = true
-			images = append(images, Image{URL: src, AltText: attr(img, "alt")})
+			images = append(images, Image{URL: src, AltText: dom.Attr(img, "alt")})
 		}
 	}
 	return images
@@ -162,18 +182,15 @@ func postImages(focal, quote *html.Node) []Image {
 
 func focalIndex(articles []*html.Node, statusID string) int {
 	for i, a := range articles {
-		quote := find(a, nil, isQuoteCard)
-		link := find(a, quote, func(n *html.Node) bool {
-			if !isElem(n, "a") {
-				return false
-			}
-			_, id := linkStatus(attr(n, "href"))
+		quote := quoteCard.MatchFirst(a)
+		linked := slices.ContainsFunc(outside(link, quote).MatchAll(a), func(n *html.Node) bool {
+			_, id := linkStatus(dom.Attr(n, "href"))
 			return id == statusID
 		})
-		if link == nil {
+		if !linked {
 			continue
 		}
-		if find(a, quote, isTweetText) != nil || len(postImages(a, quote)) > 0 {
+		if outside(tweetText, quote).MatchFirst(a) != nil || len(postImages(a, quote)) > 0 {
 			return i
 		}
 	}
@@ -181,13 +198,13 @@ func focalIndex(articles []*html.Node, statusID string) int {
 }
 
 func readPost(a *html.Node) Post {
-	quote := find(a, nil, isQuoteCard)
+	quote := quoteCard.MatchFirst(a)
 	handle, name := author(a, quote)
 	return Post{
 		StatusID:     permalinkID(a, quote),
 		AuthorHandle: handle,
 		AuthorName:   name,
-		Text:         text(find(a, quote, isTweetText), nil),
+		Text:         text(outside(tweetText, quote).MatchFirst(a)),
 		PostedAt:     postedAt(a, quote),
 	}
 }
@@ -198,12 +215,12 @@ func readPost(a *html.Node) Post {
 func repliesBelow(doc, focal *html.Node) []*html.Node {
 	var replies []*html.Node
 	below := false
-	for _, n := range findAll(doc, nil, func(n *html.Node) bool { return testID(n, "tweet") || isElem(n, "h2") }) {
+	for _, n := range threadEntry.MatchAll(doc) {
 		switch {
 		case n == focal:
 			below = true
 		case !below:
-		case isElem(n, "h2"):
+		case n.Data == "h2":
 			return replies
 		default:
 			replies = append(replies, n)
@@ -224,39 +241,13 @@ func conversation(articles []*html.Node, statusID string) []Post {
 	return posts
 }
 
-// isQuoteCard matches the embedded tweet X renders inside a status: a
-// role="link" box carrying its own timestamp and text or media.
-func isQuoteCard(n *html.Node) bool {
-	if n.Type != html.ElementNode || attr(n, "role") != "link" {
-		return false
-	}
-	hasTime := find(n, nil, func(c *html.Node) bool { return isElem(c, "time") }) != nil
-	hasText := find(n, nil, isTweetText) != nil
-	hasMedia := find(n, nil, isMedia) != nil
-	return hasTime && (hasText || hasMedia)
-}
-
-func isTweetText(n *html.Node) bool {
-	return testID(n, "tweetText")
-}
-
-func isMedia(n *html.Node) bool {
-	return testID(n, "tweetPhoto") || testID(n, "videoPlayer")
-}
-
 func author(focal, quote *html.Node) (handle, name string) {
-	block := find(focal, quote, func(n *html.Node) bool { return testID(n, "User-Name") })
+	block := outside(userName, quote).MatchFirst(focal)
 	if block == nil {
 		return "", ""
 	}
-	for _, a := range findAll(block, nil, func(n *html.Node) bool {
-		if !isElem(n, "a") {
-			return false
-		}
-		href := attr(n, "href")
-		return strings.HasPrefix(href, "/") && !strings.Contains(href[1:], "/")
-	}) {
-		switch label := collapse(text(a, nil)); {
+	for _, a := range profileLink.MatchAll(block) {
+		switch label := collapse(text(a)); {
 		case strings.HasPrefix(label, "@") && handle == "":
 			handle = strings.TrimPrefix(label, "@")
 		case label != "" && !strings.HasPrefix(label, "@") && name == "":
@@ -267,11 +258,11 @@ func author(focal, quote *html.Node) (handle, name string) {
 }
 
 func postedAt(focal, quote *html.Node) string {
-	t := find(focal, quote, func(n *html.Node) bool { return isElem(n, "time") && attr(n, "datetime") != "" })
+	t := outside(datedTime, quote).MatchFirst(focal)
 	if t == nil {
 		return ""
 	}
-	raw := attr(t, "datetime")
+	raw := dom.Attr(t, "datetime")
 	parsed, err := time.Parse(time.RFC3339, raw)
 	if err != nil {
 		return raw
@@ -286,34 +277,29 @@ func quotedStatusID(quote *html.Node) string {
 	if id := permalinkID(quote, nil); id != "" {
 		return id
 	}
-	link := find(quote, nil, func(n *html.Node) bool {
-		if !isElem(n, "a") {
-			return false
+	for _, a := range link.MatchAll(quote) {
+		if _, id := linkStatus(dom.Attr(a, "href")); id != "" {
+			return id
 		}
-		_, id := linkStatus(attr(n, "href"))
-		return id != ""
-	})
-	if link == nil {
-		return ""
 	}
-	_, id := linkStatus(attr(link, "href"))
-	return id
+	return ""
 }
 
 // permalinkID reads the id off the anchor wrapping the timestamp, which is the
 // one link guaranteed to point at the tweet itself rather than at media or a
 // quoted status.
 func permalinkID(root, skip *html.Node) string {
-	t := find(root, skip, func(n *html.Node) bool { return isElem(n, "time") })
+	t := outside(timestamp, skip).MatchFirst(root)
 	if t == nil {
 		return ""
 	}
-	link := ancestorLink(t)
-	if link == nil {
-		return ""
+	for p := t.Parent; p != nil; p = p.Parent {
+		if link.Match(p) {
+			_, id := linkStatus(dom.Attr(p, "href"))
+			return id
+		}
 	}
-	_, id := linkStatus(attr(link, "href"))
-	return id
+	return ""
 }
 
 func firstRunes(s string, n int) string {
