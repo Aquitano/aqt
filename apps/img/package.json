@@ -27,7 +27,7 @@
     "arktype": "^2.2.7",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
-    "drizzle-orm": "^0.45.3",
+    "drizzle-orm": "^1.0.0-rc.5-5935859",
     "lucide-react": "^1.49.0",
     "motion": "^14.0.0",
     "nanoid": "^6.0.1",
