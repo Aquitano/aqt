@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -240,7 +241,7 @@ func (s *Store) SearchAI(ctx context.Context, o SearchOptions) ([]AIHit, error) 
 		err := row.Scan(&id, &h.Ref, &h.Task, &h.Provider, &h.Model, &h.PromptVersion, &score, &snippet)
 		h.Score = float64(score)
 		if snippet != nil {
-			h.Snippet = *snippet
+			h.Snippet = html.UnescapeString(*snippet)
 		}
 		ids = append(ids, id)
 		return h, err
