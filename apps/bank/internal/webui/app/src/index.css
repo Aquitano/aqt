@@ -1,4 +1,5 @@
 @import "@aqt/ui/styles/globals.css";
+@source not "../dist";
 @plugin "@tailwindcss/typography";
 
 /* own-message bubble accent (iMessage-style), distinct from the neutral primary */
