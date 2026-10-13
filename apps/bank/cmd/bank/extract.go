@@ -473,7 +473,6 @@ func readTextInput(path string) (string, error) {
 	return string(b), err
 }
 
-// stringList collects a repeatable flag, so --status can be given more than once.
 func humanBytes(n int64) string {
 	const unit = 1024
 	if n < unit {

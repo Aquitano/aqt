@@ -96,23 +96,37 @@ docker compose run --rm bank token list
 
 ### Upgrading
 
+Run this entire block together. Its subshell stops on any failed command,
+including the backup, role provisioning, or rebuild. On the first upgrade, if
+`.env` has no query connection, psql prompts for the `bank_query` password twice,
+then `vi` opens `.env`. Add the query URL described in section 2 before saving and
+exiting. Cancel the password prompt or exit the editor with `:cq` to stop the
+upgrade. Provisioning uses psql directly and does not run app migrations.
+
 ```sh
-cd /opt/aqt/apps/bank
-docker compose exec -T db pg_dump -U bank -Fc bank > /data/backup/pre-upgrade.dump.tmp &&
-    mv /data/backup/pre-upgrade.dump.tmp /data/backup/pre-upgrade.dump &&
-    docker compose --profile server --profile ocr stop bank bank-ocr &&
+(
+    set -eu
+    cd /opt/aqt/apps/bank
+    mkdir -p /data/backup
+    docker compose exec -T db pg_dump -U bank -Fc bank > /data/backup/pre-upgrade.dump.tmp
+    mv /data/backup/pre-upgrade.dump.tmp /data/backup/pre-upgrade.dump
+    docker compose --profile server --profile ocr stop bank bank-ocr
     git pull
+    docker compose exec -T db psql -U bank -d bank -v ON_ERROR_STOP=1 < deploy/query-role.sql
+    if ! grep -q '^BANK_QUERY_DATABASE_URL=.' .env; then
+        docker compose exec db psql -U bank -d bank -v ON_ERROR_STOP=1 -c '\password bank_query'
+        vi .env
+        chmod 600 .env
+        grep -q '^BANK_QUERY_DATABASE_URL=.' .env
+    fi
+    BANK_VERSION=$(git rev-parse HEAD) docker compose up -d --build
+    docker compose exec bank bank healthcheck
+)
 ```
 
-For the first upgrade to this version, run the query-role provisioning steps
-above and add the query connection to `.env` before rebuilding. The ingestion connection still runs migrations and imports.
-The separate query connection is validated at startup. A missing query URL disables
-ad-hoc SQL; an unsafe configured login fails startup.
-
-```sh
-BANK_VERSION=$(git rev-parse HEAD) docker compose up -d --build
-docker compose exec bank bank healthcheck
-```
+The ingestion connection still runs migrations and imports. The separate query
+connection is validated at startup. A missing query URL disables ad-hoc SQL; an
+unsafe configured login fails startup.
 
 Tern now records the migration version in `public.schema_version`. On the first
 startup it checks that the legacy `schema_migrations` filenames form a contiguous
@@ -123,7 +137,7 @@ processes stopped during this one-off transition and do not run older binaries
 against a database once later Tern migrations have run. Restore the pre-upgrade
 dump to roll back a schema change.
 
-Migrations run when the server starts, and in any `docker compose run` that opens the database first. Take the dump before that, because no migration has a down step. The chain stops if the dump fails, so a stopped database never leaves a truncated dump behind and never gets upgraded without one.
+Migrations run when the server starts, and in any `docker compose run` that opens the database first. Take the dump before that, because no migration has a down step. A failed dump cannot replace the last good backup or reach the startup command.
 
 Mail imported before the mail metadata migrations (0011 to 0013) stays ungrouped until it is rebuilt. Proton and other EML or MBOX mail shows one conversation per message. Gmail keeps its threads but has no folders or provenance. Rebuild each mail source once, reading the preview before applying it:
 
@@ -144,8 +158,8 @@ the distroless server. `bank version` reports the build revision supplied throug
 to 30 seconds before the database pools close.
 
 JSON imports are limited to 16 MiB and 10,000 entries, with at most two decoded
-concurrently. Split larger JSON submissions into separate imports. File
-uploads continue to stream to disk with the existing 16 GiB limit.
+concurrently. Each body must arrive within one minute after its import slot is
+available. Split larger JSON submissions into separate imports. File uploads continue to stream to disk with the existing 16 GiB limit.
 
 ### Text inside attachments
 
