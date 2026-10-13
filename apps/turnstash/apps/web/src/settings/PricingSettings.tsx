@@ -8,8 +8,8 @@ import { RefreshCwIcon } from "lucide-react";
 
 import { api } from "../api";
 import { Async, RequestFailure } from "../components/Async";
-import { Card } from "../components/Card";
 import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
+import { Section } from "../components/Section";
 import { dateTime, int } from "../format";
 import { catalogsQuery } from "../queries";
 import { PricingRulesSettings } from "./PricingRulesSettings";
@@ -38,7 +38,7 @@ const PricingCatalogs = () => {
   return (
     <Async query={catalogs}>
       {(rows) => (
-        <Card
+        <Section
           title="Pricing catalogs"
           action={
             <Button
@@ -105,7 +105,7 @@ const PricingCatalogs = () => {
               The catalog is being applied. Totals switch once every request is priced.
             </p>
           )}
-        </Card>
+        </Section>
       )}
     </Async>
   );

@@ -5,8 +5,8 @@ import { Layer, Rectangle, Sankey } from "recharts";
 import type { SankeyData, SankeyLinkProps, SankeyNodeProps } from "recharts";
 
 import { truncateStart, usd } from "../format";
-import { Card } from "./Card";
 import { chartRow } from "./ChartRow";
+import { Section } from "./Section";
 
 // Enough to see the shape; past this every band is a hairline.
 const maxNodesPerSide = 8;
@@ -155,7 +155,7 @@ export const SpendFlow = ({ links }: { readonly links: ReadonlyArray<FlowLink> }
   if (data.links.length === 0) return null;
 
   return (
-    <Card title="Spend flow" note="model to project">
+    <Section title="Spend flow" note="model to project">
       <ChartContainer config={{}} className="aspect-auto h-80 w-full pt-3">
         <Sankey
           data={data}
@@ -168,6 +168,6 @@ export const SpendFlow = ({ links }: { readonly links: ReadonlyArray<FlowLink> }
           <ChartTooltip content={<ChartTooltipContent hideLabel formatter={chartRow(usd)} />} />
         </Sankey>
       </ChartContainer>
-    </Card>
+    </Section>
   );
 };

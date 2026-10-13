@@ -1,8 +1,6 @@
-import { useState } from "react";
-import type { ReactNode } from "react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@aqt/ui/components/tabs";
 
 import { Page, PageHead } from "../components/Page";
-import { Segmented } from "../components/Segmented";
 import { DisplaySettings } from "../settings/DisplaySettings";
 import { MachinesSettings } from "../settings/MachinesSettings";
 import { PlansSettings } from "../settings/PlansSettings";
@@ -10,34 +8,37 @@ import { PricingSettings } from "../settings/PricingSettings";
 import { TokensSettings } from "../settings/TokensSettings";
 
 const tabs = [
-  { value: "display", label: "Display" },
-  { value: "machines", label: "Machines" },
-  { value: "plans", label: "Plans" },
-  { value: "tokens", label: "Tokens" },
-  { value: "pricing", label: "Pricing" },
+  { value: "display", label: "Display", Panel: DisplaySettings },
+  { value: "machines", label: "Machines", Panel: MachinesSettings },
+  { value: "plans", label: "Plans", Panel: PlansSettings },
+  { value: "tokens", label: "Tokens", Panel: TokensSettings },
+  { value: "pricing", label: "Pricing", Panel: PricingSettings },
 ] as const;
 
-type TabId = (typeof tabs)[number]["value"];
-
-const panels: Record<TabId, () => ReactNode> = {
-  display: DisplaySettings,
-  machines: MachinesSettings,
-  plans: PlansSettings,
-  tokens: TokensSettings,
-  pricing: PricingSettings,
-};
-
-export const SettingsPage = () => {
-  const [tab, setTab] = useState<TabId>("display");
-  const Panel = panels[tab];
-
-  return (
-    <Page>
+export const SettingsPage = () => (
+  <Page>
+    <Tabs defaultValue={tabs[0].value} className="gap-9">
       <PageHead
         title="Settings"
-        note={<Segmented label="Settings section" options={tabs} value={tab} onChange={setTab} />}
+        note={
+          <TabsList aria-label="Settings section" className="h-8 max-w-full overflow-x-auto">
+            {tabs.map(({ value, label }) => (
+              <TabsTrigger
+                key={value}
+                value={value}
+                className="px-2.5 text-[13px] max-sm:px-1.5 max-sm:text-xs"
+              >
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        }
       />
-      <Panel />
-    </Page>
-  );
-};
+      {tabs.map(({ value, Panel }) => (
+        <TabsContent key={value} value={value} className="flex flex-col gap-9">
+          <Panel />
+        </TabsContent>
+      ))}
+    </Tabs>
+  </Page>
+);

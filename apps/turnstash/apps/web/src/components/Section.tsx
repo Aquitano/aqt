@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export const Card = ({
+export const Section = ({
   title,
   note,
   action,

@@ -16,8 +16,8 @@ import { useRef, useState } from "react";
 
 import { api } from "../api";
 import { Async, RequestFailure } from "../components/Async";
-import { Card } from "../components/Card";
 import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
+import { Section } from "../components/Section";
 import { Segmented } from "../components/Segmented";
 import { int, relativeTime } from "../format";
 import { rulesQuery, unpricedModelsQuery } from "../queries";
@@ -283,16 +283,16 @@ export const PricingRulesSettings = () => {
   return (
     <>
       <div ref={form}>
-        <Card
+        <Section
           title="Add a pricing rule"
           note="Each rule creates a new catalog version and reprices the archive."
         >
           <NewRule model={model} onModelChange={setModel} onSaved={refresh} />
-        </Card>
+        </Section>
       </div>
       <Async query={rules}>
         {(rows) => (
-          <Card title="Pricing rules" note={`${rows.length} rules`}>
+          <Section title="Pricing rules" note={`${rows.length} rules`}>
             {rows.length === 0 ? (
               <p className="pt-1.5 text-xs text-muted-foreground">
                 No rules yet. Built-in aliases and LiteLLM rates apply.
@@ -305,18 +305,18 @@ export const PricingRulesSettings = () => {
               />
             )}
             {remove.isError && <RequestFailure error={remove.error} />}
-          </Card>
+          </Section>
         )}
       </Async>
       <Async query={unpriced}>
         {(rows) => (
-          <Card title="Unpriced models" note={`${rows.length} models without a rate`}>
+          <Section title="Unpriced models" note={`${rows.length} models without a rate`}>
             {rows.length === 0 ? (
               <p className="pt-1.5 text-xs text-muted-foreground">Every request has a price.</p>
             ) : (
               <UnpricedTable rows={rows} onPick={pick} />
             )}
-          </Card>
+          </Section>
         )}
       </Async>
     </>

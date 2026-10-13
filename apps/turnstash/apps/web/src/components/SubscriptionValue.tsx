@@ -3,8 +3,8 @@ import type { PlanCost, SubscriptionValue } from "@aqt/turnstash-api";
 import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 
 import { moneyList, usd } from "../format";
-import { Card } from "./Card";
 import { DataTable, Td, Th } from "./DataTable";
+import { Section } from "./Section";
 import { ShareCell, shareOf } from "./ShareCell";
 
 const signedUsd = (value: number) => (value < 0 ? `-${usd(-value)}` : usd(value));
@@ -22,7 +22,10 @@ export const SubscriptionValueTable = ({
 }) => {
   const totalApi = rows.reduce((sum, row) => sum + row.apiUsd, 0);
   return (
-    <Card title="Subscription value" note="API-equivalent spend against plan cost for this period">
+    <Section
+      title="Subscription value"
+      note="API-equivalent spend against plan cost for this period"
+    >
       <DataTable>
         <TableHeader>
           <TableRow>
@@ -60,6 +63,6 @@ export const SubscriptionValueTable = ({
           })}
         </TableBody>
       </DataTable>
-    </Card>
+    </Section>
   );
 };

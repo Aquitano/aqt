@@ -9,10 +9,10 @@ import {
 } from "@aqt/ui/components/empty";
 import { ChartColumnIcon } from "lucide-react";
 
-import { Card } from "./Card";
 import { ConversationsTable } from "./ConversationsTable";
 import { DailyChart } from "./DailyChart";
 import { Heatmap } from "./Heatmap";
+import { Section } from "./Section";
 import { SpendFlow } from "./SpendFlow";
 import { StatTiles } from "./StatTiles";
 import { SubscriptionValueTable } from "./SubscriptionValue";
@@ -72,12 +72,12 @@ export const StatsView = ({
         {stats.byModel.length > 0 && <ModelsTable rows={stats.byModel} />}
       </div>
       {stats.topConversations.length > 0 && (
-        <Card
+        <Section
           title="Most expensive conversations"
           note={`top ${stats.topConversations.length} in this period`}
         >
           <ConversationsTable rows={stats.topConversations} showShare />
-        </Card>
+        </Section>
       )}
       <div className="grid grid-cols-1 gap-x-10 gap-y-9 lg:grid-cols-2">
         {stats.byProvider.length > 0 && <ProvidersTable rows={stats.byProvider} />}

@@ -9,8 +9,8 @@ import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { compact, usd } from "../format";
-import { Card } from "./Card";
 import { chartRow } from "./ChartRow";
+import { Section } from "./Section";
 import { Segmented } from "./Segmented";
 
 type Metric = "cost" | "tokens" | "requests";
@@ -47,7 +47,7 @@ export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> })
   const days = daily.map((row) => ({ ...row, day: dayLabel(row.date) }));
 
   return (
-    <Card
+    <Section
       title="Daily activity"
       action={<Segmented label="Metric" options={metricTabs} value={metric} onChange={setMetric} />}
     >
@@ -81,6 +81,6 @@ export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> })
           ))}
         </BarChart>
       </ChartContainer>
-    </Card>
+    </Section>
   );
 };

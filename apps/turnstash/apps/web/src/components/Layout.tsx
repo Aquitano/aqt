@@ -1,5 +1,6 @@
 import { Button } from "@aqt/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@aqt/ui/components/card";
+import { Progress } from "@aqt/ui/components/progress";
 import { ThemeToggle } from "@aqt/ui/components/theme-toggle";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet } from "@tanstack/react-router";
@@ -115,16 +116,17 @@ const RepricingNotice = () => {
     wasRepricing.current = isRepricing;
   }, [isRepricing, queryClient]);
   if (repricing === null) return null;
-  const share = repricing.total === 0 ? 0 : repricing.done / repricing.total;
   return (
     <div role="status" className="relative border-b bg-warning/10 text-[13px]">
       <div className={`${column} py-2`}>
         Applying new prices: {int(repricing.done)} of {int(repricing.total)} requests. Totals switch
         over when every request is priced.
       </div>
-      <span
-        className="absolute -bottom-px left-0 h-0.5 bg-flame"
-        style={{ width: `${Math.min(100, share * 100)}%` }}
+      <Progress
+        aria-label="Repricing progress"
+        value={repricing.done}
+        max={Math.max(repricing.total, 1)}
+        className="absolute inset-x-0 -bottom-px *:data-[slot=progress-track]:h-0.5 *:data-[slot=progress-track]:rounded-none *:data-[slot=progress-track]:bg-transparent"
       />
     </div>
   );

@@ -3,9 +3,9 @@ import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 
 import { Async } from "../components/Async";
-import { Card } from "../components/Card";
 import { DataTable, Td, Th } from "../components/DataTable";
 import { Page } from "../components/Page";
+import { Section } from "../components/Section";
 import { ShareCell, shareOf } from "../components/ShareCell";
 import { useCollapse } from "../components/Tables";
 import { FilterBar, useFilters } from "../filters";
@@ -24,7 +24,7 @@ const AllocationTable = ({
   const total = rows.reduce((sum, row) => sum + row.estimatedCostUsd, 0);
   const collapse = useCollapse(rows);
   return (
-    <Card title={title} note={note}>
+    <Section title={title} note={note}>
       {rows.length === 0 ? (
         <p className="py-2 text-xs text-muted-foreground">Nothing observed in this period.</p>
       ) : (
@@ -48,14 +48,14 @@ const AllocationTable = ({
         </DataTable>
       )}
       {collapse.toggle}
-    </Card>
+    </Section>
   );
 };
 
 const CategoryTable = ({ analysis }: { readonly analysis: Analysis }) => {
   const total = analysis.attributedCostUsd + analysis.unattributedCostUsd;
   return (
-    <Card title="By task" note={`${usd(analysis.attributedCostUsd)} attributed to turns`}>
+    <Section title="By task" note={`${usd(analysis.attributedCostUsd)} attributed to turns`}>
       <DataTable>
         <TableHeader>
           <TableRow>
@@ -90,14 +90,14 @@ const CategoryTable = ({ analysis }: { readonly analysis: Analysis }) => {
           )}
         </TableBody>
       </DataTable>
-    </Card>
+    </Section>
   );
 };
 
 const ModelTable = ({ analysis }: { readonly analysis: Analysis }) => {
   const total = analysis.byModel.reduce((sum, row) => sum + row.costUsd, 0);
   return (
-    <Card title="By model" note="the model that answered the turn first">
+    <Section title="By model" note="the model that answered the turn first">
       <DataTable>
         <TableHeader>
           <TableRow>
@@ -124,7 +124,7 @@ const ModelTable = ({ analysis }: { readonly analysis: Analysis }) => {
           ))}
         </TableBody>
       </DataTable>
-    </Card>
+    </Section>
   );
 };
 

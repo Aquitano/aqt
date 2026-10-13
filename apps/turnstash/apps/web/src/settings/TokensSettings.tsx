@@ -6,6 +6,7 @@ import { Field, FieldLabel } from "@aqt/ui/components/field";
 import { Input } from "@aqt/ui/components/input";
 import { Spinner } from "@aqt/ui/components/spinner";
 import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
+import { ToggleGroup, ToggleGroupItem } from "@aqt/ui/components/toggle-group";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Effect } from "effect";
 import { Trash2Icon, TriangleAlertIcon } from "lucide-react";
@@ -13,9 +14,9 @@ import { useId, useState } from "react";
 
 import { api } from "../api";
 import { Async, RequestFailure } from "../components/Async";
-import { Card } from "../components/Card";
 import { CopyField } from "../components/CopyField";
 import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
+import { Section } from "../components/Section";
 import { dateTime, relativeTime } from "../format";
 import { queryKeys, tokensQuery } from "../queries";
 
@@ -43,7 +44,7 @@ export const TokensSettings = () => {
 
   return (
     <>
-      <Card title="Create a read token">
+      <Section title="Create a read token">
         <div className="flex flex-col gap-3 pt-1.5">
           <div className="flex flex-wrap items-end gap-2">
             <Field className="w-48 gap-2">
@@ -56,24 +57,23 @@ export const TokensSettings = () => {
                 onChange={(event) => setName(event.target.value)}
               />
             </Field>
-            <div className="flex h-8 items-center gap-1">
+            <ToggleGroup
+              multiple
+              aria-label="Scopes"
+              variant="outline"
+              size="sm"
+              spacing={0}
+              value={scopes}
+              onValueChange={(next) =>
+                setScopes(TokenScope.literals.filter((scope) => next.includes(scope)))
+              }
+            >
               {TokenScope.literals.map((scope) => (
-                <Button
-                  key={scope}
-                  size="xs"
-                  variant={scopes.includes(scope) ? "default" : "outline"}
-                  onClick={() =>
-                    setScopes(
-                      scopes.includes(scope)
-                        ? scopes.filter((held) => held !== scope)
-                        : [...scopes, scope],
-                    )
-                  }
-                >
+                <ToggleGroupItem key={scope} value={scope} className="text-[13px]">
                   {scope}
-                </Button>
+                </ToggleGroupItem>
               ))}
-            </div>
+            </ToggleGroup>
             <Button
               size="sm"
               disabled={create.isPending || name.trim() === "" || scopes.length === 0}
@@ -99,11 +99,11 @@ export const TokensSettings = () => {
             </>
           )}
         </div>
-      </Card>
+      </Section>
 
       <Async query={tokens}>
         {(rows) => (
-          <Card title="Tokens" note={`${rows.length} issued`}>
+          <Section title="Tokens" note={`${rows.length} issued`}>
             <DataTable>
               <TableHeader>
                 <TableRow>
@@ -148,7 +148,7 @@ export const TokensSettings = () => {
               </TableBody>
             </DataTable>
             {remove.isError && <RequestFailure error={remove.error} />}
-          </Card>
+          </Section>
         )}
       </Async>
     </>

@@ -8,7 +8,6 @@ import { useState } from "react";
 
 import { Async } from "../components/Async";
 import { BookmarkButton } from "../components/BookmarkButton";
-import { Card } from "../components/Card";
 import { CommitList } from "../components/CommitList";
 import { conversationLabel } from "../components/ConversationsTable";
 import { MarkdownExportButton } from "../components/MarkdownExportButton";
@@ -16,6 +15,7 @@ import { MessageThread } from "../components/MessageThread";
 import { Page, PageHead } from "../components/Page";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { RequestInspector } from "../components/RequestInspector";
+import { Section } from "../components/Section";
 import { SessionTimeline } from "../components/SessionTimeline";
 import { routeLabel } from "../components/Tables";
 import { TurnList } from "../components/TurnList";
@@ -141,19 +141,22 @@ export const ConversationPage = () => {
       <Async query={detail}>{(data) => <Summary key={data.conversation.id} detail={data} />}</Async>
 
       {detail.data !== undefined && detail.data.commits.length > 0 && (
-        <Card title="Commits" note={`${detail.data.commits.length} linked by time window`}>
+        <Section title="Commits" note={`${detail.data.commits.length} linked by time window`}>
           <CommitList commits={detail.data.commits} />
-        </Card>
+        </Section>
       )}
       {detail.data !== undefined && detail.data.turns.length > 0 && (
-        <Card title="Turns" note={`${detail.data.turns.length} turns, categories are rule-based`}>
+        <Section
+          title="Turns"
+          note={`${detail.data.turns.length} turns, categories are rule-based`}
+        >
           <TurnList key={id} turns={detail.data.turns} conversationId={id} />
-        </Card>
+        </Section>
       )}
-      <Card title="Session timeline">
+      <Section title="Session timeline">
         <SessionTimeline key={id} conversationId={id} onInspect={setInspecting} />
-      </Card>
-      <Card title="Transcript">
+      </Section>
+      <Section title="Transcript">
         {search.invalidMessage === true ? (
           <Alert variant="destructive">
             <CircleAlertIcon />
@@ -177,7 +180,7 @@ export const ConversationPage = () => {
             </Link>
           </div>
         )}
-      </Card>
+      </Section>
 
       <RequestInspector requestId={inspecting} onClose={() => setInspecting(null)} />
     </Page>

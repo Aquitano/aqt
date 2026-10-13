@@ -30,9 +30,9 @@ import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { api } from "../api";
 import { Async, RequestFailure } from "../components/Async";
-import { Card } from "../components/Card";
 import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
 import { LabeledSelect } from "../components/LabeledSelect";
+import { Section } from "../components/Section";
 import { money, usd } from "../format";
 import { addDays, ymd } from "../period";
 import { currencies, planPresets } from "../plans";
@@ -485,7 +485,7 @@ const ProviderTimeline = ({
   const current = periods.find((plan) => plan.endedOn === null);
 
   return (
-    <Card
+    <Section
       title={providerLabels[provider]}
       note={
         current === undefined ? "no current plan" : `${current.name} since ${current.startedOn}`
@@ -583,7 +583,7 @@ const ProviderTimeline = ({
         </TableBody>
       </DataTable>
       {remove.isError && <RequestFailure error={remove.error} />}
-    </Card>
+    </Section>
   );
 };
 
@@ -598,9 +598,9 @@ export const PlansSettings = () => {
     <Async query={plans}>
       {(rows) => (
         <>
-          <Card title="Add a subscription period">
+          <Section title="Add a subscription period">
             <NewPeriod currency={rows[0]?.currency ?? "USD"} onSaved={refresh} />
-          </Card>
+          </Section>
           {providerIds
             .filter((provider) => rows.some((plan) => plan.provider === provider))
             .map((provider) => (

@@ -9,9 +9,9 @@ import { useState } from "react";
 import { api } from "../api";
 import { Pending, RequestFailure } from "../components/Async";
 import { BookmarkNoteForm } from "../components/BookmarkNoteForm";
-import { Card } from "../components/Card";
 import { MarkdownExportButton } from "../components/MarkdownExportButton";
 import { Page, PageHead } from "../components/Page";
+import { Section } from "../components/Section";
 import { dateTime } from "../format";
 import { bookmarkPagesQuery, queryKeys } from "../queries";
 
@@ -122,7 +122,7 @@ export const BookmarksPage = () => {
   return (
     <Page>
       <PageHead title="Bookmarks" note="Saved conversations, turns and messages." />
-      <Card title="Saved bookmarks">
+      <Section title="Saved bookmarks">
         {pages.isPending && <Pending />}
         {pages.isError && <RequestFailure error={pages.error} />}
         {pages.isSuccess && items.length === 0 && (
@@ -144,7 +144,7 @@ export const BookmarksPage = () => {
             Load more bookmarks
           </Button>
         )}
-      </Card>
+      </Section>
     </Page>
   );
 };

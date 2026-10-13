@@ -2,9 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 
 import { Async } from "../components/Async";
-import { Card } from "../components/Card";
 import { CommitList } from "../components/CommitList";
 import { Page } from "../components/Page";
+import { Section } from "../components/Section";
 import { StatsView } from "../components/StatsView";
 import { FilterBar, useFilters } from "../filters";
 import { projectQuery } from "../queries";
@@ -29,9 +29,9 @@ export const ProjectPage = () => {
           <>
             <StatsView stats={data.stats} previous={previous} calendar={null} hideProjects />
             {data.commits.length > 0 && (
-              <Card title="Recent commits" note="linked to conversations by time window">
+              <Section title="Recent commits" note="linked to conversations by time window">
                 <CommitList commits={data.commits} showConversation />
-              </Card>
+              </Section>
             )}
           </>
         )}

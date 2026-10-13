@@ -9,8 +9,8 @@ import { useCallback, useState } from "react";
 import type { ReactNode } from "react";
 
 import { compact, dateTime, hoursSince, int, relativeTime, usd } from "../format";
-import { Card } from "./Card";
 import { DataTable, PrimaryTd, Td, Th } from "./DataTable";
+import { Section } from "./Section";
 import { ShareCell, shareOf, totalCost } from "./ShareCell";
 import { SortHeader, useSort } from "./Sort";
 
@@ -44,7 +44,7 @@ export const ModelsTable = ({ rows }: { readonly rows: ReadonlyArray<ModelRow> }
   );
   const collapse = useCollapse(sorted);
   return (
-    <Card title="By model" note={`${rows.length} models`}>
+    <Section title="By model" note={`${rows.length} models`}>
       <DataTable>
         <TableHeader>
           <TableRow>
@@ -76,7 +76,7 @@ export const ModelsTable = ({ rows }: { readonly rows: ReadonlyArray<ModelRow> }
         </TableBody>
       </DataTable>
       {collapse.toggle}
-    </Card>
+    </Section>
   );
 };
 
@@ -92,7 +92,7 @@ export const ProjectsTable = ({ rows }: { readonly rows: ReadonlyArray<ProjectRo
   );
   const collapse = useCollapse(sorted);
   return (
-    <Card title="By project" note={`${rows.length} projects`}>
+    <Section title="By project" note={`${rows.length} projects`}>
       <DataTable>
         <TableHeader>
           <TableRow>
@@ -131,14 +131,14 @@ export const ProjectsTable = ({ rows }: { readonly rows: ReadonlyArray<ProjectRo
         </TableBody>
       </DataTable>
       {collapse.toggle}
-    </Card>
+    </Section>
   );
 };
 
 export const ProvidersTable = ({ rows }: { readonly rows: ReadonlyArray<ProviderRow> }) => {
   const total = totalCost(rows);
   return (
-    <Card title="By provider" note={`${rows.length} providers`}>
+    <Section title="By provider" note={`${rows.length} providers`}>
       <DataTable>
         <TableHeader>
           <TableRow>
@@ -159,7 +159,7 @@ export const ProvidersTable = ({ rows }: { readonly rows: ReadonlyArray<Provider
           ))}
         </TableBody>
       </DataTable>
-    </Card>
+    </Section>
   );
 };
 
@@ -197,7 +197,7 @@ export const MachinesTable = ({
   readonly conversations?: boolean;
   readonly agent?: "column" | "inline";
 }) => (
-  <Card title={title} note={note} action={action}>
+  <Section title={title} note={note} action={action}>
     <DataTable>
       <TableHeader>
         <TableRow>
@@ -247,5 +247,5 @@ export const MachinesTable = ({
         })}
       </TableBody>
     </DataTable>
-  </Card>
+  </Section>
 );

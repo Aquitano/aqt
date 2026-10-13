@@ -14,10 +14,10 @@ import { MessagesSquareIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Pending, RequestFailure } from "../components/Async";
-import { Card } from "../components/Card";
 import { ConversationsTable } from "../components/ConversationsTable";
 import { FilterSelect } from "../components/FilterSelect";
 import { Page } from "../components/Page";
+import { Section } from "../components/Section";
 import { FilterBar, useFilters } from "../filters";
 import { conversationPagesQuery, projectsQuery } from "../queries";
 
@@ -83,7 +83,7 @@ export const ConversationsPage = () => {
             </EmptyHeader>
           </Empty>
         ) : (
-          <Card
+          <Section
             title="Conversations"
             note={`${rows.length} loaded${pages.hasNextPage ? ", more available" : ""}`}
           >
@@ -101,7 +101,7 @@ export const ConversationsPage = () => {
                 </Button>
               </div>
             )}
-          </Card>
+          </Section>
         ))}
     </Page>
   );

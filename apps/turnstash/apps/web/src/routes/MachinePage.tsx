@@ -6,9 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 
 import { Async } from "../components/Async";
-import { Card } from "../components/Card";
 import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
 import { Page } from "../components/Page";
+import { Section } from "../components/Section";
 import { StatsView } from "../components/StatsView";
 import { FilterBar, useFilters } from "../filters";
 import { dateTime, int } from "../format";
@@ -16,7 +16,7 @@ import { machineQuery } from "../queries";
 import { usePreviousOverall } from "../trend";
 
 const Streams = ({ detail }: { readonly detail: MachineDetail }) => (
-  <Card
+  <Section
     title="Sources"
     note={
       detail.streamCount > detail.streams.length
@@ -48,7 +48,7 @@ const Streams = ({ detail }: { readonly detail: MachineDetail }) => (
         ))}
       </TableBody>
     </DataTable>
-  </Card>
+  </Section>
 );
 
 export const MachinePage = () => {

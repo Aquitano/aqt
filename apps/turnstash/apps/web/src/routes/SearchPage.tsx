@@ -19,10 +19,10 @@ import { SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Pending, RequestFailure } from "../components/Async";
-import { Card } from "../components/Card";
 import { FilterSelect } from "../components/FilterSelect";
 import { Page } from "../components/Page";
 import { ProviderBadge } from "../components/ProviderBadge";
+import { Section } from "../components/Section";
 import { Snippet } from "../components/Snippet";
 import { FilterBar, useFilters } from "../filters";
 import { dateTime, shortId } from "../format";
@@ -123,7 +123,7 @@ export const SearchPage = () => {
       {term !== "" && results.isPending && <Pending />}
       {results.isError && <RequestFailure error={results.error} />}
       {term !== "" && results.isSuccess && (
-        <Card title={`Results for ${term}`} note={`${results.data.hits.length} hits`}>
+        <Section title={`Results for ${term}`} note={`${results.data.hits.length} hits`}>
           {results.data.hits.length === 0 && (
             <p className="py-3 text-xs text-muted-foreground">
               Nothing matched. Try fewer or different words.
@@ -150,7 +150,7 @@ export const SearchPage = () => {
               <Snippet text={hit.snippet} />
             </div>
           ))}
-        </Card>
+        </Section>
       )}
     </Page>
   );

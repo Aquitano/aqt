@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { useFilters } from "../filters";
 import { usd } from "../format";
 import { heatmapDays, heatmapWeeks, ymd } from "../period";
-import { Card } from "./Card";
+import { Section } from "./Section";
 
 const weekdayLabels = ["Mon", "", "Wed", "", "Fri", "", ""];
 
@@ -140,7 +140,7 @@ export const Heatmap = ({
   const weeksStyle: CSSVariables = { "--weeks": heatmapWeeks };
 
   return (
-    <Card title="Activity" note={`last ${heatmapWeeks} weeks`}>
+    <Section title="Activity" note={`last ${heatmapWeeks} weeks`}>
       <div
         className="relative mt-3 flex flex-col gap-1"
         style={weeksStyle}
@@ -216,6 +216,6 @@ export const Heatmap = ({
           more
         </span>
       </div>
-    </Card>
+    </Section>
   );
 };
