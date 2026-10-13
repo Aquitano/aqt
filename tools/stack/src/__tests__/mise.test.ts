@@ -46,6 +46,7 @@ describe("mise registration", () => {
       const env = {
         ...process.env,
         MISE_TRUSTED_CONFIG_PATHS: fixture,
+        MISE_BUN_VERSION: Bun.version,
         MISE_STATE_DIR: resolve(fixture, ".mise-state"),
         MISE_CACHE_DIR: resolve(fixture, ".mise-cache"),
       };
