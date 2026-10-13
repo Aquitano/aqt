@@ -143,7 +143,7 @@ func (p *Processor) derive(ctx context.Context, d store.Derivation) (store.Recor
 	}
 	b, err := p.store.LoadBlob(ctx, d.RawHash)
 	if err != nil {
-		return store.RecordInput{}, &failure{err: err, class: ClassParse}
+		return store.RecordInput{}, &failure{err: err, class: ClassStore}
 	}
 	html, err := blob.Decompress(b.Payload)
 	if err != nil {
@@ -154,7 +154,7 @@ func (p *Processor) derive(ctx context.Context, d store.Derivation) (store.Recor
 	}
 	summary, err := p.store.SummarizeCaptures(ctx, d.RawHash)
 	if err != nil {
-		return store.RecordInput{}, &failure{err: err, class: ClassParse}
+		return store.RecordInput{}, &failure{err: err, class: ClassStore}
 	}
 	normalized, host, err := urlnorm.Normalize(summary.URL)
 	if err != nil {

@@ -12,7 +12,10 @@ import (
 const (
 	MaxAttempts     = 5
 	staleRunningAge = "2 minutes"
-	ClassAbandoned  = "abandoned"
+	// retryBackoff is the wait after the first failed attempt; it doubles with
+	// each attempt after that.
+	retryBackoff   = "1 minute"
+	ClassAbandoned = "abandoned"
 )
 
 type DerivationKey struct {
@@ -21,8 +24,8 @@ type DerivationKey struct {
 	Version   int
 }
 
-// ClaimDerivation takes the oldest pending job, or a running one whose worker
-// went quiet, and marks it running under this worker. A quiet job that has
+// ClaimDerivation takes the oldest pending job whose retry is due, or a
+// running one whose worker went quiet, and marks it running under this worker. A quiet job that has
 // used up its attempts is failed as abandoned instead: whatever keeps killing
 // its worker would kill the next one too. ok is false when the queue is empty.
 func (s *Store) ClaimDerivation(ctx context.Context) (d Derivation, ok bool, err error) {
@@ -34,7 +37,8 @@ func (s *Store) ClaimDerivation(ctx context.Context) (d Derivation, ok bool, err
 		update derivations set status = 'running', claimed_at = now(), attempts = attempts + 1, updated_at = now()
 		where (raw_hash, extractor, extractor_version) in (
 			select raw_hash, extractor, extractor_version from derivations
-			where status = 'pending' or (status = 'running' and claimed_at < now() - interval '`+staleRunningAge+`' and attempts < ?)
+			where (status = 'pending' and (retry_at is null or retry_at <= now()))
+				or (status = 'running' and claimed_at < now() - interval '`+staleRunningAge+`' and attempts < ?)
 			order by created_at limit 1 for update skip locked)
 		returning *`, ClassAbandoned, MaxAttempts, MaxAttempts).Scan(ctx, &d)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -149,16 +153,19 @@ type Failure struct {
 	Retry bool
 }
 
+// FailDerivation records a failed attempt. A job to retry goes back to pending
+// and is not claimed again before its backoff has passed.
 func (s *Store) FailDerivation(ctx context.Context, key DerivationKey, f Failure) error {
-	status := StatusFailed
+	q := s.db.NewUpdate().Model((*Derivation)(nil)).
+		Set("last_error = ?", f.Error).Set("error_class = ?", f.Class).Set("updated_at = now()").
+		Where("raw_hash = ? and extractor = ? and extractor_version = ?", key.RawHash, key.Extractor, key.Version)
 	if f.Retry {
-		status = StatusPending
+		q = q.Set("status = ?", StatusPending).
+			Set("retry_at = now() + interval '" + retryBackoff + "' * power(2, attempts - 1)")
+	} else {
+		q = q.Set("status = ?", StatusFailed)
 	}
-	_, err := s.db.NewUpdate().Model((*Derivation)(nil)).
-		Set("status = ?", status).Set("last_error = ?", f.Error).Set("error_class = ?", f.Class).
-		Set("updated_at = now()").
-		Where("raw_hash = ? and extractor = ? and extractor_version = ?", key.RawHash, key.Extractor, key.Version).
-		Exec(ctx)
+	_, err := q.Exec(ctx)
 	return err
 }
 

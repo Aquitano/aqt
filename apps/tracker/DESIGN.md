@@ -175,6 +175,7 @@ derivations (
   status            text not null default 'pending', -- pending | running | done | failed
   attempts          integer not null default 0,
   claimed_at        timestamptz,
+  retry_at          timestamptz,                -- a failed attempt's backoff: not claimed again before it
   last_error        text,
   error_class       text,                       -- panic | parse | no_match | stale | timeout | too_large | unregistered | store | abandoned
   record_id         bigint references records,
@@ -221,12 +222,13 @@ Source data: `urls`, `page_views`, `activity_spans`, `raw_html_blobs`, `captures
 update derivations set status = 'running', claimed_at = now(), attempts = attempts + 1
 where (raw_hash, extractor, extractor_version) in (
   select raw_hash, extractor, extractor_version from derivations
-  where status = 'pending' or (status = 'running' and claimed_at < now() - interval '2 minutes')
+  where (status = 'pending' and (retry_at is null or retry_at <= now()))
+     or (status = 'running' and claimed_at < now() - interval '2 minutes')
   order by created_at limit 1 for update skip locked)
 returning *;
 ```
 
-Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, canonical_url)`, set derivation `done` with `record_id`. The upsert always widens the seen window (`first_seen_at`, `last_seen_at` from the blob's captures) and replaces `record_hash`, `url_id`, `title`, `search_text` and `data` only when the blob was last seen no earlier than the record, so replaying an older blob never overwrites newer content. NUL is dropped from every string and key in the record's data before it is hashed, since jsonb rejects `\u0000`. On error, including a failed write (`store`): `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL), `unregistered` (a derivation for an extractor or version this binary does not carry) and `timeout` (an extractor cannot be interrupted, so a retry would run beside the copy still going) fail on the first attempt. A stale `running` row that has used its 5 attempts is failed as `abandoned` rather than claimed again. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
+Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, canonical_url)`, set derivation `done` with `record_id`. The upsert always widens the seen window (`first_seen_at`, `last_seen_at` from the blob's captures) and replaces `record_hash`, `url_id`, `title`, `search_text` and `data` only when the blob was last seen no earlier than the record, so replaying an older blob never overwrites newer content. NUL is dropped from every string and key in the record's data before it is hashed, since jsonb rejects `\u0000`. On error, including a failed read or write (`store`): `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class` and a `retry_at` 1 minute out, doubling with each attempt (1, 2, 4, 8 minutes), so a passing fault does not burn every attempt at once. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL), `unregistered` (a derivation for an extractor or version this binary does not carry) and `timeout` (an extractor cannot be interrupted, so a retry would run beside the copy still going) fail on the first attempt. A stale `running` row that has used its 5 attempts is failed as `abandoned` rather than claimed again. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
 
 `serve`, after migrating, queues every capture under each registered extractor's current version wherever that version has no derivation yet, so neither a version bump nor a migration that clears the derived tables waits on a manual step; the new version's records land on the same `(extractor, canonical_url)` as the old ones. `reprocess` without flags does the same and also deletes the older versions' derivations and the records only they produced, which drops a page a new version no longer reads or keys differently; `--failed` resets failed rows; `--all` deletes the targets' derivations and records and re-queues from `captures`; `--extractor` narrows any of them. Workers in `serve` pick the rows up.
 

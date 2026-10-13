@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -251,6 +252,7 @@ func TestFailuresAreClassifiedAndRetriedByPolicy(t *testing.T) {
 
 	for range store.MaxAttempts {
 		drain(t, p)
+		retryNow(t, schema)
 	}
 	if n := storetest.QueryInt(t, schema,
 		`select count(*) from derivations where status = 'failed' and error_class = 'no_match' and attempts = 1`); n != 1 {
@@ -265,4 +267,44 @@ func TestFailuresAreClassifiedAndRetriedByPolicy(t *testing.T) {
 	if err != nil || queued != 2 {
 		t.Errorf("reprocess --failed queued %d (%v), want 2", queued, err)
 	}
+}
+
+func TestARetriedJobWaitsTwiceAsLongAfterEachFailure(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/boom", `<html><head><title>panic</title></head></html>`)
+
+	var waits []int64
+	for range store.MaxAttempts - 1 {
+		if n := drain(t, p); n != 1 {
+			t.Fatalf("processed %d jobs, want the one due", n)
+		}
+		if n := drain(t, p); n != 0 {
+			t.Fatal("a failed job was claimed again before its backoff passed")
+		}
+		waits = append(waits, storetest.QueryInt(t, schema,
+			`select round(extract(epoch from retry_at - updated_at))::bigint from derivations where status = 'pending'`))
+		retryNow(t, schema)
+	}
+	if want := []int64{60, 120, 240, 480}; !slices.Equal(waits, want) {
+		t.Errorf("waits = %v s, want %v", waits, want)
+	}
+}
+
+func TestAStoreErrorBeforeExtractionIsRetriedAsStore(t *testing.T) {
+	p, st, schema := newProcessor(t)
+	ingest(t, st, "https://example.com/bun", pageHTML)
+	storetest.QueryInt(t, schema, `with gone as (delete from captures returning 1) select count(*) from gone`)
+
+	drain(t, p)
+	if n := storetest.QueryInt(t, schema,
+		`select count(*) from derivations where status = 'pending' and error_class = 'store'`); n != 1 {
+		t.Error("a job whose captures could not be read was not retried as a store failure")
+	}
+}
+
+// retryNow makes every backed-off job due, as if its wait had passed.
+func retryNow(t *testing.T, schema string) {
+	t.Helper()
+	storetest.QueryInt(t, schema, `with due as (update derivations set retry_at = now() where retry_at > now()
+		returning 1) select count(*) from due`)
 }
