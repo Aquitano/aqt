@@ -9,7 +9,7 @@ async function main(): Promise<void> {
   const wantsHelp = Bun.argv.slice(2).some((arg) => arg === "--help" || arg === "-h");
   if (wantsHelp) {
     console.log(
-      `\n  AQT Stack · App Bootstrapper\n\n  An interactive CLI to scaffold Next.js + Tailwind + shadcn/ui + Hono.js apps under apps/<name>.\n\n  Usage: bun run tools/stack/index.ts\n`,
+      `\n  AQT Stack · App Bootstrapper\n\n  An interactive CLI to scaffold Next.js + Tailwind + @aqt/ui + Hono.js apps under apps/<name>.\n\n  Usage: bun run tools/stack/index.ts\n`,
     );
     process.exit(0);
   }
@@ -24,9 +24,7 @@ async function main(): Promise<void> {
   log.info(`  Tailwind:   yes`);
   log.info("  Tooling:    workspace Oxlint, Oxfmt, TypeScript");
   log.info("  Validation: ArkType");
-  log.info(
-    `  shadcn/ui:  ${config.shadcn ? `${config.shadcnComponents.length} components` : "no"}`,
-  );
+  log.info(`  @aqt/ui:    ${config.ui ? "yes" : "no"}`);
   log.info(`  Hono.js:    ${config.hono ? "yes" : "no"}`);
   log.info(`  Themes:     ${config.themes ? "yes" : "no"}`);
   log.info(`  Testing:    ${config.testing ? "yes" : "no"}`);

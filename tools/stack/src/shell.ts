@@ -14,6 +14,10 @@ export const packageManifest = type({
   "scripts?": "Record<string, string>",
   "dependencies?": "Record<string, string>",
   "devDependencies?": "Record<string, string>",
+  "workspaces?": {
+    "packages?": "string[]",
+    "catalog?": "Record<string, string>",
+  },
 });
 export type PackageManifest = typeof packageManifest.infer;
 
