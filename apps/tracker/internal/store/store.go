@@ -16,8 +16,10 @@ import (
 	"github.com/uptrace/bun/migrate"
 )
 
+// Migrations holds the schema as SQL files under migrations/.
+//
 //go:embed migrations/*.sql
-var migrationFS embed.FS
+var Migrations embed.FS
 
 // migrationLock is an arbitrary fixed advisory-lock key ("trkmig"): two
 // processes starting against an unmigrated database serialize on it instead
@@ -32,14 +34,8 @@ type Store struct {
 // pgdriver's default socket timeouts would cut a long migration, reprocess or
 // forget off at 10 s. A DSN's read_timeout and write_timeout still apply.
 func Open(ctx context.Context, dsn string) (*Store, error) {
-	return New(ctx, sql.OpenDB(pgdriver.NewConnector(
-		pgdriver.WithReadTimeout(0), pgdriver.WithWriteTimeout(0), pgdriver.WithDSN(dsn))))
-}
-
-// New migrates an already opened database; Open is the usual entry point,
-// this one lets tests hand in a connector of their own.
-func New(ctx context.Context, sqldb *sql.DB) (*Store, error) {
-	db := bun.NewDB(sqldb, pgdialect.New())
+	db := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(
+		pgdriver.WithReadTimeout(0), pgdriver.WithWriteTimeout(0), pgdriver.WithDSN(dsn))), pgdialect.New())
 	s := &Store{db: db}
 	if err := s.migrate(ctx); err != nil {
 		db.Close()
@@ -53,7 +49,7 @@ func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
 func (s *Store) migrate(ctx context.Context) error {
-	sub, err := fs.Sub(migrationFS, "migrations")
+	sub, err := fs.Sub(Migrations, "migrations")
 	if err != nil {
 		return err
 	}

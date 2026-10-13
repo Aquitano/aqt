@@ -32,7 +32,7 @@ func apply(t *testing.T, st *store.Store, device uuid.UUID, ev store.Events) sto
 }
 
 func TestDesktopSpanRoundTrips(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	device, id := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	start := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
 
@@ -42,7 +42,7 @@ func TestDesktopSpanRoundTrips(t *testing.T) {
 	apply(t, st, device, store.Events{SpanEnds: []store.SpanEndEvent{
 		{ID: id, EndedAt: start.Add(time.Minute), Reason: "app_switch"}}})
 
-	stored := storetest.QueryInt(t, schema, `select count(*) from activity_spans
+	stored := storetest.QueryInt(t, dsn, `select count(*) from activity_spans
 		where id = $1 and page_view_id is null and app_name = 'Code' and bundle_id = 'com.microsoft.VSCode'
 		  and window_title = 'main.go — aqt' and end_reason = 'app_switch'
 		  and ended_at = started_at + interval '60 seconds'`, id)
@@ -52,7 +52,7 @@ func TestDesktopSpanRoundTrips(t *testing.T) {
 }
 
 func TestIdleEndRollsBackPastHeartbeatsButNotBeforeTheStart(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	device := uuid.Must(uuid.NewV7())
 	start := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
 	span := func(idleAt time.Time) uuid.UUID {
@@ -66,7 +66,7 @@ func TestIdleEndRollsBackPastHeartbeatsButNotBeforeTheStart(t *testing.T) {
 	rolledBack := span(start.Add(5 * time.Second))
 	clamped := span(start.Add(-10 * time.Second))
 
-	matched := storetest.QueryInt(t, schema, `select count(*) from activity_spans
+	matched := storetest.QueryInt(t, dsn, `select count(*) from activity_spans
 		where (id, ended_at) in (($1, $3::timestamptz + interval '5 seconds'), ($2, $3::timestamptz)) and end_reason = 'idle'`,
 		rolledBack, clamped, start)
 	if matched != 2 {
@@ -75,7 +75,7 @@ func TestIdleEndRollsBackPastHeartbeatsButNotBeforeTheStart(t *testing.T) {
 }
 
 func TestWorkBlocksSplitOnGapsOverMaxGap(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	device := uuid.Must(uuid.NewV7())
 	base := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
 	span := func(offset time.Duration, reason string) {
@@ -90,10 +90,10 @@ func TestWorkBlocksSplitOnGapsOverMaxGap(t *testing.T) {
 	span(260*time.Second, "idle")
 
 	from, to := base.Add(-time.Hour), base.Add(time.Hour)
-	if blocks := storetest.QueryInt(t, schema, `select count(*) from work_blocks($1, $2)`, from, to); blocks != 2 {
+	if blocks := storetest.QueryInt(t, dsn, `select count(*) from work_blocks($1, $2)`, from, to); blocks != 2 {
 		t.Fatalf("work_blocks returned %d blocks, want 2", blocks)
 	}
-	shape := storetest.QueryInt(t, schema, `select count(*) from work_blocks($1, $2)
+	shape := storetest.QueryInt(t, dsn, `select count(*) from work_blocks($1, $2)
 		where (span_count, switches, dominant_category) in ((2, 2, 'Focus/Code'), (1, 0, 'Focus/Code'))`, from, to)
 	if shape != 2 {
 		t.Fatalf("blocks with the expected span_count and switches: %d, want 2", shape)
@@ -101,7 +101,7 @@ func TestWorkBlocksSplitOnGapsOverMaxGap(t *testing.T) {
 }
 
 func TestIdleBatchReplayPreservesEndedAt(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	device, id := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	start := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
 	events := store.Events{
@@ -112,7 +112,7 @@ func TestIdleBatchReplayPreservesEndedAt(t *testing.T) {
 	apply(t, st, device, events)
 	apply(t, st, device, events)
 	apply(t, st, device, store.Events{Heartbeats: []store.SpanHeartbeatEvent{{ID: id, At: start.Add(time.Minute)}}})
-	seconds := storetest.QueryInt(t, schema, `select extract(epoch from ended_at - started_at)::bigint
+	seconds := storetest.QueryInt(t, dsn, `select extract(epoch from ended_at - started_at)::bigint
 		from activity_spans where id = $1`, id)
 	if seconds != 5 {
 		t.Fatalf("active seconds after replay and late heartbeat: %d, want 5", seconds)
@@ -120,7 +120,7 @@ func TestIdleBatchReplayPreservesEndedAt(t *testing.T) {
 }
 
 func TestCategorizedSpansMatchAppsAndHosts(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	device := uuid.Must(uuid.NewV7())
 	pv, browser, desktop := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
 	start := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
@@ -132,7 +132,7 @@ func TestCategorizedSpansMatchAppsAndHosts(t *testing.T) {
 			{ID: browser, PageViewID: pv, StartedAt: start},
 			{ID: desktop, AppName: "Code", StartedAt: start}}})
 
-	matched := storetest.QueryInt(t, schema, `select count(*) from categorized_spans
+	matched := storetest.QueryInt(t, dsn, `select count(*) from categorized_spans
 		where (id, source, category) in (($1, 'page', 'Distraction'), ($2, 'desktop', 'Focus/Code'))
 		  and (host = 'www.youtube.com' or app_name = 'Code')`, browser, desktop)
 	if matched != 2 {
@@ -141,7 +141,7 @@ func TestCategorizedSpansMatchAppsAndHosts(t *testing.T) {
 }
 
 func TestCategoryCoverageSeeds(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	device := uuid.Must(uuid.NewV7())
 	start := time.Now().UTC()
 	cases := []struct{ app, host, category string }{
@@ -175,7 +175,7 @@ func TestCategoryCoverageSeeds(t *testing.T) {
 			}
 			events.SpanStarts = []store.SpanStartEvent{event}
 			apply(t, st, device, events)
-			if got := storetest.QueryInt(t, schema, `select count(*) from categorized_spans where id = $1 and category = $2`, id, tc.category); got != 1 {
+			if got := storetest.QueryInt(t, dsn, `select count(*) from categorized_spans where id = $1 and category = $2`, id, tc.category); got != 1 {
 				t.Fatalf("expected category %q", tc.category)
 			}
 		})
