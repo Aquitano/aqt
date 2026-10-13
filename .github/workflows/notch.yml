@@ -6,6 +6,7 @@ on:
       [
         "apps/notch/**",
         "tools/macos-app.sh",
+        "tools/swiftlint.sh",
         "tools/tests/test_macos_app.py",
         "mise.toml",
         ".swiftformat",
@@ -18,6 +19,7 @@ on:
       [
         "apps/notch/**",
         "tools/macos-app.sh",
+        "tools/swiftlint.sh",
         "tools/tests/test_macos_app.py",
         "mise.toml",
         ".swiftformat",
@@ -44,5 +46,3 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: python3 tools/tests/test_macos_app.py
       - run: mise run notch:check
-      - run: xcodebuild -project Notch.xcodeproj -scheme Notch -configuration Debug -destination platform=macOS -derivedDataPath DerivedData -quiet build CODE_SIGNING_ALLOWED=NO
-        working-directory: apps/notch

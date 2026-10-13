@@ -80,7 +80,9 @@ struct SettingsView: View {
         Form { content() }
             .formStyle(.grouped)
     }
+}
 
+extension SettingsView {
     // MARK: - Notch layout
 
     private var notchLayoutSection: some View {
@@ -304,7 +306,9 @@ struct SettingsView: View {
             }
         }
     }
+}
 
+extension SettingsView {
     // MARK: - Agents
 
     private var agentsSection: some View {
@@ -492,7 +496,9 @@ struct SettingsView: View {
         }
         .onChange(of: selection.wrappedValue) { _, name in AgentNotifier.preview(name) }
     }
+}
 
+extension SettingsView {
     // MARK: - Media
 
     private var mediaSection: some View {
@@ -698,7 +704,9 @@ struct SettingsView: View {
         }
         .onAppear { powerMode.refreshAvailability() }
     }
+}
 
+extension SettingsView {
     // MARK: - Widgets
 
     private var widgetsPane: some View {
@@ -890,7 +898,9 @@ struct SettingsView: View {
             .foregroundStyle(.secondary)
         }
     }
+}
 
+extension SettingsView {
     // MARK: - Permissions
 
     private var permissionsSection: some View {

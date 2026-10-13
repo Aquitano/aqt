@@ -55,10 +55,7 @@ description = "Follow the LaunchAgent log"
 run = "tail -f \"$HOME/Library/Logs/tracker.log\""
 
 ["tracker:swift"]
-run = [
-  "swiftformat --lint apps/tracker/desktop",
-  "swiftlint lint --strict --quiet apps/tracker/desktop",
-]
+run = ["swiftformat --lint apps/tracker/desktop", "tools/swiftlint.sh apps/tracker/desktop"]
 
 ["tracker:desktop:test"]
 dir = "apps/tracker/desktop"

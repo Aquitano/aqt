@@ -61,7 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setupHotkey() {
         let settings = env.settings
-        hotkeyObserver = watch({ settings.general.hotkeyEnabled }) { [weak self] enabled in
+        hotkeyObserver = watch {
+            settings.general.hotkeyEnabled
+        } onChange: { [weak self] enabled in
             KeyboardShortcuts.removeHandler(for: .toggleNotch)
             if enabled {
                 KeyboardShortcuts.onKeyDown(for: .toggleNotch) { self?.toggleNotch() }
