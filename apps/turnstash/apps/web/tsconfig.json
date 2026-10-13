@@ -1,0 +1,10 @@
+{
+  "extends": "@aqt/config/tsconfig.app.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "bun"],
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true
+  },
+  "include": ["src", "test", "vite.config.ts"]
+}

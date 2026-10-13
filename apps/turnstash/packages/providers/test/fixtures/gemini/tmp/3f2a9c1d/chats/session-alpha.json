@@ -1,0 +1,70 @@
+{
+  "sessionId": "session-alpha-0001",
+  "projectHash": "3f2a9c1d",
+  "startTime": "2026-05-16T10:00:00.000Z",
+  "lastUpdated": "2026-05-16T10:01:10.000Z",
+  "kind": "chat",
+  "messages": [
+    {
+      "id": "u1",
+      "timestamp": "2026-05-16T10:00:00.000Z",
+      "type": "user",
+      "content": "add a retry to the fetch helper"
+    },
+    {
+      "id": "g1",
+      "timestamp": "2026-05-16T10:00:05.000Z",
+      "type": "gemini",
+      "content": "Reading the helper first.",
+      "model": "gemini-3.1-pro-preview",
+      "tokens": {
+        "input": 120,
+        "cached": 20,
+        "output": 30,
+        "thoughts": 5,
+        "tool": 4,
+        "total": 179
+      },
+      "thoughts": [{ "subject": "Plan", "description": "Read the helper, then patch it." }],
+      "toolCalls": [
+        { "id": "t1", "name": "read_file", "args": { "path": "src/fetch.ts" }, "status": "success" }
+      ]
+    },
+    {
+      "id": "u2",
+      "timestamp": "2026-05-16T10:01:00.000Z",
+      "type": "user",
+      "content": [{ "text": "three attempts is enough" }]
+    },
+    {
+      "id": "g2",
+      "timestamp": "2026-05-16T10:01:05.000Z",
+      "type": "gemini",
+      "content": "Patched and tested.",
+      "model": "gemini-3.1-pro-preview",
+      "tokens": { "input": 80, "cached": 10, "output": 25 },
+      "toolCalls": [
+        {
+          "id": "t2",
+          "name": "run_command",
+          "displayName": "Shell",
+          "args": { "command": "bun test" },
+          "status": "error"
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-05-16T10:01:10.000Z",
+      "type": "gemini",
+      "content": "Anything else?",
+      "model": "gemini-3.1-pro-preview",
+      "tokens": { "input": 10, "output": 5 }
+    },
+    {
+      "id": "i1",
+      "timestamp": "2026-05-16T10:01:10.000Z",
+      "type": "info",
+      "content": "Session saved."
+    }
+  ]
+}

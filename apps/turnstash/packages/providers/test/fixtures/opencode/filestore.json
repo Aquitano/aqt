@@ -1,0 +1,30 @@
+{
+  "session": {
+    "id": "ses_IIII9999",
+    "projectID": "prj_3333",
+    "slug": "calm-fox",
+    "directory": "/home/dev/projects/archive",
+    "title": "File store run",
+    "version": "1.1.36",
+    "summary": { "additions": 0, "deletions": 0, "files": 0 },
+    "time": { "created": 1769672429895, "updated": 1769672814862 }
+  },
+  "message": {
+    "id": "msg_JJJJ0000",
+    "sessionID": "ses_IIII9999",
+    "role": "assistant",
+    "providerID": "openai",
+    "modelID": "gpt-4.1",
+    "agent": "general",
+    "cost": 0.004,
+    "tokens": { "input": 120, "output": 40, "reasoning": 10, "cache": { "read": 0, "write": 0 } },
+    "time": { "created": 1769672430000, "completed": 1769672431000 }
+  },
+  "part": {
+    "id": "prt_KKKK1111",
+    "messageID": "msg_JJJJ0000",
+    "sessionID": "ses_IIII9999",
+    "type": "text",
+    "text": "Archived answer."
+  }
+}

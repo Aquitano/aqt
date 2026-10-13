@@ -1,0 +1,26 @@
+services:
+  db:
+    image: paradedb/paradedb:0.25.9-pg17
+    environment:
+      POSTGRES_USER: turnstash
+      POSTGRES_PASSWORD: turnstash
+      POSTGRES_DB: turnstash
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db-dev-data:/var/lib/postgresql/data
+
+  db-test:
+    image: paradedb/paradedb:0.25.9-pg17
+    profiles: [test]
+    environment:
+      POSTGRES_USER: turnstash
+      POSTGRES_PASSWORD: turnstash
+      POSTGRES_DB: turnstash_test
+    ports:
+      - "127.0.0.1:5434:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+
+volumes:
+  db-dev-data:

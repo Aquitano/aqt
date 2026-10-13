@@ -18,6 +18,7 @@
     "**/.output/**",
     "apps/tracker/**/testdata/**",
     "apps/gallery/packages/db/src/migrations/**",
+    "apps/turnstash/packages/pricing/data/**",
     ".claude/**",
     "apps/bank/internal/webui/app/dist/**",
     "apps/bank/internal/webui/app/dist/",
@@ -53,6 +54,15 @@
         "sortTailwindcss": {
           "functions": ["cn", "cva", "clsx"],
           "stylesheet": "apps/img/src/styles.css"
+        }
+      }
+    },
+    {
+      "files": ["apps/turnstash/**"],
+      "options": {
+        "sortTailwindcss": {
+          "functions": ["cn", "cva", "clsx"],
+          "stylesheet": "apps/turnstash/apps/web/src/app.css"
         }
       }
     },

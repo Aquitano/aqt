@@ -1,0 +1,125 @@
+{
+  "session": {
+    "id": "ses_EEEE5555",
+    "project_id": "prj_2222",
+    "parent_id": null,
+    "slug": "old-heron",
+    "directory": "",
+    "title": "Legacy run",
+    "version": "1.2.0",
+    "agent": "general",
+    "model": { "id": "claude-sonnet-4.5", "providerID": "github-copilot" },
+    "cost": 0,
+    "tokens_input": 0,
+    "tokens_output": 0,
+    "tokens_reasoning": 0,
+    "tokens_cache_read": 0,
+    "tokens_cache_write": 0,
+    "time_created": 1788554991000,
+    "time_updated": 1788554994100,
+    "time_archived": null
+  },
+  "userMessage": {
+    "id": "msg_FFFF6666",
+    "session_id": "ses_EEEE5555",
+    "time_created": 1788554991000,
+    "time_updated": 1788554991000,
+    "data": { "role": "user", "agent": "general", "time": { "created": 1788554991000 } }
+  },
+  "assistantMessage": {
+    "id": "msg_DDDD4444",
+    "session_id": "ses_EEEE5555",
+    "time_created": 1788554991309,
+    "time_updated": 1788554994100,
+    "data": {
+      "role": "assistant",
+      "providerID": "github-copilot",
+      "modelID": "claude-sonnet-4.5",
+      "agent": "general",
+      "mode": "build",
+      "parentID": "msg_FFFF6666",
+      "path": { "cwd": "/home/dev/projects/legacy", "root": "/home/dev/projects/legacy" },
+      "cost": 0.021,
+      "tokens": {
+        "input": 842,
+        "output": 463,
+        "reasoning": 320,
+        "cache": { "read": 14848, "write": 0 }
+      },
+      "time": { "created": 1788554991309, "completed": 1788554994100 },
+      "finish": "tool-calls"
+    }
+  },
+  "parts": [
+    {
+      "id": "prt_0000",
+      "message_id": "msg_FFFF6666",
+      "session_id": "ses_EEEE5555",
+      "data": { "type": "text", "text": "Run the migration" }
+    },
+    {
+      "id": "prt_0001",
+      "message_id": "msg_DDDD4444",
+      "session_id": "ses_EEEE5555",
+      "data": { "type": "step-start", "snapshot": "9f1c2d" }
+    },
+    {
+      "id": "prt_0002",
+      "message_id": "msg_DDDD4444",
+      "session_id": "ses_EEEE5555",
+      "data": { "type": "text", "text": "Running the migration." }
+    },
+    {
+      "id": "prt_0003",
+      "message_id": "msg_DDDD4444",
+      "session_id": "ses_EEEE5555",
+      "data": {
+        "type": "tool",
+        "tool": "bash",
+        "callID": "call_HHHH8888",
+        "state": {
+          "status": "completed",
+          "title": "migrate",
+          "input": { "command": "bun run migrate" },
+          "output": "migrated 3 tables",
+          "time": { "start": 1788554992000, "end": 1788554993000 },
+          "metadata": { "exit": 0, "truncated": false }
+        }
+      }
+    },
+    {
+      "id": "prt_0004",
+      "message_id": "msg_DDDD4444",
+      "session_id": "ses_EEEE5555",
+      "data": {
+        "type": "step-finish",
+        "cost": 0.012,
+        "reason": "tool-calls",
+        "tokens": {
+          "input": 500,
+          "output": 200,
+          "reasoning": 120,
+          "cache": { "read": 10000, "write": 0 }
+        },
+        "snapshot": "9f1c2d"
+      }
+    },
+    {
+      "id": "prt_0005",
+      "message_id": "msg_DDDD4444",
+      "session_id": "ses_EEEE5555",
+      "data": {
+        "type": "step-finish",
+        "cost": 0.009,
+        "reason": "stop",
+        "tokens": {
+          "input": 342,
+          "output": 263,
+          "reasoning": 200,
+          "cache": { "read": 4848, "write": 0 }
+        },
+        "snapshot": "9f1c2d"
+      }
+    }
+  ]
+}

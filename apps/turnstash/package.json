@@ -1,0 +1,12 @@
+{
+  "name": "aqt-turnstash",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@aqt/config": "workspace:*",
+    "@types/bun": "catalog:"
+  }
+}

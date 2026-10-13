@@ -76,6 +76,16 @@ Open: whether the standalone repository stays a development home. Nothing reconc
 
 The tokens keep gallery's warm neutrals and add a `--brand` accent each app can set, success and warning colours, and Cloudflare Kumo's categorical chart palette. Light and dark mode come from a shared `ThemeProvider`. Charts use shadcn's Recharts component; a chart shadcn lacks is copied from Kumo's MIT source when an app needs it, never imported as the Kumo package. Gallery-only styles live in `apps/gallery/apps/web/src/gallery.css`. Components use `cn` from the `cn` package. Bank and img keep their local Radix copies until they move over. A future gallery re-import has to leave `packages/ts/ui` in place.
 
+## Applied 2026-10-12: turnstash import
+
+`aqt-turnstash` was imported as content at upstream `ec8d151`, 0.8.0 plus two fixes; its history stays in that repository. Its packages are workspace members under `apps/turnstash/apps` and `apps/turnstash/packages`, named `@aqt/turnstash-*`.
+
+Turnstash keeps Effect v4 and Effect Schema instead of ArkType, because its HTTP API, server and agent are built on Effect. Effect stays pinned at `4.0.0-rc.116`, and a root override holds `@effect/platform-node-shared` on the same release. Its stricter anti-slop settings are overrides in `apps/turnstash/.oxlintrc.json`; the Effect rules it brought live in `tools/oxlint/anti-slop/effect`, enabled for turnstash only. The server tests need ParadeDB: `mise run turnstash:db` starts it locally, and the `turnstash` workflow runs it as a service.
+
+The web UI moved from Cloudflare Kumo and ECharts to `@aqt/ui`, with Recharts for every chart including the spend-flow Sankey, and React Compiler on.
+
+Releases are tagged `turnstash/vX.Y.Z` and are never marked latest, because Notch's update feed follows the latest release. The server image keeps its `ghcr.io/aquitano/aqt-turnstash-server` name and builds from the workspace root with its own `Dockerfile.dockerignore`.
+
 ## Toolchain versions (2026-09-05)
 
 mise pins bun 1.4.2, Go 1.27.1, Temurin 25, golangci-lint 2.13.2, swiftformat 0.63.0, swiftlint 0.65.1, xcodegen 2.46.0. Node is not managed by mise; `.node-version` says 26 for fnm. Go and Java are pinned identically in go.mod, go.work, the Dockerfiles, CI and mise; bump all of them together.

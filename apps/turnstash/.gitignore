@@ -1,0 +1,5 @@
+.scratch-verify
+*.log
+.notes
+/docs/
+apps/server/web-dist

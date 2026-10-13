@@ -1,0 +1,169 @@
+name: turnstash
+
+# Tag a commit `turnstash/vX.Y.Z` to publish the server image under that version
+# and attach the standalone agent to a GitHub release.
+
+on:
+  push:
+    branches: [main]
+    tags: ["turnstash/v*"]
+    paths:
+      [
+        "apps/turnstash/**",
+        "packages/ts/**",
+        "tools/oxlint/**",
+        ".oxlintrc.json",
+        ".oxfmtrc.json",
+        "package.json",
+        "bun.lock",
+        ".github/workflows/turnstash.yml",
+      ]
+  pull_request:
+    paths:
+      [
+        "apps/turnstash/**",
+        "packages/ts/**",
+        "tools/oxlint/**",
+        ".oxlintrc.json",
+        ".oxfmtrc.json",
+        "package.json",
+        "bun.lock",
+        ".github/workflows/turnstash.yml",
+      ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: turnstash-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: paradedb/paradedb:0.25.9-pg17
+        env:
+          POSTGRES_USER: turnstash
+          POSTGRES_PASSWORD: turnstash
+          POSTGRES_DB: turnstash_test
+        ports: ["5434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U turnstash -d turnstash_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bunx --no-install oxlint --type-aware apps/turnstash
+      - run: bunx --no-install oxfmt --check apps/turnstash
+      - run: bun run --filter '@aqt/turnstash*' typecheck
+      - run: bun run --cwd apps/turnstash test
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/turnstash/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: bun -e 'import pkg from "./apps/turnstash/apps/agent/package.json"; if (process.env.RELEASE_TAG !== `turnstash/v${pkg.version}`) throw new Error("Release tag must match the agent package version")'
+      - name: Package and verify the standalone agent
+        run: |
+          mkdir -p dist
+          bun pm --cwd apps/turnstash/apps/agent pack --filename "$PWD/dist/turnstash.tgz"
+          cp apps/turnstash/apps/agent/dist/turnstash.js dist/turnstash.js
+          package_test_dir=$(mktemp -d)
+          printf '{"private":true,"dependencies":{"@aqt/turnstash":"file:%s/dist/turnstash.tgz"}}\n' "$PWD" > "$package_test_dir/package.json"
+          bun install --cwd "$package_test_dir" --offline
+          TURNSTASH_CONFIG_DIR="$package_test_dir/config" TURNSTASH_STATE_DIR="$package_test_dir/state" "$package_test_dir/node_modules/.bin/turnstash" --help
+          cd dist
+          sha256sum turnstash.js turnstash.tgz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turnstash-agent
+          path: |
+            dist/turnstash.js
+            dist/turnstash.tgz
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+  container:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-disposable-password
+      ADMIN_TOKEN: ci-disposable-token
+      SERVER_IMAGE: turnstash-ci:local
+    defaults:
+      run:
+        working-directory: apps/turnstash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start the production stack from source
+        run: docker compose -p turnstash-ci -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up --build --wait --wait-timeout 180
+      - name: Check the running image
+        run: |
+          curl --fail http://127.0.0.1:4320/api/health
+          curl --fail http://127.0.0.1:4320/ | grep 'id="root"'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:4320/api/stats)" = 401
+          curl --fail --header 'Authorization: Bearer ci-disposable-token' http://127.0.0.1:4320/api/stats
+      - name: Stop the disposable stack
+        if: always()
+        run: docker compose -p turnstash-ci -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml down --volumes
+
+  publish:
+    needs: container
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          # The image keeps the name it had in Aquitano/aqt-turnstash, so deployments pin the same
+          # repository.
+          images: ghcr.io/aquitano/aqt-turnstash-server
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=match,pattern=turnstash/v(.*),group=1
+            type=sha
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/turnstash/deploy/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=turnstash
+          cache-to: type=gha,mode=max,scope=turnstash
+
+  release:
+    needs: [test, publish]
+    if: startsWith(github.ref, 'refs/tags/turnstash/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: turnstash-agent
+          path: dist
+      # Never marked latest: Notch's update feed is the latest release's appcast.
+      - name: Publish the agent release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/turnstash.js dist/turnstash.tgz dist/SHA256SUMS --verify-tag --latest=false --title "turnstash ${RELEASE_TAG#turnstash/v}" --generate-notes

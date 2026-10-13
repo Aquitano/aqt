@@ -1,0 +1,164 @@
+{
+  "composerId": "11111111-1111-4111-8111-111111111111",
+  "diskKv": [
+    {
+      "key": "bubbleId:11111111-1111-4111-8111-111111111111:33333333-3333-4333-8333-333333333333",
+      "blob": true,
+      "value": {
+        "_v": 3,
+        "type": 2,
+        "capabilityType": 15,
+        "text": "",
+        "requestId": "req-bbbb",
+        "usageUuid": "usage-bbbb",
+        "tokenCount": { "inputTokens": 0, "outputTokens": 0 },
+        "toolFormerData": {
+          "toolCallId": "toolu_0001",
+          "name": "edit_file",
+          "tool": 7,
+          "status": "completed",
+          "toolIndex": 0,
+          "modelCallId": "call-0001",
+          "rawArgs": "{\"target_file\":\"src/parser.test.ts\",\"instructions\":\"add a focused case\"}",
+          "result": "{\"diff\":\"+ test('parses the entry point', () => {})\"}",
+          "userDecision": "accepted"
+        }
+      }
+    },
+    {
+      "key": "bubbleId:11111111-1111-4111-8111-111111111111:88888888-8888-4888-8888-888888888888",
+      "blob": false,
+      "value": { "checkpointId": "checkpoint-0001" }
+    },
+    {
+      "key": "bubbleId:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222",
+      "blob": false,
+      "value": {
+        "_v": 2,
+        "type": 2,
+        "text": "Renamed it to parseEntry.",
+        "requestId": "req-aaaa",
+        "tokenCount": { "inputTokens": 0, "outputTokens": 340 },
+        "codeBlocks": [{ "languageId": "typescript" }],
+        "timingInfo": { "clientRpcSendTime": 1747131014000, "clientSettleTime": 1747131015500 },
+        "contextWindowStatusAtCreation": {
+          "percentageRemaining": 80,
+          "tokensUsed": 52841,
+          "tokenLimit": 272000
+        }
+      }
+    },
+    {
+      "key": "composerData:11111111-1111-4111-8111-111111111111",
+      "blob": false,
+      "value": {
+        "_v": 3,
+        "composerId": "11111111-1111-4111-8111-111111111111",
+        "name": "Tidy the parser entry point",
+        "createdAt": 1747131011830,
+        "lastUpdatedAt": 1747140000000,
+        "unifiedMode": "agent",
+        "status": "none",
+        "modelConfig": { "modelName": "gpt-5", "maxMode": false },
+        "contextTokensUsed": 52841,
+        "contextTokenLimit": 272000,
+        "contextUsagePercent": 19,
+        "usageData": { "claude-4-sonnet": { "costInCents": 4, "amount": 2 } },
+        "fullConversationHeadersOnly": [
+          { "bubbleId": "44444444-4444-4444-8444-444444444444", "type": 1 },
+          {
+            "bubbleId": "22222222-2222-4222-8222-222222222222",
+            "type": 2,
+            "serverBubbleId": "99999999-9999-4999-8999-999999999999"
+          },
+          { "bubbleId": "66666666-6666-4666-8666-666666666666", "type": 1 },
+          { "bubbleId": "77777777-7777-4777-8777-777777777777", "type": 2 },
+          { "bubbleId": "33333333-3333-4333-8333-333333333333", "type": 2 },
+          { "bubbleId": "55555555-5555-4555-8555-555555555555", "type": 2 }
+        ]
+      }
+    },
+    {
+      "key": "bubbleId:11111111-1111-4111-8111-111111111111:55555555-5555-4555-8555-555555555555",
+      "blob": false,
+      "value": {
+        "_v": 3,
+        "type": 2,
+        "text": "Added a focused test.",
+        "requestId": "req-bbbb",
+        "usageUuid": "usage-bbbb",
+        "isAgentic": true,
+        "tokenCount": { "inputTokens": 0, "outputTokens": 0 }
+      }
+    },
+    {
+      "key": "bubbleId:11111111-1111-4111-8111-111111111111:44444444-4444-4444-8444-444444444444",
+      "blob": false,
+      "value": {
+        "_v": 2,
+        "type": 1,
+        "text": "Rename the parser entry point",
+        "requestId": "req-aaaa",
+        "tokenCount": { "inputTokens": 1200, "outputTokens": 0 },
+        "timingInfo": { "clientRpcSendTime": 1747131012000, "clientSettleTime": 1747131012400 }
+      }
+    },
+    {
+      "key": "bubbleId:11111111-1111-4111-8111-111111111111:77777777-7777-4777-8777-777777777777",
+      "blob": false,
+      "value": {
+        "_v": 3,
+        "type": 2,
+        "capabilityType": 30,
+        "text": "",
+        "thinking": { "text": "Check the fixtures first." },
+        "thinkingDurationMs": 54014,
+        "requestId": "req-bbbb",
+        "usageUuid": "usage-bbbb"
+      }
+    },
+    {
+      "key": "bubbleId:11111111-1111-4111-8111-111111111111:66666666-6666-4666-8666-666666666666",
+      "blob": false,
+      "value": {
+        "_v": 3,
+        "type": 1,
+        "text": "",
+        "richText": {
+          "root": { "children": [{ "children": [{ "text": "Now add a test.", "type": "text" }] }] }
+        },
+        "requestId": "req-bbbb",
+        "usageUuid": "usage-bbbb",
+        "tokenCount": { "inputTokens": 0, "outputTokens": 0 }
+      }
+    }
+  ],
+  "composerHeaders": [
+    {
+      "composerId": "11111111-1111-4111-8111-111111111111",
+      "workspaceId": "c23a99145fa0259808c118b5b6886f57",
+      "createdAt": 1747131011000,
+      "lastUpdatedAt": 1747141000000,
+      "isArchived": 0,
+      "isSubagent": 0,
+      "recency": 1747141000000,
+      "value": {
+        "composerId": "11111111-1111-4111-8111-111111111111",
+        "unifiedMode": "agent",
+        "type": "head",
+        "isDraft": false,
+        "numSubComposers": 0,
+        "workspaceIdentifier": {
+          "id": "c23a99145fa0259808c118b5b6886f57",
+          "uri": {
+            "$mid": 1,
+            "scheme": "file",
+            "path": "/Users/dev/projects/parser",
+            "fsPath": "/Users/dev/projects/parser",
+            "external": "file:///Users/dev/projects/parser"
+          }
+        }
+      }
+    }
+  ]
+}

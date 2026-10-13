@@ -1,0 +1,35 @@
+@import "@aqt/ui/styles/globals.css";
+
+/* A deeper flame than #f6821f, so white button text keeps 4.5:1 contrast. */
+:root {
+  --brand: #c2510a;
+  --brand-foreground: oklch(0.985 0 0);
+  --heat: var(--primary);
+  --heat-0: var(--muted);
+  --heat-1: color-mix(in oklab, var(--heat) 34%, var(--background));
+  --heat-2: color-mix(in oklab, var(--heat) 50%, var(--background));
+  --heat-3: color-mix(in oklab, var(--heat) 67%, var(--background));
+  --heat-4: color-mix(in oklab, var(--heat) 84%, var(--background));
+  --heat-5: var(--heat);
+}
+
+/* On a dark background the deep flame leaves the low heatmap steps near black, so the ramp tops out
+   at the bright one. */
+.dark {
+  --heat: #f6821f;
+}
+
+@theme inline {
+  --color-heat-0: var(--heat-0);
+  --color-heat-1: var(--heat-1);
+  --color-heat-2: var(--heat-2);
+  --color-heat-3: var(--heat-3);
+  --color-heat-4: var(--heat-4);
+  --color-heat-5: var(--heat-5);
+}
+
+@layer base {
+  body {
+    @apply text-sm tabular-nums;
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "session": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "cwd": "/work/demo-app",
+    "repository": "demo/demo-app",
+    "host_type": "cli",
+    "branch": "main",
+    "summary": "Nightly build failure",
+    "created_at": "2026-05-21T11:20:44.066Z",
+    "updated_at": "2026-05-21T11:50:00.100Z"
+  },
+  "turns": [
+    {
+      "id": 1,
+      "session_id": "11111111-1111-4111-8111-111111111111",
+      "turn_index": 0,
+      "user_message": "Why did the nightly build fail?",
+      "assistant_response": "The api package no longer declares demo-utils.",
+      "timestamp": "2026-05-21 11:21:55"
+    },
+    {
+      "id": 2,
+      "session_id": "11111111-1111-4111-8111-111111111111",
+      "turn_index": 1,
+      "user_message": "Add the dependency and rerun the build.",
+      "assistant_response": "Added demo-utils to packages/api and the build passes.",
+      "timestamp": "2026-05-21 11:46:10"
+    }
+  ],
+  "paired": [
+    {
+      "id": 4711,
+      "session_id": "11111111-1111-4111-8111-111111111111",
+      "model": "gpt-5-mini",
+      "input_tokens": 31928,
+      "cache_read_tokens": 16128,
+      "cache_write_tokens": 0,
+      "reasoning_tokens": 0,
+      "output_tokens": 873,
+      "initiator": null,
+      "total_nano_aiu": 3400000,
+      "request_multiplier": 1,
+      "created_at": "2026-05-21 11:21:40"
+    },
+    {
+      "id": 4712,
+      "session_id": "11111111-1111-4111-8111-111111111111",
+      "model": "gpt-5-mini",
+      "input_tokens": 20000,
+      "cache_read_tokens": 18000,
+      "cache_write_tokens": 500,
+      "reasoning_tokens": 120,
+      "output_tokens": 646,
+      "initiator": null,
+      "total_nano_aiu": 2100000,
+      "request_multiplier": 1,
+      "created_at": "2026-05-21 11:21:56"
+    }
+  ],
+  "unpaired": {
+    "id": 4713,
+    "session_id": "11111111-1111-4111-8111-111111111111",
+    "model": "gpt-5-mini",
+    "input_tokens": 5000,
+    "cache_read_tokens": 4000,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": 0,
+    "output_tokens": 500,
+    "initiator": null,
+    "created_at": "2026-05-21 11:30:00"
+  },
+  "compaction": {
+    "id": 4714,
+    "session_id": "11111111-1111-4111-8111-111111111111",
+    "model": "gpt-5-mini",
+    "input_tokens": 30000,
+    "cache_read_tokens": 20000,
+    "cache_write_tokens": 0,
+    "reasoning_tokens": 0,
+    "output_tokens": 1200,
+    "initiator": "compaction",
+    "created_at": "2026-05-21 11:41:00"
+  }
+}

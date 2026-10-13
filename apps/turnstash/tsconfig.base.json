@@ -1,0 +1,7 @@
+{
+  "extends": "@aqt/config/tsconfig.bun.json",
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true
+  }
+}
