@@ -1,14 +1,14 @@
 # Build context is the workspace root (aqt/), not this directory: the lockfile is resolved
 # against every workspace manifest. Dockerfile.dockerignore limits the context to those
 # manifests, turnstash and the shared TypeScript packages the web UI builds from.
-FROM oven/bun:1.4.2 AS web
+FROM oven/bun:1.4.3 AS web
 WORKDIR /app
 COPY . .
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile --filter aqt-turnstash --filter @aqt/turnstash-web
 RUN bun run --cwd apps/turnstash/apps/web build
 
-FROM oven/bun:1.4.2-slim
+FROM oven/bun:1.4.3-slim
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4320
