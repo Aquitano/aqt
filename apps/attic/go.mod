@@ -13,7 +13,7 @@ require (
 	github.com/nwaples/rardecode/v2 v2.4.1
 	github.com/pelletier/go-toml/v2 v2.4.3
 	golang.org/x/sys v0.48.0
-	golang.org/x/text v0.42.0
+	golang.org/x/text v0.43.0
 	lukechampine.com/blake3 v1.4.1
 )
 
@@ -41,7 +41,7 @@ require (
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	go4.org v0.0.0-20260112195520-a5071408f32f // indirect
 	golang.org/x/net v0.57.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
 

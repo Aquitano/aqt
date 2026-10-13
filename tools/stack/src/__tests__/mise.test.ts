@@ -111,6 +111,7 @@ describe("mise registration", () => {
           "img:ts",
           "notch:lint",
           "notch:test",
+          "shared:go",
           "shared:ts",
           "stack:ts",
           "starboard:lint",

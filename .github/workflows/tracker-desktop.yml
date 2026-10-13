@@ -5,18 +5,24 @@ on:
     paths:
       [
         "apps/tracker/desktop/**",
+        "tools/macos-app.sh",
         ".swiftformat",
         ".swiftlint.yml",
         ".swiftlint-baseline.json",
+        "mise.toml",
+        "tools/tasks/tracker.toml",
         ".github/workflows/tracker-desktop.yml",
       ]
   pull_request:
     paths:
       [
         "apps/tracker/desktop/**",
+        "tools/macos-app.sh",
         ".swiftformat",
         ".swiftlint.yml",
         ".swiftlint-baseline.json",
+        "mise.toml",
+        "tools/tasks/tracker.toml",
         ".github/workflows/tracker-desktop.yml",
       ]
 permissions:
@@ -24,6 +30,9 @@ permissions:
 concurrency:
   group: tracker-desktop-${{ github.ref }}
   cancel-in-progress: true
+env:
+  # Otherwise mise run installs every tool in mise.toml, not only the ones the job asked for.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 jobs:
   check:
     runs-on: macos-26
@@ -34,12 +43,8 @@ jobs:
       - uses: jdx/mise-action@v5
         with:
           install_args: swiftformat swiftlint xcodegen
-      - run: swiftformat --lint apps/tracker/desktop
-      - run: swiftlint lint --strict --quiet apps/tracker/desktop
-      - run: xcodegen generate
-        working-directory: apps/tracker/desktop
-      - run: swift test --package-path Packages/TrackerCore
-        working-directory: apps/tracker/desktop
+      - run: mise run tracker:swift
+      - run: mise run tracker:desktop:test
       - run: >-
           xcodebuild -project TrackerAgent.xcodeproj -scheme TrackerAgent -configuration Debug
           -destination platform=macOS -derivedDataPath DerivedData -quiet build CODE_SIGNING_ALLOWED=NO

@@ -16,5 +16,9 @@ services:
       # Loopback by default; the reverse proxy on the box terminates TLS.
       - "${AQT_GALLERY_LISTEN:-127.0.0.1:3000}:3000"
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true

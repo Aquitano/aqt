@@ -1,6 +1,6 @@
 services:
   db:
-    image: paradedb/paradedb:0.25.9-pg17
+    image: paradedb/paradedb:0.25.11-pg17@sha256:78d65750f0f88a56548526201bcab9910f83b90fe929cdbf979890f3f80b0f95
     # The image sizes shared_buffers to 25% of the host's RAM; a personal archive needs far less.
     command: ["postgres", "-c", "shared_buffers=256MB"]
     restart: unless-stopped
@@ -17,6 +17,12 @@ services:
       retries: 20
 
   server:
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     image: ${SERVER_IMAGE:-ghcr.io/aquitano/aqt-turnstash-server:latest}
     restart: unless-stopped
     depends_on:

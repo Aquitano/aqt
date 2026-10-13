@@ -17,4 +17,14 @@ Personal software workspace. Each directory under `apps/` is an independent prod
 - New TypeScript packages and apps: Base UI for components, ArkType for validation, `cn` from the `cn` package, React Compiler on, tsconfig extends `@aqt/config`. Existing apps keep their test runner and stack until touched.
 - New Swift tests use swift-testing.
 - Commit to main directly for now.
-- Workspace decisions made during the migration are in `docs/adr/`, to be removed once the migration is done. App-level ADRs under `apps/*/docs/adr` stay with their app.
+- App-level ADRs stay under `apps/*/docs/adr`. The initial workspace migration is complete.
+- Keep native builds behind mise tasks. Do not add Nx, Turbo or another workspace orchestrator.
+- Shared packages have a concrete purpose and at least two consumers; do not create catch-all `utils` or `core` packages. Workspace consumers use the checked-out package; external consumers use tagged versions.
+- Web apps use the components and theme from `@aqt/ui`; app-specific styling stays with the app. New components follow shadcn Base UI base-maia. Each app can set `--brand`; use the shared ThemeProvider and chart components.
+- Turnstash keeps Effect v4 and Effect Schema. Other new validation uses ArkType. Keep the Effect packages at the same stable version in the root catalog.
+- TypeScript keeps the app's existing test runner. Fix lint warnings in touched files and promote rules per app when it is clean. Keep shared package lint strict.
+- Swift dependencies in XcodeGen manifests are exact versions or audited revisions. SwiftLint's baseline excludes existing findings; new findings fail CI. Keep swiftformat's keypath rule disabled because it breaks Starboard type inference.
+- CI installs tool versions from mise and calls the same scoped tasks used locally. Install only the tools that each job needs.
+- VPS compose files stay beside their app; `ops/` holds deploy and secrets scripts. Private services use Tailscale, public web apps use Clerk.
+- Notch releases use `notch/v*`; turnstash releases use `turnstash/v*` and must never become the repository's latest release, because Notch's update feed follows it.
+- Preserve `packages/ts/ui` and workspace configuration when importing further changes from a former standalone repository. Nothing automatically reconciles those repositories.

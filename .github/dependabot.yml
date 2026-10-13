@@ -3,36 +3,64 @@ updates:
   - package-ecosystem: bun
     directory: /
     schedule: { interval: weekly }
-    groups: { typescript: { patterns: ["*"] } }
+    groups:
+      tooling:
+        patterns:
+          [
+            "oxlint*",
+            "oxfmt",
+            "typescript",
+            "@types/*",
+            "@typescript/*",
+            "vite",
+            "@vitejs/*",
+            "@vitest/*",
+            "vitest",
+            "wrangler",
+            "@cloudflare/*",
+            "@rolldown/*",
+            "babel-plugin-react-compiler",
+          ]
+        update-types: [minor, patch]
+      effect:
+        patterns: ["effect", "@effect/*"]
+        update-types: [minor, patch]
+      runtime:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: gomod
-    directory: /apps/attic
+    directories: [/apps/attic, /apps/bank, /apps/tracker, /packages/go/extract]
     schedule: { interval: weekly }
-    groups: { attic-go: { patterns: ["*"] } }
-  - package-ecosystem: gomod
-    directory: /apps/bank
-    schedule: { interval: weekly }
-    groups: { bank-go: { patterns: ["*"] } }
-  - package-ecosystem: gomod
-    directory: /apps/tracker
-    schedule: { interval: weekly }
-    groups: { tracker-go: { patterns: ["*"] } }
-  - package-ecosystem: gomod
-    directory: /packages/go/extract
-    schedule: { interval: weekly }
-    groups: { extract-go: { patterns: ["*"] } }
+    groups:
+      go:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: docker
-    directory: /apps/bank
+    directories: [/apps/bank, /apps/tracker, /apps/gallery/apps/server, /apps/turnstash/deploy]
     schedule: { interval: weekly }
-    groups: { bank-docker: { patterns: ["*"] } }
-  - package-ecosystem: docker
-    directory: /apps/gallery/apps/server
+    groups:
+      docker:
+        patterns: ["*"]
+        update-types: [minor, patch]
+  - package-ecosystem: docker-compose
+    directories:
+      [
+        /apps/bank,
+        /apps/attic,
+        /apps/tracker,
+        /apps/tracker/deploy,
+        /apps/gallery/apps/server,
+        /apps/turnstash/deploy,
+      ]
     schedule: { interval: weekly }
-    groups: { gallery-docker: { patterns: ["*"] } }
-  - package-ecosystem: docker
-    directory: /apps/turnstash/deploy
-    schedule: { interval: weekly }
-    groups: { turnstash-docker: { patterns: ["*"] } }
+    groups:
+      compose:
+        patterns: ["*"]
+        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
-    groups: { actions: { patterns: ["*"] } }
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]

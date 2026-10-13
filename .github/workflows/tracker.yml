@@ -2,21 +2,38 @@ name: tracker
 on:
   push:
     branches: [main]
-    paths: ["apps/tracker/**", ".golangci.yml", ".github/workflows/tracker.yml"]
+    paths:
+      [
+        "apps/tracker/**",
+        ".golangci.yml",
+        "mise.toml",
+        "tools/tasks/tracker.toml",
+        ".github/workflows/tracker.yml",
+      ]
   pull_request:
-    paths: ["apps/tracker/**", ".golangci.yml", ".github/workflows/tracker.yml"]
+    paths:
+      [
+        "apps/tracker/**",
+        ".golangci.yml",
+        "mise.toml",
+        "tools/tasks/tracker.toml",
+        ".github/workflows/tracker.yml",
+      ]
 permissions:
   contents: read
 concurrency:
   group: tracker-${{ github.ref }}
   cancel-in-progress: true
+env:
+  # Otherwise mise run installs every tool in mise.toml, not only the ones the job asked for.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 jobs:
   check:
     runs-on: ubuntu-latest
     services:
       db:
         # The image apps/tracker/docker-compose.yml pins.
-        image: paradedb/paradedb:0.25.10-pg18@sha256:188591a0bc317beb2c6d6d3f9ef0cb3e859d09ecc15a71dda5e9a027876686cf
+        image: paradedb/paradedb:0.25.11-pg18@sha256:a9cbdcfd8a1c349ab21590fd6d6dcbe7da489878df6502922d032dd64c1a7ae7
         env:
           POSTGRES_USER: tracker
           POSTGRES_PASSWORD: tracker
@@ -29,17 +46,9 @@ jobs:
           --health-retries 20
     env:
       TRACKER_TEST_DATABASE_URL: postgres://tracker:tracker@localhost:5435/tracker?sslmode=disable
-    defaults:
-      run:
-        working-directory: apps/tracker
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: jdx/mise-action@v5
         with:
-          go-version-file: apps/tracker/go.mod
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-          working-directory: apps/tracker
-      - run: go vet ./...
-      - run: go test -race ./...
+          install_args: go golangci-lint
+      - run: mise run tracker:go

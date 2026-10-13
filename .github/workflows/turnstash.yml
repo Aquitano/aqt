@@ -12,10 +12,12 @@ on:
         "apps/turnstash/**",
         "packages/ts/**",
         "tools/oxlint/**",
+        "tools/tasks/turnstash.toml",
         ".oxlintrc.json",
         ".oxfmtrc.json",
         "package.json",
         "bun.lock",
+        "mise.toml",
         ".github/workflows/turnstash.yml",
       ]
   pull_request:
@@ -24,10 +26,12 @@ on:
         "apps/turnstash/**",
         "packages/ts/**",
         "tools/oxlint/**",
+        "tools/tasks/turnstash.toml",
         ".oxlintrc.json",
         ".oxfmtrc.json",
         "package.json",
         "bun.lock",
+        "mise.toml",
         ".github/workflows/turnstash.yml",
       ]
   workflow_dispatch:
@@ -39,12 +43,16 @@ concurrency:
   group: turnstash-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # Otherwise mise run installs every tool in mise.toml, not only the ones the job asked for.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+
 jobs:
   test:
     runs-on: ubuntu-latest
     services:
       db:
-        image: paradedb/paradedb:0.25.9-pg17
+        image: paradedb/paradedb:0.25.11-pg17@sha256:78d65750f0f88a56548526201bcab9910f83b90fe929cdbf979890f3f80b0f95
         env:
           POSTGRES_USER: turnstash
           POSTGRES_PASSWORD: turnstash
@@ -57,14 +65,11 @@ jobs:
           --health-retries 20
     steps:
       - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: jdx/mise-action@v5
         with:
-          bun-version: 1.4.2
+          install_args: bun
       - run: bun install --frozen-lockfile
-      - run: bunx --no-install oxlint --type-aware apps/turnstash
-      - run: bunx --no-install oxfmt --check apps/turnstash
-      - run: bun run --filter '@aqt/turnstash*' typecheck
-      - run: bun run --cwd apps/turnstash test
+      - run: mise run turnstash:ts
       - name: Check release version
         if: startsWith(github.ref, 'refs/tags/turnstash/v')
         env:

@@ -3,22 +3,39 @@ on:
   push:
     branches: [main]
     paths:
-      ["apps/attic/**", "packages/go/extract/**", ".golangci.yml", ".github/workflows/attic.yml"]
+      [
+        "apps/attic/**",
+        "packages/go/extract/**",
+        ".golangci.yml",
+        "mise.toml",
+        "tools/tasks/attic.toml",
+        ".github/workflows/attic.yml",
+      ]
   pull_request:
     paths:
-      ["apps/attic/**", "packages/go/extract/**", ".golangci.yml", ".github/workflows/attic.yml"]
+      [
+        "apps/attic/**",
+        "packages/go/extract/**",
+        ".golangci.yml",
+        "mise.toml",
+        "tools/tasks/attic.toml",
+        ".github/workflows/attic.yml",
+      ]
 permissions:
   contents: read
 concurrency:
   group: attic-${{ github.ref }}
   cancel-in-progress: true
+env:
+  # Otherwise mise run installs every tool in mise.toml, not only the ones the job asked for.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 jobs:
   check:
     runs-on: ubuntu-latest
     services:
       db:
-        # pg_search 0.25.6, also used by the local Compose stack.
-        image: paradedb/paradedb@sha256:c5b04eba22497fa25de12265692e9578e309c2e2001d023ce6d08a17226c200a
+        # pg_search 0.25.11, also used by the local Compose stack.
+        image: paradedb/paradedb:0.25.11-pg18@sha256:a9cbdcfd8a1c349ab21590fd6d6dcbe7da489878df6502922d032dd64c1a7ae7
         env:
           POSTGRES_USER: attic
           POSTGRES_PASSWORD: attic
@@ -31,31 +48,21 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgres://attic:attic@localhost:5436/attic?sslmode=disable
+      ATTIC_TEST_DATABASE_URL: postgres://attic:attic@localhost:5436/attic?sslmode=disable
       ATTIC_REQUIRE_DB: "1"
-    defaults:
-      run:
-        working-directory: apps/attic
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: jdx/mise-action@v5
         with:
-          go-version-file: apps/attic/go.mod
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-          working-directory: apps/attic
+          install_args: go golangci-lint
       - run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl tesseract-ocr poppler-utils
-      - run: go vet ./...
-      - run: go test -race ./...
-      # The scanner's disk access is Windows code; CI runs on Linux.
-      - run: GOOS=windows go vet ./...
-      - run: GOOS=windows golangci-lint run
+      - run: mise run attic:check
 
   windows-process:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: jdx/mise-action@v5
         with:
-          go-version-file: apps/attic/go.mod
+          install_args: go
       - run: go test ./apps/attic/internal/process

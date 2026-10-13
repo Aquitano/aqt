@@ -2,21 +2,38 @@ name: bank
 on:
   push:
     branches: [main]
-    paths: ["apps/bank/**", "packages/go/extract/**", ".golangci.yml", ".github/workflows/bank.yml"]
+    paths:
+      [
+        "apps/bank/**",
+        "packages/go/extract/**",
+        ".golangci.yml",
+        "mise.toml",
+        ".github/workflows/bank.yml",
+      ]
   pull_request:
-    paths: ["apps/bank/**", "packages/go/extract/**", ".golangci.yml", ".github/workflows/bank.yml"]
+    paths:
+      [
+        "apps/bank/**",
+        "packages/go/extract/**",
+        ".golangci.yml",
+        "mise.toml",
+        ".github/workflows/bank.yml",
+      ]
 permissions:
   contents: read
 concurrency:
   group: bank-${{ github.ref }}
   cancel-in-progress: true
+env:
+  # Otherwise mise run installs every tool in mise.toml, not only the ones the job asked for.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
 jobs:
   check:
     runs-on: ubuntu-latest
     services:
       db:
-        # pg_search 0.25.6, also used by the local Compose stack.
-        image: paradedb/paradedb@sha256:c5b04eba22497fa25de12265692e9578e309c2e2001d023ce6d08a17226c200a
+        # pg_search 0.25.11, also used by the local Compose stack.
+        image: paradedb/paradedb:0.25.11-pg18@sha256:a9cbdcfd8a1c349ab21590fd6d6dcbe7da489878df6502922d032dd64c1a7ae7
         env:
           POSTGRES_USER: bank
           POSTGRES_PASSWORD: bank
@@ -30,21 +47,9 @@ jobs:
     env:
       DATABASE_URL: postgres://bank:bank@localhost:5433/bank?sslmode=disable
       BANK_REQUIRE_DB: "1"
-      # The image builds without the root go.work, so CI does too: bank's go.mod
-      # has to carry everything packages/go/extract needs.
-      GOWORK: "off"
-    defaults:
-      run:
-        working-directory: apps/bank
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: jdx/mise-action@v5
         with:
-          go-version-file: apps/bank/go.mod
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.14.0
-          working-directory: apps/bank
-      - run: go mod tidy -diff
-      - run: go vet ./...
-      - run: go test -race ./...
+          install_args: go golangci-lint
+      - run: mise run bank:go
