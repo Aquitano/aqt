@@ -36,7 +36,7 @@ const CostChips = ({
       <Badge
         key={request.id}
         variant="outline"
-        className="cursor-pointer gap-1.5 px-2.5 text-[11px] font-normal hover:border-flame"
+        className="cursor-pointer gap-1.5 px-2.5 font-normal hover:border-flame"
         render={<button type="button" onClick={() => onInspect(request.id)} />}
       >
         <span>{request.modelId}</span>
@@ -89,7 +89,7 @@ const MessageRow = ({
     aria-label={targeted ? "Linked message" : undefined}
   >
     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      <span className="font-semibold text-foreground capitalize">{message.role}</span>
+      <span className="font-medium text-foreground capitalize">{message.role}</span>
       <span>{dateTime(message.createdAt)}</span>
       <Link
         to="/conversations/$id"

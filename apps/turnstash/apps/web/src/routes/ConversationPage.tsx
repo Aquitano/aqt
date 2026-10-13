@@ -68,7 +68,7 @@ const Summary = ({ detail }: { readonly detail: ConversationDetail }) => {
         )}
       </div>
 
-      <dl className="grid grid-cols-[minmax(120px,auto)_1fr] gap-x-5 gap-y-1.5 text-[13px] [&>dd]:wrap-anywhere [&>dt]:text-muted-foreground">
+      <dl className="grid grid-cols-[minmax(120px,auto)_1fr] gap-x-5 gap-y-1.5 [&>dd]:wrap-anywhere [&>dt]:text-muted-foreground">
         <dt>Started</dt>
         <dd>{dateTime(conversation.startedAt)}</dd>
         <dt>Duration</dt>

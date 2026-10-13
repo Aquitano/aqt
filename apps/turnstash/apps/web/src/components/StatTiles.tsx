@@ -16,7 +16,7 @@ const Delta = ({ now, previous }: { readonly now: number; readonly previous: num
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 text-[13px] font-medium tracking-normal",
+        "inline-flex items-center gap-0.5 text-sm font-medium tracking-normal",
         change > 0 ? "text-destructive" : "text-success",
       )}
     >
@@ -72,12 +72,12 @@ const Figure = ({
     <span
       className={cn(
         "flex flex-wrap items-baseline gap-2.5 leading-tight font-medium tracking-tight",
-        lead ? "text-[40px] tracking-[-0.03em] max-sm:text-[32px]" : "text-[22px]",
+        lead ? "text-4xl max-sm:text-3xl" : "text-2xl",
       )}
     >
       {value}
     </span>
-    <span className="text-[13px]">{label}</span>
+    <span>{label}</span>
     {sub !== undefined && (
       <span className="text-xs text-muted-foreground [&_a]:text-flame [&_a]:hover:underline">
         {sub}

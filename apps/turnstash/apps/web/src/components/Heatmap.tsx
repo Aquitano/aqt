@@ -14,9 +14,9 @@ const weekdayLabels = ["Mon", "", "Wed", "", "Fri", "", ""];
 // columns line up without the cells needing a fixed size. A year of 8px cells needs about 600px;
 // phones get smaller cells to keep the current weeks on screen.
 const track =
-  "grid grid-cols-[22px_repeat(var(--weeks),minmax(4px,1fr))] gap-0.5 sm:grid-cols-[26px_repeat(var(--weeks),minmax(8px,1fr))] sm:gap-[3px]";
+  "grid grid-cols-[28px_repeat(var(--weeks),minmax(4px,1fr))] gap-0.5 sm:grid-cols-[32px_repeat(var(--weeks),minmax(8px,1fr))] sm:gap-[3px]";
 const swatch = "aspect-square rounded-[2px]";
-const legendSwatch = "size-[11px] flex-none rounded-[2px]";
+const legendSwatch = "size-3 flex-none rounded-[2px]";
 const noData = "border border-dashed border-border";
 const heat = ["bg-heat-0", "bg-heat-1", "bg-heat-2", "bg-heat-3", "bg-heat-4", "bg-heat-5"];
 
@@ -159,7 +159,7 @@ export const Heatmap = ({
         }}
         onMouseLeave={() => setTip(null)}
       >
-        <div className={cn(track, "h-3 text-[10px] leading-3 text-muted-foreground")} aria-hidden>
+        <div className={cn(track, "h-4 text-xs leading-4 text-muted-foreground")} aria-hidden>
           {months.map((month) => (
             <span key={`${month.col}-${month.label}`} style={{ gridColumn: month.col + 2 }}>
               {month.label}
@@ -174,7 +174,7 @@ export const Heatmap = ({
         >
           {weekdayLabels.map((weekday, index) => (
             <div className={track} role="row" key={weekday === "" ? `row-${index}` : weekday}>
-              <span className="self-center text-[10px] text-muted-foreground" role="rowheader">
+              <span className="self-center text-xs text-muted-foreground" role="rowheader">
                 {weekday}
               </span>
               {weeks.map((week) => {
@@ -196,7 +196,7 @@ export const Heatmap = ({
 
         {tip !== null && (
           <span
-            className="pointer-events-none absolute z-5 -mt-1.5 rounded-md bg-foreground px-2 py-1 text-[11px] whitespace-nowrap text-background"
+            className="pointer-events-none absolute z-5 -mt-1.5 rounded-md bg-foreground px-2 py-1 text-xs whitespace-nowrap text-background"
             style={{ left: tip.x, top: tip.y, transform: `translate(${tip.shift}, -100%)` }}
             role="tooltip"
           >
@@ -205,7 +205,7 @@ export const Heatmap = ({
         )}
       </div>
 
-      <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div className="mt-2.5 flex items-center gap-1.5 text-xs text-muted-foreground">
         <span className={cn(legendSwatch, noData)} /> no data
         <span className={cn(legendSwatch, heat[0])} /> $0
         <span className="ml-3 flex items-center gap-1">

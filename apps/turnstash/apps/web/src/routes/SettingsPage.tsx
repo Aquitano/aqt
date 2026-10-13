@@ -26,7 +26,7 @@ export const SettingsPage = () => (
               <TabsTrigger
                 key={value}
                 value={value}
-                className="px-2.5 text-[13px] max-sm:px-1.5 max-sm:text-xs"
+                className="px-2.5 max-sm:px-1.5 max-sm:text-xs"
               >
                 {label}
               </TabsTrigger>

@@ -91,7 +91,6 @@ export const SearchPage = () => {
           <InputGroupInput
             aria-label="Search words"
             placeholder="Search every transcript"
-            className="md:text-[13px]"
             value={text}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {
@@ -99,7 +98,7 @@ export const SearchPage = () => {
             }}
           />
           <InputGroupAddon align="inline-end">
-            <InputGroupButton className="text-[13px]" onClick={() => update({ q: text.trim() })}>
+            <InputGroupButton onClick={() => update({ q: text.trim() })}>
               <SearchIcon />
               Search
             </InputGroupButton>
@@ -139,7 +138,7 @@ export const SearchPage = () => {
                   to="/conversations/$id"
                   params={{ id: hit.conversationId }}
                   search={{ message: hit.messageKey, q: term }}
-                  className="text-sm font-semibold underline-offset-2 outline-none hover:underline hover:decoration-flame focus-visible:underline"
+                  className="font-medium underline-offset-2 outline-none hover:underline hover:decoration-flame focus-visible:underline"
                 >
                   {hit.title ?? hit.projectKey ?? shortId(hit.conversationId, 12)}
                 </Link>

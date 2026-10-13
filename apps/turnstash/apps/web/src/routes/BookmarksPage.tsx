@@ -44,7 +44,7 @@ const Bookmark = ({ bookmark }: { readonly bookmark: BookmarkView }) => {
           to="/conversations/$id"
           params={{ id: bookmark.conversationId }}
           search={target.kind === "conversation" ? {} : { message: target.messageKey }}
-          className="font-semibold underline-offset-2 outline-none hover:underline hover:decoration-flame focus-visible:underline"
+          className="font-medium underline-offset-2 outline-none hover:underline hover:decoration-flame focus-visible:underline"
         >
           {bookmark.conversationTitle ?? "Untitled conversation"}
         </Link>

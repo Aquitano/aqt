@@ -136,7 +136,7 @@ const EnrollDialog = () => {
               label="Connect command"
               text={`turnstash connect --server ${window.location.origin} --machine-id ${enroll.data.machineId} --token ${enroll.data.token}`}
             />
-            <dl className="grid grid-cols-[minmax(120px,auto)_1fr] gap-x-5 gap-y-1.5 text-[13px]">
+            <dl className="grid grid-cols-[minmax(120px,auto)_1fr] gap-x-5 gap-y-1.5">
               <dt className="text-muted-foreground">Machine id</dt>
               <dd className="wrap-anywhere">{enroll.data.machineId}</dd>
             </dl>

@@ -6,7 +6,7 @@ const highlighted = /^<b>[\s\S]*<\/b>$/;
  * the snippet is transcript text and must not be parsed as markup.
  */
 export const Snippet = ({ text }: { readonly text: string }) => (
-  <p className="m-0 max-w-[90ch] font-sans text-[13px] leading-normal wrap-anywhere whitespace-pre-wrap text-muted-foreground">
+  <p className="m-0 max-w-[90ch] font-sans leading-normal wrap-anywhere whitespace-pre-wrap text-muted-foreground">
     {text.split(/(<b>[\s\S]*?<\/b>)/).map((part, index) =>
       highlighted.test(part) ? (
         <mark key={index} className="rounded-[3px] bg-flame/30 px-0.5 text-foreground">

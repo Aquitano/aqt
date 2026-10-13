@@ -77,7 +77,7 @@ const LabeledInput = ({
   return (
     <Field className={cn("w-32 gap-2", className)}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input id={id} className="h-8 md:text-[13px]" {...props} />
+      <Input id={id} className="h-8" {...props} />
     </Field>
   );
 };

@@ -15,9 +15,9 @@ export const PageHead = ({
   readonly note?: ReactNode;
 }) => (
   <div className="flex flex-wrap items-baseline justify-between gap-4">
-    <h1 className="line-clamp-2 min-w-0 text-[22px] leading-tight font-semibold tracking-tight wrap-anywhere">
+    <h1 className="line-clamp-2 min-w-0 text-2xl leading-tight font-semibold tracking-tight wrap-anywhere">
       {title}
     </h1>
-    {note !== undefined && <span className="text-[13px] text-muted-foreground">{note}</span>}
+    {note !== undefined && <span className="text-muted-foreground">{note}</span>}
   </div>
 );

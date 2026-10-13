@@ -51,7 +51,7 @@ export const TokensSettings = () => {
               <FieldLabel htmlFor={nameId}>Name</FieldLabel>
               <Input
                 id={nameId}
-                className="h-8 md:text-[13px]"
+                className="h-8"
                 placeholder="mcp-reader"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
@@ -69,7 +69,7 @@ export const TokensSettings = () => {
               }
             >
               {TokenScope.literals.map((scope) => (
-                <ToggleGroupItem key={scope} value={scope} className="text-[13px]">
+                <ToggleGroupItem key={scope} value={scope}>
                   {scope}
                 </ToggleGroupItem>
               ))}

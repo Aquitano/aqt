@@ -11,7 +11,7 @@ import { Async } from "./Async";
 import { Disclosure } from "./Disclosure";
 import { codeBlock } from "./MessagePartView";
 
-const kv = "grid grid-cols-[minmax(120px,auto)_1fr] gap-x-5 gap-y-1.5 text-[13px]";
+const kv = "grid grid-cols-[minmax(120px,auto)_1fr] gap-x-5 gap-y-1.5";
 
 const Row = ({ label, children }: { readonly label: string; readonly children: ReactNode }) => (
   <>

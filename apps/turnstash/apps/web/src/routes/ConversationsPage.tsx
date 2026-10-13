@@ -57,7 +57,7 @@ export const ConversationsPage = () => {
         <Input
           aria-label="Title contains"
           placeholder="Title contains"
-          className="h-8 w-36 md:text-[13px]"
+          className="h-8 w-36"
           value={text}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {

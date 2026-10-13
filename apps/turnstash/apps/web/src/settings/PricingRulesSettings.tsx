@@ -109,7 +109,7 @@ const NewRule = ({
     <Input
       aria-label={label}
       inputMode="decimal"
-      className="h-8 w-44 md:text-[13px]"
+      className="h-8 w-44"
       placeholder={`${label}${placeholder === undefined ? "" : `, ${placeholder}`}`}
       value={value}
       onChange={(event) => set(event.target.value)}
@@ -122,7 +122,7 @@ const NewRule = ({
         <Input
           aria-label="Model as it appears in logs"
           placeholder="model as it appears in logs"
-          className="h-8 w-70 md:text-[13px]"
+          className="h-8 w-70"
           value={model}
           onChange={(event) => onModelChange(event.target.value)}
         />
@@ -131,7 +131,7 @@ const NewRule = ({
           <Input
             aria-label="Price as"
             placeholder="price as, e.g. claude-opus-5"
-            className="h-8 w-60 md:text-[13px]"
+            className="h-8 w-60"
             value={target}
             onChange={(event) => setTarget(event.target.value)}
           />

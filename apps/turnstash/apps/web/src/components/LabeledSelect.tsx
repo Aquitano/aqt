@@ -33,7 +33,7 @@ export const LabeledSelect = <V extends string>({
           if (next !== null) onChange(next);
         }}
       >
-        <SelectTrigger id={id} size="sm" className="text-[13px]">
+        <SelectTrigger id={id} size="sm">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

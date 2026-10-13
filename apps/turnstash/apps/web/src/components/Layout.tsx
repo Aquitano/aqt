@@ -48,7 +48,7 @@ const Header = () => {
       <div className={`${column} flex h-12 items-center gap-1`}>
         <Link
           to="/"
-          className="mr-2 inline-flex shrink-0 items-center gap-2 text-[15px] font-semibold tracking-tight sm:mr-5"
+          className="mr-2 inline-flex shrink-0 items-center gap-2 text-base font-semibold tracking-tight sm:mr-5"
         >
           <FlameIcon className="size-4.5 fill-flame text-flame" />
           <span className="max-sm:hidden">turnstash</span>
@@ -61,7 +61,7 @@ const Header = () => {
                 key={item.to}
                 to={item.to}
                 activeOptions={{ exact: item.to === "/" }}
-                className="inline-flex h-full items-center border-b-2 border-transparent px-2.5 text-[13px] whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[status=active]:border-flame data-[status=active]:text-foreground"
+                className="inline-flex h-full items-center border-b-2 border-transparent px-2.5 whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[status=active]:border-flame data-[status=active]:text-foreground"
               >
                 {item.label}
               </Link>
@@ -84,7 +84,7 @@ const Header = () => {
           )}
           {session.data?.user && (
             <form action="/auth/logout" method="post" className="flex items-center gap-1.5">
-              <span className="max-w-56 truncate text-[13px] text-muted-foreground max-sm:hidden">
+              <span className="max-w-56 truncate text-muted-foreground max-sm:hidden">
                 {session.data.user.name}
               </span>
               <Button size="sm" variant="ghost" type="submit">
@@ -117,7 +117,7 @@ const RepricingNotice = () => {
   }, [isRepricing, queryClient]);
   if (repricing === null) return null;
   return (
-    <div role="status" className="relative border-b bg-warning/10 text-[13px]">
+    <div role="status" className="relative border-b bg-warning/10">
       <div className={`${column} py-2`}>
         Applying new prices: {int(repricing.done)} of {int(repricing.total)} requests. Totals switch
         over when every request is priced.

@@ -33,7 +33,7 @@ export const Segmented = <V extends string>({
       <ToggleGroupItem
         key={option.value}
         value={option.value}
-        className="text-[13px] max-sm:px-2 max-sm:text-xs"
+        className="max-sm:px-2 max-sm:text-xs"
       >
         {option.label}
       </ToggleGroupItem>

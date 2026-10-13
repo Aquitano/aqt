@@ -39,7 +39,7 @@ export const FilterSelect = ({
       value={value ?? anyValue}
       onValueChange={(next) => onChange(next === null || next === anyValue ? null : next)}
     >
-      <SelectTrigger size="sm" aria-label={label} className={cn("w-40 text-[13px]", className)}>
+      <SelectTrigger size="sm" aria-label={label} className={cn("w-40", className)}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

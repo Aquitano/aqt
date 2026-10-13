@@ -8,7 +8,7 @@ export const DataTable = ({ className, ...props }: ComponentProps<typeof Table>)
   <div className="min-w-0 sm:*:data-[slot=table-container]:overflow-visible">
     <Table
       className={cn(
-        "text-[13px] max-sm:min-w-160 [&_a]:underline-offset-2 [&_a]:outline-none [&_a]:hover:underline [&_a]:hover:decoration-flame [&_a]:focus-visible:underline",
+        "max-sm:min-w-160 [&_a]:underline-offset-2 [&_a]:outline-none [&_a]:hover:underline [&_a]:hover:decoration-flame [&_a]:focus-visible:underline",
         className,
       )}
       {...props}
