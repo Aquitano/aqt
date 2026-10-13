@@ -1,5 +1,5 @@
 import { Effect, Option, Schema } from "effect";
-import { HttpClient, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientResponse } from "effect/http";
 
 import { type CatalogEntries, type RateTuple, withBuiltinOverrides } from "./catalog.ts";
 

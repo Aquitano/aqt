@@ -25,7 +25,7 @@ import {
   Runtime,
   Schema,
 } from "effect";
-import { CliError, Command, Flag } from "effect/unstable/cli";
+import { CliError, Command, Flag } from "effect/cli";
 
 import pkg from "../package.json" with { type: "json" };
 import { archiveCommands } from "./archive.ts";

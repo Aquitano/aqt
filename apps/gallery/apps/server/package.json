@@ -25,11 +25,11 @@
     "@aqt/gallery-layout": "workspace:*",
     "@hono/mcp": "^0.3.2",
     "@hono/trpc-server": "^0.4.2",
-    "@modelcontextprotocol/sdk": "^1.32.0",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@trpc/server": "catalog:",
     "drizzle-orm": "^0.45.3",
     "hono": "catalog:",
-    "sharp": "^0.35.5",
+    "sharp": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

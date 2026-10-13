@@ -11,11 +11,11 @@
   },
   "dependencies": {
     "@aqt/turnstash-core": "workspace:*",
-    "effect": "4.0.0-rc.116"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
-    "@effect/platform-bun": "4.0.0-rc.116",
+    "@effect/platform-bun": "catalog:",
     "@types/bun": "catalog:",
     "typescript": "catalog:"
   }

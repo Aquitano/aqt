@@ -16,16 +16,42 @@
       "tools/stack"
     ],
     "catalog": {
-      "dotenv": "^18.0.5",
-      "zod": "^4.6.5",
-      "typescript": "^7.0.2",
-      "@types/bun": "^1.4.2",
-      "hono": "^4.13.12",
-      "@trpc/server": "^11.19.0",
-      "next-themes": "^0.4.6",
+      "@clerk/tanstack-react-start": "^1.7.1",
+      "@effect/platform-bun": "4.0.3",
+      "@effect/sql-pg": "4.0.3",
+      "@modelcontextprotocol/sdk": "^1.32.1",
+      "@rolldown/plugin-babel": "^0.2.4",
+      "@tailwindcss/vite": "^4.3.3",
+      "@tanstack/react-query": "^5.104.2",
+      "@tanstack/react-router": "^1.170.42",
+      "@tanstack/react-router-ssr-query": "^1.167.3",
+      "@tanstack/react-start": "^1.168.61",
       "@trpc/client": "^11.19.0",
+      "@trpc/server": "^11.19.0",
+      "@types/bun": "^1.4.3",
+      "@types/node": "^26.6.5",
+      "@types/react": "^19.3.0",
       "@types/react-dom": "^19.3.0",
-      "lucide-react": "^1.49.0"
+      "@vitejs/plugin-react": "^6.1.2",
+      "arktype": "^2.2.8",
+      "babel-plugin-react-compiler": "^1.0.0",
+      "cn": "^0.4.0",
+      "dotenv": "^18.0.7",
+      "effect": "4.0.3",
+      "hono": "^4.13.13",
+      "lucide-react": "^1.55.0",
+      "next-themes": "^0.4.6",
+      "playwright": "1.63.0",
+      "react": "^19.3.0",
+      "react-dom": "^19.3.0",
+      "recharts": "3.8.0",
+      "sharp": "^0.35.5",
+      "sonner": "^2.0.8",
+      "tailwindcss": "^4.3.3",
+      "typescript": "7.0.2",
+      "vite": "^8.3.4",
+      "zod": "^4.6.6",
+      "zustand": "^5.0.15"
     }
   },
   "type": "module",
@@ -40,11 +66,10 @@
     "oxfmt": "0.71.0",
     "oxlint": "1.86.0",
     "oxlint-tsgolint": "7.0.2003",
-    "typescript": "7.0.2"
+    "typescript": "catalog:"
   },
   "overrides": {
-    "@effect/platform-node-shared": "4.0.0-rc.116",
-    "@tanstack/query-core": "5.104.1"
+    "sharp": "0.35.5"
   },
   "packageManager": "bun@1.4.3"
 }

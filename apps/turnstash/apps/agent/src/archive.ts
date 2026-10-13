@@ -24,7 +24,7 @@ import {
 } from "@aqt/turnstash-api";
 import { hostEnvFromProcess, type MessagePart, Role, type ToolStatus } from "@aqt/turnstash-core";
 import { Config, Effect, Match, Option, Record, Schema } from "effect";
-import { Argument, Command, Flag } from "effect/unstable/cli";
+import { Argument, Command, Flag } from "effect/cli";
 
 import { agentPaths, readConfig } from "./config.ts";
 import { type ApiClient, apiClientFor } from "./push.ts";

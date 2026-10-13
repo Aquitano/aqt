@@ -9,7 +9,7 @@ import {
   type RepositoryTask,
 } from "@aqt/turnstash-core";
 import { Array as Arr, Effect, FileSystem, Path, Result, Schema, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import type { ApiClient } from "./push.ts";
 import { AgentState } from "./state.ts";

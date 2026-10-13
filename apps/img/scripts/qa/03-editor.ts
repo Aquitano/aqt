@@ -63,16 +63,16 @@ check((await pageGeom(page, "left")).length === 1, "click-to-place lands on the 
 const thumb = page.getByTestId("library-photo").nth(1);
 // How much of the right page does the open library sheet cover?
 const overlap = await page.evaluate(() => {
-  const p = document
+  const rightPage = document
     .querySelector<HTMLElement>('[data-editable-page="right"]')!
     .getBoundingClientRect();
-  const s = document
+  const sheet = document
     .querySelector<HTMLElement>('[data-slot="sheet-content"]')!
     .getBoundingClientRect();
   return {
-    pct: Math.round((Math.max(0, p.right - s.left) / p.width) * 100),
-    pageRight: Math.round(p.right),
-    sheetLeft: Math.round(s.left),
+    pct: Math.round((Math.max(0, rightPage.right - sheet.left) / rightPage.width) * 100),
+    pageRight: Math.round(rightPage.right),
+    sheetLeft: Math.round(sheet.left),
   };
 });
 check(
@@ -340,7 +340,7 @@ await shot(page, "25-text");
 await text.click();
 await page.waitForTimeout(200);
 await page
-  .getByRole("radio", { name: "Clean" })
+  .getByRole("button", { name: "Clean", exact: true })
   .click()
   .catch(async () => page.getByText("Clean", { exact: true }).click());
 await page.waitForTimeout(200);
@@ -351,13 +351,13 @@ await swatch.click();
 await page.waitForTimeout(200);
 const colour = await text.evaluate((n) => getComputedStyle(n).color);
 await page
-  .getByRole("radio", { name: "Align right" })
+  .getByRole("button", { name: "Align right" })
   .click()
   .catch(() => undefined);
 await page.waitForTimeout(200);
 const align = await text.evaluate((n) => getComputedStyle(n).textAlign);
 check(align === "right", "align control applies", align);
-const slider = page.locator('[role="slider"]').first();
+const slider = page.getByRole("slider").first();
 const fsBefore = await text.evaluate((n) => getComputedStyle(n).fontSize);
 const posBefore = (await pageGeom(page, "left")).at(-1)!.x;
 await slider.press("ArrowRight");
@@ -382,7 +382,7 @@ await el.click();
 await page.waitForTimeout(200);
 for (const frame of ["polaroid", "corners", "tape", "none"]) {
   await page
-    .getByRole("radio", { name: frame, exact: true })
+    .getByRole("button", { name: frame, exact: true })
     .click()
     .catch(async () => {
       await page.getByText(frame, { exact: true }).click();

@@ -1,3 +1,12 @@
+import { Button } from "@aqt/ui/components/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@aqt/ui/components/empty";
+import { Spinner } from "@aqt/ui/components/spinner";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Inbox, ShieldAlert } from "lucide-react";
 
@@ -5,15 +14,6 @@ import { ContactEditor } from "@/components/contact-editor";
 import { Conversation } from "@/components/conversation";
 import { FileDetail } from "@/components/file-preview";
 import { ItemDetail, PageDetail } from "@/components/library-detail";
-import { Button } from "@/components/ui/button";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
-import { Spinner } from "@/components/ui/spinner";
 import {
   CONTEXT_PAGE,
   getContactMessages,
@@ -158,12 +158,14 @@ function SelectedDetail({
       }
       throw new Error("Unknown selection");
     },
-    getPreviousPageParam: (first): Position | undefined =>
-      first.has_before && first.messages.length ? { before: first.messages[0].id } : undefined,
-    getNextPageParam: (last): Position | undefined =>
-      last.has_after && last.messages.length
-        ? { after: last.messages[last.messages.length - 1].id }
-        : undefined,
+    getPreviousPageParam: (first): Position | undefined => {
+      const oldest = first.messages.at(0);
+      return first.has_before && oldest ? { before: oldest.id } : undefined;
+    },
+    getNextPageParam: (last): Position | undefined => {
+      const newest = last.messages.at(-1);
+      return last.has_after && newest ? { after: newest.id } : undefined;
+    },
   });
 
   if (!selection)

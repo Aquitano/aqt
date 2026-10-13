@@ -1,8 +1,8 @@
-import { useEffect } from "react";
+import { cn } from "@aqt/ui/lib/utils";
+import { useCallback, useEffect } from "react";
 
 import { Book, PageElements, type PageLayout } from "@/book/Book";
 import type { PageSide } from "@/domain/element";
-import { cn } from "@/lib/utils";
 import type { Spread } from "@/server/db/schema";
 
 import { EditablePage } from "./EditablePage";
@@ -41,6 +41,17 @@ export function Editor({ canEdit }: EditorProps) {
         )
     : undefined;
 
+  const renderOverlay = useCallback(
+    (layout: PageLayout) =>
+      spread ? (
+        <>
+          <EditablePage spread={spread} side="left" layout={layout} />
+          <EditablePage spread={spread} side="right" layout={layout} />
+        </>
+      ) : null,
+    [spread],
+  );
+
   return (
     <>
       {/* The sheets are non-modal and sit beside the book; give up their width
@@ -60,16 +71,7 @@ export function Editor({ canEdit }: EditorProps) {
           onCurrentChange={setCurrent}
           locked={editing}
           renderPage={renderPage}
-          overlay={
-            editing && spread
-              ? (layout: PageLayout) => (
-                  <>
-                    <EditablePage spread={spread} side="left" layout={layout} />
-                    <EditablePage spread={spread} side="right" layout={layout} />
-                  </>
-                )
-              : undefined
-          }
+          overlay={editing && spread ? renderOverlay : undefined}
         />
       </div>
       {editing ? <Toolbar /> : null}
@@ -88,7 +90,7 @@ function useEditorKeys(canEdit: boolean) {
   const store = useEditorStore();
 
   useEffect(() => {
-    if (!canEdit) return;
+    if (!canEdit) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
       if (isTextEntry(event.target)) return;
       const state = store.getState();
@@ -189,9 +191,10 @@ function navigationTarget(key: string, state: EditorState): number | null {
 
 /** A text field owns every key, Cmd-Z included: it has its own undo history. */
 function isTextEntry(target: EventTarget | null) {
+  if (target instanceof HTMLInputElement) return target.type !== "range";
   return (
     target instanceof HTMLElement &&
-    (target.isContentEditable || /^(input|textarea|select)$/i.test(target.tagName))
+    (target.isContentEditable || /^(textarea|select)$/i.test(target.tagName))
   );
 }
 
@@ -199,6 +202,6 @@ function isTextEntry(target: EventTarget | null) {
 function isToolbarControl(target: EventTarget | null) {
   return (
     target instanceof HTMLElement &&
-    target.closest('[role="slider"], [data-editor-toolbar]') !== null
+    target.closest('input[type="range"], [data-editor-toolbar]') !== null
   );
 }

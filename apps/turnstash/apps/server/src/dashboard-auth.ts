@@ -4,12 +4,7 @@ import { dashboardCookie, Unauthorized } from "@aqt/turnstash-api";
 import { sha256Hex } from "@aqt/turnstash-core";
 import { and, eq, gt, lte } from "drizzle-orm";
 import { Clock, Duration, Effect, Layer, Redacted, Schema } from "effect";
-import {
-  HttpMiddleware,
-  HttpRouter,
-  HttpServerRequest,
-  HttpServerResponse,
-} from "effect/unstable/http";
+import { HttpMiddleware, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { type OidcAuth, ServerConfig } from "./config.ts";
 import { Db } from "./db/client.ts";

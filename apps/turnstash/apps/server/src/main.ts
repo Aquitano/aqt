@@ -1,7 +1,7 @@
 import { normalizers } from "@aqt/turnstash-providers";
 import { BunHttpClient, BunHttpServer, BunRuntime } from "@effect/platform-bun";
 import { Effect, Layer, Option } from "effect";
-import { HttpMiddleware, HttpRouter, HttpStaticServer } from "effect/unstable/http";
+import { HttpMiddleware, HttpRouter, HttpStaticServer } from "effect/http";
 
 import { AuthLive } from "./auth.ts";
 import { ServerConfig, ServerConfigLive } from "./config.ts";
