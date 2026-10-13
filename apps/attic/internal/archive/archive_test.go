@@ -7,10 +7,13 @@ import (
 	"compress/gzip"
 	"context"
 	"maps"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 func zipOf(t *testing.T, files map[string][]byte) []byte {
@@ -166,5 +169,46 @@ func TestLaterRarVolumesAreSplit(t *testing.T) {
 	res, err := List(context.Background(), p, os.Open, Options{Depth: 1}, func(Member) error { return nil }, func(Skip) {})
 	if err != nil || res.Status != Split {
 		t.Errorf("part02: %+v, %v; want split", res, err)
+	}
+}
+
+func TestListTarZstdWithNestedArchive(t *testing.T) {
+	var buf bytes.Buffer
+	zw, err := zstd.NewWriter(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(zw)
+	body := make([]byte, 2<<20)
+	rng := rand.New(rand.NewPCG(1, 2))
+	for i := range body {
+		body[i] = byte(rng.Uint32())
+	}
+	for _, file := range []struct {
+		name string
+		body []byte
+	}{
+		{"large.bin", body},
+		{"nested.zip", zipOf(t, map[string][]byte{"notes.txt": []byte("kept")})},
+	} {
+		if err := tw.WriteHeader(&tar.Header{Name: file.name, Mode: 0o600, Size: int64(len(file.body))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(file.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	res, members, skips := list(t, buf.Bytes(), Options{Depth: 2, Temp: t.TempDir()})
+	if res.Status != Listed || len(members) != 3 || len(skips) != 0 {
+		t.Fatalf("tar.zst result %+v, members %+v, skips %+v", res, members, skips)
+	}
+	if members[2].Path != "nested.zip :: notes.txt" {
+		t.Fatalf("nested member = %+v", members[2])
 	}
 }
