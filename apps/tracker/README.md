@@ -211,9 +211,10 @@ provider publishes it, trailing slash and all: both halves compare it against
 the discovery document.
 
 The LaunchAgent reads no shell profile, so `TRACKER_OIDC_*` exported from
-`~/.zshrc` reaches your terminal but **not** the server launchd starts, which
-would then accept every request. Put them in the plist's `EnvironmentVariables`
-and re-run `mise run tracker:service`.
+`~/.zshrc` reaches your terminal but **not** the server launchd starts. Without
+an issuer, the server runs without authentication on loopback and refuses to
+start on any other address. Put the OIDC variables in the plist's
+`EnvironmentVariables` and re-run `mise run tracker:service`.
 
 ```sh
 tracker login    # device code: open the URL it prints, approve, done

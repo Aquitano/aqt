@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"time"
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -66,7 +67,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		return err
 	}
 	defer func() {
-		_, _ = conn.ExecContext(context.WithoutCancel(ctx), `select pg_advisory_unlock(?)`, migrationLock)
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		_, _ = conn.ExecContext(cleanupCtx, `select pg_advisory_unlock(?)`, migrationLock)
 	}()
 	m := migrate.NewMigrator(s.db, migrations, migrate.WithMarkAppliedOnSuccess(true))
 	if err := m.Init(ctx); err != nil {
