@@ -73,5 +73,6 @@
     "typescript/no-inferrable-types": "error",
     "no-else-return": "error",
     "unicorn/prefer-number-properties": "error"
-  }
+  },
+  "ignorePatterns": ["internal/webui/app/dist/**"]
 }
