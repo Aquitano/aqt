@@ -9,6 +9,9 @@ import { eq } from "drizzle-orm";
  * apart from a Clerk bearer/session token before touching the database. */
 export const API_TOKEN_PREFIX = "aqtg_";
 
+/** The UI shows `lastUsedAt` as a date, so refreshing it once an hour is enough. */
+const LAST_USED_RESOLUTION_MS = 60 * 60 * 1000;
+
 /** A non-secret slice of the token (prefix + first chars) shown in the UI so a
  * user can recognise a token without it ever revealing the secret. */
 export function tokenDisplayPrefix(token: string): string {
@@ -46,18 +49,24 @@ export async function sessionFromApiToken(headers: Headers): Promise<AuthSession
     .limit(1);
   const row = rows[0];
   if (!row) return null;
-  if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) {
+  const now = Date.now();
+  if (row.expiresAt && row.expiresAt.getTime() <= now) {
     return null;
   }
 
-  // Best-effort "last used" stamp; a write failure must never block the call.
-  void (async () => {
-    try {
-      await db.update(apiToken).set({ lastUsedAt: new Date() }).where(eq(apiToken.id, row.id));
-    } catch {
-      /* ignore — telemetry only */
-    }
-  })();
+  if (!row.lastUsedAt || row.lastUsedAt.getTime() < now - LAST_USED_RESOLUTION_MS) {
+    // Best-effort "last used" stamp; a write failure must never block the call.
+    void (async () => {
+      try {
+        await db
+          .update(apiToken)
+          .set({ lastUsedAt: new Date(now) })
+          .where(eq(apiToken.id, row.id));
+      } catch {
+        /* ignore — telemetry only */
+      }
+    })();
+  }
 
   return {
     user: { id: row.userId },
