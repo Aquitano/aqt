@@ -2,7 +2,7 @@ import { providerLabels, type ProviderId } from "@aqt/turnstash-api";
 import { Badge } from "@aqt/ui/components/badge";
 
 const dots: Record<ProviderId, string> = {
-  claude: "bg-flame",
+  claude: "bg-primary",
   codex: "bg-foreground",
   opencode: "bg-chart-5",
   cursor: "bg-chart-1",

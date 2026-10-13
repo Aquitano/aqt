@@ -144,7 +144,7 @@ export const SearchPage = () => {
                   to="/conversations/$id"
                   params={{ id: hit.conversationId }}
                   search={{ message: hit.messageKey, q: term }}
-                  className="font-medium underline-offset-2 outline-none hover:underline hover:decoration-flame focus-visible:underline"
+                  className="font-medium underline-offset-2 outline-none hover:underline hover:decoration-primary focus-visible:underline"
                 >
                   {hit.title ?? hit.projectKey ?? shortId(hit.conversationId, 12)}
                 </Link>

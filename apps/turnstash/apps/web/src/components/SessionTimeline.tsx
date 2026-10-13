@@ -25,7 +25,7 @@ import { chartRow } from "./ChartRow";
 import { DataTable, Td, Th } from "./DataTable";
 
 const chartConfig = {
-  cumulative: { label: "Cumulative priced cost", color: "var(--flame)" },
+  cumulative: { label: "Cumulative priced cost", color: "var(--primary)" },
   cost: { label: "Request cost", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
@@ -33,7 +33,7 @@ const eventLabel = (event: TimelineEvent) =>
   event.kind === "request" ? `Request · ${event.modelId}` : `Tool · ${event.toolName}`;
 
 const eventColor = (event: TimelineEvent) => {
-  if (event.kind === "request") return event.costUsd === null ? "var(--chart-4)" : "var(--flame)";
+  if (event.kind === "request") return event.costUsd === null ? "var(--chart-4)" : "var(--primary)";
   if (event.toolStatus === "error") return "var(--destructive)";
   return event.toolStatus === "ok" ? "var(--chart-5)" : "var(--muted-foreground)";
 };

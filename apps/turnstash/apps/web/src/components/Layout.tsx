@@ -50,7 +50,7 @@ const Header = () => {
           to="/"
           className="mr-2 inline-flex shrink-0 items-center gap-2 text-base font-semibold tracking-tight sm:mr-5"
         >
-          <FlameIcon className="size-4.5 fill-flame text-flame" />
+          <FlameIcon className="size-4.5 fill-primary text-primary" />
           <span className="max-sm:hidden">turnstash</span>
         </Link>
         {!signedOut && (
@@ -61,7 +61,7 @@ const Header = () => {
                 key={item.to}
                 to={item.to}
                 activeOptions={{ exact: item.to === "/" }}
-                className="inline-flex h-full items-center border-b-2 border-transparent px-2.5 whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[status=active]:border-flame data-[status=active]:text-foreground"
+                className="inline-flex h-full items-center border-b-2 border-transparent px-2.5 whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[status=active]:border-primary data-[status=active]:text-foreground"
               >
                 {item.label}
               </Link>
@@ -140,7 +140,7 @@ const SignIn = () => (
   <main className="grid flex-1 place-items-center px-4 pt-12 pb-24 sm:px-6">
     <Card className="w-full max-w-sm text-center">
       <CardHeader className="justify-items-center">
-        <FlameIcon className="mb-1.5 size-8 fill-flame text-flame" />
+        <FlameIcon className="mb-1.5 size-8 fill-primary text-primary" />
         <CardTitle className="text-xl">Sign in to Turnstash</CardTitle>
         <CardDescription>
           Your archive of coding-agent sessions and what they cost. Sign in with your authentik

@@ -1,20 +1,24 @@
 @import "@aqt/ui/styles/globals.css";
 
+/* One accent per theme. Light mode needs the deeper flame for white button text to reach 4.5:1;
+   dark mode takes the brighter flame with dark text, which also keeps the heatmap steps apart. */
 :root {
-  /* A deeper flame than the accent, so white button text keeps 4.5:1 contrast. */
   --brand: #c2510a;
   --brand-foreground: oklch(0.985 0 0);
-  --flame: #f6821f;
   --heat-0: var(--muted);
-  --heat-1: color-mix(in oklab, var(--flame) 34%, var(--background));
-  --heat-2: color-mix(in oklab, var(--flame) 50%, var(--background));
-  --heat-3: color-mix(in oklab, var(--flame) 67%, var(--background));
-  --heat-4: color-mix(in oklab, var(--flame) 84%, var(--background));
-  --heat-5: var(--flame);
+  --heat-1: color-mix(in oklab, var(--primary) 34%, var(--background));
+  --heat-2: color-mix(in oklab, var(--primary) 50%, var(--background));
+  --heat-3: color-mix(in oklab, var(--primary) 67%, var(--background));
+  --heat-4: color-mix(in oklab, var(--primary) 84%, var(--background));
+  --heat-5: var(--primary);
+}
+
+.dark {
+  --brand: #f6821f;
+  --brand-foreground: oklch(0.205 0 0);
 }
 
 @theme inline {
-  --color-flame: var(--flame);
   --color-heat-0: var(--heat-0);
   --color-heat-1: var(--heat-1);
   --color-heat-2: var(--heat-2);

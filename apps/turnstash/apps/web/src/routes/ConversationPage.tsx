@@ -23,7 +23,7 @@ import { dateTime, duration, int, usd } from "../format";
 import { conversationQuery, timelinePagesQuery } from "../queries";
 
 const row = "flex flex-wrap items-center gap-2";
-const textLink = "underline underline-offset-2 hover:decoration-flame";
+const textLink = "underline underline-offset-2 hover:decoration-primary";
 
 const Summary = ({ detail }: { readonly detail: ConversationDetail }) => {
   const { conversation } = detail;
@@ -57,7 +57,7 @@ const Summary = ({ detail }: { readonly detail: ConversationDetail }) => {
           </Badge>
         )}
         <Badge variant="outline">
-          <span className="size-1.5 rounded-full bg-flame" />
+          <span className="size-1.5 rounded-full bg-primary" />
           {usd(conversation.costUsd)}
         </Badge>
         {detail.redactions > 0 && (

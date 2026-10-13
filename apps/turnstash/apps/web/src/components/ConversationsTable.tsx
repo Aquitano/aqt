@@ -68,7 +68,7 @@ export const ConversationsTable = ({
               {showShare && (
                 <span className="mt-1 block h-0.5 overflow-hidden bg-muted">
                   <span
-                    className="block h-full bg-flame"
+                    className="block h-full bg-primary"
                     style={{ width: `${peak > 0 ? (row.costUsd / peak) * 100 : 0}%` }}
                   />
                 </span>

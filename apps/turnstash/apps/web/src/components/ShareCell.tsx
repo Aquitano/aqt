@@ -20,7 +20,10 @@ export const ShareCell = ({
     {label}
     {sub !== null && <span className="text-xs text-muted-foreground"> {sub}</span>}
     <span className="mt-1 block h-0.5 overflow-hidden bg-muted">
-      <span className="block h-full bg-flame" style={{ width: `${Math.min(100, share * 100)}%` }} />
+      <span
+        className="block h-full bg-primary"
+        style={{ width: `${Math.min(100, share * 100)}%` }}
+      />
     </span>
   </PrimaryTd>
 );

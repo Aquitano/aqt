@@ -36,7 +36,7 @@ const CostChips = ({
       <Badge
         key={request.id}
         variant="outline"
-        className="cursor-pointer gap-1.5 px-2.5 font-normal hover:border-flame"
+        className="cursor-pointer gap-1.5 px-2.5 font-normal hover:border-primary"
         render={<button type="button" onClick={() => onInspect(request.id)} />}
       >
         <span>{request.modelId}</span>
@@ -83,7 +83,7 @@ const MessageRow = ({
   readonly actions: (message: MessageView) => ReactNode;
 }) => (
   <article
-    className="flex flex-col gap-2 border-b pt-3.5 pb-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-flame data-targeted:border-l-3 data-targeted:border-l-flame data-targeted:bg-flame/8 data-targeted:pl-3 [&_mark]:rounded-[3px] [&_mark]:bg-flame/30 [&_mark]:px-0.5 [&_mark]:text-foreground"
+    className="flex flex-col gap-2 border-b pt-3.5 pb-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-targeted:border-l-3 data-targeted:border-l-primary data-targeted:bg-primary/8 data-targeted:pl-3 [&_mark]:rounded-[3px] [&_mark]:bg-primary/30 [&_mark]:px-0.5 [&_mark]:text-foreground"
     data-targeted={targeted ? "" : undefined}
     tabIndex={targeted ? -1 : undefined}
     aria-label={targeted ? "Linked message" : undefined}
@@ -95,14 +95,14 @@ const MessageRow = ({
         to="/conversations/$id"
         params={{ id: conversationId }}
         search={{ message: message.messageKey }}
-        className="underline underline-offset-2 hover:text-foreground hover:decoration-flame"
+        className="underline underline-offset-2 hover:text-foreground hover:decoration-primary"
         aria-label={`Permalink to ${message.role} message ${message.seq + 1}`}
       >
         Link
       </Link>
       {targeted && (
         <Badge variant="outline">
-          <span className="size-1.5 rounded-full bg-flame" />
+          <span className="size-1.5 rounded-full bg-primary" />
           Linked message
         </Badge>
       )}

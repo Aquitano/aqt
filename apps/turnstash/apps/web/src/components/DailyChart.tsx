@@ -22,11 +22,11 @@ const metricTabs = [
 ] as const;
 
 const chartConfig = {
-  costUsd: { label: "Cost", color: "var(--flame)" },
+  costUsd: { label: "Cost", color: "var(--primary)" },
   inputTokens: { label: "Input", color: "var(--chart-1)" },
   outputTokens: { label: "Output", color: "var(--chart-4)" },
   cacheReadTokens: { label: "Cache read", color: "var(--chart-5)" },
-  requests: { label: "Requests", color: "var(--flame)" },
+  requests: { label: "Requests", color: "var(--primary)" },
 } satisfies ChartConfig;
 
 type Series = keyof typeof chartConfig;

@@ -79,7 +79,7 @@ const Figure = ({
     </span>
     <span>{label}</span>
     {sub !== undefined && (
-      <span className="text-xs text-muted-foreground [&_a]:text-flame [&_a]:hover:underline">
+      <span className="text-xs text-muted-foreground [&_a]:text-primary [&_a]:hover:underline">
         {sub}
       </span>
     )}
