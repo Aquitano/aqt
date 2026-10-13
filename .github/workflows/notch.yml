@@ -1,0 +1,48 @@
+name: notch
+on:
+  push:
+    branches: [main]
+    paths:
+      [
+        "apps/notch/**",
+        "tools/macos-app.sh",
+        "tools/tests/test_macos_app.py",
+        "mise.toml",
+        ".swiftformat",
+        ".swiftlint.yml",
+        ".swiftlint-baseline.json",
+        ".github/workflows/notch.yml",
+      ]
+  pull_request:
+    paths:
+      [
+        "apps/notch/**",
+        "tools/macos-app.sh",
+        "tools/tests/test_macos_app.py",
+        "mise.toml",
+        ".swiftformat",
+        ".swiftlint.yml",
+        ".swiftlint-baseline.json",
+        ".github/workflows/notch.yml",
+      ]
+permissions:
+  contents: read
+concurrency:
+  group: notch-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+jobs:
+  check:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: bun swiftformat swiftlint xcodegen
+      - run: bun install --frozen-lockfile
+      - run: python3 tools/tests/test_macos_app.py
+      - run: mise run notch:check
+      - run: xcodebuild -project Notch.xcodeproj -scheme Notch -configuration Debug -destination platform=macOS -derivedDataPath DerivedData -quiet build CODE_SIGNING_ALLOWED=NO
+        working-directory: apps/notch

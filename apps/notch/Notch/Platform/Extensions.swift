@@ -2,22 +2,22 @@ import NotchCore
 import SwiftUI
 
 extension EnvironmentValues {
-    // The physical notch size, injected by the window controller.
+    /// The physical notch size, injected by the window controller.
     @Entry var notchGeometry: CGSize = NotchMetrics.fallbackNotchSize
 
-    // Per-display expanded width, injected from the same geometry snapshot as
-    // the physical/virtual notch size.
+    /// Per-display expanded width, injected from the same geometry snapshot as
+    /// the physical/virtual notch size.
     @Entry var notchExpandedWidth: CGFloat = NotchMetrics.expandedWidth
 
-    // True for the one host allowed to start/stop shared capture work. Secondary
-    // compact mirrors render shared samples but never own their lifecycle.
+    /// True for the one host allowed to start/stop shared capture work. Secondary
+    /// compact mirrors render shared samples but never own their lifecycle.
     @Entry var notchControlsSharedRendering: Bool = true
 
-    // Whether this host draws detached pill chrome instead of a top-edge notch.
+    /// Whether this host draws detached pill chrome instead of a top-edge notch.
     @Entry var notchUsesVirtualChrome: Bool = false
 
-    // The hosting display's stable key, for per-display settings resolution.
-    // Empty (the default) resolves to the global settings.
+    /// The hosting display's stable key, for per-display settings resolution.
+    /// Empty (the default) resolves to the global settings.
     @Entry var notchDisplayKey: String = ""
 }
 
