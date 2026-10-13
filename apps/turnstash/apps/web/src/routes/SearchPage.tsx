@@ -87,23 +87,29 @@ export const SearchPage = () => {
           options={roles.map((role) => ({ value: role, label: role }))}
           onChange={(value) => update({ role: roles.find((role) => role === value) })}
         />
-        <InputGroup className="h-8 w-auto max-w-120 min-w-60 flex-1">
-          <InputGroupInput
-            aria-label="Search words"
-            placeholder="Search every transcript"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") update({ q: text.trim() });
-            }}
-          />
-          <InputGroupAddon align="inline-end">
-            <InputGroupButton onClick={() => update({ q: text.trim() })}>
-              <SearchIcon />
-              Search
-            </InputGroupButton>
-          </InputGroupAddon>
-        </InputGroup>
+        <form
+          role="search"
+          className="flex max-w-120 min-w-60 flex-1"
+          onSubmit={(event) => {
+            event.preventDefault();
+            update({ q: text.trim() });
+          }}
+        >
+          <InputGroup className="h-8">
+            <InputGroupInput
+              aria-label="Search words"
+              placeholder="Search every transcript"
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+            />
+            <InputGroupAddon align="inline-end">
+              <InputGroupButton type="submit">
+                <SearchIcon />
+                Search
+              </InputGroupButton>
+            </InputGroupAddon>
+          </InputGroup>
+        </form>
       </FilterBar>
 
       {term === "" && (

@@ -118,7 +118,13 @@ const NewRule = ({
 
   return (
     <div className="flex flex-col gap-3 pt-1.5">
-      <div className="flex flex-wrap items-center gap-2 *:max-w-full">
+      <form
+        className="flex flex-wrap items-center gap-2 *:max-w-full"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (ready !== null) save.mutate({ model: model.trim(), rule: ready });
+        }}
+      >
         <Input
           aria-label="Model as it appears in logs"
           placeholder="model as it appears in logs"
@@ -149,15 +155,13 @@ const NewRule = ({
         )}
         <Button
           size="sm"
+          type="submit"
           disabled={save.isPending || model.trim() === "" || ready === null}
-          onClick={() => {
-            if (ready !== null) save.mutate({ model: model.trim(), rule: ready });
-          }}
         >
           {save.isPending && <Spinner data-icon="inline-start" />}
           Save rule
         </Button>
-      </div>
+      </form>
       {save.isError && <RequestFailure error={save.error} />}
     </div>
   );

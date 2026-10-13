@@ -68,9 +68,15 @@ const EnrollDialog = () => {
         </DialogHeader>
 
         {enroll.data === undefined ? (
-          <>
-            <FieldGroup className="gap-4">
-              <Field className="gap-2">
+          <form
+            className="flex flex-col gap-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              enroll.mutate({ name: name.trim(), os, arch: arch.trim(), agentVersion: "0.0.0" });
+            }}
+          >
+            <FieldGroup>
+              <Field>
                 <FieldLabel htmlFor={`${id}-name`}>Name</FieldLabel>
                 <Input
                   id={`${id}-name`}
@@ -79,7 +85,7 @@ const EnrollDialog = () => {
                   onChange={(event) => setName(event.target.value)}
                 />
               </Field>
-              <Field className="gap-2">
+              <Field>
                 <FieldLabel htmlFor={`${id}-os`}>Operating system</FieldLabel>
                 <Select
                   items={osOptions}
@@ -100,7 +106,7 @@ const EnrollDialog = () => {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field className="gap-2">
+              <Field>
                 <FieldLabel htmlFor={`${id}-arch`}>Architecture</FieldLabel>
                 <Input
                   id={`${id}-arch`}
@@ -112,17 +118,12 @@ const EnrollDialog = () => {
             {enroll.isError && <RequestFailure error={enroll.error} />}
             <DialogFooter>
               <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-              <Button
-                disabled={enroll.isPending || name.trim() === ""}
-                onClick={() =>
-                  enroll.mutate({ name: name.trim(), os, arch: arch.trim(), agentVersion: "0.0.0" })
-                }
-              >
+              <Button type="submit" disabled={enroll.isPending || name.trim() === ""}>
                 {enroll.isPending && <Spinner data-icon="inline-start" />}
                 Enrol
               </Button>
             </DialogFooter>
-          </>
+          </form>
         ) : (
           <>
             <Alert variant="warning">

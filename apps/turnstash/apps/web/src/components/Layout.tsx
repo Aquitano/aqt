@@ -71,16 +71,20 @@ const Header = () => {
         <div className="flex-1" />
         <div className="flex shrink-0 items-center gap-1.5">
           {session.data?.mode === "token" && (
-            <SecretInput
-              placeholder="Access token"
-              aria-label="Access token"
-              value={token}
-              className="w-28 sm:w-40"
-              onChange={(event) => setToken(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") apply();
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                apply();
               }}
-            />
+            >
+              <SecretInput
+                placeholder="Access token"
+                aria-label="Access token"
+                value={token}
+                className="w-28 sm:w-40"
+                onChange={(event) => setToken(event.target.value)}
+              />
+            </form>
           )}
           {session.data?.user && (
             <form action="/auth/logout" method="post" className="flex items-center gap-1.5">

@@ -6,7 +6,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@aqt/ui/components/select";
-import { cn } from "cn";
 import { useId } from "react";
 
 export const LabeledSelect = <V extends string>({
@@ -24,7 +23,7 @@ export const LabeledSelect = <V extends string>({
 }) => {
   const id = useId();
   return (
-    <Field className={cn("gap-2", className)}>
+    <Field className={className}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Select
         items={options}

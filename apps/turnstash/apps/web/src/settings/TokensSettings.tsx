@@ -46,8 +46,14 @@ export const TokensSettings = () => {
     <>
       <Section title="Create a read token">
         <div className="flex flex-col gap-3 pt-1.5">
-          <div className="flex flex-wrap items-end gap-2">
-            <Field className="w-48 gap-2">
+          <form
+            className="flex flex-wrap items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              create.mutate();
+            }}
+          >
+            <Field className="w-48">
               <FieldLabel htmlFor={nameId}>Name</FieldLabel>
               <Input
                 id={nameId}
@@ -76,13 +82,13 @@ export const TokensSettings = () => {
             </ToggleGroup>
             <Button
               size="sm"
+              type="submit"
               disabled={create.isPending || name.trim() === "" || scopes.length === 0}
-              onClick={() => create.mutate()}
             >
               {create.isPending && <Spinner data-icon="inline-start" />}
               Create
             </Button>
-          </div>
+          </form>
 
           {create.isError && <RequestFailure error={create.error} />}
 

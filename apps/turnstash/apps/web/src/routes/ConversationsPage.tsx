@@ -39,7 +39,6 @@ export const ConversationsPage = () => {
   );
   const pages = useInfiniteQuery(conversationPagesQuery(query));
   const rows = useMemo(() => (pages.data?.pages ?? []).flatMap((page) => page.items), [pages.data]);
-  const apply = () => setQ(text.trim());
 
   return (
     <Page>
@@ -54,19 +53,24 @@ export const ConversationsPage = () => {
           }))}
           onChange={setProjectKey}
         />
-        <Input
-          aria-label="Title contains"
-          placeholder="Title contains"
-          className="h-8 w-36"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") apply();
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setQ(text.trim());
           }}
-        />
-        <Button size="sm" variant="outline" onClick={apply}>
-          Filter
-        </Button>
+        >
+          <Input
+            aria-label="Title contains"
+            placeholder="Title contains"
+            className="h-8 w-36"
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+          />
+          <Button size="sm" variant="outline" type="submit">
+            Filter
+          </Button>
+        </form>
       </FilterBar>
 
       {pages.isPending && <Pending />}

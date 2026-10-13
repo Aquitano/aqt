@@ -75,7 +75,7 @@ const LabeledInput = ({
 }: Omit<ComponentProps<typeof Input>, "id"> & { readonly label: string }) => {
   const id = useId();
   return (
-    <Field className={cn("w-32 gap-2", className)}>
+    <Field className={cn("w-32", className)}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input id={id} className="h-8" {...props} />
     </Field>
@@ -183,7 +183,19 @@ const NewPeriod = ({
 
   return (
     <div className="flex flex-col gap-3 pt-1.5">
-      <div className="flex flex-wrap items-end gap-2">
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (plan !== null)
+            create.mutate({
+              provider,
+              ...plan,
+              startedOn,
+              endedOn: endedOn === "" ? null : endedOn,
+            });
+        }}
+      >
         <PresetSelect
           presets={planPresets}
           provider={provider}
@@ -215,21 +227,13 @@ const NewPeriod = ({
         />
         <Button
           size="sm"
+          type="submit"
           disabled={create.isPending || plan === null || startedOn === ""}
-          onClick={() => {
-            if (plan !== null)
-              create.mutate({
-                provider,
-                ...plan,
-                startedOn,
-                endedOn: endedOn === "" ? null : endedOn,
-              });
-          }}
         >
           {create.isPending && <Spinner data-icon="inline-start" />}
           Add period
         </Button>
-      </div>
+      </form>
       {create.isError && <RequestFailure error={create.error} />}
     </div>
   );
@@ -266,27 +270,36 @@ const PlanDialog = ({
   );
 };
 
-const DialogActions = ({
+const DialogForm = ({
   label,
   pending,
   error,
   onSubmit,
+  children,
 }: {
   readonly label: string;
   readonly pending: boolean;
   readonly error: Error | null;
   readonly onSubmit: (() => void) | null;
+  readonly children: ReactNode;
 }) => (
-  <>
+  <form
+    className="flex flex-col gap-4"
+    onSubmit={(event) => {
+      event.preventDefault();
+      onSubmit?.();
+    }}
+  >
+    {children}
     {error !== null && <RequestFailure error={error} />}
     <DialogFooter className="pt-2">
       <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
-      <Button disabled={pending || onSubmit === null} onClick={onSubmit ?? undefined}>
+      <Button type="submit" disabled={pending || onSubmit === null}>
         {pending && <Spinner data-icon="inline-start" />}
         {label}
       </Button>
     </DialogFooter>
-  </>
+  </form>
 );
 
 const ChangePlanForm = ({
@@ -309,7 +322,14 @@ const ChangePlanForm = ({
   const next = parseDraft(draft);
 
   return (
-    <div className="flex flex-col gap-4">
+    <DialogForm
+      label="Change plan"
+      pending={change.isPending}
+      error={change.error}
+      onSubmit={
+        next === null || effectiveOn === "" ? null : () => change.mutate({ ...next, effectiveOn })
+      }
+    >
       <p className="text-xs text-muted-foreground">
         On {plan.name} at {money(plan.monthlyPrice, plan.currency)} a month since {plan.startedOn}.
       </p>
@@ -334,15 +354,7 @@ const ChangePlanForm = ({
           {plan.name} ends on {addDays(effectiveOn, -1)} and {next.name} starts on {effectiveOn}.
         </p>
       )}
-      <DialogActions
-        label="Change plan"
-        pending={change.isPending}
-        error={change.error}
-        onSubmit={
-          next === null || effectiveOn === "" ? null : () => change.mutate({ ...next, effectiveOn })
-        }
-      />
-    </div>
+    </DialogForm>
   );
 };
 
@@ -363,7 +375,12 @@ const EndPlanForm = ({
   });
 
   return (
-    <div className="flex flex-col gap-4">
+    <DialogForm
+      label="End subscription"
+      pending={end.isPending}
+      error={end.error}
+      onSubmit={endedOn === "" ? null : () => end.mutate(endedOn)}
+    >
       <p className="text-xs text-muted-foreground">
         The end date is the last day {plan.name} covered.
       </p>
@@ -374,13 +391,7 @@ const EndPlanForm = ({
         value={endedOn}
         onChange={(event) => setEndedOn(event.target.value)}
       />
-      <DialogActions
-        label="End subscription"
-        pending={end.isPending}
-        error={end.error}
-        onSubmit={endedOn === "" ? null : () => end.mutate(endedOn)}
-      />
-    </div>
+    </DialogForm>
   );
 };
 
@@ -402,7 +413,16 @@ const EditPeriodForm = ({
   const next = parseDraft(draft);
 
   return (
-    <div className="flex flex-col gap-4">
+    <DialogForm
+      label="Save period"
+      pending={save.isPending}
+      error={save.error}
+      onSubmit={
+        next === null || startedOn === ""
+          ? null
+          : () => save.mutate({ ...next, startedOn, endedOn: endedOn === "" ? null : endedOn })
+      }
+    >
       <div className="flex flex-wrap items-end gap-2">
         <PlanFields draft={draft} onChange={setDraft} />
       </div>
@@ -423,17 +443,7 @@ const EditPeriodForm = ({
       <p className="text-xs text-muted-foreground">
         Leave Ended on empty while you still pay for the plan.
       </p>
-      <DialogActions
-        label="Save period"
-        pending={save.isPending}
-        error={save.error}
-        onSubmit={
-          next === null || startedOn === ""
-            ? null
-            : () => save.mutate({ ...next, startedOn, endedOn: endedOn === "" ? null : endedOn })
-        }
-      />
-    </div>
+    </DialogForm>
   );
 };
 
