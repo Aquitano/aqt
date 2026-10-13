@@ -90,6 +90,7 @@ urls (
   created_at    timestamptz not null default now()
 );
 create index on urls (host);
+create index on urls (normalized_url);
 
 page_views (
   id              uuid primary key,             -- from the extension
@@ -105,6 +106,7 @@ page_views (
 );
 create index on page_views (device_id, started_at desc);
 create index on page_views (url_id, started_at desc);
+create index on page_views (referrer_url_id);
 
 activity_spans (
   id            uuid primary key,
@@ -182,6 +184,7 @@ derivations (
   primary key (raw_hash, extractor, extractor_version)
 );
 create index on derivations (status, created_at) where status in ('pending', 'running');
+create index on derivations (record_id);
 
 records (
   id            bigint generated always as identity primary key,
@@ -196,6 +199,7 @@ records (
   last_seen_at  timestamptz not null,
   unique (extractor, canonical_url)
 );
+create index on records (url_id);
 create index records_search on records using bm25 (id, title, search_text, extractor)
   with (key_field = 'id');
 ```
