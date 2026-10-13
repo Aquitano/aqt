@@ -20,7 +20,7 @@ import (
 // Postgres rejects NUL in text. The store strips it so one title cannot fail
 // the whole batch.
 func TestEventsWithNULInATitleAreStoredWithoutIt(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	h := New(st, metrics.New(), slog.New(slog.NewTextHandler(io.Discard, nil)), func() {}, auth.Off(), "").Handler()
 
 	at := time.Now().UTC().Format(time.RFC3339)
@@ -36,10 +36,10 @@ func TestEventsWithNULInATitleAreStoredWithoutIt(t *testing.T) {
 	if rec.Code != http.StatusOK || res.Accepted != 2 || res.Dropped != 0 {
 		t.Fatalf("status %d, accepted=%d dropped=%d, want 200 with both accepted", rec.Code, res.Accepted, res.Dropped)
 	}
-	if n := storetest.QueryInt(t, schema, `select count(*) from page_views where title = 'Page'`); n != 1 {
+	if n := storetest.QueryInt(t, dsn, `select count(*) from page_views where title = 'Page'`); n != 1 {
 		t.Error("page view title was not stored without its NUL")
 	}
-	if n := storetest.QueryInt(t, schema, `select count(*) from activity_spans where window_title = 'main.go — aqt'`); n != 1 {
+	if n := storetest.QueryInt(t, dsn, `select count(*) from activity_spans where window_title = 'main.go — aqt'`); n != 1 {
 		t.Error("window title was not stored without its NUL")
 	}
 }

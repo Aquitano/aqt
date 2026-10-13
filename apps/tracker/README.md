@@ -193,7 +193,7 @@ URL, normalised like ingest does, whose most recent capture it writes.
 | Prometheus      | `127.0.0.1:9091`                    | not run                   |
 | Grafana         | `127.0.0.1:3090`                    | the tailnet address, 3090 |
 
-Everything is loopback-only and unauthenticated by default; the VPS's `.env` publishes the server and Grafana on its tailnet address and turns authentication on (Deploying to the VPS). Requests carrying an `Origin` that is not `chrome-extension://…` (or, with `TRACKER_EXTENSION_ID` set, not that one extension) are rejected, and while authentication is off, so is every request but `/healthz` and `/metrics` whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`. That second check stops a DNS-rebinding page, which is same-origin with the server and sends no `Origin` on a GET.
+Everything is loopback-only and unauthenticated by default; the VPS's `.env` publishes the server and Grafana on its tailnet address and turns authentication on (Deploying to the VPS). Requests carrying an `Origin` that is not `chrome-extension://…` (or, with `TRACKER_EXTENSION_ID` set, not that one extension) are rejected, and while authentication is off, so is every request but `/healthz` and `/metrics` whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`. That second check stops a DNS-rebinding page, which is same-origin with the server and sends no `Origin` on a GET. It is no credential against anyone who can reach the port, so `serve` refuses to start on a non-loopback address while authentication is off; the container, which listens on every interface inside it, needs an issuer.
 
 ## Authentication
 
@@ -211,9 +211,10 @@ provider publishes it, trailing slash and all: both halves compare it against
 the discovery document.
 
 The LaunchAgent reads no shell profile, so `TRACKER_OIDC_*` exported from
-`~/.zshrc` reaches your terminal but **not** the server launchd starts, which
-would then accept every request. Put them in the plist's `EnvironmentVariables`
-and re-run `mise run tracker:service`.
+`~/.zshrc` reaches your terminal but **not** the server launchd starts. Without
+an issuer, the server runs without authentication on loopback and refuses to
+start on any other address. Put the OIDC variables in the plist's
+`EnvironmentVariables` and re-run `mise run tracker:service`.
 
 ```sh
 tracker login    # device code: open the URL it prints, approve, done

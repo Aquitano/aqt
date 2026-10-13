@@ -138,3 +138,29 @@ func TestBearerRefreshesASpentTokenAndStoresTheRotatedOne(t *testing.T) {
 		t.Errorf("stored refresh token = %q, want the rotated one", stored.Token.RefreshToken)
 	}
 }
+
+type inspectTransport func(*http.Request) (*http.Response, error)
+
+func (f inspectTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestTokenRefreshHasADeadlineWithoutCallerDeadline(t *testing.T) {
+	original := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = original })
+	called := false
+	http.DefaultTransport = inspectTransport(func(r *http.Request) (*http.Response, error) {
+		called = true
+		deadline, ok := r.Context().Deadline()
+		if !ok || time.Until(deadline) <= 0 || time.Until(deadline) > time.Minute {
+			t.Errorf("refresh deadline = %v, present = %v", deadline, ok)
+		}
+		return nil, errors.New("stop after inspecting the refresh")
+	})
+	s := testSession("https://auth.example")
+	s.Token.Expiry = time.Now().Add(-time.Hour)
+	if _, err := s.tokens(context.Background(), filepath.Join(t.TempDir(), "token.json")).Token(); err == nil {
+		t.Fatal("refresh unexpectedly succeeded")
+	}
+	if !called {
+		t.Fatal("no refresh request")
+	}
+}

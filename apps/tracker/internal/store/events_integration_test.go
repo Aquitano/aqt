@@ -13,7 +13,7 @@ import (
 )
 
 func TestResentPageViewUpdatesTitleButNeverClearsIt(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	ctx := context.Background()
 	normalized, host, err := urlnorm.Normalize("https://github.com/uptrace/bun")
 	if err != nil {
@@ -30,7 +30,7 @@ func TestResentPageViewUpdatesTitleButNeverClearsIt(t *testing.T) {
 		}
 	}
 	titled := func() int64 {
-		return storetest.QueryInt(t, schema,
+		return storetest.QueryInt(t, dsn,
 			"select count(*) from page_views where id = $1 and title = $2", id, "uptrace/bun: SQL-first Golang ORM")
 	}
 	send("")

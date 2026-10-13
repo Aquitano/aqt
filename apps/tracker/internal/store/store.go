@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"time"
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -16,8 +17,10 @@ import (
 	"github.com/uptrace/bun/migrate"
 )
 
+// Migrations holds the schema as SQL files under migrations/.
+//
 //go:embed migrations/*.sql
-var migrationFS embed.FS
+var Migrations embed.FS
 
 // migrationLock is an arbitrary fixed advisory-lock key ("trkmig"): two
 // processes starting against an unmigrated database serialize on it instead
@@ -28,15 +31,12 @@ type Store struct {
 	db *bun.DB
 }
 
-// Open connects and migrates.
+// Open connects and migrates. A statement runs until its context's deadline:
+// pgdriver's default socket timeouts would cut a long migration, reprocess or
+// forget off at 10 s. A DSN's read_timeout and write_timeout still apply.
 func Open(ctx context.Context, dsn string) (*Store, error) {
-	return New(ctx, sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn))))
-}
-
-// New migrates an already opened database; Open is the usual entry point,
-// this one lets tests hand in a connector of their own.
-func New(ctx context.Context, sqldb *sql.DB) (*Store, error) {
-	db := bun.NewDB(sqldb, pgdialect.New())
+	db := bun.NewDB(sql.OpenDB(pgdriver.NewConnector(
+		pgdriver.WithReadTimeout(0), pgdriver.WithWriteTimeout(0), pgdriver.WithDSN(dsn))), pgdialect.New())
 	s := &Store{db: db}
 	if err := s.migrate(ctx); err != nil {
 		db.Close()
@@ -50,7 +50,7 @@ func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
 func (s *Store) migrate(ctx context.Context) error {
-	sub, err := fs.Sub(migrationFS, "migrations")
+	sub, err := fs.Sub(Migrations, "migrations")
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		return err
 	}
 	defer func() {
-		_, _ = conn.ExecContext(context.WithoutCancel(ctx), `select pg_advisory_unlock(?)`, migrationLock)
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancel()
+		_, _ = conn.ExecContext(cleanupCtx, `select pg_advisory_unlock(?)`, migrationLock)
 	}()
 	m := migrate.NewMigrator(s.db, migrations, migrate.WithMarkAppliedOnSuccess(true))
 	if err := m.Init(ctx); err != nil {

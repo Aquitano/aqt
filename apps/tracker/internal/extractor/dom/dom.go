@@ -4,8 +4,18 @@ package dom
 import (
 	"strings"
 
+	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 )
+
+// First is sel.MatchFirst that passes a missing node through, so lookups
+// inside a lookup's result chain without a nil check at every step.
+func First(n *html.Node, sel cascadia.Selector) *html.Node {
+	if n == nil {
+		return nil
+	}
+	return sel.MatchFirst(n)
+}
 
 func Attr(n *html.Node, key string) string {
 	if n == nil {

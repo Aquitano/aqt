@@ -12,9 +12,11 @@ import (
 	"unicode/utf8"
 
 	readability "codeberg.org/readeck/go-readability/v2"
+	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
+	"github.com/aquitano/aqt/apps/tracker/internal/extractor/dom"
 )
 
 const Name = "article"
@@ -114,15 +116,17 @@ func normalizeWhitespace(s string) string {
 	return strings.TrimSpace(s)
 }
 
+var (
+	canonicalLink = cascadia.MustCompile("link[rel=canonical i]")
+	titleTag      = cascadia.MustCompile("title")
+)
+
 // canonicalURL trusts <link rel=canonical> only when it names an article on
 // the page's own site. Records are keyed on it, and some sites point every
 // article's canonical at their homepage, which would merge them all into one.
 func canonicalURL(doc *html.Node, pageURL *url.URL) string {
-	link := findNode(doc, func(n *html.Node) bool {
-		return n.Data == "link" && strings.EqualFold(attr(n, "rel"), "canonical")
-	})
-	if link != nil {
-		u, err := url.Parse(strings.TrimSpace(attr(link, "href")))
+	if link := canonicalLink.MatchFirst(doc); link != nil {
+		u, err := url.Parse(strings.TrimSpace(dom.Attr(link, "href")))
 		if err == nil && u.IsAbs() && siteHost(u) == siteHost(pageURL) && u.Path != "" && u.Path != "/" {
 			return u.String()
 		}
@@ -135,30 +139,9 @@ func siteHost(u *url.URL) string {
 }
 
 func documentTitle(doc *html.Node) string {
-	title := findNode(doc, func(n *html.Node) bool { return n.Data == "title" })
+	title := titleTag.MatchFirst(doc)
 	if title == nil || title.FirstChild == nil {
 		return ""
 	}
 	return strings.TrimSpace(title.FirstChild.Data)
-}
-
-func findNode(n *html.Node, pred func(*html.Node) bool) *html.Node {
-	if n.Type == html.ElementNode && pred(n) {
-		return n
-	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if found := findNode(c, pred); found != nil {
-			return found
-		}
-	}
-	return nil
-}
-
-func attr(n *html.Node, key string) string {
-	for _, a := range n.Attr {
-		if a.Key == key {
-			return a.Val
-		}
-	}
-	return ""
 }

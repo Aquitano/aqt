@@ -102,7 +102,9 @@ func (p *Processor) RunOnce(ctx context.Context) (busy bool, err error) {
 	rec, fail := p.derive(ctx, d)
 	elapsed := time.Since(start)
 	p.metrics.ExtractDuration.WithLabelValues(d.Extractor).Observe(elapsed.Seconds())
-	writeCtx := context.WithoutCancel(ctx)
+	// Finalize a cancelled job without leaving shutdown blocked on the database.
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
 	log := p.log.With("extractor", d.Extractor, "version", d.ExtractorVersion,
 		"raw_hash", hex.EncodeToString(d.RawHash), "attempts", d.Attempts, "ms", elapsed.Milliseconds())
 	if fail != nil {
@@ -143,7 +145,7 @@ func (p *Processor) derive(ctx context.Context, d store.Derivation) (store.Recor
 	}
 	b, err := p.store.LoadBlob(ctx, d.RawHash)
 	if err != nil {
-		return store.RecordInput{}, &failure{err: err, class: ClassParse}
+		return store.RecordInput{}, &failure{err: err, class: ClassStore}
 	}
 	html, err := blob.Decompress(b.Payload)
 	if err != nil {
@@ -154,7 +156,7 @@ func (p *Processor) derive(ctx context.Context, d store.Derivation) (store.Recor
 	}
 	summary, err := p.store.SummarizeCaptures(ctx, d.RawHash)
 	if err != nil {
-		return store.RecordInput{}, &failure{err: err, class: ClassParse}
+		return store.RecordInput{}, &failure{err: err, class: ClassStore}
 	}
 	normalized, host, err := urlnorm.Normalize(summary.URL)
 	if err != nil {

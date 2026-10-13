@@ -28,5 +28,6 @@ EXPOSE 8490
 
 ENTRYPOINT ["/usr/local/bin/tracker"]
 # Every interface *inside* the container, whose own loopback nothing can reach:
-# exposure is decided by the host address docker-compose.yml publishes on.
+# exposure is decided by the host address docker-compose.yml publishes on. Not
+# being loopback, it makes serve require TRACKER_OIDC_ISSUER.
 CMD ["serve", "--listen", "0.0.0.0:8490"]
