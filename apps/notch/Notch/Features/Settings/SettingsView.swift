@@ -606,23 +606,13 @@ extension SettingsView {
             .font(.caption)
             .foregroundStyle(.secondary)
         case .active:
-            PixelLabel(
-                title: "Live audio meter is active",
-                systemName: "checkmark.circle.fill",
-                size: 13,
-                tint: .green
-            )
-            .font(.caption)
-            .foregroundStyle(.green)
+            PixelLabel(title: "Live audio meter is active", systemName: "checkmark.circle.fill", size: 13, tint: .green)
+                .font(.caption)
+                .foregroundStyle(.green)
         case let .failed(reason):
-            PixelLabel(
-                title: reason,
-                systemName: "exclamationmark.triangle.fill",
-                size: 13,
-                tint: .orange
-            )
-            .font(.caption)
-            .foregroundStyle(.orange)
+            PixelLabel(title: reason, systemName: "exclamationmark.triangle.fill", size: 13, tint: .orange)
+                .font(.caption)
+                .foregroundStyle(.orange)
         }
     }
 
