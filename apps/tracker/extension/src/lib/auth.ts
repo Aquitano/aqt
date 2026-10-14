@@ -4,7 +4,7 @@ import { browser } from "wxt/browser";
 import { errorMessage } from "./errors.ts";
 import type { Result } from "./result.ts";
 import type { Settings } from "./settings.ts";
-import { authTokensStore, loadSettings } from "./storage.ts";
+import { type AuthTokens, authTokensStore, loadSettings } from "./storage.ts";
 
 // Refresh a little before expiry so a request in flight never carries a token
 // that dies on the way.
@@ -20,7 +20,9 @@ export function redirectUri(): string {
   return browser.identity.getRedirectURL();
 }
 
-function configured(settings: Settings): { issuer: string; clientId: string } | undefined {
+type Client = { issuer: string; clientId: string };
+
+function configured(settings: Settings): Client | undefined {
   const { oidcIssuer, oidcClientId } = settings;
   return oidcIssuer && oidcClientId ? { issuer: oidcIssuer, clientId: oidcClientId } : undefined;
 }
@@ -116,11 +118,30 @@ export async function signOut(): Promise<void> {
 // refresh trades the stored refresh token for a new access token. Only a
 // definitive invalid_grant clears the session: a network blip must not look
 // like a logout, or an offline laptop signs itself out.
+//
+// The sync loop, the seen-before lookup, the omnibox and the search page can
+// all find the same token expired at once. A provider that rotates refresh
+// tokens accepts only the first trade, so the lock, shared by the service
+// worker and every extension page, lets one through and hands the others what
+// it stored instead of an invalid_grant.
 export async function refresh(): Promise<Result<string | undefined>> {
   const settings = await loadSettings();
   const client = configured(settings);
   if (!client) return { ok: true, value: undefined };
-  const tokens = await authTokensStore.get();
+  const seen = await authTokensStore.get();
+  return navigator.locks.request("tracker-auth-refresh", async () => {
+    const tokens = await authTokensStore.get();
+    if (tokens && tokens.accessToken !== seen?.accessToken) {
+      return { ok: true, value: tokens.accessToken };
+    }
+    return renew(client, tokens);
+  });
+}
+
+async function renew(
+  client: Client,
+  tokens: AuthTokens | undefined,
+): Promise<Result<string | undefined>> {
   if (!tokens?.refreshToken) return { ok: false, error: "signed out: open options and sign in" };
   try {
     const as = await authorizationServer(client.issuer);
