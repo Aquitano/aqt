@@ -47,12 +47,7 @@ mise run tracker:service
 
 ## Upgrading ParadeDB
 
-The image is pinned by version and digest in [docker-compose.yml](docker-compose.yml). Stay on the `-pg18` line: the data directory is named after the Postgres major, so another major starts on an empty one and needs a dump and restore. After changing the pin:
-
-```sh
-docker compose -f docker-compose.yml -f deploy/docker-compose.laptop.yml up -d
-docker compose exec db psql -U tracker -d tracker -c 'alter extension pg_search update'
-```
+The image is pinned by version and digest in [docker-compose.yml](docker-compose.yml). Stay on the `-pg18` line: the data directory is named after the Postgres major, so another major starts on an empty one and needs a dump and restore. After changing the pin, `up -d` again; `serve` runs `alter extension pg_search update` under its migration lock whenever the extension is behind the new binary, so search keeps working without a manual step.
 
 ## Desktop agent
 
@@ -268,6 +263,7 @@ TRACKER_GRAFANA_LISTEN=100.x.y.z:3090
 TRACKER_GRAFANA_PASSWORD=<another one>
 TRACKER_OIDC_ISSUER=https://auth.aquitano.me/application/o/tracker/
 TRACKER_OIDC_AUDIENCE=<client id>
+TRACKER_EXTENSION_ID=gdhnnekkmghgkiikgmdodggcpgnmbpno
 ```
 
 On the Mac, stop the local server and dump its database, from `apps/tracker`. The extension and the desktop agent queue meanwhile:
