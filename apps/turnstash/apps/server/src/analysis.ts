@@ -23,7 +23,7 @@ import { activeCost, activeValuation, number, requestConditions } from "./filter
 // Every request in the filter lands in exactly one bucket: its turn, or "unattributed" when it has no turn.
 const turnCosts = (filter: StatsFilter) => sql`
   SELECT ${modelRequests.conversationId} AS conversation_id, ${modelRequests.turnIndex} AS turn_index,
-    ${activeCost} AS cost_usd,
+    ${activeCost} AS cost_usd, count(*) AS requests,
     coalesce(sum(${modelRequests.inputTokens}), 0) AS input_tokens,
     coalesce(sum(${modelRequests.cacheReadTokens}), 0) AS cache_read_tokens
   FROM ${modelRequests}
@@ -85,6 +85,9 @@ export const computeAnalysis = Effect.fn("Analysis.compute")(function* (filter: 
           turns: number;
           edit_turns: number;
           retries: number;
+          requests: number;
+          rg_turns: number;
+          grep_turns: number;
           cost_usd: string;
           input_tokens: string;
           cache_read_tokens: string;
@@ -94,6 +97,9 @@ export const computeAnalysis = Effect.fn("Analysis.compute")(function* (filter: 
     SELECT coalesce(t.primary_model_id, 'unknown') AS model_id, count(*)::int AS turns,
       count(*) FILTER (WHERE t.edits > 0)::int AS edit_turns,
       coalesce(sum(t.retries), 0)::int AS retries,
+      coalesce(sum(tc.requests), 0)::int AS requests,
+      count(*) FILTER (WHERE 'rg' = ANY(t.commands))::int AS rg_turns,
+      count(*) FILTER (WHERE 'grep' = ANY(t.commands))::int AS grep_turns,
       coalesce(sum(tc.cost_usd), 0)::text AS cost_usd,
       coalesce(sum(tc.input_tokens), 0)::text AS input_tokens,
       coalesce(sum(tc.cache_read_tokens), 0)::text AS cache_read_tokens
@@ -131,6 +137,9 @@ export const computeAnalysis = Effect.fn("Analysis.compute")(function* (filter: 
         turns: number(row.turns),
         editTurns: number(row.edit_turns),
         retries: number(row.retries),
+        requests: number(row.requests),
+        rgTurns: number(row.rg_turns),
+        grepTurns: number(row.grep_turns),
         costUsd: number(row.cost_usd),
         cacheHitRate: prompt === 0 ? null : number(row.cache_read_tokens) / prompt,
       };

@@ -1286,6 +1286,9 @@ test("analysis buckets every priced request exactly once and exposes per-convers
       expect(detail.turns.reduce((sum, turn) => sum + turn.requests, 0)).toBe(
         stats.overall.requests,
       );
+      expect(analysis.byModel.reduce((sum, row) => sum + row.requests, 0)).toBe(
+        stats.overall.requests,
+      );
       expect(detail.turns[0]?.userExcerpt).not.toBe("");
       expect(yield* computeAnalysis({ provider: "codex" })).toMatchObject({
         byCategory: [],

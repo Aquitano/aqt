@@ -395,6 +395,9 @@ export const ModelComparisonRow = Schema.Struct({
   turns: Schema.Natural,
   editTurns: Schema.Natural,
   retries: Schema.Natural,
+  requests: Schema.Natural,
+  rgTurns: Schema.Natural,
+  grepTurns: Schema.Natural,
   costUsd: Money,
   cacheHitRate: Schema.NullOr(Schema.Finite),
 });
