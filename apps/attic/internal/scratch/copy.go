@@ -9,14 +9,16 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"lukechampine.com/blake3"
 )
 
 var (
-	ErrTooBig  = errors.New("file exceeds the copy limit")
-	ErrChanged = errors.New("file changed since hashing; scan it again")
+	ErrTooBig   = errors.New("file exceeds the copy limit")
+	ErrChanged  = errors.New("file changed since hashing; scan it again")
+	copyBuffers = sync.Pool{New: func() any { return new([1 << 20]byte) }}
 )
 
 // CheckVolume prevents subprocess scratch files from landing on the source disk.
@@ -72,7 +74,9 @@ func (w *Workspace) Copy(ctx context.Context, source string, digest disk.Digest,
 	if maxBytes > 0 && maxBytes < math.MaxInt64 {
 		reader = io.LimitReader(reader, maxBytes+1)
 	}
-	n, err := io.Copy(io.MultiWriter(copyWriter{out}, h), reader)
+	buffer := copyBuffers.Get().(*[1 << 20]byte)
+	defer copyBuffers.Put(buffer)
+	n, err := io.CopyBuffer(io.MultiWriter(copyWriter{out}, h), reader, buffer[:])
 	if err != nil {
 		return path, err
 	}
