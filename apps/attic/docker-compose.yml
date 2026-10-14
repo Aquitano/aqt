@@ -4,7 +4,7 @@
 services:
   db:
     # pg_search 0.25.11, the same digest bank and its CI use.
-    image: paradedb/paradedb:0.25.11-pg18@sha256:a9cbdcfd8a1c349ab21590fd6d6dcbe7da489878df6502922d032dd64c1a7ae7
+    image: paradedb/paradedb:v0.26.1-pg18@sha256:29bd8cc90a89ff15f8350f89b4849c2ef807aa9381c79febd1afb1a8a25fb706
     environment:
       POSTGRES_USER: attic
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-attic}
