@@ -14,9 +14,11 @@ package enum Backoff {
 
 package enum HTTPFailure {
     /// Only a request that will never succeed as written may drop its batch.
-    /// 401 and 403 are fixed by signing in, 408 and 429 by waiting.
+    /// 401 and 403 are fixed by signing in, 408 and 429 by waiting. tracker
+    /// answers 404 and 405 to no batch: they mean the server URL points
+    /// somewhere else, and fixing it delivers the queue.
     package static func isPermanent(status: Int) -> Bool {
-        let retryable: Set = [401, 403, 408, 429]
+        let retryable: Set = [401, 403, 404, 405, 408, 429]
         return (400 ..< 500).contains(status) && !retryable.contains(status)
     }
 }

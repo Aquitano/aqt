@@ -206,6 +206,10 @@ func (s *Syncer) bearer(ctx context.Context) (string, error) {
 	if s.tokenPath == "" {
 		return "", nil
 	}
+	// A refresh goes through oauth2's own client, which has no timeout of its
+	// own: a stalled issuer would otherwise hold up the sync loop.
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
 	token, err := client.Bearer(ctx, s.tokenPath)
 	if errors.Is(err, client.ErrSignedOut) {
 		return "", nil
@@ -226,10 +230,13 @@ func (s *Syncer) Status() SyncStatus {
 }
 
 // permanent is a batch that will never be accepted as written. 401 and 403
-// are fixed by signing in, 408 and 429 by waiting.
+// are fixed by signing in, 408 and 429 by waiting. tracker answers 404 and
+// 405 to no batch: they mean the server URL points somewhere else, and
+// fixing it delivers the queue.
 func permanent(status int) bool {
 	switch status {
-	case http.StatusUnauthorized, http.StatusForbidden, http.StatusRequestTimeout, http.StatusTooManyRequests:
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusMethodNotAllowed,
+		http.StatusRequestTimeout, http.StatusTooManyRequests:
 		return false
 	}
 	return status >= 400 && status < 500

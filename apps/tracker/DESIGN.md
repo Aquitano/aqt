@@ -268,7 +268,7 @@ All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A
 
 With an issuer configured, every route below except `/healthz` and `/metrics` needs `Authorization: Bearer <jwt>` and answers 401 without one. 401 is never treated as permanent by a client: the fix is a login, not dropping the data.
 
-Any other 4xx means the request can never succeed as sent, and the extension drops it (except 408 and 429). A 5xx is retried; its body says only `internal server error`, and the error itself goes to the log.
+Any other 4xx means the request can never succeed as sent, and a client drops it, except 403, 404, 405, 408 and 429: a proxy answers 403 for a lapsed session, 404 and 405 mean the server URL points somewhere else, and 408 and 429 pass with time. A 5xx is retried; its body says only `internal server error`, and the error itself goes to the log.
 
 `GET /healthz` → `200 {"ok":true,"db":true}` or 503. Never authenticated.
 
