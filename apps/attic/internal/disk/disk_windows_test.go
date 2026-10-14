@@ -12,6 +12,71 @@ import (
 	"lukechampine.com/blake3"
 )
 
+func TestForwardSlashPaths(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("backup bytes")
+	path := filepath.Join(dir, "backup.bin")
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := List(filepath.ToSlash(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name != "backup.bin" {
+		t.Fatalf("List = %+v", entries)
+	}
+	path = filepath.ToSlash(path)
+	digest, n, err := Hash(context.Background(), path)
+	if err != nil || n != int64(len(body)) || digest != blake3.Sum256(body) {
+		t.Fatalf("Hash = %x, %d, %v", digest, n, err)
+	}
+	entry, err := Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Name != "backup.bin" || entry.Size != int64(len(body)) {
+		t.Fatalf("Stat = %+v", entry)
+	}
+}
+
+func TestLongPath(t *testing.T) {
+	for _, tt := range []struct{ path, want string }{
+		{`C:/backup/file.bin`, `\\?\C:\backup\file.bin`},
+		{`//server/share/backup/file.bin`, `\\?\UNC\server\share\backup\file.bin`},
+		{`\\?\C:\backup/file.bin`, `\\?\C:\backup/file.bin`},
+		{`\\?\UNC\server\share\file.bin`, `\\?\UNC\server\share\file.bin`},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			if got := longPath(tt.path); got != tt.want {
+				t.Fatalf("longPath(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStatCountsHardLinks(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+	if err := os.WriteFile(a, []byte("linked"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(a, b); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	first, err := Stat(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Stat(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.FileID != second.FileID || first.LinkCount != 2 || second.LinkCount != 2 {
+		t.Fatalf("hard link stats: %+v, %+v", first, second)
+	}
+}
+
 func TestHashKeepsLastAccess(t *testing.T) {
 	dir := t.TempDir()
 	body := []byte("backup bytes")

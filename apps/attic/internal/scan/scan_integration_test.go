@@ -223,6 +223,82 @@ func TestReappearingHardLinkScans(t *testing.T) {
 	scanAt(t, st, root, testVolume)
 }
 
+func TestCrossDirectoryHardLinksKeepTheirPaths(t *testing.T) {
+	st, _ := storetest.New(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	write(t, root, "a/nested/linked.txt", "shared bytes")
+	if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(filepath.Join(root, "a", "nested", "linked.txt"), filepath.Join(root, "b", "linked.txt")); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	places := func(want ...string) map[string]store.Hit {
+		t.Helper()
+		hits, err := st.Search(ctx, store.SearchOptions{Query: "linked", Limit: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		live := map[string]store.Hit{}
+		for _, h := range hits {
+			if !h.Missing {
+				if _, exists := live[h.Path]; exists {
+					t.Fatalf("duplicate live path: %+v", hits)
+				}
+				live[h.Path] = h
+			}
+		}
+		if len(live) != len(want) {
+			t.Fatalf("live paths %+v, want %v", live, want)
+		}
+		for _, p := range want {
+			if _, ok := live[p]; !ok {
+				t.Fatalf("missing live path %s: %+v", p, hits)
+			}
+		}
+		return live
+	}
+	a, b := "/a/nested/linked.txt", "/b/linked.txt"
+	scanAt(t, st, root, testVolume)
+	first := places(a, b)
+	if first[a].Ref == "" || first[a].Ref != first[b].Ref {
+		t.Fatalf("hard links have different content: %+v", first)
+	}
+	for _, rel := range [][]string{{"b"}, {"a", "nested"}, {"a"}, nil, {"b"}, nil} {
+		scanAt(t, st, root, testVolume, func(o *Options) {
+			o.Path = filepath.Join(append([]string{root}, rel...)...)
+			o.locate = func(string) (disk.Volume, []string, error) {
+				return disk.Volume{Fingerprint: testVolume, Root: root}, rel, nil
+			}
+		})
+		for p, h := range places(a, b) {
+			if h.ID != first[p].ID || h.Ref != first[p].Ref {
+				t.Fatalf("scan of %v changed %s from %+v to %+v", rel, p, first[p], h)
+			}
+		}
+	}
+	owner, err := st.Entry(ctx, first[a].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owner.FileID == nil {
+		a, b = b, a
+	}
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(a, "/")))); err != nil {
+		t.Fatal(err)
+	}
+	scanAt(t, st, root, testVolume)
+	remaining := places(b)[b]
+	if err := os.Rename(filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(b, "/"))), filepath.Join(root, "linked-renamed.txt")); err != nil {
+		t.Fatal(err)
+	}
+	scanAt(t, st, root, testVolume)
+	if renamed := places("/linked-renamed.txt")["/linked-renamed.txt"]; renamed.ID != remaining.ID || renamed.Ref != remaining.Ref {
+		t.Fatalf("renamed remaining link %+v, want id %d ref %s", renamed, remaining.ID, remaining.Ref)
+	}
+}
+
 func zipOf(t *testing.T, files map[string]string) string {
 	t.Helper()
 	var buf bytes.Buffer

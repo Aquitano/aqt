@@ -62,6 +62,7 @@ func fromInfo(name string, info fs.FileInfo) Entry {
 	}
 	if st, ok := info.Sys().(*syscall.Stat_t); ok {
 		e.FileID = st.Ino
+		e.LinkCount = uint64(st.Nlink) //nolint:unconvert // Nlink has different integer types across Unix platforms.
 	}
 	return e
 }

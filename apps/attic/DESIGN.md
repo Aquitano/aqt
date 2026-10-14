@@ -30,7 +30,7 @@ Three identities, so a moved or copied file never costs a second hash, extractio
 - On NTFS the identity is the file reference number, which survives renames and moves within the volume. A rescan that meets a known file id at a new path updates that row, keeps its content and hashes nothing.
 - On FAT and exFAT the identity is the path. Windows synthesises their file ids from directory-entry positions, so they move when files do.
 - A file keeps its content while size, modified time and change time are unchanged. Change time catches writers that restore the modified time.
-- Hard links share one file id across several paths; the last path seen wins. They are rare on backup disks.
+- Hard links share one file id across several paths. One path keeps the file id; additional paths use their names as identity. A file-id match in another folder checks the incoming file's link count before treating it as a move.
 
 **Hierarchy.** Every entry points to its parent folder and also carries its volume-relative path. Search ranks words from the path and the name together, and BM25 indexes one table, so the path has to be on the row. A folder move follows parent ancestry to update descendant paths, and folders on backup disks rarely move.
 

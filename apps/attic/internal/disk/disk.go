@@ -52,6 +52,8 @@ type Entry struct {
 	Attributes uint32
 	// FileID is the file system's id for the entry, zero when it has none.
 	FileID uint64
+	// LinkCount is reported by Stat; bulk Windows listings leave it zero.
+	LinkCount uint64
 }
 
 type Digest [32]byte

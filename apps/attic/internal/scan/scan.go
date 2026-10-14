@@ -145,6 +145,16 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp, Log: log},
 		textsRead: map[int64]bool{}, log: log}
 	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20}
+	sc.IsHardLink = func(entryPath string, fileID int64) (bool, error) {
+		e, err := disk.Stat(r.osPath(entryPath))
+		if err != nil {
+			return false, err
+		}
+		if int64(e.FileID) != fileID || e.Dir || e.Link {
+			return false, fmt.Errorf("%s changed since listing; scan it again", entryPath)
+		}
+		return e.LinkCount > 1, nil
+	}
 	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
 		"root", cmp.Or(root, "/"), "no_hash", o.NoHash, "archive_depth", a.Depth, "unpack_max_bytes", a.UnpackMaxBytes,
 		"text_max_bytes", o.Config.Text.MaxBytes, "hash_max_bytes", o.Config.HashMaxBytes)

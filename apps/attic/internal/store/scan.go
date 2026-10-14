@@ -25,6 +25,8 @@ type Scan struct {
 	// Phases is how long each phase took, written when the scan finishes.
 	Phases PhaseTimes
 
+	IsHardLink func(string, int64) (bool, error)
+
 	store      *Store
 	lock       *pgxpool.Conn
 	tx         pgx.Tx
@@ -258,8 +260,8 @@ func collectEntryRows(rows pgx.Rows) ([]entryRow, error) {
 // the subfolders to descend into, in listing order.
 //
 // A listed entry is matched to an existing row by, in order: its file id among
-// the folder's rows; its file id anywhere on the volume, which means it moved
-// here; its name among rows nothing else claimed. On NTFS a name match with a
+// the folder's rows; its file id elsewhere on the volume, after ruling out a
+// hard link; its name among rows nothing else claimed. On NTFS a name match with a
 // new file id is a file replaced in place by a save-via-rename, and keeps its
 // row. A matched row is only written when something about it changed, so
 // rescanning an unchanged disk writes almost nothing.
@@ -286,22 +288,37 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 	if err != nil {
 		return nil, err
 	}
+	parentPath, parentID := "", (*int64)(nil)
+	if parent != nil {
+		parentPath, parentID = parent.Path, &parent.ID
+	}
 
 	// Rows hold cleaned names, so the excluded names are compared cleaned too.
 	kept := make(map[string]bool, len(keep))
 	for name := range keep {
 		kept[cleanText(name)] = true
 	}
-	seenIDs := map[int64]bool{}
+	listedNames := make(map[string]int, len(listed))
 	for i := range listed {
 		listed[i] = normalize(listed[i], sc.Volume.StableIDs)
-		// Hard links in one folder share a file id. The second keeps its
-		// path as identity instead; ids are unique per volume.
+		listedNames[listed[i].Name] = i
+	}
+	owners := map[int64]int{}
+	for _, r := range existing {
+		if r.FileID == nil {
+			continue
+		}
+		if i, ok := listedNames[r.Name]; ok && listed[i].FileID == *r.FileID {
+			owners[*r.FileID] = i
+		}
+	}
+	for i := range listed {
 		if id := listed[i].FileID; id != 0 {
-			if seenIDs[id] {
+			if owner, ok := owners[id]; ok && owner != i {
 				listed[i].FileID = 0
+			} else {
+				owners[id] = i
 			}
-			seenIDs[id] = true
 		}
 	}
 	matched := make([]*entryRow, len(listed))
@@ -342,6 +359,19 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			}
 			for i, l := range listed {
 				if r := byMovedID[l.FileID]; matched[i] == nil && r != nil && !claimed[r.ID] {
+					if l.Kind == "file" {
+						linked := true
+						if sc.IsHardLink != nil {
+							linked, err = sc.IsHardLink(parentPath+"/"+l.Name, l.FileID)
+							if err != nil {
+								return nil, err
+							}
+						}
+						if linked {
+							listed[i].FileID = 0
+							continue
+						}
+					}
 					claim(i, r)
 				}
 			}
@@ -370,10 +400,6 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		}
 	}
 
-	parentPath, parentID := "", (*int64)(nil)
-	if parent != nil {
-		parentPath, parentID = parent.Path, &parent.ID
-	}
 	var batch pgx.Batch
 	// One callback per queued statement, in queue order.
 	var reads []func(pgx.BatchResults) error
