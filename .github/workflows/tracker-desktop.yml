@@ -1,4 +1,5 @@
 name: tracker-desktop
+# macOS minutes bill at 10x, so this runs after merge to main, or on demand for a branch.
 on:
   push:
     branches: [main]
@@ -13,18 +14,7 @@ on:
         "tools/tasks/tracker.toml",
         ".github/workflows/tracker-desktop.yml",
       ]
-  pull_request:
-    paths:
-      [
-        "apps/tracker/desktop/**",
-        "tools/macos-app.sh",
-        ".swiftformat",
-        ".swiftlint.yml",
-        ".swiftlint-baseline.json",
-        "mise.toml",
-        "tools/tasks/tracker.toml",
-        ".github/workflows/tracker-desktop.yml",
-      ]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:

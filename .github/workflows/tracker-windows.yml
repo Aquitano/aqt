@@ -1,4 +1,5 @@
 name: tracker-windows
+# Windows minutes bill at 2x, so this runs after merge to main, or on demand for a branch.
 on:
   push:
     branches: [main]
@@ -11,16 +12,7 @@ on:
       - ".golangci.yml"
       - "mise.toml"
       - ".github/workflows/tracker-windows.yml"
-  pull_request:
-    paths:
-      - "apps/tracker/cmd/tracker-agent/**"
-      - "apps/tracker/internal/agent/**"
-      - "apps/tracker/internal/client/**"
-      - "apps/tracker/go.mod"
-      - "apps/tracker/go.sum"
-      - ".golangci.yml"
-      - "mise.toml"
-      - ".github/workflows/tracker-windows.yml"
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:

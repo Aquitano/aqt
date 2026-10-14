@@ -25,6 +25,7 @@ Personal software workspace. Each directory under `apps/` is an independent prod
 - TypeScript keeps the app's existing test runner. Fix lint warnings in touched files and promote rules per app when it is clean. Keep shared package lint strict.
 - Swift dependencies in XcodeGen manifests are exact versions or audited revisions. SwiftLint's baseline excludes existing findings; new findings fail CI. Keep swiftformat's keypath rule disabled because it breaks Starboard type inference.
 - CI installs tool versions from mise and calls the same scoped tasks used locally. Install only the tools that each job needs.
+- Windows and macOS CI jobs run after merge to main or through `workflow_dispatch`, never on pull requests: their minutes bill at 2x and 10x.
 - VPS compose files stay beside their app; `ops/` holds deploy and secrets scripts. Private services use Tailscale, public web apps use Clerk.
 - Notch releases use `notch/v*`; turnstash releases use `turnstash/v*` and must never become the repository's latest release, because Notch's update feed follows it.
 - Preserve `packages/ts/ui` and workspace configuration when importing further changes from a former standalone repository. Nothing automatically reconciles those repositories.
