@@ -10,7 +10,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/klauspost/compress v1.20.1
 	github.com/mholt/archives v0.1.5
-	github.com/nwaples/rardecode/v2 v2.4.2
+	github.com/nwaples/rardecode/v2 v2.4.3
 	github.com/pelletier/go-toml/v2 v2.4.3
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
