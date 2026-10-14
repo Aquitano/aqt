@@ -4,12 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Async } from "../components/Async";
 import { DataTable, Td, Th } from "../components/DataTable";
+import { ModelBehaviour } from "../components/ModelBehaviour";
 import { Page } from "../components/Page";
 import { Section } from "../components/Section";
 import { ShareCell, shareOf } from "../components/ShareCell";
 import { useCollapse } from "../components/Tables";
 import { FilterBar, useFilters } from "../filters";
-import { int, pct, usd } from "../format";
+import { int, usd } from "../format";
 import { analysisQuery } from "../queries";
 
 const AllocationTable = ({
@@ -94,40 +95,6 @@ const CategoryTable = ({ analysis }: { readonly analysis: Analysis }) => {
   );
 };
 
-const ModelTable = ({ analysis }: { readonly analysis: Analysis }) => {
-  const total = analysis.byModel.reduce((sum, row) => sum + row.costUsd, 0);
-  return (
-    <Section title="By model" note="the model that answered the turn first">
-      <DataTable>
-        <TableHeader>
-          <TableRow>
-            <Th>Model</Th>
-            <Th numeric>Turns</Th>
-            <Th numeric>Edit turns</Th>
-            <Th numeric>Retries per edit turn</Th>
-            <Th numeric>Cost per turn</Th>
-            <Th numeric>Cache hit</Th>
-            <Th numeric>Cost</Th>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {analysis.byModel.map((row) => (
-            <TableRow key={row.modelId}>
-              <ShareCell label={row.modelId} share={shareOf(row.costUsd, total)} />
-              <Td numeric>{int(row.turns)}</Td>
-              <Td numeric>{int(row.editTurns)}</Td>
-              <Td numeric>{row.editTurns === 0 ? "" : (row.retries / row.editTurns).toFixed(2)}</Td>
-              <Td numeric>{row.turns === 0 ? "" : usd(row.costUsd / row.turns)}</Td>
-              <Td numeric>{row.cacheHitRate === null ? "" : pct(row.cacheHitRate)}</Td>
-              <Td numeric>{usd(row.costUsd)}</Td>
-            </TableRow>
-          ))}
-        </TableBody>
-      </DataTable>
-    </Section>
-  );
-};
-
 export const AnalysisPage = () => {
   const filters = useFilters();
   const analysis = useQuery(analysisQuery(filters.stats));
@@ -139,7 +106,7 @@ export const AnalysisPage = () => {
         {(data) => (
           <>
             <CategoryTable analysis={data} />
-            <ModelTable analysis={data} />
+            <ModelBehaviour rows={data.byModel} />
             <div className="grid grid-cols-1 gap-x-10 gap-y-9 lg:grid-cols-2">
               <AllocationTable
                 title="By tool"
