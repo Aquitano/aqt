@@ -12,8 +12,8 @@ import {
 } from "@aqt/turnstash-core";
 import { BunHttpServer } from "@effect/platform-bun";
 import { Effect, Layer, Redacted } from "effect";
-import { FetchHttpClient, type HttpClient, HttpRouter } from "effect/unstable/http";
-import { HttpApi, HttpApiBuilder } from "effect/unstable/httpapi";
+import { FetchHttpClient, type HttpClient, HttpRouter } from "effect/http";
+import { HttpApi, HttpApiBuilder } from "effect/http-api";
 
 import { apiClientFor, push } from "../src/push.ts";
 import { AgentState } from "../src/state.ts";

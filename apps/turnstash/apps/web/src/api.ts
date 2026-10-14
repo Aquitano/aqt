@@ -7,13 +7,8 @@ import {
   Unauthorized,
 } from "@aqt/turnstash-api";
 import { Effect, Match } from "effect";
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientError,
-  HttpClientRequest,
-} from "effect/unstable/http";
-import { HttpApiClient } from "effect/unstable/httpapi";
+import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from "effect/http";
+import { HttpApiClient } from "effect/http-api";
 
 const tokenKey = "cb_token";
 

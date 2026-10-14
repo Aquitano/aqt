@@ -2,7 +2,7 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 
 import { BunHttpClient, BunHttpServer } from "@effect/platform-bun";
 import { Effect, Layer } from "effect";
-import { HttpRouter } from "effect/unstable/http";
+import { HttpRouter } from "effect/http";
 
 import { AuthLive } from "../src/auth.ts";
 import { ApiLive } from "../src/http.ts";

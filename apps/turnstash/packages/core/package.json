@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "effect": "4.0.0-rc.116"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",

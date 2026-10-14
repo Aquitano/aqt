@@ -21,8 +21,8 @@ import {
   HttpClientRequest,
   HttpClientResponse,
   HttpRouter,
-} from "effect/unstable/http";
-import { HttpApiClient } from "effect/unstable/httpapi";
+} from "effect/http";
+import { HttpApiClient } from "effect/http-api";
 
 import { computeAnalysis } from "../src/analysis.ts";
 import { AuthLive } from "../src/auth.ts";

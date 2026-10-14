@@ -5,7 +5,7 @@ import { EnrollResponse, sha256Hex } from "@aqt/turnstash-core";
 import { BunHttpClient, BunHttpServer } from "@effect/platform-bun";
 import { eq } from "drizzle-orm";
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
-import { HttpRouter } from "effect/unstable/http";
+import { HttpRouter } from "effect/http";
 
 import { AuthLive } from "../src/auth.ts";
 import { type OidcAuth, ServerConfig } from "../src/config.ts";

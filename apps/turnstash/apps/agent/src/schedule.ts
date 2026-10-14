@@ -1,6 +1,6 @@
 import { configHome, type HostEnv } from "@aqt/turnstash-core";
 import { Effect, FileSystem, Path, Schema, Stream } from "effect";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { agentPaths, ensureParentDirectory } from "./config.ts";
 

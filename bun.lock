@@ -277,9 +277,9 @@
         "@aqt/turnstash-api": "workspace:*",
         "@aqt/turnstash-core": "workspace:*",
         "@aqt/turnstash-providers": "workspace:*",
-        "@effect/platform-bun": "4.0.0-rc.116",
+        "@effect/platform-bun": "catalog:",
         "@types/bun": "catalog:",
-        "effect": "4.0.0-rc.116",
+        "effect": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -292,11 +292,11 @@
         "@aqt/turnstash-core": "workspace:*",
         "@aqt/turnstash-pricing": "workspace:*",
         "@aqt/turnstash-providers": "workspace:*",
-        "@effect/platform-bun": "4.0.0-rc.116",
-        "@effect/sql-pg": "4.0.0-rc.116",
+        "@effect/platform-bun": "catalog:",
+        "@effect/sql-pg": "catalog:",
         "countries-and-timezones": "^3.10.0",
         "drizzle-orm": "1.0.0-rc.5-5935859",
-        "effect": "4.0.0-rc.116",
+        "effect": "catalog:",
         "openid-client": "^6.8.8",
       },
       "devDependencies": {
@@ -316,7 +316,7 @@
         "@tanstack/react-router": "^1.170.42",
         "@tanstack/react-virtual": "^3.14.14",
         "cn": "^0.4.0",
-        "effect": "4.0.0-rc.116",
+        "effect": "catalog:",
         "lucide-react": "catalog:",
         "next-themes": "catalog:",
         "react": "^19.3.0",
@@ -341,7 +341,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@aqt/turnstash-core": "workspace:*",
-        "effect": "4.0.0-rc.116",
+        "effect": "catalog:",
       },
       "devDependencies": {
         "@aqt/config": "workspace:*",
@@ -354,7 +354,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@aqt/turnstash-core": "workspace:*",
-        "effect": "4.0.0-rc.116",
+        "effect": "catalog:",
       },
       "devDependencies": {
         "@aqt/config": "workspace:*",
@@ -366,7 +366,7 @@
       "name": "@aqt/turnstash-core",
       "version": "0.1.0",
       "dependencies": {
-        "effect": "4.0.0-rc.116",
+        "effect": "catalog:",
       },
       "devDependencies": {
         "@aqt/config": "workspace:*",
@@ -379,7 +379,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@aqt/turnstash-core": "workspace:*",
-        "effect": "4.0.0-rc.116",
+        "effect": "catalog:",
       },
       "devDependencies": {
         "@aqt/config": "workspace:*",
@@ -392,11 +392,11 @@
       "version": "0.1.0",
       "dependencies": {
         "@aqt/turnstash-core": "workspace:*",
-        "effect": "4.0.0-rc.116",
+        "effect": "catalog:",
       },
       "devDependencies": {
         "@aqt/config": "workspace:*",
-        "@effect/platform-bun": "4.0.0-rc.116",
+        "@effect/platform-bun": "catalog:",
         "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
@@ -458,15 +458,17 @@
     },
   },
   "overrides": {
-    "@effect/platform-node-shared": "4.0.0-rc.116",
     "@tanstack/query-core": "5.104.1",
   },
   "catalog": {
+    "@effect/platform-bun": "4.0.4",
+    "@effect/sql-pg": "4.0.4",
     "@trpc/client": "^11.19.0",
     "@trpc/server": "^11.19.0",
     "@types/bun": "^1.4.2",
     "@types/react-dom": "^19.3.0",
     "dotenv": "^18.0.7",
+    "effect": "4.0.4",
     "hono": "^4.13.13",
     "lucide-react": "^1.55.0",
     "next-themes": "^0.4.6",
@@ -630,11 +632,11 @@
 
     "@drizzle-team/brocli": ["@drizzle-team/brocli@0.10.2", "", {}, "sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w=="],
 
-    "@effect/platform-bun": ["@effect/platform-bun@4.0.0-rc.116", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.0-rc.116" }, "peerDependencies": { "effect": "^4.0.0-rc.116" } }, "sha512-gV94s1JJS92xQELdHTOEKHU/QvkGhXxZQ4LI8aBRo9QCy0wyvYNklFYOKXFZQNwp31su2LOYnMf0g1nJZOwYHw=="],
+    "@effect/platform-bun": ["@effect/platform-bun@4.0.4", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.4" }, "peerDependencies": { "effect": "^4.0.4" } }, "sha512-L5xA9sF2RET7rqi18Q8yUcWq301o+jBMm9GWJixmJWGwzeipzMqjjPk+10vE8vUiHPbtdtJaBSIgs0AJ2jEF1g=="],
 
-    "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.0-rc.116", "", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.21.3" }, "peerDependencies": { "effect": "^4.0.0-rc.116" } }, "sha512-4FB6UriGqArWFUaFqVchhfCRmmtOVzmD/k/bH6LErlKY8a9amt5dk6c3Arsi7AvUpChsdO+3jsG+P85HsxMkNA=="],
+    "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.4", "", { "dependencies": { "@types/ws": "^8.18.2", "ws": "^8.22.0" }, "peerDependencies": { "effect": "^4.0.4" } }, "sha512-gh2KRmqGWrJ0FVL8GqnI1GpB+fCfCUI7sGiUZkxxBHyHj1t94rm6VDJffCfuVZWe6GpvYXtizifVczUrgOce8A=="],
 
-    "@effect/sql-pg": ["@effect/sql-pg@4.0.0-rc.116", "", { "peerDependencies": { "effect": "^4.0.0-rc.116" } }, "sha512-cnvH+XyNsCfd+m6buOzVpuYUyQYWC9pkkC6L6J+gQXrogcZ3O/WAxlcaxsEMC4Ru66vO0PZiWBUzhee5jh3KRQ=="],
+    "@effect/sql-pg": ["@effect/sql-pg@4.0.4", "", { "peerDependencies": { "effect": "^4.0.4" } }, "sha512-41x5O2C+gRF3A/Sf+IkV+OOzo5BexsIubH1cib3m4NwhZcjQUQUrq5YbOw7fIuWmBODtAyHNXFjaeEtiXoPL9Q=="],
 
     "@emnapi/core": ["@emnapi/core@1.11.3", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.3", "tslib": "^2.4.0" } }, "sha512-zLpS5asjEb7lq8jYLq37N6XKaE41DIexlY1rF/z4/tIl3wo13Sqm28fRyfIsKZD+NZ8mM5RoKkpW/rBcuoSZSg=="],
 
@@ -1666,7 +1668,7 @@
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
-    "effect": ["effect@4.0.0-rc.116", "", {}, "sha512-nawqJHSjHV8XIBRZNZ+D7cLZpN3kkSjzy6aiT9ofKENsl7xAMFKEoDa0itN5JFl3GUQ1PIN1T1HNlva5+xyO/A=="],
+    "effect": ["effect@4.0.4", "", {}, "sha512-Sr50OeVSC3M5UkoUYUhFf3EULryhGaZZUf6OzDHTvaznOw7HRlxOKdF3/4nvQXHL22StOyMG3Cvo8Bt7xUp+Ng=="],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.422", "", {}, "sha512-UvA/32XqrLDdZSn7Jllo1AYNcWji/G0d5M0GTViE7KoGBiMunw3a34Sb2KO4ZZyrSEhqsxFoVhWWJshdyfKqJA=="],
 
