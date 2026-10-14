@@ -46,7 +46,7 @@ func (sc *Scan) NextTexts(ctx context.Context, after PendingText, exts []string,
 		lower = after.Path
 	}
 	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, e.name, e.content_id`+pendingTextWhere+`
-		  and (e.path collate "C" > $4 or (e.path = $4 and e.id > $5))
+		  and (e.path collate "C", e.id) > ($4, $5)
 		order by e.path collate "C", e.id limit $6`,
 		sc.Volume.ID, exts, upper, lower, after.ID, limit)
 	if err != nil {
@@ -121,7 +121,7 @@ func (s *Store) searchTextTable(ctx context.Context, o SearchOptions, table stri
 	// has are found.
 	place := []string{"e.content_id = t.content_id"}
 	if o.VolumeID != "" {
-		place = append(place, "e.volume_id::text = "+q.next(o.VolumeID))
+		place = append(place, "e.volume_id = "+q.next(o.VolumeID))
 	}
 	if o.Under != "" {
 		under := strings.TrimSuffix(o.Under, "/")
@@ -155,10 +155,12 @@ func (s *Store) searchTextTable(ctx context.Context, o SearchOptions, table stri
 	if err != nil {
 		return nil, err
 	}
+	places, err := s.occurrencesMany(ctx, ids, 0, false, copiesOf(o, false))
+	if err != nil {
+		return nil, err
+	}
 	for i, id := range ids {
-		if hits[i].Places, err = s.occurrences(ctx, id, 0, false, copiesOf(o, false)); err != nil {
-			return nil, err
-		}
+		hits[i].Places = places[id]
 	}
 	return hits, nil
 }

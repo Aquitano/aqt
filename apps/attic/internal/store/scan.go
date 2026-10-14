@@ -27,12 +27,14 @@ type Scan struct {
 
 	IsHardLink func(string, int64) (bool, error)
 
-	store      *Store
-	lock       *pgxpool.Conn
-	tx         pgx.Tx
-	dirty      int
-	lastCommit time.Time
-	skips      [][]any
+	store       *Store
+	lock        *pgxpool.Conn
+	tx          pgx.Tx
+	dirty       int
+	lastCommit  time.Time
+	skips       [][]any
+	hashes      []completedHash
+	hashInserts map[int64]bool
 }
 
 type ScanCounts struct {
@@ -63,6 +65,7 @@ type PhaseTimes struct {
 const (
 	commitEvery = 2 * time.Second
 	commitRows  = 5000
+	hashBatch   = 64
 )
 
 // Dir is a folder the scan has recorded and may descend into.
@@ -191,6 +194,9 @@ func (sc *Scan) MaybeCommit(ctx context.Context) error {
 
 // Commit makes everything so far visible, to search and to the hashing queue.
 func (sc *Scan) Commit(ctx context.Context) error {
+	if err := sc.flushContents(ctx); err != nil {
+		return err
+	}
 	if len(sc.skips) > 0 {
 		tx, err := sc.begin(ctx)
 		if err != nil {
@@ -679,6 +685,11 @@ type Pending struct {
 	Size int64
 }
 
+type completedHash struct {
+	file   Pending
+	digest [32]byte
+}
+
 // subtree bounds paths at or below the scan root as a byte-order range.
 func (sc *Scan) subtree() (lower, upper string) {
 	if sc.Root == "" {
@@ -709,7 +720,7 @@ func (sc *Scan) NextPending(ctx context.Context, after Pending, limit int) ([]Pe
 	rows, err := sc.store.pool.Query(ctx, `
 		select id, path, size_bytes from entries
 		where volume_id = $1 and hash_state in ('pending', 'failed') and kind = 'file' and missing_scan is null
-		  and (path collate "C" > $2 or (path = $2 and id > $5)) and ($3 = '' or path collate "C" < $3)
+		  and (path collate "C", id) > ($2, $5) and ($3 = '' or path collate "C" < $3)
 		order by path collate "C", id limit $4`,
 		sc.Volume.ID, lower, upper, limit, after.ID)
 	if err != nil {
@@ -722,49 +733,133 @@ func (sc *Scan) NextPending(ctx context.Context, after Pending, limit int) ([]Pe
 	})
 }
 
-// SetContent attaches a digest to a file. The update only applies while the
-// row still has the size that was hashed; a rescan in between would have
-// queued it again anyway.
+// SetContent queues a digest for a file. Batches flush at 64 files and before
+// Commit; each entry update still requires the size that was hashed.
 //
-// The contents row commits on its own, outside the scan's transaction: held
-// there, it would stay locked for as long as the next file takes to hash, and
-// a scan of another disk meeting the same bytes would wait on it.
+// Contents commit independently, so their locks never span later hashing.
+// Sorting digests keeps overlapping scans from taking those locks in opposite
+// orders. A separate lookup sees contents another scan committed meanwhile.
 func (sc *Scan) SetContent(ctx context.Context, p Pending, digest [32]byte) error {
-	var contentID int64
-	inserted := true
-	err := sc.store.pool.QueryRow(ctx, `
-		insert into contents (blake3, size_bytes) values ($1, $2) on conflict (blake3) do nothing returning id`,
-		digest[:], p.Size).Scan(&contentID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		inserted = false
-		err = sc.store.pool.QueryRow(ctx, `select id from contents where blake3 = $1`, digest[:]).Scan(&contentID)
+	if err := ctx.Err(); err != nil {
+		return err
 	}
+	for _, h := range sc.hashes {
+		if h.file.ID == p.ID {
+			if err := sc.flushContents(ctx); err != nil {
+				return err
+			}
+			break
+		}
+	}
+	sc.hashes = append(sc.hashes, completedHash{file: p, digest: digest})
+	if len(sc.hashes) >= hashBatch {
+		return sc.flushContents(ctx)
+	}
+	return nil
+}
+
+func (sc *Scan) flushContents(ctx context.Context) error {
+	if len(sc.hashes) == 0 {
+		return nil
+	}
+	contentIDs := make(map[[32]byte]int64, len(sc.hashes))
+	var digests [][]byte
+	var contentSizes []int64
+	for i, h := range sc.hashes {
+		if _, seen := contentIDs[h.digest]; seen {
+			continue
+		}
+		contentIDs[h.digest] = 0
+		digests = append(digests, sc.hashes[i].digest[:])
+		contentSizes = append(contentSizes, h.file.Size)
+	}
+	rows, err := sc.store.pool.Query(ctx, `
+		insert into contents (blake3, size_bytes)
+		select u.digest, u.size from unnest($1::bytea[], $2::bigint[]) as u(digest, size)
+		order by u.digest on conflict (blake3) do nothing returning id`, digests, contentSizes)
 	if err != nil {
 		return err
+	}
+	insertedIDs, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return err
+	}
+	if sc.hashInserts == nil {
+		sc.hashInserts = make(map[int64]bool, len(insertedIDs))
+	}
+	for _, id := range insertedIDs {
+		sc.hashInserts[id] = true
+	}
+	rows, err = sc.store.pool.Query(ctx, `select id, blake3 from contents where blake3 = any($1::bytea[])`, digests)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var digest []byte
+		if err := rows.Scan(&id, &digest); err != nil {
+			return err
+		}
+		contentIDs[[32]byte(digest)] = id
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	ids := make([]int64, len(sc.hashes))
+	contents := make([]int64, len(sc.hashes))
+	sizes := make([]int64, len(sc.hashes))
+	for i, h := range sc.hashes {
+		id := contentIDs[h.digest]
+		if id == 0 {
+			return fmt.Errorf("resolve content %x: %w", h.digest[:8], pgx.ErrNoRows)
+		}
+		ids[i], contents[i], sizes[i] = h.file.ID, id, h.file.Size
 	}
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return err
 	}
-	tag, err := tx.Exec(ctx, `
-		update entries set content_id = $2, hash_state = 'done', updated_scan = $3
-		where id = $1 and size_bytes = $4`,
-		p.ID, contentID, sc.ID, p.Size)
-	if err != nil || tag.RowsAffected() == 0 {
+	rows, err = tx.Query(ctx, `
+		update entries e set content_id = u.content_id, hash_state = 'done', updated_scan = $4
+		from unnest($1::bigint[], $2::bigint[], $3::bigint[]) as u(id, content_id, size)
+		where e.id = u.id and e.size_bytes = u.size returning e.id`, ids, contents, sizes, sc.ID)
+	if err != nil {
 		return err
 	}
-	sc.Counts.Hashed++
-	sc.Counts.HashedBytes += p.Size
-	if !inserted {
-		sc.Counts.Duplicates++
+	updatedIDs, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return err
 	}
-	sc.dirty++
+	updated := make(map[int64]bool, len(updatedIDs))
+	for _, id := range updatedIDs {
+		updated[id] = true
+	}
+	for _, h := range sc.hashes {
+		contentID := contentIDs[h.digest]
+		first := sc.hashInserts[contentID]
+		delete(sc.hashInserts, contentID)
+		// The first occurrence owns the insert even when its size guard fails.
+		if !updated[h.file.ID] {
+			continue
+		}
+		sc.Counts.Hashed++
+		sc.Counts.HashedBytes += h.file.Size
+		if !first {
+			sc.Counts.Duplicates++
+		}
+		sc.dirty++
+	}
+	sc.hashes = sc.hashes[:0]
 	return nil
 }
 
 // HashFailed marks a file whose bytes could not be read; the next scan tries
 // it again.
 func (sc *Scan) HashFailed(ctx context.Context, p Pending, failure error) error {
+	if err := sc.flushContents(ctx); err != nil {
+		return err
+	}
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return err
@@ -780,6 +875,9 @@ func (sc *Scan) HashFailed(ctx context.Context, p Pending, failure error) error 
 // force now say its bytes must not be read: an exclusion or a size cap added
 // after the scan that listed it.
 func (sc *Scan) SkipHash(ctx context.Context, p Pending, reason, rule, detail string) error {
+	if err := sc.flushContents(ctx); err != nil {
+		return err
+	}
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return err

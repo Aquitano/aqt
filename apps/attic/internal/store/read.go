@@ -76,7 +76,7 @@ func (s *Store) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
 		return nil, err
 	}
 	if o.VolumeID != "" {
-		q.where = append(q.where, "e.volume_id::text = "+q.next(o.VolumeID))
+		q.where = append(q.where, "e.volume_id = "+q.next(o.VolumeID))
 	}
 	if o.Under != "" {
 		under := strings.TrimSuffix(o.Under, "/")
@@ -165,7 +165,7 @@ func (s *Store) SearchMembers(ctx context.Context, o SearchOptions) ([]MemberHit
 	// entry still has are found.
 	place := []string{"e.content_id = m.archive_id"}
 	if o.VolumeID != "" {
-		place = append(place, "e.volume_id::text = "+q.next(o.VolumeID))
+		place = append(place, "e.volume_id = "+q.next(o.VolumeID))
 	}
 	if o.Under != "" {
 		under := strings.TrimSuffix(o.Under, "/")
@@ -195,13 +195,11 @@ func (s *Store) SearchMembers(ctx context.Context, o SearchOptions) ([]MemberHit
 	if err != nil {
 		return nil, err
 	}
-	places := map[int64][]Hit{}
+	places, err := s.occurrencesMany(ctx, archiveIDs, 0, false, copiesOf(o, true))
+	if err != nil {
+		return nil, err
+	}
 	for i, id := range archiveIDs {
-		if _, ok := places[id]; !ok {
-			if places[id], err = s.occurrences(ctx, id, 0, false, copiesOf(o, true)); err != nil {
-				return nil, err
-			}
-		}
 		hits[i].Archive = places[id]
 	}
 	return hits, nil
@@ -375,7 +373,7 @@ func (s *Store) occurrencesMany(ctx context.Context, ids []int64, except int64, 
 	rows, err := s.pool.Query(ctx, `select places.* from (select distinct unnest($1::bigint[]) as id) selected
 		cross join lateral (select `+hitColumns+`, e.content_id`+hitFrom+`
 		where e.content_id = selected.id and e.id <> $2 and (not $3 or e.missing_scan is null)
-		  and ($4::text[] is null or e.volume_id::text = any($4))
+		  and ($4::uuid[] is null or e.volume_id = any($4))
 		  and ($5 = '' or (e.path collate "C" > $5 || '/' and e.path collate "C" < $5 || '0') or ($6 and e.path = $5))
 		  and ($7 = '' or e.ext = $7)
 		order by e.missing_scan is not null, v.label, e.path collate "C", e.id limit 100) places
