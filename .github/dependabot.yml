@@ -3,6 +3,10 @@ updates:
   - package-ecosystem: bun
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      # Turnstash pins a drizzle 1.0 release candidate; gallery and img move to 1.0 once it is stable.
+      - dependency-name: "drizzle-*"
+        versions: [">=1.0.0-0 <1.0.0"]
     groups:
       tooling:
         patterns:
@@ -28,20 +32,27 @@ updates:
       runtime:
         patterns: ["*"]
         update-types: [minor, patch]
+      major:
+        patterns: ["*"]
+        update-types: [major]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: gomod
     directories: [/apps/attic, /apps/bank, /apps/tracker, /packages/go/extract]
     schedule: { interval: weekly }
     groups:
       go:
         patterns: ["*"]
-        update-types: [minor, patch]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: docker
     directories: [/apps/bank, /apps/tracker, /apps/gallery/apps/server, /apps/turnstash/deploy]
     schedule: { interval: weekly }
     groups:
       docker:
         patterns: ["*"]
-        update-types: [minor, patch]
   - package-ecosystem: docker-compose
     directories:
       [
@@ -56,11 +67,12 @@ updates:
     groups:
       compose:
         patterns: ["*"]
-        update-types: [minor, patch]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
     groups:
       actions:
         patterns: ["*"]
-        update-types: [minor, patch]
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
