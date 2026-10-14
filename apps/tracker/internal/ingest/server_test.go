@@ -346,7 +346,7 @@ func TestForgetNeedsOneTargetThatIsNotAPublicSuffix(t *testing.T) {
 		return do(t, s.Handler(), httptest.NewRequest(http.MethodPost, server+"/v1/forget", strings.NewReader(body))).Code
 	}
 	for _, body := range []string{`{}`, `{"url":"https://example.com/","host":"example.com"}`,
-		`{"url":"chrome://newtab/"}`, `{"host":"com"}`, `{"host":"co.uk"}`} {
+		`{"url":"chrome://newtab/"}`, `{"host":"com"}`, `{"host":"co.uk"}`, `{"host":"github.io"}`} {
 		if code := post(body); code != http.StatusBadRequest {
 			t.Errorf("%s: status %d, want 400", body, code)
 		}

@@ -49,7 +49,9 @@ func forgetTarget(in store.ForgetTarget) (store.ForgetTarget, bool) {
 		host = "https://" + host
 	}
 	key, ok := urlKey(host)
-	if suffix, icann := publicsuffix.PublicSuffix(key.Host); !ok || (icann && suffix == key.Host) {
+	// A private suffix such as github.io is refused too; a single label no rule
+	// lists, such as localhost, is a host like any other.
+	if suffix, icann := publicsuffix.PublicSuffix(key.Host); !ok || (suffix == key.Host && (icann || strings.Contains(suffix, "."))) {
 		return store.ForgetTarget{}, false
 	}
 	return store.ForgetTarget{Host: key.Host}, true
