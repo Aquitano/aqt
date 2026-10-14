@@ -253,7 +253,7 @@ the switch is one flag.
 The morph engine already gives you the container; activities are just data.
 
 - **Activity model.** `enum Activity { case media, charging, deviceConnected(Device),
-notification(Payload), timer, focus, … }` with priority + TTL. `ActivityManager` keeps the
+  notification(Payload), timer, focus, … }` with priority + TTL. `ActivityManager` keeps the
   ordered queue; the topmost shows in the compact notch, others cycle (swipe-down / middle-
   click). Restore dismissed ones.
 - **Sources (all event-driven):**
