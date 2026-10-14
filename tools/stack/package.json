@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
-    "arktype": "^2.2.7"
+    "arktype": "^2.2.8"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",

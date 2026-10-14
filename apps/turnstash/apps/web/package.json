@@ -12,7 +12,7 @@
     "@aqt/turnstash-api": "workspace:*",
     "@aqt/ui": "workspace:*",
     "@tanstack/react-query": "^5.104.1",
-    "@tanstack/react-router": "^1.170.41",
+    "@tanstack/react-router": "^1.170.42",
     "@tanstack/react-virtual": "^3.14.14",
     "cn": "^0.4.0",
     "effect": "4.0.0-rc.116",
@@ -20,7 +20,7 @@
     "next-themes": "catalog:",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "recharts": "3.8.0"
+    "recharts": "3.10.1"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
