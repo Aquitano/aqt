@@ -15,7 +15,7 @@
 # `docker compose up -d`.
 services:
   db:
-    # pg_search 0.25.11; keep the CI database on this digest too.
+    # pg_search 0.26.1; keep the CI database on this digest too.
     image: paradedb/paradedb:v0.26.1-pg18@sha256:29bd8cc90a89ff15f8350f89b4849c2ef807aa9381c79febd1afb1a8a25fb706
     environment:
       POSTGRES_USER: bank

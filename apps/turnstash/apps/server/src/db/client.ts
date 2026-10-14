@@ -39,6 +39,16 @@ export const runMigrations = Effect.fn("Db.migrate")(function* () {
     Effect.gen(function* () {
       yield* db.execute(sql`SET LOCAL statement_timeout = 0`);
       yield* db.execute(sql`SELECT pg_advisory_xact_lock(${migrationLock})`);
+      // A new ParadeDB image only replaces the pg_search binary, and its SQL functions fail until the catalog
+      // is updated to match.
+      yield* db.execute(sql`
+        DO $$ BEGIN
+          IF EXISTS (SELECT FROM pg_extension e JOIN pg_available_extensions a ON a.name = e.extname
+            WHERE e.extname = 'pg_search' AND e.extversion <> a.default_version) THEN
+            ALTER EXTENSION pg_search UPDATE;
+          END IF;
+        END $$
+      `);
       yield* migrate(db, { migrationsFolder });
     }),
   );

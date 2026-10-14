@@ -27,7 +27,7 @@ services:
     # floating tag that moves to the next major starts on an empty database.
     # After a bump, run `alter extension pg_search update` (see README). CI's
     # test database runs the same digest.
-    image: &paradedb paradedb/paradedb:0.25.11-pg18@sha256:a9cbdcfd8a1c349ab21590fd6d6dcbe7da489878df6502922d032dd64c1a7ae7
+    image: &paradedb paradedb/paradedb:v0.26.1-pg18@sha256:29bd8cc90a89ff15f8350f89b4849c2ef807aa9381c79febd1afb1a8a25fb706
     environment:
       POSTGRES_USER: tracker
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tracker}

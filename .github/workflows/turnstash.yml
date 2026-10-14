@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       db:
-        image: paradedb/paradedb:0.25.11-pg17@sha256:78d65750f0f88a56548526201bcab9910f83b90fe929cdbf979890f3f80b0f95
+        image: paradedb/paradedb:v0.26.1-pg17@sha256:c1c147499c6649739d7977f1e47db149578c894f35249953acdd7680ccbae75b
         env:
           POSTGRES_USER: turnstash
           POSTGRES_PASSWORD: turnstash

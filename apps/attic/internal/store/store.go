@@ -22,6 +22,15 @@ var migrations embed.FS
 // starting against an unmigrated database cannot both run the same DDL.
 const migrationLock int64 = 0x61747469636d6967
 
+// A new ParadeDB image only replaces the pg_search binary, and its SQL functions
+// fail until the catalog is updated to match.
+const updatePgSearch = `do $$ begin
+  if exists (select from pg_extension e join pg_available_extensions a on a.name = e.extname
+    where e.extname = 'pg_search' and e.extversion <> a.default_version) then
+    alter extension pg_search update;
+  end if;
+end $$`
+
 // ErrNotFound is returned when a lookup found no row.
 var ErrNotFound = errors.New("not found")
 
@@ -59,6 +68,9 @@ func (s *Store) migrate(ctx context.Context) error {
 		_, _ = conn.Exec(context.WithoutCancel(ctx), `select pg_advisory_unlock($1)`, migrationLock)
 	}()
 
+	if _, err := conn.Exec(ctx, updatePgSearch); err != nil {
+		return err
+	}
 	if _, err := conn.Exec(ctx,
 		`create table if not exists schema_migrations (filename text primary key, applied_at timestamptz not null default now())`); err != nil {
 		return err

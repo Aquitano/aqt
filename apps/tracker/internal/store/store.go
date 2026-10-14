@@ -24,6 +24,15 @@ var migrationFS embed.FS
 // of racing the same DDL.
 const migrationLock int64 = 0x74726b6d6967
 
+// A new ParadeDB image only replaces the pg_search binary, and its SQL functions
+// fail until the catalog is updated to match.
+const updatePgSearch = `do $$ begin
+  if exists (select from pg_extension e join pg_available_extensions a on a.name = e.extname
+    where e.extname = 'pg_search' and e.extversion <> a.default_version) then
+    alter extension pg_search update;
+  end if;
+end $$`
+
 type Store struct {
 	db *bun.DB
 }
@@ -69,6 +78,9 @@ func (s *Store) migrate(ctx context.Context) error {
 	defer func() {
 		_, _ = conn.ExecContext(context.WithoutCancel(ctx), `select pg_advisory_unlock(?)`, migrationLock)
 	}()
+	if _, err := conn.ExecContext(ctx, updatePgSearch); err != nil {
+		return err
+	}
 	m := migrate.NewMigrator(s.db, migrations, migrate.WithMarkAppliedOnSuccess(true))
 	if err := m.Init(ctx); err != nil {
 		return err

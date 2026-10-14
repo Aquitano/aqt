@@ -32,8 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       db:
-        # pg_search 0.25.11, also used by the local Compose stack.
-        image: paradedb/paradedb:0.25.11-pg18@sha256:a9cbdcfd8a1c349ab21590fd6d6dcbe7da489878df6502922d032dd64c1a7ae7
+        # pg_search 0.26.1, also used by the local Compose stack.
+        image: paradedb/paradedb:v0.26.1-pg18@sha256:29bd8cc90a89ff15f8350f89b4849c2ef807aa9381c79febd1afb1a8a25fb706
         env:
           POSTGRES_USER: bank
           POSTGRES_PASSWORD: bank

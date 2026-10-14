@@ -8,6 +8,15 @@ import (
 	"github.com/jackc/tern/v2/migrate"
 )
 
+// A new ParadeDB image only replaces the pg_search binary, and its SQL functions
+// fail until the catalog is updated to match.
+const updatePgSearch = `do $$ begin
+  if exists (select from pg_extension e join pg_available_extensions a on a.name = e.extname
+    where e.extname = 'pg_search' and e.extversion <> a.default_version) then
+    alter extension pg_search update;
+  end if;
+end $$`
+
 // Keep the old lock during the transition so an older process cannot race the
 // one-off baseline. Tern owns migration transactions and its version table.
 func (s *Store) migrate(ctx context.Context) error {
@@ -20,6 +29,9 @@ func (s *Store) migrate(ctx context.Context) error {
 	defer func() { _ = pooled.Hijack().Close(context.WithoutCancel(ctx)) }()
 	conn := pooled.Conn()
 	if _, err = conn.Exec(ctx, `select pg_advisory_lock($1)`, migrationLock); err != nil {
+		return err
+	}
+	if _, err = conn.Exec(ctx, updatePgSearch); err != nil {
 		return err
 	}
 	if err := baselineLegacy(ctx, conn); err != nil {
