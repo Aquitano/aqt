@@ -39,7 +39,11 @@ type Store struct {
 
 // Open connects and migrates.
 func Open(ctx context.Context, dsn string) (*Store, error) {
-	return New(ctx, sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn))))
+	// pgdriver gives up on a read after 10 s by default while Postgres keeps
+	// running the statement, so a long migration would time out, restart and
+	// queue behind its own locks forever. Contexts bound every request instead.
+	// read_timeout=0 in the DSN is not the same: pgdriver reads it as expired.
+	return New(ctx, sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn), pgdriver.WithReadTimeout(0))))
 }
 
 // New migrates an already opened database; Open is the usual entry point,
