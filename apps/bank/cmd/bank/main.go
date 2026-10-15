@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -77,7 +78,7 @@ type cli struct {
 	Fetch       fetchCmd       `cmd:"" help:"Write an attachment to a file."`
 	Verify      verifyCmd      `cmd:"" help:"Check archive integrity, optionally repair."`
 	Healthcheck healthcheckCmd `cmd:"" help:"Check server and database health."`
-	Serve       serveCmd       `cmd:"" help:"HTTP API."`
+	Serve       serveCmd       `cmd:"" help:"HTTP API; logs JSON to stderr at BANK_LOG_LEVEL (default info)."`
 	UI          uiCmd          `cmd:"" name:"ui" help:"Local archive browser (needs BANK_URL)."`
 	Token       tokenCmd       `cmd:"" help:"API tokens."`
 }
@@ -843,16 +844,21 @@ type serveCmd struct {
 }
 
 func (c *serveCmd) Run(ctx context.Context) error {
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(os.Getenv("BANK_LOG_LEVEL"))); err != nil {
+		level = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeStore()
 	if names, err := server.ListTokens(dataDir()); err == nil && len(names) == 0 {
-		fmt.Fprintln(os.Stderr, "bank: no tokens yet — every /v1 request will 401 until 'bank token new <name>'")
+		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
 	srv := server.New(d.Store, d.Blobs, dataDir(), d.ArchiveDir)
-	fmt.Printf("bank serve: listening on %s\n", c.Listen)
+	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
 	return srv.ListenAndServe(ctx, c.Listen)
 }
 

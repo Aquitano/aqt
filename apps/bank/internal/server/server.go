@@ -57,7 +57,7 @@ func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server
 	s := &Server{db: db, read: db, blobs: blobs, archiveDir: archiveDir, dataDir: dataDir}
 	// Uploads staged by a process that died are nobody's to clean up later.
 	if err := pruneUploads(dataDir, uploadMaxAge); err != nil {
-		fmt.Fprintf(os.Stderr, "bank: pruning abandoned uploads: %v\n", err)
+		slog.Warn("pruning abandoned uploads", "error", err)
 	}
 	return s
 }

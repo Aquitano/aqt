@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -216,7 +217,7 @@ func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Ti
 	sel := blobtext.Selection{Limit: blobtext.PostImportLimit, NewestFirst: true, StoredSince: since, RefreshSince: refreshSince}
 	summary, err := blobtext.Run(ctx, blobtext.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)
+		slog.Error("reading attachment text", "error", err)
 		return false
 	}
 	return summary.Considered == blobtext.PostImportLimit
@@ -325,7 +326,7 @@ func saveUpload(r *http.Request, dataDir string, observation **eml.MailImportCon
 		// Cheap enough to do per upload, and it keeps a long-lived server from
 		// accumulating debris between restarts.
 		if err := pruneUploads(dataDir, uploadMaxAge); err != nil {
-			fmt.Fprintf(os.Stderr, "bank: pruning abandoned uploads: %v\n", err)
+			slog.Warn("pruning abandoned uploads", "error", err)
 		}
 		dir, err := os.MkdirTemp(staging, "upload-")
 		if err != nil {
