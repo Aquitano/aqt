@@ -11,6 +11,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/aquitano/aqt/packages/go/pgschema"
 )
 
 // ErrNotFound is returned when a lookup found no row.
@@ -25,12 +27,11 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{pool: pool}
-	if err := s.migrate(ctx); err != nil {
+	if err := pgschema.Migrate(ctx, pool, migrationLock, Migrations); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
-	return s, nil
+	return &Store{pool: pool}, nil
 }
 
 func (s *Store) Close() { s.pool.Close() }

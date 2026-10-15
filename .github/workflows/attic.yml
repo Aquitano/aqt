@@ -6,6 +6,7 @@ on:
       [
         "apps/attic/**",
         "packages/go/extract/**",
+        "packages/go/pgschema/**",
         ".golangci.yml",
         "mise.toml",
         "tools/tasks/attic.toml",
@@ -16,6 +17,7 @@ on:
       [
         "apps/attic/**",
         "packages/go/extract/**",
+        "packages/go/pgschema/**",
         ".golangci.yml",
         "mise.toml",
         "tools/tasks/attic.toml",
