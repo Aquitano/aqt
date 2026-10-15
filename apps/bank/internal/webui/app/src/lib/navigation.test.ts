@@ -1,7 +1,8 @@
 /// <reference types="node" />
 
 import assert from "node:assert/strict";
-import { test } from "node:test";
+
+import { test } from "vite-plus/test";
 
 import {
   readLibraryFilters,
@@ -10,7 +11,7 @@ import {
   writeSelection,
 } from "./navigation";
 
-void test("submitted filters survive selection, view changes, and URL round trips without mixing views", () => {
+test("submitted filters survive selection, view changes, and URL round trips without mixing views", () => {
   const params = new URLSearchParams("view=library&q=message+search");
   const filters = { q: "A title", source: "youtube", kind: "video" };
   writeLibraryFilters(params, "library", filters);
@@ -30,7 +31,7 @@ void test("submitted filters survive selection, view changes, and URL round trip
   assert.equal(readLibraryFilters(restored, "collections").q, "Watch later");
 });
 
-void test("message selections read back from the URL with the id they were written with", () => {
+test("message selections read back from the URL with the id they were written with", () => {
   for (const id of ["42", "0123456789ab"]) {
     const params = new URLSearchParams();
     writeSelection(params, { kind: "message", id });

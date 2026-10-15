@@ -35,6 +35,7 @@ describe("generated app", () => {
     });
     expect(files["tsconfig.json"]).not.toContain("noUncheckedIndexedAccess");
     expect(files["next.config.ts"]).toContain("reactCompiler: true");
+    expect(files["vite.config.ts"]).toContain('from "vite-plus"');
     expect(files["next.config.ts"]).toContain('import "./src/lib/env"');
     expect(files["src/lib/env.ts"]).toContain('from "arktype"');
     expect(files["src/lib/hono/routes/users.ts"]).toContain('sValidator("json", createUserSchema)');
@@ -42,7 +43,7 @@ describe("generated app", () => {
 
   test("workflow installs at root, checks the app, and reacts to shared configuration", () => {
     const ci = buildCi(defaults);
-    expect(ci).toContain("install_args: bun");
+    expect(ci).toContain("install_args: bun node");
     expect(ci).toContain("bun install --frozen-lockfile");
     expect(ci).toContain("working-directory: apps/example");
     expect(ci).toContain("packages/ts/config/**");

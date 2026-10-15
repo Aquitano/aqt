@@ -20,7 +20,7 @@ Scaffolded with [Better-T-Stack](https://github.com/AmanVarshney01/create-better
 - **Clerk** authentication (browser sessions), plus `aqtg_` personal access
   tokens for agents
 - **TailwindCSS** with shadcn/ui primitives from the workspace package `@aqt/ui`
-- **oxlint** and **oxfmt**, configured once at the workspace root
+- **Vite+**, with lint and format settings at the workspace root
 - **three.js + React Three Fiber** museum renderer in
   `apps/web/src/components/museum/renderer/` — see its
   [README](apps/web/src/components/museum/renderer/README.md)
@@ -189,7 +189,7 @@ If you want to add app-specific blocks instead of shared primitives, run the sha
 ## Formatting and Linting
 
 - Lint, format check and typecheck: `mise run gallery:check`
-- Lint only: `bun run check`. Format with `bunx oxfmt` from anywhere.
+- Static checks: `bun run check`. Format with `bunx --no-install vp fmt` from anywhere.
 
 ## Project Structure
 
@@ -213,11 +213,11 @@ Shared shadcn/ui components and styles come from `@aqt/ui` in the workspace's `p
 - `bun run build`: Build all applications
 - `bun run dev:web`: Start only the web application
 - `bun run dev:server`: Start only the server
-- `bun run typecheck`: Check TypeScript types across all apps
+- `bun run typecheck`: Check TypeScript types across Gallery packages
 - `bun run db:push`: Push schema changes to database
 - `bun run db:generate`: Generate database client/types
 - `bun run db:migrate`: Run database migrations
 - `bun run db:studio`: Open database studio UI
-- `bun run check`: Type-aware lint with oxlint
+- `bun run check`: Formatting, type-aware lint, and TypeScript diagnostics with Vite+
 - `bun run test`: Run the suite. It names source directories explicitly so the
   server's built `dist/` copies are not collected a second time.

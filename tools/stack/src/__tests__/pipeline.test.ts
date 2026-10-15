@@ -91,6 +91,9 @@ describe("workspace scaffold", () => {
     expect(pkg.name).toBe("@aqt/example");
     expect(pkg.devDependencies?.["@aqt/config"]).toBe("workspace:*");
     expect(pkg.devDependencies?.typescript).toBe("7.0.2");
+    expect(pkg.devDependencies?.["vite-plus"]).toBe("catalog:");
+    expect(pkg.scripts?.test).toBe("vp test run");
+    expect(pkg.scripts?.lint).toBe("vp lint --nextjs-plugin");
     expect(pkg.dependencies?.next).toBe("16.3.4");
     expect(pkg.scripts?.check).toContain("bun run test");
     expect(pkg.scripts?.typecheck).toContain("next typegen");

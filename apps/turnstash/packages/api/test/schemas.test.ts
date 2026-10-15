@@ -1,6 +1,5 @@
-import { expect, test } from "bun:test";
-
 import { Schema } from "effect";
+import { expect, test } from "vite-plus/test";
 
 import {
   ConversationCursor,

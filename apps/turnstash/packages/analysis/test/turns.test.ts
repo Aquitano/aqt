@@ -1,10 +1,9 @@
-import { expect, test } from "bun:test";
-
 import {
   emptyUsage,
   type NormalizedConversation,
   type NormalizedMessage,
 } from "@aqt/turnstash-core";
+import { expect, test } from "vite-plus/test";
 
 import { analyzeConversation } from "../src/turns.ts";
 

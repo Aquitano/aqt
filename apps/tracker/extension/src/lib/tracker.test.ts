@@ -1,7 +1,6 @@
-import { afterAll, afterEach, beforeEach, expect, setSystemTime, spyOn, test } from "bun:test";
-
 import { fakeBrowser } from "@webext-core/fake-browser";
 import { indexedDB } from "fake-indexeddb";
+import { afterAll, afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 
 import type { CapturePayload, PageViewEvent, TrackerEvent } from "./events.ts";
 import { forgets } from "./privacy.ts";
@@ -57,13 +56,10 @@ const article: Rule = {
   recapture: "never",
   max_bytes: 1000000,
 };
-const originalFetch = globalThis.fetch;
-const sendMessage = spyOn(fakeBrowser.tabs, "sendMessage");
-const fetchRequest = spyOn(globalThis, "fetch");
-
-function fakeFetch(respond: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
-  return Object.assign(respond, { preconnect: originalFetch.preconnect });
-}
+const originalSendMessage = fakeBrowser.tabs.sendMessage;
+const sendMessage = vi.fn(async () => page);
+Object.assign(fakeBrowser.tabs, { sendMessage });
+const fetchRequest = vi.spyOn(globalThis, "fetch");
 
 beforeEach(async () => {
   fakeBrowser.reset();
@@ -94,9 +90,9 @@ beforeEach(async () => {
   });
 });
 
-afterEach(() => setSystemTime());
+afterEach(() => vi.useRealTimers());
 afterAll(() => {
-  sendMessage.mockRestore();
+  Object.assign(fakeBrowser.tabs, { sendMessage: originalSendMessage });
   fetchRequest.mockRestore();
 });
 
@@ -171,7 +167,7 @@ test("a span that outlived a sleep ends at its last heartbeat, not at the wake",
     startedAt: lastHeartbeatAt,
     lastHeartbeatAt,
   });
-  setSystemTime(new Date("2026-09-22T06:00:00.000Z"));
+  vi.setSystemTime(new Date("2026-09-22T06:00:00.000Z"));
   await withTabFocused(() => serialized((at) => reconcile("unknown", at)));
   const events = (await dueEvents(100)).map((row) => row.payload);
   expect(events).toContainEqual({
@@ -191,11 +187,11 @@ test("a handler that runs late records when its event fired", async () => {
     startedAt,
     lastHeartbeatAt: startedAt,
   });
-  setSystemTime(new Date(timestamp));
+  vi.setSystemTime(new Date(timestamp));
   const busy = Promise.withResolvers<void>();
   void serialized(() => busy.promise);
   const switched = serialized((at) => reconcile("tab_switch", at));
-  setSystemTime(new Date("2026-09-21T12:00:20.000Z"));
+  vi.setSystemTime(new Date("2026-09-21T12:00:20.000Z"));
   busy.resolve();
   await switched;
   expect((await dueEvents(100)).map((row) => row.payload)).toContainEqual({
@@ -215,10 +211,10 @@ test("events waiting for retry keep their dependent events behind them", async (
   });
   const failed = await dueEvents(100);
   await markFailed("events", failed);
-  setSystemTime(Date.now() + 1);
+  vi.setSystemTime(Date.now() + 1);
   await enqueueEvent({ type: "span_end", id: "span", ended_at: timestamp, reason: "tab_switch" });
   expect(await dueEvents(100)).toEqual([]);
-  setSystemTime(Date.now() + 300000);
+  vi.setSystemTime(Date.now() + 300000);
   expect((await dueEvents(100)).map((row) => row.payload.type)).toEqual(["span_start", "span_end"]);
 });
 
@@ -256,19 +252,17 @@ test("a capture waits until the page view it references has left the outbox", as
 
 test("a page read while the server is unreachable is captured, and uploaded once it answers", async () => {
   let reachable = false;
-  fetchRequest.mockImplementation(
-    fakeFetch(async (input) => {
-      if (!reachable) throw new TypeError("Failed to fetch");
-      const { pathname } = new URL(input instanceof Request ? input.url : input);
-      if (pathname === "/healthz") return Response.json({ ok: true, db: true });
-      if (pathname === "/v1/events/batch") return Response.json({ accepted: 1, dropped: 0 });
-      return Response.json(
-        { capture_id: "capture", raw_hash: "00", deduplicated: false },
-        { status: 201 },
-      );
-    }),
-  );
-  setSystemTime(new Date(timestamp));
+  fetchRequest.mockImplementation(async (input) => {
+    if (!reachable) throw new TypeError("Failed to fetch");
+    const { pathname } = new URL(input instanceof Request ? input.url : input);
+    if (pathname === "/healthz") return Response.json({ ok: true, db: true });
+    if (pathname === "/v1/events/batch") return Response.json({ accepted: 1, dropped: 0 });
+    return Response.json(
+      { capture_id: "capture", raw_hash: "00", deduplicated: false },
+      { status: 201 },
+    );
+  });
+  vi.setSystemTime(new Date(timestamp));
   await requestSync(["health"]);
   expect((await syncStore.get())?.connected).toBe(false);
 
@@ -280,7 +274,7 @@ test("a page read while the server is unreachable is captured, and uploaded once
   expect(await pendingCounts()).toEqual({ events: 1, captures: 1 });
 
   reachable = true;
-  setSystemTime(new Date(Date.parse(timestamp) + 300_000));
+  vi.setSystemTime(new Date(Date.parse(timestamp) + 300_000));
   await requestSync(["health"]);
   expect(await pendingCounts()).toEqual({ events: 0, captures: 0 });
 });
@@ -295,13 +289,11 @@ test("the extension counts events the server drops", async () => {
 test("a hanging server does not hold up the handlers queued behind it", async () => {
   const requested = Promise.withResolvers<void>();
   const answered = Promise.withResolvers<void>();
-  fetchRequest.mockImplementation(
-    fakeFetch(async () => {
-      requested.resolve();
-      await answered.promise;
-      return Response.json({ ok: true, db: true });
-    }),
-  );
+  fetchRequest.mockImplementation(async () => {
+    requested.resolve();
+    await answered.promise;
+    return Response.json({ ok: true, db: true });
+  });
   await serialized((at) =>
     onAlarm({ name: "heartbeat", scheduledTime: at, persistAcrossSessions: true }, at),
   );
@@ -312,7 +304,7 @@ test("a hanging server does not hold up the handlers queued behind it", async ()
 }, 1000);
 
 test("sync requests during a run coalesce into one follow-up run", async () => {
-  fetchRequest.mockImplementation(fakeFetch(async () => Response.json({ ok: true, db: true })));
+  fetchRequest.mockImplementation(async () => Response.json({ ok: true, db: true }));
   const run = requestSync(["health"]);
   void requestSync(["health"]);
   void requestSync(["health"]);
@@ -322,17 +314,15 @@ test("sync requests during a run coalesce into one follow-up run", async () => {
 
 test("a timed out request releases the sync", async () => {
   const controller = new AbortController();
-  const timeout = spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
   fetchRequest.mockImplementation(
-    fakeFetch(
-      (_input, init) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => reject(new Error("request timed out")), {
-            once: true,
-          });
-          controller.abort();
-        }),
-    ),
+    (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("request timed out")), {
+          once: true,
+        });
+        controller.abort();
+      }),
   );
   try {
     await requestSync(["health"]);
@@ -348,7 +338,7 @@ async function endSpanOnPageCapturedAt(
   lastCapturedAt: string,
   recapture: Rule["recapture"] = "after_change",
 ): Promise<string | undefined> {
-  setSystemTime(new Date(timestamp));
+  vi.setSystemTime(new Date(timestamp));
   await rulesStore.set({ fetchedAt: timestamp, rules: [{ ...article, recapture }] });
   await tabStore(1).set({
     tabSessionId: "tab",
@@ -389,7 +379,7 @@ test("a span end does not recapture a page whose rule never recaptures", async (
 });
 
 test("a heartbeat recaptures a changing page the span has stayed on for 5 minutes", async () => {
-  setSystemTime(new Date(timestamp));
+  vi.setSystemTime(new Date(timestamp));
   await rulesStore.set({
     fetchedAt: timestamp,
     rules: [{ ...article, recapture: "after_change" }],
@@ -425,12 +415,10 @@ async function titlesSent(): Promise<string[]> {
 
 async function whileServerHangs(run: () => Promise<void>): Promise<void> {
   const answered = Promise.withResolvers<void>();
-  fetchRequest.mockImplementation(
-    fakeFetch(async () => {
-      await answered.promise;
-      return Response.json({ ok: true, db: true });
-    }),
-  );
+  fetchRequest.mockImplementation(async () => {
+    await answered.promise;
+    return Response.json({ ok: true, db: true });
+  });
   try {
     await run();
   } finally {
@@ -440,7 +428,7 @@ async function whileServerHangs(run: () => Promise<void>): Promise<void> {
 }
 
 test("a changing title goes out at once, then only its latest value on each heartbeat", async () => {
-  setSystemTime(new Date(timestamp));
+  vi.setSystemTime(new Date(timestamp));
   await openSpanStore.set({
     id: "span",
     pageViewId: pageView.id,
@@ -474,17 +462,15 @@ test("a title held back for the heartbeat goes out when its tab closes", async (
 });
 
 function answerVisits(count: number, beforeAnswering = async () => {}) {
-  fetchRequest.mockImplementation(
-    fakeFetch(async () => {
-      await beforeAnswering();
-      const last_at = count > 0 ? "2026-09-19T12:00:00.000Z" : null;
-      return Response.json({ url: pageURL, visits: { count, last_at, active_seconds: 840 } });
-    }),
-  );
+  fetchRequest.mockImplementation(async () => {
+    await beforeAnswering();
+    const last_at = count > 0 ? "2026-09-19T12:00:00.000Z" : null;
+    return Response.json({ url: pageURL, visits: { count, last_at, active_seconds: 840 } });
+  });
 }
 
 test("a page seen before shows how often on its tab's badge", async () => {
-  setSystemTime(new Date(timestamp));
+  vi.setSystemTime(new Date(timestamp));
   answerVisits(3);
   await showSeenBefore(1, pageView);
   const [input = ""] = fetchRequest.mock.calls[0] ?? [];
@@ -527,7 +513,7 @@ test("a private page view is never looked up", async () => {
 });
 
 test("pausing ends the open span at that moment and turns the badge off", async () => {
-  setSystemTime(new Date(timestamp));
+  vi.setSystemTime(new Date(timestamp));
   await openSpanStore.set({
     id: "span",
     pageViewId: pageView.id,
@@ -563,7 +549,7 @@ test("while paused, focus, titles, navigations and captures record nothing", asy
 });
 
 test("the first heartbeat after the pause has passed records again and clears the badge", async () => {
-  setSystemTime(new Date(timestamp));
+  vi.setSystemTime(new Date(timestamp));
   await settingsStore.set({ ...defaultSettings, pausedUntil: Date.parse(timestamp) - 1 });
   await fakeBrowser.action.setBadgeText({ text: "off" });
   await whileServerHangs(async () => {
@@ -579,7 +565,7 @@ test("the first heartbeat after the pause has passed records again and clears th
 });
 
 test("making the active tab's host private moves the tab to a host-only page view at once", async () => {
-  setSystemTime(new Date(timestamp));
+  vi.setSystemTime(new Date(timestamp));
   await fakeBrowser.tabs.create({ url: pageURL });
   await openSpanStore.set({
     id: "span",

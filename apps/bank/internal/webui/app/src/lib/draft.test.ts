@@ -1,9 +1,9 @@
 /// <reference types="node" />
 
 import assert from "node:assert/strict";
-import { test } from "node:test";
 
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import { test } from "vite-plus/test";
 
 import {
   createDraft,
@@ -15,7 +15,7 @@ import {
   type Draft,
 } from "./draft";
 
-void test("dirty draft cache survives library invalidation and keeps the original expected revision", async () => {
+test("dirty draft cache survives library invalidation and keeps the original expected revision", async () => {
   const client = new QueryClient();
   const baseline = { notes: "Saved notes" };
   client.setQueryData(["draft", "tracking", "item-1"], {
@@ -33,7 +33,7 @@ void test("dirty draft cache survives library invalidation and keeps the origina
   client.clear();
 });
 
-void test("clean drafts refresh and a successful save retains edits made while saving", () => {
+test("clean drafts refresh and a successful save retains edits made while saving", () => {
   const saved = { notes: "Saved" };
   const refreshed = refreshDraft(createDraft({ notes: "Old" }, 1), saved, 2);
   assert.equal(refreshed.revision, 2);
@@ -46,7 +46,7 @@ void test("clean drafts refresh and a successful save retains edits made while s
   assert.equal(isDirty(committed), true);
 });
 
-void test("a delayed save response cannot downgrade newer cached data or draft revisions", async () => {
+test("a delayed save response cannot downgrade newer cached data or draft revisions", async () => {
   const client = new QueryClient();
   const key = ["library", "collection", "collection-1"];
   const submitted = { notes: "Submitted" };
@@ -68,7 +68,7 @@ void test("a delayed save response cannot downgrade newer cached data or draft r
   client.clear();
 });
 
-void test("inactive clean drafts are released while active and unsaved drafts survive", () => {
+test("inactive clean drafts are released while active and unsaved drafts survive", () => {
   const client = new QueryClient();
   const key = ["draft", "collection", "large"];
   const baseline = { entries: Array.from({ length: 10_000 }, (_, index) => index) };

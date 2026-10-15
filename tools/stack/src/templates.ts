@@ -155,12 +155,12 @@ export function ThemeToggle() {
 }
 `;
 
-const VITEST_CONFIG = `import { defineConfig } from "vitest/config";
+const VITEST_CONFIG = `import { defineConfig, lazyPlugins } from "vite-plus";
 import react from "@vitejs/plugin-react";
-import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  resolve: { tsconfigPaths: true },
+  plugins: lazyPlugins(() => [react()]),
   test: {
     environment: "jsdom",
     globals: true,
@@ -172,7 +172,7 @@ export default defineConfig({
 const VITEST_SETUP = `import "@testing-library/jest-dom/vitest";
 `;
 
-const HEALTH_TEST = `import { describe, expect, it } from "vitest";
+const HEALTH_TEST = `import { describe, expect, it } from "vite-plus/test";
 import app from "@/lib/hono";
 
 describe("health route", () => {
@@ -184,7 +184,7 @@ describe("health route", () => {
 });
 `;
 
-const USERS_TEST = `import { describe, expect, it } from "vitest";
+const USERS_TEST = `import { describe, expect, it } from "vite-plus/test";
 import app from "@/lib/hono";
 
 describe("user validation", () => {
@@ -223,7 +223,7 @@ export interface TemplateOptions {
 
 function buildPageTest(opts: TemplateOptions): string {
   return `import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import Home from "./page";
 
 describe("Home", () => {
@@ -301,8 +301,8 @@ on:
       - "package.json"
       - "bun.lock"
       - "mise.toml"
-      - ".oxlintrc.json"
-      - ".oxfmtrc.json"
+      - "vite.config.ts"
+      - "tsconfig.json"
       - ".github/workflows/${opts.projectName}.yml"
   pull_request:
     paths: *paths
@@ -318,7 +318,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@v2
         with:
-          install_args: bun
+          install_args: bun node
       - run: bun install --frozen-lockfile
       - run: bun run check
         working-directory: apps/${opts.projectName}
@@ -350,7 +350,7 @@ From \`apps/${opts.projectName}\`:
 
 - \`bun run check\`: lint, format check, types${opts.testing ? ", and tests" : ""}.
 - \`bun run build\`: production build. \`bun run start\`: serve that build.
-- \`bun run fmt\`: format with the workspace Oxfmt configuration.
+- \`bun run fmt\`: format with Vite+ and the workspace configuration.
 ${opts.testing ? "- `bun run test:watch`: run Vitest interactively.\n" : ""}
 TypeScript extends \`@aqt/config\`. Validation uses ArkType. React Compiler is enabled.
 ${opts.shadcn ? "Components use shadcn Base UI and the `cn` package. Add components with `bunx --bun shadcn add <component>` from this directory.\n" : ""}
@@ -404,15 +404,6 @@ export default nextConfig;
         2,
       ) + "\n",
     "src/styles.d.ts": 'declare module "*.css";\n',
-    ".oxlintrc.json":
-      JSON.stringify(
-        {
-          extends: ["../../.oxlintrc.json"],
-          plugins: ["nextjs"],
-        },
-        null,
-        2,
-      ) + "\n",
   };
   if (opts.hono) {
     files["src/lib/hono/index.ts"] = HONO_INDEX;
@@ -426,7 +417,7 @@ export default nextConfig;
     files["src/components/theme-toggle.tsx"] = THEME_TOGGLE;
   }
   if (opts.testing) {
-    files["vitest.config.ts"] = VITEST_CONFIG;
+    files["vite.config.ts"] = VITEST_CONFIG;
     files["vitest.setup.ts"] = VITEST_SETUP;
     files["src/app/page.test.tsx"] = buildPageTest(opts);
     if (opts.hono) {

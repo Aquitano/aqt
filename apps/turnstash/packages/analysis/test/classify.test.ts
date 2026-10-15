@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test } from "vite-plus/test";
 
 import { classifyTurn, type ToolStep } from "../src/classify.ts";
 import { commandNames, isReadOnlyCommand } from "../src/shell.ts";

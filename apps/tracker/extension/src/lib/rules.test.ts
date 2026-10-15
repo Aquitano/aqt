@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test";
-
 import { type } from "arktype";
+import { describe, expect, test } from "vite-plus/test";
 
 import { Rule, RulesResponse, hostMatches, matchRule } from "./rules.ts";
 

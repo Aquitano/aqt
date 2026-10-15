@@ -1,4 +1,5 @@
 [tools]
+node = "24.21.0"
 bun = "1.4.3"
 go = "1.27.2"
 golangci-lint = "2.14.0"
@@ -29,15 +30,14 @@ description = "Lint, format check, typecheck and test every TypeScript project"
 depends = ["*:ts"]
 
 [tasks."workspace:check"]
-description = "Format check workspace configuration and documentation"
-run = "bunx --no-install oxfmt --check . \"!apps/**\" \"!packages/**\" \"!tools/stack/**\""
+description = "Check workspace configuration types and formatting"
+run = [
+  "bunx --no-install vp fmt --check . \"!apps/**\" \"!packages/**\" \"!tools/stack/**\"",
+  "bunx --no-install tsc --noEmit",
+]
 
 [tasks."shared:ts"]
-run = [
-  "bunx --no-install oxlint --type-aware packages/ts",
-  "bunx --no-install oxfmt --check packages",
-  "bun run --filter \"./packages/ts/*\" typecheck",
-]
+run = ["bunx --no-install vp check packages", "bun run --filter \"./packages/ts/*\" typecheck"]
 
 [tasks."shared:go"]
 description = "Vet, test and lint the Go packages that apps build against"
@@ -51,8 +51,7 @@ depends = ["shared:ts", "stack:ts"]
 
 [tasks."stack:ts"]
 run = [
-  "bunx --no-install oxlint --type-aware tools/stack",
-  "bunx --no-install oxfmt --check tools/stack",
+  "bunx --no-install vp check tools/stack",
   "bun run --cwd tools/stack typecheck",
   "bun run --cwd tools/stack test",
 ]
@@ -62,8 +61,7 @@ depends = ["shared:ts", "shared:go", "bank:ts", "bank:go"]
 
 [tasks."bank:ts"]
 run = [
-  "bunx --no-install oxlint --type-aware apps/bank",
-  "bunx --no-install oxfmt --check apps/bank",
+  "bunx --no-install vp check apps/bank",
   "bun run --filter \"@aqt/bank-*\" typecheck",
   "bun run --cwd apps/bank/internal/webui/app test",
   "bun run --cwd apps/bank/internal/webui/app check:dist",
@@ -85,7 +83,6 @@ depends = ["shared:ts", "gallery:ts"]
 [tasks."gallery:ts"]
 run = [
   "bun run --cwd apps/gallery check",
-  "bunx --no-install oxfmt --check apps/gallery",
   "bun run --cwd apps/gallery typecheck",
   "bun run --cwd apps/gallery test",
 ]
@@ -118,11 +115,7 @@ run = "ops/secrets.sh send tracker prod"
 depends = ["shared:ts", "img:ts"]
 
 [tasks."img:ts"]
-run = [
-  "bun run --cwd apps/img lint",
-  "bunx --no-install oxfmt --check apps/img",
-  "bun run --filter \"@aqt/img*\" typecheck",
-]
+run = ["bunx --no-install vp check apps/img", "bun run --filter \"@aqt/img*\" typecheck"]
 
 [tasks."img:dev"]
 dir = "apps/img"
@@ -135,7 +128,7 @@ depends = ["notch:lint", "notch:test"]
 run = [
   "swiftformat --lint apps/notch",
   "swiftlint lint --strict --quiet apps/notch",
-  "bunx --no-install oxfmt --check apps/notch",
+  "bunx --no-install vp fmt --check apps/notch",
 ]
 
 [tasks."notch:test"]
@@ -157,7 +150,7 @@ depends = ["starboard:lint", "starboard:test"]
 run = [
   "swiftformat --lint apps/starboard",
   "swiftlint lint --strict --quiet apps/starboard",
-  "bunx --no-install oxfmt --check apps/starboard",
+  "bunx --no-install vp fmt --check apps/starboard",
 ]
 
 [tasks."starboard:test"]

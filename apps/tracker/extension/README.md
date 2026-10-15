@@ -73,4 +73,4 @@ src/lib/
   events.ts, messages.ts    wire and message schemas
 ```
 
-`bun run --cwd apps/tracker/extension test` runs the unit tests, `tracker.ts`'s against a fake browser and IndexedDB; `typecheck` and `lint` are the usual `tsc --noEmit` and `oxlint --type-aware`.
+`bun run --cwd apps/tracker/extension test` runs the unit tests with Vitest. The tracker tests use a fake browser and IndexedDB. `typecheck` runs `tsc --noEmit`; `lint` uses the shared Vite+ configuration. WXT still builds the extension.

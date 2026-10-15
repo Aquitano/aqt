@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "vp pack",
     "typecheck": "tsc -b",
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
     "dev": "bun run --hot src/index.ts",
@@ -36,7 +36,7 @@
   "devDependencies": {
     "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
-    "tsdown": "^0.23.1",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
   }
 }

@@ -1,6 +1,5 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
-
 import { fakeBrowser } from "@webext-core/fake-browser";
+import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { defaultSettings } from "./settings.ts";
 
@@ -10,7 +9,7 @@ const { authTokensStore, settingsStore } = await import("./storage.ts");
 
 const issuer = "https://auth.example.org/application/o/tracker/";
 
-// Bun has no Web Locks; this one grants each lock name to one holder at a time.
+// Serialize lock holders so the issuer can detect concurrent refreshes.
 let held: Promise<unknown> = Promise.resolve();
 Object.defineProperty(navigator, "locks", {
   configurable: true,
@@ -23,7 +22,7 @@ Object.defineProperty(navigator, "locks", {
   },
 });
 
-const fetchRequest = spyOn(globalThis, "fetch");
+const fetchRequest = vi.spyOn(globalThis, "fetch");
 
 afterEach(() => {
   fakeBrowser.reset();
@@ -55,7 +54,7 @@ function rotatingIssuer() {
       refresh_token: current,
     });
   };
-  fetchRequest.mockImplementation(Object.assign(respond, { preconnect: fetch.preconnect }));
+  fetchRequest.mockImplementation(respond);
   return { current: () => current };
 }
 

@@ -16,7 +16,7 @@ Every app gets:
 
 - A private `@aqt/<name>` package using the root Bun workspace and lockfile.
 - TypeScript extending `@aqt/config/tsconfig.base.json`, with the root compiler version.
-- Oxlint and Oxfmt from the workspace, with Next.js lint rules added locally.
+- Vite+ from the workspace, with Next.js lint rules enabled by the app lint script.
 - React Compiler, Tailwind CSS, and ArkType environment validation through T3 Env.
 - `dev`, `build`, `start`, `lint`, `fmt`, `fmt:check`, `typecheck`, and `check` scripts.
 - `mise run <name>:check` and `mise run <name>:dev` entry points, registered in
@@ -30,9 +30,10 @@ Optional features:
 - Hono routes with ArkType request validation and a typed RPC client. The sample
   users API uses an unauthenticated in-memory store; replace it before deployment.
 - A theme provider and dark-mode toggle.
-- Vitest and Testing Library, including a page test and an API health test.
+- Vitest through Vite+, configured in `vite.config.ts`, with Testing Library
+  tests for a page and the example API.
 - `.github/workflows/<name>.yml` at the repository root. It runs app checks and a
-  production build when the app or shared tooling changes, using Bun from mise.
+  production build when the app or shared tooling changes, using Node.js and Bun from mise.
 
 The generator installs dependencies, formats the app, runs its checks and builds
 it before registering its mise tasks and validating task dispatch. It neither
@@ -51,7 +52,7 @@ root mise includes and wildcard aggregate dependencies to be configured.
 ```sh
 bun run --filter @aqt/stack test
 bunx --no-install tsc --noEmit -p tools/stack
-bunx --no-install oxlint --type-aware tools/stack
+bunx --no-install vp check tools/stack
 ```
 
 The CLI versions live in `src/pipeline.ts`. When updating them, generate an app in
