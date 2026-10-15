@@ -141,7 +141,7 @@ LinkedIn conversations use the export's conversation ID. Run `bank reimport link
 
 ## Check database behavior
 
-`go test -race ./...` uses pgtestdb to clone a private database per test from the development server in `DATABASE_URL`. The configured login must be a superuser so it can create databases, install the search extension and provision a restricted query-test login. Local tests skip database cases when no server is listening. Set `BANK_REQUIRE_DB=1` to require them. CI always requires the database and starts the same pinned ParadeDB image as Compose.
+`go test -race ./...` uses pgtestdb to clone a private database per test from the development server in `DATABASE_URL`. The configured login must be a superuser so it can create databases, install the search extension and provision a restricted query-test login. Local tests skip database cases when `DATABASE_URL` is unset or no server is listening. Set `BANK_REQUIRE_DB=1` to require them. CI always requires the database and starts the same pinned ParadeDB image as Compose.
 
 The retrieval cases in `internal/store/search_quality_integration_test.go` check exact and fuzzy ranking, all-word matches across fields, phrase order, and attachment-only matches. Run them with `go test ./internal/store -run TestSearchRetrievalCases`.
 

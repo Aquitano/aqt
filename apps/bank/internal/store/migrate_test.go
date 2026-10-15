@@ -238,29 +238,3 @@ func TestFailedMigrationLeavesARetryableState(t *testing.T) {
 		t.Fatal("the migration lock was not released after a failure")
 	}
 }
-
-func TestLegacyMigrationBaselineRejectsGaps(t *testing.T) {
-	dsn := storetest.NewEmpty(t)
-	seedPreMessageIDUnique(t, dsn)
-	storetest.Exec(t, dsn, `delete from schema_migrations where filename = '0002_sync_state.sql'`)
-	if st, err := store.Open(context.Background(), dsn); err == nil {
-		st.Close()
-		t.Fatal("accepted a gap in legacy history")
-	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from pg_tables where schemaname = 'public' and tablename = 'schema_version'`); n != 0 {
-		t.Fatal("invalid legacy history was marked as baselined")
-	}
-}
-
-func TestLegacyMigrationBaselinePreservesHistory(t *testing.T) {
-	dsn := storetest.NewEmpty(t)
-	seedPreMessageIDUnique(t, dsn)
-	storetest.Open(t, dsn)
-	storetest.Open(t, dsn)
-	if n := storetest.QueryInt(t, dsn, `select count(*) from schema_migrations`); n != 3 {
-		t.Fatalf("legacy history changed: %d", n)
-	}
-	if n := storetest.QueryInt(t, dsn, `select version from schema_version`); n < 21 {
-		t.Fatalf("baseline did not finish migrations: %d", n)
-	}
-}

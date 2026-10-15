@@ -6,6 +6,7 @@ on:
       [
         "apps/bank/**",
         "packages/go/extract/**",
+        "packages/go/pgschema/**",
         ".golangci.yml",
         "mise.toml",
         ".github/workflows/bank.yml",
@@ -15,6 +16,7 @@ on:
       [
         "apps/bank/**",
         "packages/go/extract/**",
+        "packages/go/pgschema/**",
         ".golangci.yml",
         "mise.toml",
         ".github/workflows/bank.yml",

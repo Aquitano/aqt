@@ -9,13 +9,16 @@ FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900
 WORKDIR /src/apps/bank
 
 # The context is the repository root, because bank builds against
-# packages/go/extract (Dockerfile.dockerignore keeps everything else out).
-# Dependencies first, so a source-only change reuses the module cache.
+# packages/go/extract and packages/go/pgschema (Dockerfile.dockerignore keeps
+# everything else out). Dependencies first, so a source-only change reuses the
+# module cache.
 COPY packages/go/extract/go.mod packages/go/extract/go.sum /src/packages/go/extract/
+COPY packages/go/pgschema/go.mod packages/go/pgschema/go.sum /src/packages/go/pgschema/
 COPY apps/bank/go.mod apps/bank/go.sum ./
 RUN go mod download
 
 COPY packages/go/extract /src/packages/go/extract
+COPY packages/go/pgschema /src/packages/go/pgschema
 COPY apps/bank ./
 # CGO off keeps the binary static, which is what makes the distroless base
 # work; -trimpath keeps build paths out of it.

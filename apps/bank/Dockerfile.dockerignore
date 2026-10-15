@@ -1,10 +1,11 @@
 # The build context is the repository root, so bank can build against
-# packages/go/extract. BuildKit reads this file instead of the root
+# packages/go. BuildKit reads this file instead of the root
 # .dockerignore. Allowlist: a stray archive or blob store would otherwise be
 # baked into an image layer.
 *
 !apps/bank
 !packages/go/extract
+!packages/go/pgschema
 apps/bank/.claude
 apps/bank/.env
 apps/bank/bank
