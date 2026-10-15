@@ -50,6 +50,8 @@ jobs:
       DATABASE_URL: postgres://attic:attic@localhost:5436/attic?sslmode=disable
       ATTIC_TEST_DATABASE_URL: postgres://attic:attic@localhost:5436/attic?sslmode=disable
       ATTIC_REQUIRE_DB: "1"
+      # attic:check runs shared:go, whose migration tests need a server too.
+      PGSCHEMA_TEST_DATABASE_URL: postgres://attic:attic@localhost:5436/attic?sslmode=disable
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5

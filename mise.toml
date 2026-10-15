@@ -41,10 +41,18 @@ run = ["bunx --no-install vp check packages", "bun run --filter \"./packages/ts/
 
 [tasks."shared:go"]
 description = "Vet, test and lint the Go packages that apps build against"
-dir = "packages/go/extract"
-run = ["go vet ./...", "go test -race ./...", "golangci-lint run"]
+dir = "packages/go"
+run = [
+  "go vet ./extract/... ./pgschema/...",
+  "go test -race ./extract/... ./pgschema/...",
+  "golangci-lint run ./extract/... ./pgschema/...",
+]
 # The race detector needs cgo, which Windows only has with a C compiler installed.
-run_windows = ["go vet ./...", "go test ./...", "golangci-lint run"]
+run_windows = [
+  "go vet ./extract/... ./pgschema/...",
+  "go test ./extract/... ./pgschema/...",
+  "golangci-lint run ./extract/... ./pgschema/...",
+]
 
 [tasks."stack:check"]
 depends = ["shared:ts", "stack:ts"]
