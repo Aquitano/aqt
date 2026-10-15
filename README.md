@@ -21,7 +21,7 @@ mise install
 bun install
 ```
 
-mise pins bun, go, golangci-lint, swiftformat, swiftlint and xcodegen. Activate it in your shell (`mise activate`) or prefix commands with `mise exec --`.
+mise pins Node.js, Bun, Go, golangci-lint, swiftformat, swiftlint and xcodegen. Activate it in your shell (`mise activate`) or prefix commands with `mise exec --`.
 
 ## Checks
 
@@ -38,6 +38,23 @@ Each task wraps the app's own tooling (`go test`, `bun run`, `xcodebuild`). Type
 Tasks live in `mise.toml` and `tools/tasks/*.toml`. The stack generator registers each new app there after its checks and build pass. Root `check` discovers `*:check` tasks, and `ts:check` discovers `*:ts` tasks, so new apps join both aggregates automatically. `workspace:check` covers formatting outside app and shared-package tasks.
 
 Put mise flags before the task name, for example `mise run -n check` to preview the graph. App-specific scripts remain available inside each app.
+
+Vite+ owns the TypeScript toolchain. The root `vite.config.ts` contains shared
+lint and format settings, package-specific rule overrides, and the Vitest projects.
+App Vite configs keep their framework plugins, proxies, and build settings. The
+root Bun catalog pins Vite+ and its Vite alias together.
+
+```sh
+bun run check       # formatting, type-aware lint and TypeScript diagnostics
+bun run typecheck   # explicit package checks, including project references
+bun run test        # portable suites through Vitest
+```
+
+Bank's frontend, Tracker's extension, Gallery's layout and renderer, and
+Turnstash's web, API-schema and analysis tests use Vitest. Gallery's server,
+Turnstash's Bun runtime packages and server, and the stack generator keep Bun tests.
+Their app checks run both runners where needed. Bank also rebuilds and checks its
+committed embedded UI assets. Turbo still coordinates Gallery's package tasks.
 
 ## Dependency updates
 

@@ -7,8 +7,8 @@
     "dev": "wxt",
     "build": "wxt build",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint --type-aware",
-    "test": "bun test"
+    "lint": "vp lint",
+    "test": "vp test run"
   },
   "dependencies": {
     "arktype": "^2.2.8",
@@ -16,10 +16,11 @@
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
-    "@types/bun": "catalog:",
+    "@types/node": "^26.6.5",
     "@webext-core/fake-browser": "^2.0.1",
     "fake-indexeddb": "^6.2.5",
     "typescript": "catalog:",
+    "vite-plus": "catalog:",
     "wxt": "^0.21.4"
   }
 }

@@ -1,5 +1,5 @@
-import { defineRule } from "@oxlint/plugins";
-import type { ESTree, Reference, SourceCode } from "@oxlint/plugins";
+import { defineRule } from "vite-plus/lint/plugins";
+import type { ESTree, Reference, SourceCode } from "vite-plus/lint/plugins";
 
 type Parameter = ESTree.ParamPattern;
 type ParameterOwner =

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vite-plus/test";
 
 import { duration } from "../src/format.ts";
 import {
@@ -12,7 +12,7 @@ import {
   ymd,
 } from "../src/period.ts";
 
-const march15 = new Date(2026, 2, 15);
+const march15 = () => new Date(2026, 2, 15);
 
 test("local day bounds preserve UTC offsets and both DST transitions", () => {
   const zone = process.env.TZ;
@@ -33,20 +33,20 @@ test("local day bounds preserve UTC offsets and both DST transitions", () => {
 
 describe("periodRange", () => {
   test("all time has no bounds", () => {
-    expect(periodRange("all", march15)).toBeNull();
+    expect(periodRange("all", march15())).toBeNull();
   });
 
   test("today is a single inclusive day", () => {
-    expect(periodRange("today", march15)).toEqual({ from: "2026-03-15", to: "2026-03-15" });
+    expect(periodRange("today", march15())).toEqual({ from: "2026-03-15", to: "2026-03-15" });
   });
 
   test("rolling periods include exactly the labelled number of days", () => {
-    expect(periodRange("7d", march15)).toEqual({ from: "2026-03-09", to: "2026-03-15" });
-    expect(periodRange("30d", march15)).toEqual({ from: "2026-02-14", to: "2026-03-15" });
+    expect(periodRange("7d", march15())).toEqual({ from: "2026-03-09", to: "2026-03-15" });
+    expect(periodRange("30d", march15())).toEqual({ from: "2026-02-14", to: "2026-03-15" });
   });
 
   test("month starts on the first", () => {
-    expect(periodRange("month", march15)).toEqual({ from: "2026-03-01", to: "2026-03-15" });
+    expect(periodRange("month", march15())).toEqual({ from: "2026-03-01", to: "2026-03-15" });
   });
 });
 
@@ -58,7 +58,7 @@ test("previousRange is the same length and ends the day before", () => {
 });
 
 test("heatmapRange covers 52 weeks back from today", () => {
-  expect(heatmapRange(march15)).toEqual({ from: "2025-03-16", to: "2026-03-15" });
+  expect(heatmapRange(march15())).toEqual({ from: "2025-03-16", to: "2026-03-15" });
 });
 
 const weekdayOf = (day: string) => new Date(`${day}T00:00:00Z`).getUTCDay();

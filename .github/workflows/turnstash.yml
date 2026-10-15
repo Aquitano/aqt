@@ -13,8 +13,8 @@ on:
         "packages/ts/**",
         "tools/oxlint/**",
         "tools/tasks/turnstash.toml",
-        ".oxlintrc.json",
-        ".oxfmtrc.json",
+        "vite.config.ts",
+        "tsconfig.json",
         "package.json",
         "bun.lock",
         "mise.toml",
@@ -27,8 +27,8 @@ on:
         "packages/ts/**",
         "tools/oxlint/**",
         "tools/tasks/turnstash.toml",
-        ".oxlintrc.json",
-        ".oxfmtrc.json",
+        "vite.config.ts",
+        "tsconfig.json",
         "package.json",
         "bun.lock",
         "mise.toml",
@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
         with:
-          install_args: bun
+          install_args: bun node
       - run: bun install --frozen-lockfile
       - run: mise run turnstash:ts
       - name: Check release version

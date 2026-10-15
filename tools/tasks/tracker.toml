@@ -3,8 +3,7 @@ depends = ["shared:ts", "tracker:ts", "tracker:go", "tracker:swift", "tracker:de
 
 ["tracker:ts"]
 run = [
-  "bunx --no-install oxlint --type-aware apps/tracker/extension",
-  "bunx --no-install oxfmt --check apps/tracker",
+  "bunx --no-install vp check apps/tracker",
   "bun run --cwd apps/tracker/extension typecheck",
   "bun run --cwd apps/tracker/extension test",
 ]

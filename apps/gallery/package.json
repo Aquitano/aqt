@@ -11,9 +11,9 @@
     "db:studio": "turbo -F @aqt/gallery-db db:studio",
     "db:generate": "turbo -F @aqt/gallery-db db:generate",
     "db:migrate": "turbo -F @aqt/gallery-db db:migrate",
-    "check": "oxlint --type-aware",
+    "check": "vp check",
     "typecheck": "turbo typecheck -F '@aqt/gallery-*'",
-    "test": "bun test apps/server/src packages/gallery-layout/src apps/web/src"
+    "test": "bun test apps/server/src && vp test run"
   },
   "dependencies": {
     "@aqt/gallery-env": "workspace:*",
@@ -24,6 +24,7 @@
     "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
     "typescript": "catalog:",
+    "vite-plus": "catalog:",
     "wrangler": "^4.149.0"
   }
 }

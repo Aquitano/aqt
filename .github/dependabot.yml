@@ -17,6 +17,7 @@ updates:
             "@types/*",
             "@typescript/*",
             "vite",
+            "vite-plus",
             "@vitejs/*",
             "@vitest/*",
             "vitest",

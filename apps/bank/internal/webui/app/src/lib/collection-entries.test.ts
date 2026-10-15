@@ -1,11 +1,12 @@
 /// <reference types="node" />
 
 import assert from "node:assert/strict";
-import { test } from "node:test";
+
+import { test } from "vite-plus/test";
 
 import { appendEntry, moveEntry } from "./collection-entries";
 
-void test("moving the last visible row and appending keep the changed entries visible without losing repeated items", () => {
+test("moving the last visible row and appending keep the changed entries visible without losing repeated items", () => {
   const entries = Array.from({ length: 51 }, (_, index) => ({
     key: String(index),
     item_id: "repeated-item",
@@ -21,7 +22,7 @@ void test("moving the last visible row and appending keep the changed entries vi
   assert.equal(added.entries.filter((entry) => entry.item_id === "repeated-item").length, 52);
 });
 
-void test("appending to a large collection shows its tail without expanding the rendered range", () => {
+test("appending to a large collection shows its tail without expanding the rendered range", () => {
   const entries = Array.from({ length: 10_000 }, (_, index) => ({ key: String(index) }));
   const added = appendEntry(entries, { key: "new" }, 50);
   const rendered = added.entries.slice(added.start, added.start + added.visible);

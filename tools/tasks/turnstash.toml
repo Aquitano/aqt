@@ -4,8 +4,7 @@ depends = ["shared:ts", "turnstash:ts"]
 ["turnstash:ts"]
 description = "Lint, format check, typecheck and test turnstash; the server tests need turnstash:db"
 run = [
-  "bunx --no-install oxlint --type-aware apps/turnstash",
-  "bunx --no-install oxfmt --check apps/turnstash",
+  "bunx --no-install vp check apps/turnstash",
   "bun run --filter \"@aqt/turnstash*\" typecheck",
   "bun run --cwd apps/turnstash test",
 ]

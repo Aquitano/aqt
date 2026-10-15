@@ -84,20 +84,21 @@ export async function scaffold(
       dev: "next dev",
       build: "next build",
       start: "next start",
-      lint: "oxlint --type-aware",
-      fmt: "oxfmt",
-      "fmt:check": "oxfmt --check",
+      lint: "vp lint --nextjs-plugin",
+      fmt: "vp fmt",
+      "fmt:check": "vp fmt --check",
       typecheck: "next typegen && tsc --noEmit",
       check:
         "bun run lint && bun run fmt:check && bun run typecheck" +
         (config.testing ? " && bun run test" : ""),
     };
     if (config.testing) {
-      pkg.scripts.test = "vitest run";
-      pkg.scripts["test:watch"] = "vitest";
+      pkg.scripts.test = "vp test run";
+      pkg.scripts["test:watch"] = "vp test";
     }
     pkg.devDependencies ??= {};
     pkg.devDependencies["@aqt/config"] = "workspace:*";
+    pkg.devDependencies["vite-plus"] = "catalog:";
     const typescript = rootPackage.devDependencies?.typescript;
     if (!typescript) throw new Error("The workspace must declare a TypeScript version.");
     pkg.devDependencies.typescript = typescript;
@@ -118,9 +119,7 @@ export async function scaffold(
     if (config.testing) {
       await shell.install(
         [
-          "vitest",
           "@vitejs/plugin-react",
-          "vite-tsconfig-paths",
           "jsdom",
           "@testing-library/react",
           "@testing-library/jest-dom",
@@ -162,7 +161,9 @@ export async function scaffold(
     await runStep("Adding app CI workflow", async () => {
       await shell.mkdir(resolve(workflowPath, ".."), workspaceRoot);
       await shell.writeFile(workflowPath, buildCi(config));
-      await shell.spawn("bunx", ["--no-install", "oxfmt", workflowPath], { cwd: workspaceRoot });
+      await shell.spawn("bunx", ["--no-install", "vp", "fmt", workflowPath], {
+        cwd: workspaceRoot,
+      });
     });
   }
 

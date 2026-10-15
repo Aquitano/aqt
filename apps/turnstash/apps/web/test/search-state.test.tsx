@@ -1,7 +1,6 @@
-import { expect, test } from "bun:test";
-
 import { defaultParseSearch, defaultStringifySearch } from "@tanstack/react-router";
 import { renderToStaticMarkup } from "react-dom/server";
+import { expect, test } from "vite-plus/test";
 
 import { HighlightedText } from "../src/components/HighlightedText";
 import {

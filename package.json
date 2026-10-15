@@ -28,26 +28,30 @@
       "lucide-react": "^1.55.0",
       "effect": "4.0.4",
       "@effect/platform-bun": "4.0.4",
-      "@effect/sql-pg": "4.0.4"
+      "@effect/sql-pg": "4.0.4",
+      "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
+      "vite-plus": "1.2.0"
     }
   },
   "type": "module",
   "scripts": {
-    "lint": "oxlint --type-aware",
-    "fmt": "oxfmt",
-    "fmt:check": "oxfmt --check",
-    "typecheck": "bun run --filter '*' --filter '!aqt-gallery' typecheck"
+    "lint": "vp lint",
+    "fmt": "vp fmt",
+    "fmt:check": "vp fmt --check",
+    "typecheck": "tsc --noEmit && bun run --filter '*' --filter '!aqt-gallery' typecheck",
+    "check": "vp check",
+    "test": "vp test run"
   },
   "devDependencies": {
-    "@oxlint/plugins": "1.87.0",
-    "oxfmt": "0.72.0",
-    "oxlint": "1.87.0",
-    "oxlint-tsgolint": "7.0.2004",
+    "@types/node": "^26.6.5",
     "turbo": "2.11.7",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   },
   "overrides": {
-    "@tanstack/query-core": "5.104.1"
+    "@tanstack/query-core": "5.104.1",
+    "vite": "catalog:"
   },
   "packageManager": "bun@1.4.3"
 }

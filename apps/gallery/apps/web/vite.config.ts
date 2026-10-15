@@ -3,7 +3,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
-import { defineConfig } from "vite";
+import { defineConfig, lazyPlugins } from "vite-plus";
 
 export default defineConfig({
   server: {
@@ -21,7 +21,7 @@ export default defineConfig({
     // React with external consumers makes Nitro include a second React copy.
     noExternal: true,
   },
-  plugins: [
+  plugins: lazyPlugins(() => [
     tailwindcss(),
     tanstackStart(),
     // vercel.json's bunVersion pins the build's Bun; on its own nitro would
@@ -29,5 +29,5 @@ export default defineConfig({
     nitro({ vercel: { functions: { runtime: "bun1.4.x" } } }),
     viteReact(),
     babel({ presets: [reactCompilerPreset()] }),
-  ],
+  ]),
 });
