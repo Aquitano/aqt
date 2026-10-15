@@ -30,7 +30,7 @@ description = "Lint, format check, typecheck and test every TypeScript project"
 depends = ["*:ts"]
 
 [tasks."workspace:check"]
-description = "Check workspace configuration types and formatting"
+description = "Format check the workspace root and typecheck its config and lint plugins"
 run = [
   "bunx --no-install vp fmt --check . \"!apps/**\" \"!packages/**\" \"!tools/stack/**\"",
   "bunx --no-install tsc --noEmit",
