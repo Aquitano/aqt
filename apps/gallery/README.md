@@ -138,7 +138,7 @@ runs it). `apps/web/vercel.json` sets the framework preset, `bunVersion` (Vercel
 switch for the Bun line used to install, build and run; its default Bun 1.3
 cannot read this lockfile), the function region (`fra1`, next to the API and
 Neon), a filtered workspace install from the repository root, a plain
-`vite build` so Vercel's Turbo detection stays out of the way, and an ignore
+`vp build` so Vercel's Turbo detection stays out of the way, and an ignore
 command so only changes under `apps/gallery` or `packages/ts/ui`, or to the
 lockfile, trigger a build. The vite config names the matching `bun1.4.x` function runtime, since
 nitro would otherwise emit `bun1.x`. When the Bun line moves in `mise.toml`,

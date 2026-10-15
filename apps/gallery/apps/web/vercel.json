@@ -3,7 +3,7 @@
   "framework": "tanstack-start",
   "bunVersion": "1.4.x",
   "installCommand": "cd ../../../.. && bun install --frozen-lockfile --filter aqt-gallery --filter '@aqt/gallery-*' --filter @aqt/ui",
-  "buildCommand": "vite build",
+  "buildCommand": "vp build",
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ../.. ../../../../bun.lock ../../../../packages/ts/ui",
   "regions": ["fra1"],
   "rewrites": [
