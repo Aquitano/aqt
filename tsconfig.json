@@ -4,5 +4,10 @@
     "lib": ["ESNext"],
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "apps/gallery/vite.config.ts", "apps/turnstash/vite.config.ts"]
+  "include": [
+    "vite.config.ts",
+    "apps/gallery/vite.config.ts",
+    "apps/turnstash/vite.config.ts",
+    "tools/oxlint/**/*.ts"
+  ]
 }

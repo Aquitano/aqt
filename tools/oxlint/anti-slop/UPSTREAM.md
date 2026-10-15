@@ -24,6 +24,8 @@ reads this file to tell upstream changes from local ones.
   `JSON.stringify` or `String` (`726dbcce`).
 - `rules/no-module-mocking.ts` also recognizes `vi` from `vite-plus/test` and Bun's `mock.module`
   from `bun:test`. The dotfiles skill carries the same change.
+- `shared/dictionary-types.ts` reads the first intersection member through destructuring, so the
+  plugin type-checks under the root `tsconfig.json` and its `noUncheckedIndexedAccess`.
 - Turnstash's copy also had `no-array-filter-map` and `no-reduce-accumulator-copy`. They were
   dropped when Turnstash moved in.
 
