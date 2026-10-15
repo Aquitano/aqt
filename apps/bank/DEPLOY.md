@@ -154,8 +154,9 @@ Repeat for `proton` and any other mail source. [MAIL.md](MAIL.md) explains the r
 `/healthz` checks the database with a three-second deadline and returns 503 when
 it cannot connect. The image runs `bank healthcheck` itself, so Compose can probe
 the distroless server. `bank version` reports the build revision supplied through
-`BANK_VERSION`. SIGTERM and Ctrl-C stop new requests and allow active requests up
-to 30 seconds before the database pools close.
+`GIT_SHA`, which `ops/deploy.sh` sets, or else `BANK_VERSION`. SIGTERM and Ctrl-C
+stop new requests and allow active requests up to 30 seconds before the database
+pools close.
 
 JSON imports are limited to 16 MiB and 10,000 entries, with at most two decoded
 concurrently. Each body must arrive within one minute after its import slot is
