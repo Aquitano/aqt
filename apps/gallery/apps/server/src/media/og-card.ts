@@ -1,10 +1,8 @@
-import { db } from "@aqt/gallery-db";
-import { exhibition, placement, room } from "@aqt/gallery-db/schema/exhibition";
 import type { Theme } from "@aqt/gallery-db/schema/theme";
-import { asc, eq, inArray } from "drizzle-orm";
 import sharp, { type OverlayOptions } from "sharp";
 
 import { servePublicImage, serveStoredImage } from "./public-image";
+import type { MediaRows } from "./rows";
 import type { MediaStore } from "./store";
 
 /**
@@ -74,45 +72,14 @@ const KIND_LABEL: Record<string, string> = {
 /** Load a published exhibition by slug plus its room/artwork counts, or null
  * when missing, unpublished or personal (there is no owner preview for share
  * cards). */
-async function loadExhibition(slug: string): Promise<EntityCard | null> {
-  const rows = await db
-    .select({
-      id: exhibition.id,
-      kind: exhibition.kind,
-      name: exhibition.name,
-      tagline: exhibition.tagline,
-      description: exhibition.description,
-      theme: exhibition.theme,
-      coverImageUrl: exhibition.coverImageUrl,
-      coverArtworkId: exhibition.coverArtworkId,
-      isPublished: exhibition.isPublished,
-    })
-    .from(exhibition)
-    .where(eq(exhibition.slug, slug))
-    .limit(1);
-  const e = rows[0];
+async function loadExhibition(rows: MediaRows, slug: string): Promise<EntityCard | null> {
+  const e = await rows.exhibitionBySlug(slug);
   if (!e?.isPublished || e.kind === "personal") return null;
 
-  const rooms = await db
-    .select({ id: room.id })
-    .from(room)
-    .where(eq(room.exhibitionId, e.id))
-    .orderBy(asc(room.sortOrder));
-  const placements =
-    rooms.length === 0
-      ? []
-      : await db
-          .select({ artworkId: placement.artworkId })
-          .from(placement)
-          .where(
-            inArray(
-              placement.roomId,
-              rooms.map((r) => r.id),
-            ),
-          )
-          .orderBy(asc(placement.position));
+  const roomIds = await rows.roomIds(e.id);
+  const artworkIds = await rows.placedArtworkIds(roomIds);
 
-  const artworkCount = `${placements.length} ${plural(placements.length, "artwork")}`;
+  const artworkCount = `${artworkIds.length} ${plural(artworkIds.length, "artwork")}`;
   return {
     id: e.id,
     name: e.name,
@@ -123,10 +90,10 @@ async function loadExhibition(slug: string): Promise<EntityCard | null> {
     coverArtworkId: e.coverArtworkId,
     kicker: e.tagline?.trim() || KIND_LABEL[e.kind] || "Exhibition",
     counts:
-      rooms.length > 1
-        ? `${rooms.length} ${plural(rooms.length, "room")} · ${artworkCount}`
+      roomIds.length > 1
+        ? `${roomIds.length} ${plural(roomIds.length, "room")} · ${artworkCount}`
         : artworkCount,
-    firstArtworkId: placements[0]?.artworkId,
+    firstArtworkId: artworkIds[0],
   };
 }
 
@@ -158,12 +125,14 @@ function coverRef(card: EntityCard): {
 
 async function loadCoverBytes(
   store: MediaStore,
+  rows: MediaRows,
   ref: ReturnType<typeof coverRef>,
   checkUpstreamBudget?: () => { ok: boolean; retryAfterMs: number },
 ): Promise<Buffer | null> {
   if (!ref) return null;
   const res = await servePublicImage({
     store,
+    rows,
     entity: ref.entity,
     id: ref.id,
     variant: ref.variant,
@@ -309,13 +278,14 @@ function serveCachedCard(
 
 export async function serveOgCard(options: {
   store: MediaStore;
+  rows: MediaRows;
   slug: string;
   ifNoneMatch?: string;
   checkUpstreamBudget?: () => { ok: boolean; retryAfterMs: number };
 }): Promise<Response> {
-  const { store, slug, ifNoneMatch, checkUpstreamBudget } = options;
+  const { store, rows, slug, ifNoneMatch, checkUpstreamBudget } = options;
 
-  const card = await loadExhibition(slug);
+  const card = await loadExhibition(rows, slug);
   if (!card) {
     return new Response("Not found", { status: 404 });
   }
@@ -325,7 +295,7 @@ export async function serveOgCard(options: {
   if (cached) return cached;
 
   const ref = coverRef(card);
-  const coverBytes = await loadCoverBytes(store, ref, checkUpstreamBudget);
+  const coverBytes = await loadCoverBytes(store, rows, ref, checkUpstreamBudget);
   const png = await composeCard(card, coverBytes);
 
   // A cover ref that resolved to no bytes is a transient fetch failure (upstream

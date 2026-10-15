@@ -11,7 +11,8 @@ import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 
-import { beaconBatchSchema, recordBeaconEvents } from "./analytics/beacon";
+import { recordBeaconEvents } from "./analytics/beacon";
+import { beaconBatchSchema } from "./analytics/beacon-events";
 import { sessionFromApiToken } from "./api/auth-token";
 import { createContext } from "./api/context";
 import { appRouter } from "./api/routers/index";
@@ -19,6 +20,7 @@ import { createGalleryMcpServer } from "./mcp/server";
 import { serveOgCard } from "./media/og-card";
 import { mediaKey } from "./media/paths";
 import { isEntity, isVariant, servePublicImage, warmArtworkImages } from "./media/public-image";
+import { mediaRows } from "./media/rows";
 import { mediaStore } from "./media/store";
 import { uploadErrorResponse, uploadMedia } from "./media/upload";
 import {
@@ -99,6 +101,7 @@ app.post("/media/upload", async (c) => {
 
   void warmArtworkImages({
     store: mediaStore,
+    rows: mediaRows,
     ownerId: session.user.id,
     artworkIds: result.uploaded.map((u) => u.artworkId),
   });
@@ -157,6 +160,7 @@ app.get("/public-image/:entity/:id/:variant", async (c) => {
   const clientKey = anonymousRateKey(c);
   return servePublicImage({
     store: mediaStore,
+    rows: mediaRows,
     entity,
     id,
     variant,
@@ -182,6 +186,7 @@ app.get("/og-image/:slug", async (c) => {
   const clientKey = anonymousRateKey(c);
   return serveOgCard({
     store: mediaStore,
+    rows: mediaRows,
     slug: c.req.param("slug"),
     ifNoneMatch: c.req.header("if-none-match"),
     // Only consulted on a cover cache miss (rare — the lobby/museum page has

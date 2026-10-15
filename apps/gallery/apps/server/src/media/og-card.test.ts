@@ -1,59 +1,27 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { exhibition, placement, room } from "@aqt/gallery-db/schema/exhibition";
-import { artwork } from "@aqt/gallery-db/schema/gallery";
 import sharp from "sharp";
 
-import type { MediaStore } from "./store";
+import { deleteEntityCacheFiles } from "./delete-files";
+import { ogCardCacheTargets, serveOgCard } from "./og-card";
+import type { MediaRows } from "./rows";
+import { createDiskStore, type MediaStore } from "./store";
 
-// og-card.ts (through public-image.ts) imports the singleton `db`, whose module
-// opens a real Postgres connection at import time. Mock the specifier before
-// importing the module under test. The builder is thenable so a query resolves
-// wherever the chain ends — sourceFor stops at `.limit(1)`, the card's count
-// queries at `.where(...)`/`.orderBy(...)`. `rowsFor` is swapped per test and
-// keyed by the table object identity so each table's query resolves
-// independently.
-type Row = Record<string, unknown>;
-let rowsFor: (table: unknown) => Row[] = () => [];
+type ExhibitionRow = NonNullable<Awaited<ReturnType<MediaRows["exhibitionBySlug"]>>>;
+type ArtworkRow = NonNullable<Awaited<ReturnType<MediaRows["artwork"]>>>;
 
-await mock.module("@aqt/gallery-db", () => ({
-  db: {
-    select() {
-      let table: unknown;
-      const builder = {
-        from(t: unknown) {
-          table = t;
-          return builder;
-        },
-        leftJoin() {
-          return builder;
-        },
-        where() {
-          return builder;
-        },
-        orderBy() {
-          return builder;
-        },
-        limit() {
-          return Promise.resolve(rowsFor(table));
-        },
-        // oxlint-disable-next-line unicorn/no-thenable -- the thenable builder is the point: it lets `await` resolve a query wherever the chain ends.
-        then<T>(resolve: (rows: Row[]) => T, reject?: (err: unknown) => T) {
-          return Promise.resolve(rowsFor(table)).then(resolve, reject);
-        },
-      };
-      return builder;
-    },
-  },
-}));
-
-// Dynamic import so the mock above is registered first (static imports hoist).
-const { serveOgCard, ogCardCacheTargets } = await import("./og-card");
-const { deleteEntityCacheFiles } = await import("./delete-files");
-const { createDiskStore } = await import("./store");
+const noRows: MediaRows = {
+  artwork: async () => undefined,
+  mediaAsset: async () => undefined,
+  exhibitionCover: async () => undefined,
+  exhibitionBySlug: async () => undefined,
+  roomIds: async () => [],
+  placedArtworkIds: async () => [],
+};
+let rows = noRows;
 
 /** The cache key of a card, as a path under the temp disk root. */
 function cardFile(root: string, id: string): string {
@@ -96,7 +64,7 @@ const solidPng = (w: number, h: number) =>
 
 /** A published exhibition whose cover is a member artwork served from a remote
  * source URL. */
-function publishedExhibitionRow(over: Partial<Row> = {}): Row {
+function publishedExhibitionRow(over: Partial<ExhibitionRow> = {}): ExhibitionRow {
   return {
     id: "exh-1",
     kind: "exhibition",
@@ -111,7 +79,7 @@ function publishedExhibitionRow(over: Partial<Row> = {}): Row {
   };
 }
 
-function coverArtworkRow(over: Partial<Row> = {}): Row {
+function coverArtworkRow(over: Partial<ArtworkRow> = {}): ArtworkRow {
   return {
     imageUrl: COVER_URL,
     thumbnailUrl: null,
@@ -122,15 +90,15 @@ function coverArtworkRow(over: Partial<Row> = {}): Row {
   };
 }
 
-/** Wire the db mock for a card render: the exhibition row, one room, one
- * placement (also the cover artwork), and that artwork's source. */
-function wireExhibition(exhibitionOver: Partial<Row> = {}) {
-  rowsFor = (t) => {
-    if (t === exhibition) return [publishedExhibitionRow(exhibitionOver)];
-    if (t === room) return [{ id: "room-1" }];
-    if (t === placement) return [{ artworkId: "art-1" }];
-    if (t === artwork) return [coverArtworkRow()];
-    return [];
+/** Rows for a card render: the exhibition, one room, one placement (also the
+ * cover artwork), and that artwork's source. */
+function wireExhibition(exhibitionOver: Partial<ExhibitionRow> = {}) {
+  rows = {
+    ...noRows,
+    exhibitionBySlug: async () => publishedExhibitionRow(exhibitionOver),
+    roomIds: async () => ["room-1"],
+    placedArtworkIds: async () => ["art-1"],
+    artwork: async () => coverArtworkRow(),
   };
 }
 
@@ -144,7 +112,7 @@ async function metaOf(res: Response) {
 beforeEach(async () => {
   uploadRoot = await mkdtemp(path.join(tmpdir(), "og-card-test-"));
   store = createDiskStore(uploadRoot);
-  rowsFor = () => [];
+  rows = noRows;
 });
 
 afterEach(async () => {
@@ -157,7 +125,7 @@ describe("serveOgCard — compose and cache", () => {
     wireExhibition();
     stubImageFetch(await solidPng(600, 400));
 
-    const res = await serveOgCard({ store, slug: "wing" });
+    const res = await serveOgCard({ store, rows, slug: "wing" });
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("image/png");
@@ -174,13 +142,13 @@ describe("serveOgCard — compose and cache", () => {
     wireExhibition();
     const calls = stubImageFetch(await solidPng(600, 400));
 
-    const first = await serveOgCard({ store, slug: "wing" });
+    const first = await serveOgCard({ store, rows, slug: "wing" });
     expect(first.status).toBe(200);
     expect(calls.count).toBe(1);
     const etag = first.headers.get("ETag");
     expect(etag).toBeTruthy();
 
-    const second = await serveOgCard({ store, slug: "wing" });
+    const second = await serveOgCard({ store, rows, slug: "wing" });
     expect(second.status).toBe(200);
     expect(second.headers.get("Content-Type")).toBe("image/png");
     // The disk cache answered — the cover was not fetched again.
@@ -188,6 +156,7 @@ describe("serveOgCard — compose and cache", () => {
 
     const revalidated = await serveOgCard({
       store,
+      rows,
       slug: "wing",
       ifNoneMatch: etag ?? undefined,
     });
@@ -196,16 +165,15 @@ describe("serveOgCard — compose and cache", () => {
   });
 
   test("renders without a cover when the entity has none", async () => {
-    rowsFor = (t) => {
-      if (t === exhibition)
-        return [publishedExhibitionRow({ coverArtworkId: null, coverImageUrl: null })];
-      if (t === room) return [{ id: "room-1" }];
-      if (t === placement) return [];
-      return [];
+    rows = {
+      ...noRows,
+      exhibitionBySlug: async () =>
+        publishedExhibitionRow({ coverArtworkId: null, coverImageUrl: null }),
+      roomIds: async () => ["room-1"],
     };
     const calls = stubImageFetch(await solidPng(600, 400));
 
-    const res = await serveOgCard({ store, slug: "wing" });
+    const res = await serveOgCard({ store, rows, slug: "wing" });
 
     expect(res.status).toBe(200);
     const meta = await metaOf(res);
@@ -221,12 +189,12 @@ describe("serveOgCard — compose and cache", () => {
     const failUrl = "https://203.0.113.20/cover.png";
     const okUrl = "https://203.0.113.21/cover.png";
     let coverUrl = failUrl;
-    rowsFor = (t) => {
-      if (t === exhibition) return [publishedExhibitionRow()];
-      if (t === room) return [{ id: "room-1" }];
-      if (t === placement) return [{ artworkId: "art-1" }];
-      if (t === artwork) return [coverArtworkRow({ imageUrl: coverUrl })];
-      return [];
+    rows = {
+      ...noRows,
+      exhibitionBySlug: async () => publishedExhibitionRow(),
+      roomIds: async () => ["room-1"],
+      placedArtworkIds: async () => ["art-1"],
+      artwork: async () => coverArtworkRow({ imageUrl: coverUrl }),
     };
 
     // Phase 1: the cover exists but upstream fails. A 404 aborts the fetch
@@ -235,7 +203,7 @@ describe("serveOgCard — compose and cache", () => {
       preconnect: realFetch.preconnect,
     });
 
-    const failed = await serveOgCard({ store, slug: "wing" });
+    const failed = await serveOgCard({ store, rows, slug: "wing" });
     expect(failed.status).toBe(200);
     expect(failed.headers.get("Cache-Control")).toBe("no-store");
     const failedMeta = await metaOf(failed);
@@ -248,7 +216,7 @@ describe("serveOgCard — compose and cache", () => {
     // Phase 2: the cover is fetchable again, so the card caches with it.
     coverUrl = okUrl;
     const calls = stubImageFetch(await solidPng(600, 400));
-    const ok = await serveOgCard({ store, slug: "wing" });
+    const ok = await serveOgCard({ store, rows, slug: "wing" });
     expect(ok.status).toBe(200);
     expect(ok.headers.get("Cache-Control")).toBe("public, max-age=3600");
     expect(calls.count).toBe(1);
@@ -261,7 +229,7 @@ describe("serveOgCard — publish gate", () => {
     wireExhibition({ isPublished: false });
     const calls = stubImageFetch(await solidPng(600, 400));
 
-    const res = await serveOgCard({ store, slug: "wing" });
+    const res = await serveOgCard({ store, rows, slug: "wing" });
 
     expect(res.status).toBe(404);
     expect(calls.count).toBe(0);
@@ -272,15 +240,14 @@ describe("serveOgCard — publish gate", () => {
     wireExhibition({ kind: "personal", isPublished: true });
     const calls = stubImageFetch(await solidPng(600, 400));
 
-    const res = await serveOgCard({ store, slug: "wing" });
+    const res = await serveOgCard({ store, rows, slug: "wing" });
 
     expect(res.status).toBe(404);
     expect(calls.count).toBe(0);
   });
 
   test("404s for a missing exhibition", async () => {
-    rowsFor = () => [];
-    const res = await serveOgCard({ store, slug: "nope" });
+    const res = await serveOgCard({ store, rows, slug: "nope" });
     expect(res.status).toBe(404);
   });
 });
@@ -290,7 +257,7 @@ describe("deleteEntityCacheFiles — card invalidation", () => {
     wireExhibition();
     stubImageFetch(await solidPng(600, 400));
 
-    await serveOgCard({ store, slug: "wing" });
+    await serveOgCard({ store, rows, slug: "wing" });
     const cacheFile = cardFile(uploadRoot, "exh-1");
     expect(await Bun.file(cacheFile).exists()).toBe(true);
 

@@ -35,6 +35,7 @@ import {
 } from "../../media/museum-import";
 import { mediaKey } from "../../media/paths";
 import { warmArtworkImages } from "../../media/public-image";
+import { mediaRows } from "../../media/rows";
 import { mediaStore } from "../../media/store";
 import { importMediaFromUrls, uploadErrorResponse } from "../../media/upload";
 import { importRateLimiter } from "../../rate-limit";
@@ -767,6 +768,7 @@ export const artworksRouter = router({
       });
       void warmArtworkImages({
         store: mediaStore,
+        rows: mediaRows,
         ownerId: userId,
         artworkIds: [input.artworkId],
       });
@@ -902,6 +904,7 @@ export const artworksRouter = router({
 
       void warmArtworkImages({
         store: mediaStore,
+        rows: mediaRows,
         ownerId: userId,
         artworkIds: imported.map((u) => u.artworkId),
       });
@@ -1080,6 +1083,7 @@ export const artworksRouter = router({
 
       void warmArtworkImages({
         store: mediaStore,
+        rows: mediaRows,
         ownerId: userId,
         artworkIds: results.flatMap((r) => (r.ok ? [r.artworkId] : [])),
       });
@@ -1117,6 +1121,7 @@ export const artworksRouter = router({
         .returning();
       void warmArtworkImages({
         store: mediaStore,
+        rows: mediaRows,
         ownerId: userId,
         artworkIds: [id],
       });
