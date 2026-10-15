@@ -1,10 +1,7 @@
-import { db } from "@aqt/gallery-db";
-import { exhibition } from "@aqt/gallery-db/schema/exhibition";
-import { artwork, mediaAsset } from "@aqt/gallery-db/schema/gallery";
-import { eq } from "drizzle-orm";
 import sharp from "sharp";
 
 import { mediaKey } from "./paths";
+import type { ImageRows } from "./rows";
 import { fetchFollowingRedirects, readImageBodyCapped } from "./ssrf-fetch";
 import type { MediaStore } from "./store";
 
@@ -48,24 +45,14 @@ type ImageSource =
   | { kind: "local"; key: string; contentType: string; isPublic: boolean };
 
 async function sourceFor(
+  rows: ImageRows,
   entity: Entity,
   id: string,
   variant: Variant,
   resolveViewer?: () => Promise<string | undefined>,
 ): Promise<ImageSource | null> {
   if (entity === "artwork") {
-    const rows = await db
-      .select({
-        imageUrl: artwork.imageUrl,
-        thumbnailUrl: artwork.thumbnailUrl,
-        isPublished: artwork.isPublished,
-        userId: artwork.userId,
-        primaryAssetId: artwork.primaryAssetId,
-      })
-      .from(artwork)
-      .where(eq(artwork.id, id))
-      .limit(1);
-    const row = rows[0];
+    const row = await rows.artwork(id);
     if (!row) return null;
     // Published artworks are public. An owner may also view their own
     // unpublished artwork — the private archive and studio grids serve
@@ -81,16 +68,7 @@ async function sourceFor(
       return { kind: "remote", url, isPublic };
     }
     if (!row.primaryAssetId) return null;
-    const assets = await db
-      .select({
-        storagePath: mediaAsset.storagePath,
-        thumbnailPath: mediaAsset.thumbnailPath,
-        mimeType: mediaAsset.mimeType,
-      })
-      .from(mediaAsset)
-      .where(eq(mediaAsset.id, row.primaryAssetId))
-      .limit(1);
-    const asset = assets[0];
+    const asset = await rows.mediaAsset(row.primaryAssetId);
     if (!asset) return null;
     return variant === "thumb"
       ? {
@@ -109,16 +87,7 @@ async function sourceFor(
   // Exhibition covers carry their own publish flag: an unpublished draft's
   // cover must not leak to anonymous viewers, and only the owner may preview
   // it (and never via a shared/immutable cache). Mirrors the artwork gate.
-  const rows = await db
-    .select({
-      coverImageUrl: exhibition.coverImageUrl,
-      isPublished: exhibition.isPublished,
-      createdBy: exhibition.createdBy,
-    })
-    .from(exhibition)
-    .where(eq(exhibition.id, id))
-    .limit(1);
-  const row = rows[0];
+  const row = await rows.exhibitionCover(id);
   if (!row?.coverImageUrl) return null;
   if (!row.isPublished) {
     const viewerId = await resolveViewer?.();
@@ -463,6 +432,7 @@ async function ensureRemoteCached(
  * concurrent encodes. */
 export async function warmArtworkImages(opts: {
   store: MediaStore;
+  rows: ImageRows;
   ownerId: string;
   artworkIds: readonly string[];
 }): Promise<void> {
@@ -470,7 +440,7 @@ export async function warmArtworkImages(opts: {
   for (const id of opts.artworkIds) {
     for (const variant of ["mid", "full"] as const) {
       try {
-        const source = await sourceFor("artwork", id, variant, viewer);
+        const source = await sourceFor(opts.rows, "artwork", id, variant, viewer);
         if (!source) continue;
         if (source.kind === "local") {
           await ensureLocalCapped(opts.store, "artwork", id, variant, source);
@@ -541,6 +511,7 @@ async function serveLocalImage(options: {
 
 export async function servePublicImage(options: {
   store: MediaStore;
+  rows: ImageRows;
   entity: Entity;
   id: string;
   variant: Variant;
@@ -553,12 +524,13 @@ export async function servePublicImage(options: {
    * rate-limited. */
   checkUpstreamBudget?: () => { ok: boolean; retryAfterMs: number };
 }): Promise<Response> {
-  const { store, entity, id, variant, ifNoneMatch, resolveViewer, checkUpstreamBudget } = options;
+  const { store, rows, entity, id, variant, ifNoneMatch, resolveViewer, checkUpstreamBudget } =
+    options;
   const cacheBase = cacheBaseFor(entity, id, variant);
 
   // Resolve the source first — it carries the publish/owner check, so an
   // unpublished artwork is never served, not even from the cache.
-  const source = await sourceFor(entity, id, variant, resolveViewer);
+  const source = await sourceFor(rows, entity, id, variant, resolveViewer);
   if (!source) {
     return new Response("Not found", { status: 404 });
   }

@@ -1,13 +1,6 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
-// beacon.ts imports the singleton `db`, whose module validates the server env
-// and opens a Postgres connection at import time. planIncrements and utcDay are
-// pure and never touch it, so a stub is enough to keep the import graph loadable
-// under test. The upsert path needs a live Postgres and is not exercised here.
-await mock.module("@aqt/gallery-db", () => ({ db: {} }));
-
-const { planIncrements, utcDay } = await import("./beacon");
-type BeaconEvent = import("./beacon").BeaconEvent;
+import { type BeaconEvent, planIncrements, utcDay } from "./beacon-events";
 
 const publishAll = () => true;
 const allowAllArtworks = () => true;

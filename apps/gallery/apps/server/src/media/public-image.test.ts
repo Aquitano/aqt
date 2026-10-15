@@ -1,47 +1,28 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { artwork, mediaAsset } from "@aqt/gallery-db/schema/gallery";
 import sharp from "sharp";
 
-import type { MediaStore } from "./store";
+import { deleteArtworkCacheFiles } from "./delete-files";
+import { servePublicImage, warmArtworkImages } from "./public-image";
+import type { ImageRows } from "./rows";
+import { createDiskStore, type MediaStore } from "./store";
 
-// public-image.ts imports the singleton `db`, whose module opens a real
-// Postgres connection at import time. Mock the specifier before importing the
-// module under test. The chainable stub mirrors exactly the drizzle calls
-// sourceFor makes: db.select({...}).from(table).where(...).limit(1). `rowsFor`
-// is swapped per test and keyed by the table object identity so the artwork
-// query and the mediaAsset follow-up resolve independently.
-type Row = Record<string, unknown>;
-let rowsFor: (table: unknown) => Row[] = () => [];
+type ArtworkRow = NonNullable<Awaited<ReturnType<ImageRows["artwork"]>>>;
+type AssetRow = NonNullable<Awaited<ReturnType<ImageRows["mediaAsset"]>>>;
 
-await mock.module("@aqt/gallery-db", () => ({
-  db: {
-    select() {
-      let table: unknown;
-      const builder = {
-        from(t: unknown) {
-          table = t;
-          return builder;
-        },
-        where() {
-          return builder;
-        },
-        limit() {
-          return Promise.resolve(rowsFor(table));
-        },
-      };
-      return builder;
-    },
-  },
-}));
+const noRows: ImageRows = {
+  artwork: async () => undefined,
+  mediaAsset: async () => undefined,
+  exhibitionCover: async () => undefined,
+};
+let rows = noRows;
 
-// Dynamic import so the mock above is registered first (static imports hoist).
-const { servePublicImage, warmArtworkImages } = await import("./public-image");
-const { deleteArtworkCacheFiles } = await import("./delete-files");
-const { createDiskStore } = await import("./store");
+function artworkRows(row: ArtworkRow, asset?: AssetRow): ImageRows {
+  return { ...noRows, artwork: async () => row, mediaAsset: async () => asset };
+}
 
 const realFetch = globalThis.fetch;
 
@@ -67,7 +48,7 @@ function stubImageFetch(bytes: Buffer, contentType = "image/png") {
 const SOURCE_URL = "https://203.0.113.7/big.png";
 
 /** A published artwork whose image comes from a remote source URL. */
-function remoteArtworkRow(over: Partial<Row> = {}): Row {
+function remoteArtworkRow(over: Partial<ArtworkRow> = {}): ArtworkRow {
   return {
     imageUrl: SOURCE_URL,
     thumbnailUrl: null,
@@ -79,7 +60,7 @@ function remoteArtworkRow(over: Partial<Row> = {}): Row {
 }
 
 /** A published artwork with no source URL — served from its local upload. */
-function localArtworkRow(over: Partial<Row> = {}): Row {
+function localArtworkRow(over: Partial<ArtworkRow> = {}): ArtworkRow {
   return {
     imageUrl: null,
     thumbnailUrl: null,
@@ -108,6 +89,7 @@ let store: MediaStore;
 function baseOpts() {
   return {
     store,
+    rows,
     entity: "artwork" as const,
     id: "art-1",
     variant: "full" as const,
@@ -121,7 +103,7 @@ async function metaOf(res: Response) {
 beforeEach(async () => {
   uploadRoot = await mkdtemp(path.join(tmpdir(), "public-image-test-"));
   store = createDiskStore(uploadRoot);
-  rowsFor = () => [];
+  rows = noRows;
 });
 
 afterEach(async () => {
@@ -131,7 +113,7 @@ afterEach(async () => {
 
 describe("servePublicImage — remote source resize cap", () => {
   test("caps a >2048px source to <=2048px webp", async () => {
-    rowsFor = (t) => (t === artwork ? [remoteArtworkRow()] : []);
+    rows = artworkRows(remoteArtworkRow());
     stubImageFetch(await solidPng(3000, 2000));
 
     const res = await servePublicImage(baseOpts());
@@ -144,7 +126,7 @@ describe("servePublicImage — remote source resize cap", () => {
   });
 
   test("mid caps to <=1024px and caches under its own key", async () => {
-    rowsFor = (t) => (t === artwork ? [remoteArtworkRow()] : []);
+    rows = artworkRows(remoteArtworkRow());
     stubImageFetch(await solidPng(3000, 2000));
 
     const res = await servePublicImage({ ...baseOpts(), variant: "mid" });
@@ -161,7 +143,7 @@ describe("servePublicImage — remote source resize cap", () => {
   });
 
   test("thumb caps to <=480px and caches under its own key", async () => {
-    rowsFor = (t) => (t === artwork ? [remoteArtworkRow()] : []);
+    rows = artworkRows(remoteArtworkRow());
     stubImageFetch(await solidPng(3000, 2000));
 
     const res = await servePublicImage({ ...baseOpts(), variant: "thumb" });
@@ -178,11 +160,12 @@ describe("servePublicImage — remote source resize cap", () => {
   });
 
   test("warmArtworkImages derives mid and full so the first visit is a cache hit", async () => {
-    rowsFor = (t) => (t === artwork ? [remoteArtworkRow()] : []);
+    rows = artworkRows(remoteArtworkRow());
     const calls = stubImageFetch(await solidPng(3000, 2000));
 
     await warmArtworkImages({
       store,
+      rows,
       ownerId: "owner-1",
       artworkIds: ["art-1"],
     });
@@ -200,7 +183,7 @@ describe("servePublicImage — remote source resize cap", () => {
   });
 
   test("re-encodes a small source to webp without enlarging it", async () => {
-    rowsFor = (t) => (t === artwork ? [remoteArtworkRow()] : []);
+    rows = artworkRows(remoteArtworkRow());
     stubImageFetch(await solidPng(512, 512));
 
     const res = await servePublicImage(baseOpts());
@@ -213,7 +196,7 @@ describe("servePublicImage — remote source resize cap", () => {
   });
 
   test("second request serves the cached webp and revalidates to 304", async () => {
-    rowsFor = (t) => (t === artwork ? [remoteArtworkRow()] : []);
+    rows = artworkRows(remoteArtworkRow());
     const calls = stubImageFetch(await solidPng(3000, 2000));
 
     const first = await servePublicImage(baseOpts());
@@ -242,7 +225,7 @@ describe("servePublicImage — upstream negative cache", () => {
     // Unique URL: the negative cache is module-level state shared across
     // tests, so poisoning SOURCE_URL here would break the success-path tests.
     const badUrl = "https://203.0.113.9/broken.png";
-    rowsFor = (t) => (t === artwork ? [remoteArtworkRow({ imageUrl: badUrl })] : []);
+    rows = artworkRows(remoteArtworkRow({ imageUrl: badUrl }));
     // A 200 with an HTML body is rejected without retries (unknown type).
     const calls = stubImageFetch(Buffer.from("<html>nope</html>"), "text/html");
 
@@ -263,18 +246,11 @@ describe("servePublicImage — local upload resize cap", () => {
     const original = await solidPng(3000, 2000);
     await Bun.write(storagePath, original, { createPath: true });
 
-    rowsFor = (t) => {
-      if (t === artwork) return [localArtworkRow()];
-      if (t === mediaAsset)
-        return [
-          {
-            storagePath,
-            thumbnailPath: path.join(uploadRoot, "thumbs", "art-1.webp"),
-            mimeType: "image/png",
-          },
-        ];
-      return [];
-    };
+    rows = artworkRows(localArtworkRow(), {
+      storagePath,
+      thumbnailPath: path.join(uploadRoot, "thumbs", "art-1.webp"),
+      mimeType: "image/png",
+    });
 
     const res = await servePublicImage(baseOpts());
 
@@ -296,18 +272,11 @@ describe("deleteArtworkCacheFiles — primary-asset swap invalidation", () => {
     await Bun.write(storagePath, await solidPng(600, 400), {
       createPath: true,
     });
-    rowsFor = (t) => {
-      if (t === artwork) return [localArtworkRow()];
-      if (t === mediaAsset)
-        return [
-          {
-            storagePath,
-            thumbnailPath: path.join(uploadRoot, "thumbs", "art-1.webp"),
-            mimeType: "image/png",
-          },
-        ];
-      return [];
-    };
+    rows = artworkRows(localArtworkRow(), {
+      storagePath,
+      thumbnailPath: path.join(uploadRoot, "thumbs", "art-1.webp"),
+      mimeType: "image/png",
+    });
 
     await servePublicImage(baseOpts());
     const cappedFile = path.join(uploadRoot, "public-image-cache", "artwork-art-1-full-v2.webp");
@@ -321,7 +290,7 @@ describe("deleteArtworkCacheFiles — primary-asset swap invalidation", () => {
 
 describe("servePublicImage — unpublished owner-preview access control", () => {
   test("404s for a non-owner viewing an unpublished artwork", async () => {
-    rowsFor = (t) => (t === artwork ? [remoteArtworkRow({ isPublished: false })] : []);
+    rows = artworkRows(remoteArtworkRow({ isPublished: false }));
     const calls = stubImageFetch(await solidPng(512, 512));
 
     const res = await servePublicImage({
@@ -335,7 +304,7 @@ describe("servePublicImage — unpublished owner-preview access control", () => 
   });
 
   test("serves the owner their own unpublished artwork, privately cached", async () => {
-    rowsFor = (t) => (t === artwork ? [remoteArtworkRow({ isPublished: false })] : []);
+    rows = artworkRows(remoteArtworkRow({ isPublished: false }));
     stubImageFetch(await solidPng(512, 512));
 
     const res = await servePublicImage({
