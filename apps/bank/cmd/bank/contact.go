@@ -20,114 +20,88 @@ var builtinSources = []string{
 	"whatsapp", "gmail", "proton", "discord", "linkedin", "youtube", "chatgpt", "claude",
 }
 
-const contactUsage = `usage: bank contact <add|rm|list|show|alias|messages|suggest|import> ...
+type contactCmd struct {
+	Add      contactAddCmd      `cmd:"" help:"Create a contact."`
+	Rm       contactRmCmd       `cmd:"" aliases:"remove,delete" help:"Remove a contact; its messages are untouched."`
+	List     contactListCmd     `cmd:"" aliases:"ls" help:"Contacts and their identities."`
+	Show     contactShowCmd     `cmd:"" help:"One contact, its identities and message counts."`
+	Alias    contactAliasCmd    `cmd:"" help:"Attach or detach identities."`
+	Messages contactMessagesCmd `cmd:"" help:"Everything a contact sent or received, newest first."`
+	Suggest  contactSuggestCmd  `cmd:"" help:"Identities no contact claims yet."`
+	Import   contactImportCmd   `cmd:"" help:"Apply a whole contact book at once."`
+}
 
-  bank contact add <name> [--note text]
-  bank contact rm <name>
-  bank contact list [--json]
-  bank contact show <name> [--json]
-  bank contact alias add <name> <alias>...
-  bank contact alias rm <name> <alias>...
-  bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--json]
-  bank contact suggest [--limit n] [--json]
-  bank contact import <file|-> [--json]
-
-An alias is an identity that means this person: an email address, a WhatsApp
+func (contactCmd) Help() string {
+	return `An alias is an identity that means this person: an email address, a WhatsApp
 display name, a Discord handle. It matches everywhere by default; write it as
 "<source>:<value>" to bind it to one source.
 
 import takes a JSON array or NDJSON of
 {"name": "...", "note": "...", "aliases": ["whatsapp:...", "a@example.com"]}.`
+}
 
-func cmdContact(ctx context.Context, args []string) error {
-	if len(args) == 0 {
-		return errors.New(contactUsage)
-	}
+type contactAddCmd struct {
+	Name string `arg:""`
+	Note string `help:"Free-text note."`
+}
+
+func (c *contactAddCmd) Run(ctx context.Context) error {
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeBackend()
-
-	switch args[0] {
-	case "add":
-		return contactAdd(ctx, b, args[1:])
-	case "rm", "remove", "delete":
-		return contactRemove(ctx, b, args[1:])
-	case "list", "ls":
-		return contactList(ctx, b, args[1:])
-	case "show":
-		return contactShow(ctx, b, args[1:])
-	case "alias":
-		return contactAlias(ctx, b, args[1:])
-	case "messages":
-		return contactMessages(ctx, b, args[1:])
-	case "suggest":
-		return contactSuggest(ctx, b, args[1:])
-	case "import":
-		return contactImport(ctx, b, args[1:])
-	}
-	return fmt.Errorf("unknown contact command %q\n\n%s", args[0], contactUsage)
-}
-
-func contactAdd(ctx context.Context, b backend, args []string) error {
-	options := struct {
-		CommandArguments
-		Note string `name:"note"`
-	}{}
-	note := &options.Note
-	if err := parseCommand("contact add", &options, args); err != nil {
-		return err
-	}
-
-	if len(options.Args) != 1 {
-		return errors.New("usage: bank contact add <name> [--note text]")
-	}
-	c, err := b.CreateContact(ctx, commandArg(options.Args, 0), *note)
+	contact, err := b.CreateContact(ctx, c.Name, c.Note)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("contact %s\nattach identities with: bank contact alias add %s <email|handle>\n", c.Name, c.Name)
+	fmt.Printf("contact %s\nattach identities with: bank contact alias add %s <email|handle>\n", contact.Name, contact.Name)
 	return nil
 }
 
-func contactRemove(ctx context.Context, b backend, args []string) error {
-	if len(args) != 1 {
-		return errors.New("usage: bank contact rm <name>")
-	}
-	if err := b.DeleteContact(ctx, args[0]); err != nil {
-		return contactErr(args[0], err)
-	}
-	// Worth saying plainly: this is a lens, not the data.
-	fmt.Printf("contact %s removed; its messages are untouched\n", args[0])
-	return nil
+type contactRmCmd struct {
+	Name string `arg:""`
 }
 
-func contactList(ctx context.Context, b backend, args []string) error {
-	options := struct {
-		CommandArguments
-		JSON bool `name:"json"`
-	}{}
-	asJSON := &options.JSON
-	if err := parseCommand("contact list", &options, args); err != nil {
+func (c *contactRmCmd) Run(ctx context.Context) error {
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
 		return err
 	}
+	defer closeBackend()
+	if err := b.DeleteContact(ctx, c.Name); err != nil {
+		return contactErr(c.Name, err)
+	}
+	// Worth saying plainly: this is a lens, not the data.
+	fmt.Printf("contact %s removed; its messages are untouched\n", c.Name)
+	return nil
+}
 
+type contactListCmd struct {
+	JSON bool `help:"JSON output."`
+}
+
+func (c *contactListCmd) Run(ctx context.Context) error {
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
 	contacts, err := b.ListContacts(ctx)
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(contacts)
 	}
 	if len(contacts) == 0 {
 		fmt.Println("no contacts yet — 'bank contact suggest' shows who is in the archive")
 		return nil
 	}
-	for _, c := range contacts {
-		fmt.Printf("%-20s %s\n", c.Name, strings.Join(aliasStrings(c.Aliases), ", "))
-		if c.Note != "" {
-			fmt.Printf("%-20s %s\n", "", c.Note)
+	for _, contact := range contacts {
+		fmt.Printf("%-20s %s\n", contact.Name, strings.Join(aliasStrings(contact.Aliases), ", "))
+		if contact.Note != "" {
+			fmt.Printf("%-20s %s\n", "", contact.Note)
 		}
 	}
 	return nil
@@ -144,24 +118,22 @@ func aliasStrings(aliases []store.ContactAlias) []string {
 	return out
 }
 
-func contactShow(ctx context.Context, b backend, args []string) error {
-	options := struct {
-		CommandArguments
-		JSON bool `name:"json"`
-	}{}
-	asJSON := &options.JSON
-	if err := parseCommand("contact show", &options, args); err != nil {
+type contactShowCmd struct {
+	Name string `arg:""`
+	JSON bool   `help:"JSON output."`
+}
+
+func (c *contactShowCmd) Run(ctx context.Context) error {
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
 		return err
 	}
-
-	if len(options.Args) != 1 {
-		return errors.New("usage: bank contact show <name> [--json]")
-	}
-	d, err := b.GetContactDetail(ctx, commandArg(options.Args, 0))
+	defer closeBackend()
+	d, err := b.GetContactDetail(ctx, c.Name)
 	if err != nil {
-		return contactErr(commandArg(options.Args, 0), err)
+		return contactErr(c.Name, err)
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(d)
 	}
 	fmt.Printf("contact: %s\n", d.Name)
@@ -192,31 +164,56 @@ func scopeLabel(source string) string {
 	return "(" + source + " only)"
 }
 
-func contactAlias(ctx context.Context, b backend, args []string) error {
-	if len(args) < 3 {
-		return errors.New("usage: bank contact alias <add|rm> <name> <alias>...")
+type contactAliasCmd struct {
+	Add contactAliasAddCmd `cmd:"" help:"Attach identities to a contact."`
+	Rm  contactAliasRmCmd  `cmd:"" aliases:"remove" help:"Detach identities from a contact."`
+}
+
+type contactAliasAddCmd struct {
+	Name    string   `arg:""`
+	Aliases []string `arg:"" name:"alias"`
+}
+
+func (c *contactAliasAddCmd) Run(ctx context.Context) error {
+	return eachAlias(ctx, c.Aliases, func(b backend, source, value string) error {
+		a, err := b.AddAlias(ctx, c.Name, source, value)
+		if err != nil {
+			return contactErr(c.Name, err)
+		}
+		fmt.Printf("%s: %s %s\n", c.Name, a.Normalized, scopeLabel(a.Source))
+		return nil
+	})
+}
+
+type contactAliasRmCmd struct {
+	Name    string   `arg:""`
+	Aliases []string `arg:"" name:"alias"`
+}
+
+func (c *contactAliasRmCmd) Run(ctx context.Context) error {
+	return eachAlias(ctx, c.Aliases, func(b backend, source, value string) error {
+		if err := b.RemoveAlias(ctx, c.Name, source, value); err != nil {
+			return contactErr(c.Name, err)
+		}
+		fmt.Printf("%s: detached %s %s\n", c.Name, value, scopeLabel(source))
+		return nil
+	})
+}
+
+func eachAlias(ctx context.Context, aliases []string, apply func(b backend, source, value string) error) error {
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
+		return err
 	}
-	action, name, aliases := args[0], args[1], args[2:]
+	defer closeBackend()
 	known, err := knownSources(ctx, b)
 	if err != nil {
 		return err
 	}
 	for _, raw := range aliases {
 		source, value := store.ContactAliasScope(raw, func(s string) bool { return known[s] })
-		switch action {
-		case "add":
-			a, err := b.AddAlias(ctx, name, source, value)
-			if err != nil {
-				return contactErr(name, err)
-			}
-			fmt.Printf("%s: %s %s\n", name, a.Normalized, scopeLabel(a.Source))
-		case "rm", "remove":
-			if err := b.RemoveAlias(ctx, name, source, value); err != nil {
-				return contactErr(name, err)
-			}
-			fmt.Printf("%s: detached %s %s\n", name, value, scopeLabel(source))
-		default:
-			return fmt.Errorf("unknown alias command %q (add, rm)", action)
+		if err := apply(b, source, value); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -239,46 +236,36 @@ func knownSources(ctx context.Context, b backend) (map[string]bool, error) {
 	return out, nil
 }
 
-func contactMessages(ctx context.Context, b backend, args []string) error {
-	options := struct {
-		CommandArguments
-		Source string `name:"source"`
-		Since  string `name:"since"`
-		Until  string `name:"until"`
-		Limit  int    `name:"limit" default:"50"`
-		Before int64  `name:"before"`
-		Offset int    `name:"offset"`
-		JSON   bool   `name:"json"`
-	}{}
-	var o store.ContactMessagesOpts
-	var since, until string
-	var asJSON bool
-	if err := parseCommand("contact messages", &options, args); err != nil {
-		return err
-	}
-	o.Source = options.Source
-	since = options.Since
-	until = options.Until
-	o.Limit = options.Limit
-	o.Before = options.Before
-	o.Offset = options.Offset
-	asJSON = options.JSON
+type contactMessagesCmd struct {
+	Name   string `arg:""`
+	Source string `help:"Only this source."`
+	Since  string `help:"YYYY-MM-DD."`
+	Until  string `help:"YYYY-MM-DD (exclusive)."`
+	Limit  int    `default:"50" help:"Page size."`
+	Before int64  `help:"Continue before this message id (without --offset)."`
+	Offset int    `help:"Skip this many messages."`
+	JSON   bool   `help:"JSON output."`
+}
 
-	if len(options.Args) != 1 {
-		return errors.New("usage: bank contact messages <name> [flags]")
-	}
+func (c *contactMessagesCmd) Run(ctx context.Context) error {
+	o := store.ContactMessagesOpts{Source: c.Source, Limit: c.Limit, Before: c.Before, Offset: c.Offset}
 	var err error
-	if o.Since, err = parseDate(since); err != nil {
+	if o.Since, err = parseDate(c.Since); err != nil {
 		return err
 	}
-	if o.Until, err = parseDate(until); err != nil {
+	if o.Until, err = parseDate(c.Until); err != nil {
 		return err
 	}
-	msgs, err := b.ContactMessages(ctx, commandArg(options.Args, 0), o)
+	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
-		return contactErr(commandArg(options.Args, 0), err)
+		return err
 	}
-	if asJSON {
+	defer closeBackend()
+	msgs, err := b.ContactMessages(ctx, c.Name, o)
+	if err != nil {
+		return contactErr(c.Name, err)
+	}
+	if c.JSON {
 		return printJSON(msgs)
 	}
 	if len(msgs) == 0 {
@@ -299,23 +286,22 @@ func contactMessages(ctx context.Context, b backend, args []string) error {
 	return nil
 }
 
-func contactSuggest(ctx context.Context, b backend, args []string) error {
-	options := struct {
-		CommandArguments
-		Limit int  `name:"limit" default:"20"`
-		JSON  bool `name:"json"`
-	}{}
-	limit := &options.Limit
-	asJSON := &options.JSON
-	if err := parseCommand("contact suggest", &options, args); err != nil {
-		return err
-	}
+type contactSuggestCmd struct {
+	Limit int  `default:"20" help:"How many identities."`
+	JSON  bool `help:"JSON output."`
+}
 
-	out, err := b.SuggestIdentities(ctx, *limit)
+func (c *contactSuggestCmd) Run(ctx context.Context) error {
+	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	defer closeBackend()
+	out, err := b.SuggestIdentities(ctx, c.Limit)
+	if err != nil {
+		return err
+	}
+	if c.JSON {
 		return printJSON(out)
 	}
 	if len(out) == 0 {
@@ -339,54 +325,52 @@ type contactEntry struct {
 	Aliases []string `json:"aliases"`
 }
 
-// contactImport applies a whole contact book at once — the practical way to
-// turn an address-book export into contacts, one identity per line, instead of
-// a shell loop over `contact add` and `contact alias add`. Conflicts are
+// contactImportCmd applies a whole contact book at once — the practical way
+// to turn an address-book export into contacts, one identity per line, instead
+// of a shell loop over `contact add` and `contact alias add`. Conflicts are
 // reported and skipped: the file is the owner's, and one alias another contact
 // already claims must not cost the rest of it.
-func contactImport(ctx context.Context, b backend, args []string) error {
-	options := struct {
-		CommandArguments
-		JSON bool `name:"json"`
-	}{}
-	asJSON := &options.JSON
-	if err := parseCommand("contact import", &options, args); err != nil {
-		return err
-	}
+type contactImportCmd struct {
+	File string `arg:"" help:"JSON array or NDJSON; - reads stdin."`
+	JSON bool   `help:"JSON output."`
+}
 
-	if len(options.Args) != 1 {
-		return errors.New("usage: bank contact import <file|-> [--json]")
-	}
-	input, err := readInput(commandArg(options.Args, 0))
+func (c *contactImportCmd) Run(ctx context.Context) error {
+	input, err := readInput(c.File)
 	if err != nil {
 		return err
 	}
 	entries, err := decodeJSONEntries[contactEntry](input)
 	if err != nil {
-		return fmt.Errorf("%s: %w", commandArg(options.Args, 0), err)
+		return fmt.Errorf("%s: %w", c.File, err)
 	}
 	if len(entries) == 0 {
-		return fmt.Errorf("%s holds no contacts", commandArg(options.Args, 0))
+		return fmt.Errorf("%s holds no contacts", c.File)
 	}
+	b, closeBackend, err := openBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
 	known, err := knownSources(ctx, b)
 	if err != nil {
 		return err
 	}
 	in := make([]store.ContactImport, 0, len(entries))
 	for _, e := range entries {
-		c := store.ContactImport{Name: e.Name, Note: e.Note}
+		contact := store.ContactImport{Name: e.Name, Note: e.Note}
 		for _, raw := range e.Aliases {
 			source, value := store.ContactAliasScope(raw, func(s string) bool { return known[s] })
-			c.Aliases = append(c.Aliases, store.ImportedAlias{Source: source, Value: value})
+			contact.Aliases = append(contact.Aliases, store.ImportedAlias{Source: source, Value: value})
 		}
-		in = append(in, c)
+		in = append(in, contact)
 	}
 
 	res, err := b.ImportContacts(ctx, in)
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(res)
 	}
 	var created, aliases, failed int

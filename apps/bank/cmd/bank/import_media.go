@@ -4,40 +4,30 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/alecthomas/kong"
+
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 )
 
-func cmdMediaImport(ctx context.Context, kind string, args []string) error {
-	options := struct {
-		CommandArguments
-		Source            string `name:"source" help:"source identity"`
-		Account           string `name:"account" help:"profile or account identity; keep this stable across imports"`
-		DateOrder         string `name:"date-order" help:"Netflix slash-date order: mdy (default) or dmy"`
-		MaxSensitivity    string `name:"max-sensitivity" default:"normal" help:"maximum Markdown sensitivity: normal or personal"`
-		AllowConfidential bool   `name:"allow-confidential" help:"explicitly publish confidential Markdown pages"`
-		JSON              bool   `name:"json" help:"print structured results"`
-		NoExtract         bool   `name:"no-extract" help:"skip file text extraction"`
-	}{}
-	source := &options.Source
-	account := &options.Account
-	dateOrder := &options.DateOrder
-	sensitivity := &options.MaxSensitivity
-	confidential := &options.AllowConfidential
-	asJSON := &options.JSON
-	noExtract := &options.NoExtract
-	if err := parseCommand("import "+kind, &options, args); err != nil {
-		return err
-	}
+type importMediaCmd struct {
+	Paths             []string `arg:"" name:"path"`
+	Source            string   `help:"Source identity."`
+	Account           string   `help:"Profile or account identity; keep this stable across imports."`
+	DateOrder         string   `help:"Netflix slash-date order: mdy (default) or dmy."`
+	MaxSensitivity    string   `default:"normal" help:"Maximum Markdown sensitivity: normal or personal."`
+	AllowConfidential bool     `help:"Explicitly publish confidential Markdown pages."`
+	JSON              bool     `help:"Print structured results."`
+	NoExtract         bool     `help:"Skip file text extraction."`
+}
 
-	if len(options.Args) == 0 {
-		return fmt.Errorf("usage: bank import %s <path>... [--account NAME] [--json]", kind)
-	}
-	if *dateOrder != "" && (kind != "netflix" || (*dateOrder != "mdy" && *dateOrder != "dmy")) {
+func (c *importMediaCmd) Run(ctx context.Context, kctx *kong.Context) error {
+	kind := kctx.Selected().Name
+	if c.DateOrder != "" && (kind != "netflix" || (c.DateOrder != "mdy" && c.DateOrder != "dmy")) {
 		return fmt.Errorf("--date-order requires netflix and must be mdy or dmy")
 	}
-	opts := mediaimport.Options{Source: *source, Account: *account, NetflixDateOrder: *dateOrder, MaxSensitivity: *sensitivity, AllowConfidential: *confidential}
+	opts := mediaimport.Options{Source: c.Source, Account: c.Account, NetflixDateOrder: c.DateOrder, MaxSensitivity: c.MaxSensitivity, AllowConfidential: c.AllowConfidential}
 	results := []mediaimport.Result{}
 	remote := client.FromEnv()
 	var d *local
@@ -50,7 +40,7 @@ func cmdMediaImport(ctx context.Context, kind string, args []string) error {
 		}
 		defer closeStore()
 	}
-	for _, path := range options.Args {
+	for _, path := range c.Paths {
 		var result mediaimport.Result
 		var err error
 		switch {
@@ -63,22 +53,22 @@ func cmdMediaImport(ctx context.Context, kind string, args []string) error {
 				result, err = remote.PublishLibraryPages(ctx, publication)
 			}
 		default:
-			result, err = remote.ImportMediaFile(ctx, kind, *source, *account, path, *dateOrder)
+			result, err = remote.ImportMediaFile(ctx, kind, c.Source, c.Account, path, c.DateOrder)
 		}
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
 		results = append(results, result)
-		if !*asJSON {
-			printImportResult(kind, *source, path, result)
+		if !c.JSON {
+			printImportResult(kind, c.Source, path, result)
 		}
 	}
 	if d != nil {
-		if err := extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
+		if err := extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, c.NoExtract); err != nil {
 			return err
 		}
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(results)
 	}
 	return nil

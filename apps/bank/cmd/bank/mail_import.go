@@ -12,28 +12,19 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 )
 
-func cmdImportMailTree(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Source    string `name:"source" help:"mail account source"`
-		Layout    string `name:"layout" help:"eml or thunderbird"`
-		NoExtract bool   `name:"no-extract" help:"skip attachment text extraction"`
-	}{}
-	source := &options.Source
-	layout := &options.Layout
-	noExtract := &options.NoExtract
-	if err := parseCommand("import mail-tree", &options, args); err != nil {
-		return err
-	}
+type importMailTreeCmd struct {
+	Root      string `arg:""`
+	Source    string `required:"" help:"Mail account source."`
+	Layout    string `required:"" enum:"eml,thunderbird" help:"eml or thunderbird."`
+	NoExtract bool   `help:"Skip attachment text extraction."`
+}
 
-	if len(options.Args) != 1 || (*layout != "eml" && *layout != "thunderbird") {
-		return fmt.Errorf("usage: bank import mail-tree --source <source> --layout eml|thunderbird <root>")
-	}
-	if err := archive.ValidSource(*source); err != nil {
+func (c *importMailTreeCmd) Run(ctx context.Context) error {
+	if err := archive.ValidSource(c.Source); err != nil {
 		return err
 	}
-	return withMailImporter(ctx, *source, *noExtract, func(importFile func(string, string, eml.MailImportContext) error) error {
-		return eml.WalkMailTree(filepath.Clean(commandArg(options.Args, 0)), *layout, importFile, func(path, reason string) {
+	return withMailImporter(ctx, c.Source, c.NoExtract, func(importFile func(string, string, eml.MailImportContext) error) error {
+		return eml.WalkMailTree(filepath.Clean(c.Root), c.Layout, importFile, func(path, reason string) {
 			fmt.Fprintf(os.Stderr, "bank: skip %s: %s\n", path, reason)
 		})
 	})
