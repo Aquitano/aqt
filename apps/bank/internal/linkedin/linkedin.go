@@ -4,7 +4,6 @@
 package linkedin
 
 import (
-	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/csv"
@@ -12,12 +11,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/export"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -42,13 +44,7 @@ type message struct {
 func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
 	var res Result
 
-	open, rawRef, cleanup, err := openMessagesCSV(archiveDir, inputPath)
-	if err != nil {
-		return res, err
-	}
-	defer cleanup()
-
-	msgs, err := parseCSV(open)
+	msgs, rawRef, err := readMessages(archiveDir, inputPath)
 	if err != nil {
 		return res, err
 	}
@@ -93,60 +89,51 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 	return res, nil
 }
 
-func openMessagesCSV(archiveDir, inputPath string) (io.Reader, string, func(), error) {
-	noop := func() {}
-	info, err := os.Stat(inputPath)
+// readMessages archives the raw input, then parses messages.csv out of the
+// export zip, its unpacked directory, or the CSV itself.
+func readMessages(archiveDir, inputPath string) ([]message, string, error) {
+	exp, err := export.Open(inputPath)
 	if err != nil {
-		return nil, "", noop, err
+		return nil, "", err
 	}
-	switch {
-	case info.IsDir():
-		p := filepath.Join(inputPath, "messages.csv")
-		f, err := os.Open(p)
-		if err != nil {
-			return nil, "", noop, err
+	defer exp.Close()
+	archived := inputPath
+	var f io.ReadCloser
+	if exp.FS == nil {
+		f, err = os.Open(inputPath)
+	} else if name, findErr := findMessagesCSV(exp.FS); findErr != nil {
+		err = fmt.Errorf("%s: %w", inputPath, findErr)
+	} else {
+		f, err = exp.FS.Open(name)
+		if exp.Dir {
+			archived = filepath.Join(inputPath, filepath.FromSlash(name))
 		}
-		rawRef, err := archive.Copy(archiveDir, "linkedin", p)
-		if err != nil {
-			f.Close()
-			return nil, "", noop, fail.Opf("archive %s: %w", p, err)
-		}
-		return f, rawRef, func() { f.Close() }, nil
-	case strings.EqualFold(filepath.Ext(inputPath), ".zip"):
-		zr, err := zip.OpenReader(inputPath)
-		if err != nil {
-			return nil, "", noop, err
-		}
-		for _, f := range zr.File {
-			if strings.EqualFold(filepath.Base(f.Name), "messages.csv") {
-				rc, err := f.Open()
-				if err != nil {
-					zr.Close()
-					return nil, "", noop, err
-				}
-				rawRef, err := archive.Copy(archiveDir, "linkedin", inputPath)
-				if err != nil {
-					rc.Close()
-					zr.Close()
-					return nil, "", noop, fail.Opf("archive %s: %w", inputPath, err)
-				}
-				return rc, rawRef, func() { rc.Close(); zr.Close() }, nil
-			}
-		}
-		zr.Close()
-		return nil, "", noop, fmt.Errorf("%s: no messages.csv in export zip", inputPath)
-	default:
-		f, err := os.Open(inputPath)
-		if err != nil {
-			return nil, "", noop, err
-		}
-		rawRef, err := archive.Copy(archiveDir, "linkedin", inputPath)
-		if err != nil {
-			f.Close()
-			return nil, "", noop, fail.Opf("archive %s: %w", inputPath, err)
-		}
-		return f, rawRef, func() { f.Close() }, nil
 	}
+	if err != nil {
+		return nil, "", err
+	}
+	defer f.Close()
+	rawRef, err := archive.Copy(archiveDir, "linkedin", archived)
+	if err != nil {
+		return nil, "", fail.Opf("archive %s: %w", archived, err)
+	}
+	msgs, err := parseCSV(f)
+	return msgs, rawRef, err
+}
+
+func findMessagesCSV(fsys fs.FS) (string, error) {
+	found := ""
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.EqualFold(path.Base(p), "messages.csv") {
+			return err
+		}
+		found = p
+		return fs.SkipAll
+	})
+	if err == nil && found == "" {
+		err = errors.New("no messages.csv in export")
+	}
+	return found, err
 }
 
 func parseCSV(r io.Reader) ([]message, error) {

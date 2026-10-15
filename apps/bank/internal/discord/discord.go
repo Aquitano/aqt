@@ -5,7 +5,6 @@
 package discord
 
 import (
-	"archive/zip"
 	"context"
 	"encoding/csv"
 	"encoding/json"
@@ -20,6 +19,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/export"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -45,26 +45,22 @@ type message struct {
 // Import reads a data package zip or an unpacked package directory.
 func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
 	var res Result
-	var fsys fs.FS
-	rawRef := inputPath
-
-	info, err := os.Stat(inputPath)
+	exp, err := export.Open(inputPath)
 	if err != nil {
 		return res, err
 	}
-	if info.IsDir() {
-		fsys = os.DirFS(inputPath)
+	defer exp.Close()
+	fsys := exp.FS
+	rawRef := inputPath
+	switch {
+	case fsys == nil:
+		return res, fmt.Errorf("%s: expected a data package zip or its unpacked directory", inputPath)
+	case exp.Dir:
 		if abs, err := filepath.Abs(inputPath); err == nil {
 			rawRef = abs
 		}
 		fmt.Fprintf(os.Stderr, "bank: directory input is referenced, not archived — keep %s (or import the original zip)\n", rawRef)
-	} else {
-		zr, err := zip.OpenReader(inputPath)
-		if err != nil {
-			return res, err
-		}
-		defer zr.Close()
-		fsys = &zr.Reader
+	default:
 		if rawRef, err = archive.Copy(archiveDir, "discord", inputPath); err != nil {
 			return res, fail.Opf("archive %s: %w", inputPath, err)
 		}

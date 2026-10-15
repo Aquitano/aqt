@@ -3,7 +3,6 @@
 package aichat
 
 import (
-	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/export"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -236,12 +236,9 @@ func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, mes
 // conversation_asset_file_names.json, which is not a conversations array.
 var shardName = regexp.MustCompile(`^conversations-(\d+)\.json$`)
 
-// shard is one numbered conversations file, read lazily so a directory and a
-// zip can be merged by the same code.
 type shard struct {
 	num  int
 	name string
-	read func() ([]byte, error)
 }
 
 // shardNumber reports the index of a conversations shard, and whether name is
@@ -258,10 +255,24 @@ func shardNumber(name string) (int, bool) {
 	return n, true
 }
 
-// mergeShards concatenates the shard arrays, in shard order, into the single
-// conversations array the importers expect. Ordering is by number, not by
-// name, so an export that stops zero-padding still merges in export order.
-func mergeShards(shards []shard, contexts ...context.Context) ([]byte, error) {
+// mergeShards concatenates the numbered conversation files at the export's
+// root, in shard order, into the single conversations array the importers
+// expect. Ordering is by number, not by name, so an export that stops
+// zero-padding still merges in export order.
+func mergeShards(fsys fs.FS, contexts ...context.Context) ([]byte, error) {
+	entries, err := fs.ReadDir(fsys, ".")
+	if err != nil {
+		return nil, err
+	}
+	var shards []shard
+	for _, e := range entries {
+		if num, ok := shardNumber(e.Name()); ok && !e.IsDir() {
+			shards = append(shards, shard{num: num, name: e.Name()})
+		}
+	}
+	if len(shards) == 0 {
+		return nil, errors.New("no conversations.json or conversations-N.json shards — not a data export?")
+	}
 	sort.Slice(shards, func(i, j int) bool { return shards[i].num < shards[j].num })
 	if missing := missingShards(shards); len(missing) > 0 {
 		if len(contexts) > 0 {
@@ -276,7 +287,7 @@ func mergeShards(shards []shard, contexts ...context.Context) ([]byte, error) {
 	}
 	all := []json.RawMessage{}
 	for _, s := range shards {
-		raw, err := s.read()
+		raw, err := fs.ReadFile(fsys, s.name)
 		if err != nil {
 			return nil, err
 		}
@@ -316,99 +327,43 @@ func archiveName(raw []byte) string {
 // since 2026 ship numbered shards instead of one conversations.json; those are
 // merged back into one array and archived as that array.
 func loadConversations(archiveDir, source, path string, contexts ...context.Context) ([]byte, string, error) {
-	info, err := os.Stat(path)
+	exp, err := export.Open(path)
 	if err != nil {
 		return nil, "", err
 	}
-	switch {
-	case info.IsDir():
-		p := filepath.Join(path, "conversations.json")
-		raw, err := os.ReadFile(p)
-		if err == nil {
-			rawRef, err := archive.Copy(archiveDir, source, p)
-			if err != nil {
-				return nil, "", fail.Opf("archive %s: %w", p, err)
+	defer exp.Close()
+	archived := path
+	var raw []byte
+	if exp.FS == nil {
+		raw, err = os.ReadFile(path)
+	} else {
+		raw, err = fs.ReadFile(exp.FS, "conversations.json")
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			if raw, err = mergeShards(exp.FS, contexts...); err != nil {
+				return nil, "", fmt.Errorf("%s: %w", path, err)
 			}
-			return raw, rawRef, nil
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			return nil, "", err // unreadable is a real failure, not a sharded export
-		}
-		entries, err := os.ReadDir(path)
-		if err != nil {
-			return nil, "", err
-		}
-		var shards []shard
-		for _, e := range entries {
-			num, ok := shardNumber(e.Name())
-			if e.IsDir() || !ok {
-				continue
-			}
-			p := filepath.Join(path, e.Name())
-			shards = append(shards, shard{num: num, name: e.Name(), read: func() ([]byte, error) { return os.ReadFile(p) }})
-		}
-		if len(shards) == 0 {
-			return nil, "", fmt.Errorf("%s: no conversations.json or conversations-N.json shards — not an export directory?", path)
-		}
-		raw, err = mergeShards(shards, contexts...)
-		if err != nil {
-			return nil, "", err
-		}
-		// The merged array is the logical input; the shards it came from have
-		// no single path to copy.
-		rawRef, err := archive.Write(archiveDir, source, archiveName(raw), raw)
-		if err != nil {
-			return nil, "", fail.Opf("archive %s: %w", path, err)
-		}
-		return raw, rawRef, nil
-	case strings.EqualFold(filepath.Ext(path), ".zip"):
-		zr, err := zip.OpenReader(path)
-		if err != nil {
-			return nil, "", err
-		}
-		defer zr.Close()
-		raw, err := fs.ReadFile(&zr.Reader, "conversations.json")
-		if err != nil {
-			// Shards sit at the root next to where conversations.json would be,
-			// so entry names are matched whole rather than by base name.
-			var shards []shard
-			for _, f := range zr.File {
-				num, ok := shardNumber(f.Name)
-				if f.FileInfo().IsDir() || !ok {
-					continue
+			if exp.Dir {
+				// The merged array is the logical input; the shards it came
+				// from have no single path to copy.
+				rawRef, err := archive.Write(archiveDir, source, archiveName(raw), raw)
+				if err != nil {
+					return nil, "", fail.Opf("archive %s: %w", path, err)
 				}
-				shards = append(shards, shard{num: num, name: f.Name, read: func() ([]byte, error) {
-					rc, err := f.Open()
-					if err != nil {
-						return nil, err
-					}
-					defer rc.Close()
-					return io.ReadAll(rc)
-				}})
+				return raw, rawRef, nil
 			}
-			if len(shards) == 0 {
-				return nil, "", fmt.Errorf("%s: no conversations.json or conversations-N.json shards in zip — not a data export?", path)
-			}
-			if raw, err = mergeShards(shards, contexts...); err != nil {
-				return nil, "", err
-			}
+		case exp.Dir:
+			archived = filepath.Join(path, "conversations.json")
 		}
-		rawRef, err := archive.Copy(archiveDir, source, path)
-		if err != nil {
-			return nil, "", fail.Opf("archive %s: %w", path, err)
-		}
-		return raw, rawRef, nil
-	default:
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return nil, "", err
-		}
-		rawRef, err := archive.Copy(archiveDir, source, path)
-		if err != nil {
-			return nil, "", fail.Opf("archive %s: %w", path, err)
-		}
-		return raw, rawRef, nil
 	}
+	if err != nil {
+		return nil, "", err
+	}
+	rawRef, err := archive.Copy(archiveDir, source, archived)
+	if err != nil {
+		return nil, "", fail.Opf("archive %s: %w", archived, err)
+	}
+	return raw, rawRef, nil
 }
 
 func parseTimestamp(s string) time.Time {

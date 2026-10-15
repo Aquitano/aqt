@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 func TestParseChatGPTConversation(t *testing.T) {
@@ -359,18 +360,10 @@ func TestLoadConversationsWithoutConversations(t *testing.T) {
 
 func TestMergeShardsOrdersByNumber(t *testing.T) {
 	// Unpadded shards: lexically conversations-10.json sorts first.
-	var shards []shard
-	for name, body := range map[string]string{
-		"conversations-9.json":  `[{"title":"nine"}]`,
-		"conversations-10.json": `[{"title":"ten"}]`,
-	} {
-		num, ok := shardNumber(name)
-		if !ok {
-			t.Fatalf("%s not recognised as a shard", name)
-		}
-		shards = append(shards, shard{num: num, name: name, read: func() ([]byte, error) { return []byte(body), nil }})
-	}
-	raw, err := mergeShards(shards)
+	raw, err := mergeShards(fstest.MapFS{
+		"conversations-9.json":  {Data: []byte(`[{"title":"nine"}]`)},
+		"conversations-10.json": {Data: []byte(`[{"title":"ten"}]`)},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

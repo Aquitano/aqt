@@ -1,7 +1,6 @@
 package mediaimport
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
@@ -17,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/export"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/youtube"
 )
@@ -38,10 +38,11 @@ func readYouTubeInputs(inputPath string) ([]RawInput, error) {
 }
 
 func readYouTubeInputsWithin(inputPath string, budget int64) ([]RawInput, error) {
-	info, err := os.Stat(inputPath)
+	exp, err := export.Open(inputPath)
 	if err != nil {
 		return nil, err
 	}
+	defer exp.Close()
 	inputs := []RawInput{}
 	read := func(name string, r io.Reader) error {
 		limit := min(int64(maxYouTubeFile), budget)
@@ -59,74 +60,32 @@ func readYouTubeInputsWithin(inputPath string, budget int64) ([]RawInput, error)
 		inputs = append(inputs, RawInput{Name: filepath.ToSlash(name), Bytes: raw})
 		return nil
 	}
-	switch {
-	case info.IsDir():
-		err = filepath.WalkDir(inputPath, func(path string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if d.Type()&os.ModeSymlink != 0 {
-				return nil
-			}
-			if d.IsDir() {
-				if path != inputPath && strings.HasPrefix(d.Name(), ".") {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			rel, err := filepath.Rel(inputPath, path)
-			if err != nil {
+	if exp.FS == nil {
+		var input *os.File
+		if input, err = os.Open(inputPath); err != nil {
+			return nil, err
+		}
+		defer input.Close()
+		err = read(filepath.Base(inputPath), input)
+	} else {
+		err = fs.WalkDir(exp.FS, ".", func(name string, d fs.DirEntry, err error) error {
+			switch {
+			case err != nil:
 				return err
-			}
-			if !youtubeDataFile(rel) {
+			case d.Type()&fs.ModeSymlink != 0:
+				return nil
+			case d.IsDir() && name != "." && strings.HasPrefix(d.Name(), "."):
+				return fs.SkipDir
+			case d.IsDir() || !youtubeDataFile(name):
 				return nil
 			}
-			input, err := os.Open(path)
+			input, err := exp.FS.Open(name)
 			if err != nil {
 				return err
 			}
 			defer input.Close()
-			return read(rel, input)
+			return read(name, input)
 		})
-	case strings.EqualFold(filepath.Ext(inputPath), ".zip"):
-		zr, e := zip.OpenReader(inputPath)
-		if e != nil {
-			return nil, e
-		}
-		defer zr.Close()
-		for _, entry := range zr.File {
-			if entry.FileInfo().IsDir() || !youtubeDataFile(entry.Name) {
-				continue
-			}
-			if !fs.ValidPath(entry.Name) {
-				return nil, fmt.Errorf("invalid Takeout member path %q", entry.Name)
-			}
-			if entry.UncompressedSize64 > maxYouTubeFile {
-				return nil, fmt.Errorf("YouTube input %s exceeds 512 MiB", entry.Name)
-			}
-			if entry.UncompressedSize64 > uint64(budget) {
-				return nil, fmt.Errorf("selected YouTube inputs exceed the total byte limit at %s", entry.Name)
-			}
-			input, e := entry.Open()
-			if e != nil {
-				return nil, e
-			}
-			e = read(entry.Name, input)
-			closeErr := input.Close()
-			if e != nil {
-				return nil, e
-			}
-			if closeErr != nil {
-				return nil, closeErr
-			}
-		}
-	default:
-		input, e := os.Open(inputPath)
-		if e != nil {
-			return nil, e
-		}
-		defer input.Close()
-		err = read(filepath.Base(inputPath), input)
 	}
 	if err != nil {
 		return nil, err
