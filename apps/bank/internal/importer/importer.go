@@ -1,6 +1,7 @@
 // Package importer is the one table of import kinds. The CLI, the inbox sweep
 // and the server all import through it, so every kind is recorded in
-// import_reports the same way and a new one is importable everywhere at once.
+// import_reports the same way. A new kind still needs its command in
+// cmd/bank/import.go and, to be swept from the inbox, an entry in inbox.Kinds.
 package importer
 
 import (

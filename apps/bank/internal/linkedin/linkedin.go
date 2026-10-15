@@ -122,10 +122,20 @@ func readMessages(archiveDir, inputPath string) ([]message, string, error) {
 }
 
 func findMessagesCSV(fsys fs.FS) (string, error) {
+	if _, err := fs.Stat(fsys, "messages.csv"); err == nil {
+		return "messages.csv", nil
+	}
 	found := ""
 	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.EqualFold(path.Base(p), "messages.csv") {
-			return err
+		if err != nil {
+			// An unreadable directory elsewhere in the export must not abort the search.
+			if p == "." {
+				return err
+			}
+			return nil
+		}
+		if d.IsDir() || !strings.EqualFold(path.Base(p), "messages.csv") {
+			return nil
 		}
 		found = p
 		return fs.SkipAll

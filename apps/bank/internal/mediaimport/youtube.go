@@ -44,17 +44,23 @@ func readYouTubeInputsWithin(inputPath string, budget int64) ([]RawInput, error)
 	}
 	defer exp.Close()
 	inputs := []RawInput{}
+	tooLarge := func(name string, size int64) error {
+		if size > maxYouTubeFile {
+			return fmt.Errorf("YouTube input %s exceeds 512 MiB", name)
+		}
+		if size > budget {
+			return fmt.Errorf("selected YouTube inputs exceed the total byte limit at %s", name)
+		}
+		return nil
+	}
 	read := func(name string, r io.Reader) error {
 		limit := min(int64(maxYouTubeFile), budget)
 		raw, err := io.ReadAll(io.LimitReader(r, limit+1))
 		if err != nil {
 			return err
 		}
-		if len(raw) > maxYouTubeFile {
-			return fmt.Errorf("YouTube input %s exceeds 512 MiB", name)
-		}
-		if int64(len(raw)) > budget {
-			return fmt.Errorf("selected YouTube inputs exceed the total byte limit at %s", name)
+		if err := tooLarge(name, int64(len(raw))); err != nil {
+			return err
 		}
 		budget -= int64(len(raw))
 		inputs = append(inputs, RawInput{Name: filepath.ToSlash(name), Bytes: raw})
@@ -78,6 +84,13 @@ func readYouTubeInputsWithin(inputPath string, budget int64) ([]RawInput, error)
 				return fs.SkipDir
 			case d.IsDir() || !youtubeDataFile(name):
 				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			if err := tooLarge(name, info.Size()); err != nil {
+				return err
 			}
 			input, err := exp.FS.Open(name)
 			if err != nil {
