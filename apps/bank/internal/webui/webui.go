@@ -35,27 +35,14 @@ func Handler(apiBase *url.URL, token string, allowedHosts ...string) http.Handle
 		panic(err) // embed guarantees the directory exists
 	}
 
+	api := http.NewCrossOriginProtection().Handler(proxy)
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !allowedHost(r.Host, allowedHosts) {
 			http.Error(w, "unrecognized local UI host", http.StatusForbidden)
 			return
 		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			origin := r.Header.Get("Origin")
-			if origin != "" {
-				u, err := url.Parse(origin)
-				if err != nil || u.Host != r.Host || (u.Scheme != "http" && u.Scheme != "https") {
-					http.Error(w, "cross-origin writes are not allowed", http.StatusForbidden)
-					return
-				}
-			}
-			if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-				http.Error(w, "cross-site writes are not allowed", http.StatusForbidden)
-				return
-			}
-		}
-		proxy.ServeHTTP(w, r)
+		api.ServeHTTP(w, r)
 	}))
 	mux.Handle("/", http.FileServerFS(dist))
 	return mux
