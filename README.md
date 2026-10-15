@@ -59,6 +59,9 @@ so Bun collects every other test, and its `test` script runs both runners.
 Dependabot covers Bun, Go modules, Dockerfiles, Compose images and GitHub Actions.
 Tooling updates are separate from application dependencies. Check catalog entries with
 `bun outdated` after each update and keep related Effect packages on one version.
+Dependabot skips `vite-plus` and its `vite` alias because they move together: set both
+root catalog entries to the same version (`vite` is
+`npm:@voidzero-dev/vite-plus-core@<version>`) and run `bun install`.
 The weekly `swift-dependencies` workflow checks version-tagged Swift dependencies
 in XcodeGen `project.yml` files. It skips dependencies pinned to audited Git revisions,
 which require manual review. Dependabot does not read XcodeGen manifests.

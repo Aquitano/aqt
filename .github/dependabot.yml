@@ -7,20 +7,17 @@ updates:
       # Turnstash pins a drizzle 1.0 release candidate; gallery and img move to 1.0 once it is stable.
       - dependency-name: "drizzle-*"
         versions: [">=1.0.0-0 <1.0.0"]
+      # vite-plus and its vite alias move together by hand; see the README's dependency updates.
+      - dependency-name: "vite-plus"
+      - dependency-name: "vite"
     groups:
       tooling:
         patterns:
           [
-            "oxlint*",
-            "oxfmt",
             "typescript",
             "@types/*",
             "@typescript/*",
-            "vite",
-            "vite-plus",
             "@vitejs/*",
-            "@vitest/*",
-            "vitest",
             "wrangler",
             "@cloudflare/*",
             "@rolldown/*",
