@@ -12,16 +12,9 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
 )
 
-// testdata/watch.html is curl output with a desktop Chrome user agent,
-// trimmed of every inline script but the player response and of the style
-// blocks. The live DOM the extension serialises carries the same
-// ytInitialPlayerResponse script and the same schema.org microdata tags.
-//
-// testdata/navigated.html is what the extension serialised in headless
-// Chrome 151 on 2026-10-02 after navigating in-app from iG9CE55wbtY to
-// UF8uR6Z6KLc, trimmed of the same scripts and styles. Its player response
-// and microdata still describe iG9CE55wbtY; the DOM and the attached
-// transcript describe UF8uR6Z6KLc.
+// These reduced captures omit playback URLs, visitor data, and third-party
+// transcripts. After navigation, the player response and microdata still
+// describe iG9CE55wbtY while the DOM and synthetic transcript describe UF8uR6Z6KLc.
 
 const (
 	watchURL     = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -108,8 +101,8 @@ func TestExtractAttachedTranscript(t *testing.T) {
 	if data.Transcript == nil || data.Transcript.Language != "en" || data.Transcript.Kind != "manual" {
 		t.Fatalf("transcript = %+v", data.Transcript)
 	}
-	phrase := "Of course it was impossible to connect the dots looking forward when I was in college."
-	if !strings.HasPrefix(data.Transcript.Text, "This program is brought to you by Stanford University.") ||
+	phrase := "The attached transcript describes the current video."
+	if !strings.HasPrefix(data.Transcript.Text, "Synthetic transcript for the current video.") ||
 		!strings.Contains(data.Transcript.Text, phrase) {
 		t.Errorf("transcript text = %.200q", data.Transcript.Text)
 	}
@@ -124,7 +117,7 @@ func TestExtractDropsTheTranscriptOfAnotherVideo(t *testing.T) {
 	if data.VideoID != "iG9CE55wbtY" || data.Transcript != nil {
 		t.Fatalf("video = %q, transcript = %+v", data.VideoID, data.Transcript)
 	}
-	if strings.Contains(rec.SearchText, "connect the dots") {
+	if strings.Contains(rec.SearchText, "The attached transcript describes the current video.") {
 		t.Errorf("search text carries the other video's transcript")
 	}
 }
