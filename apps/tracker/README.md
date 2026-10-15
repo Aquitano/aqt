@@ -49,6 +49,10 @@ mise run tracker:service
 
 The image is pinned by version and digest in [docker-compose.yml](docker-compose.yml). Stay on the `-pg18` line: the data directory is named after the Postgres major, so another major starts on an empty one and needs a dump and restore. After changing the pin, `up -d` again; `serve` runs `alter extension pg_search update` under its migration lock whenever the extension is behind the new binary, so search keeps working without a manual step.
 
+## Tests
+
+`go test -race ./...` runs the database tests against a superuser on the disposable ParadeDB server `TRACKER_TEST_DATABASE_URL` names. pgtestdb clones a migrated template for each test and drops successful test databases. Tests skip when the variable is unset or no server is listening, unless `TRACKER_REQUIRE_DB=1` or `CI` requires them.
+
 ## Desktop agent
 
 `desktop/` is a Swift menu-bar agent that does for native apps what the extension does for pages: it records which app and window has focus and posts the same `span_start`/`span_heartbeat`/`span_end` events to `/v1/events/batch`. No dock icon, no windows, one status item.

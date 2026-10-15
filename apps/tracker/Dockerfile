@@ -5,13 +5,17 @@
 # shell, no package manager, no libc.
 
 FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
-WORKDIR /src
+WORKDIR /src/apps/tracker
 
+# The context is the repository root, because tracker builds against
+# packages/go/pgschema (Dockerfile.dockerignore keeps everything else out).
 # Dependencies first, so a source-only change reuses the module cache.
-COPY go.mod go.sum ./
+COPY packages/go/pgschema/go.mod packages/go/pgschema/go.sum /src/packages/go/pgschema/
+COPY apps/tracker/go.mod apps/tracker/go.sum ./
 RUN go mod download
 
-COPY . .
+COPY packages/go/pgschema /src/packages/go/pgschema
+COPY apps/tracker ./
 # Declared after the module download, so a new commit only rebuilds the binary.
 ARG GIT_SHA=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${GIT_SHA}" -o /out/tracker ./cmd/tracker
