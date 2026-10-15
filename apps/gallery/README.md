@@ -140,7 +140,10 @@ cannot read this lockfile), the function region (`fra1`, next to the API and
 Neon), a filtered workspace install from the repository root, a plain
 `vp build` so Vercel's Turbo detection stays out of the way, and an ignore
 command so only changes under `apps/gallery` or `packages/ts/ui`, or to the
-lockfile, trigger a build. The vite config names the matching `bun1.4.x` function runtime, since
+lockfile, trigger a build. It compares against the branch's last successful
+deployment, not the previous commit, so a push whose last commit misses those
+paths still builds, and a branch's first push always builds. The vite config
+names the matching `bun1.4.x` function runtime, since
 nitro would otherwise emit `bun1.x`. When the Bun line moves in `mise.toml`,
 move it in those two places as well.
 
