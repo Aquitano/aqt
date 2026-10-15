@@ -3,6 +3,7 @@ import { defineRule } from "vite-plus/lint/plugins";
 import type { ESTree, Scope, SourceCode, Variable } from "vite-plus/lint/plugins";
 
 const moduleMockMethods = new Set(["doMock", "mock", "unstable_mockModule"]);
+const vitestSources = new Set(["vitest", "vite-plus/test"]);
 
 function resolveVariable(
   sourceCode: SourceCode,
@@ -44,7 +45,10 @@ function isTestFrameworkObject(
     }
     const source = definition.parent.source.value;
     const name = importedName(definition.node);
-    return (source === "vitest" && name === "vi") || (source === "@jest/globals" && name === "jest");
+    return (
+      (vitestSources.has(source) && name === "vi") ||
+      (source === "@jest/globals" && name === "jest")
+    );
   });
 }
 
