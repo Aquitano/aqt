@@ -9,6 +9,7 @@
  * reorder), enables sharing and opens the share link signed out. Screenshots
  * land in scripts/e2e-out/.
  */
+import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 
 import { type, type Type } from "arktype";
@@ -17,6 +18,10 @@ import { chromium, type Locator } from "playwright";
 const BASE = process.argv[2] ?? "http://localhost:3000";
 const OUT = "scripts/e2e-out";
 const USERNAME = "smoke_test";
+const secret = process.env.CLERK_SECRET_KEY;
+
+if (!secret?.startsWith("sk_test_"))
+  throw new Error("CLERK_SECRET_KEY must be a Clerk development key (sk_test_)");
 
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch();
@@ -46,8 +51,7 @@ type ClerkRequest =
 
 async function signIn() {
   step("sign in");
-  const secret = process.env.CLERK_SECRET_KEY;
-  if (!secret) throw new Error("CLERK_SECRET_KEY is missing; put it in .env");
+  const authorization = `Bearer ${secret}`;
   const api = async <T extends Type>(
     path: string,
     schema: T,
@@ -55,7 +59,7 @@ async function signIn() {
   ): Promise<T["infer"]> => {
     const response = await fetch(`https://api.clerk.com/v1${path}`, {
       method: body ? "POST" : "GET",
-      headers: { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" },
+      headers: { Authorization: authorization, "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!response.ok)
@@ -67,7 +71,10 @@ async function signIn() {
   const [existing] = await api(`/users?username=${USERNAME}&limit=1`, clerkUser.array());
   const user =
     existing ??
-    (await api("/users", clerkUser, { username: USERNAME, password: "Album-smoke-test-1234" }));
+    (await api("/users", clerkUser, {
+      username: USERNAME,
+      password: randomBytes(32).toString("hex"),
+    }));
   const { token } = await api("/sign_in_tokens", clerkSignInToken, {
     user_id: user.id,
     expires_in_seconds: 300,
