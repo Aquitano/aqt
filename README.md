@@ -39,22 +39,20 @@ Tasks live in `mise.toml` and `tools/tasks/*.toml`. The stack generator register
 
 Put mise flags before the task name, for example `mise run -n check` to preview the graph. App-specific scripts remain available inside each app.
 
-Vite+ owns the TypeScript toolchain. The root `vite.config.ts` contains shared
-lint and format settings, package-specific rule overrides, and the Vitest projects.
-App Vite configs keep their framework plugins, proxies, and build settings. The
-root Bun catalog pins Vite+ and its Vite alias together.
+Vite+ runs the TypeScript toolchain. The root `vite.config.ts` holds the lint and
+format settings for the whole repository, with `overrides` for package-specific rules,
+and lists the Vitest projects. `vp` finds it from any directory. App Vite configs keep
+their framework plugins, proxies, build settings and test includes.
 
 ```sh
 bun run check       # formatting, type-aware lint and TypeScript diagnostics
 bun run typecheck   # explicit package checks, including project references
-bun run test        # portable suites through Vitest
+bun run test        # the Vitest projects
 ```
 
-Bank's frontend, Tracker's extension, Gallery's layout and renderer, and
-Turnstash's web, API-schema and analysis tests use Vitest. Gallery's server,
-Turnstash's Bun runtime packages and server, and the stack generator keep Bun tests.
-Their app checks run both runners where needed. Bank also rebuilds and checks its
-committed embedded UI assets. Turbo still coordinates Gallery's package tasks.
+Tests use Vitest and import from `vite-plus/test`. Code that needs Bun APIs keeps
+`bun:test`. Where an app has both, its `bunfig.toml` excludes the Vitest directories,
+so Bun collects every other test, and its `test` script runs both runners.
 
 ## Dependency updates
 

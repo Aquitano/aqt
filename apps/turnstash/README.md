@@ -146,9 +146,10 @@ mise run turnstash:dev    # server on 4320 with ADMIN_TOKEN=dev, web UI with hot
 ```
 
 Without mise, run the commands those tasks list in `tools/tasks/turnstash.toml`.
-Web, API-schema, and analysis tests use Vitest. The server, agent, providers, core,
-and pricing tests keep Bun because their code uses Bun APIs. `bun run test` from
-this directory runs both groups; `bunx --no-install vp test run` runs only Vitest.
+Web, API-schema, and analysis tests use Vitest; `vite.config.ts` lists them and
+`bunfig.toml` excludes them from Bun. Bun runs every other test, because that code
+uses Bun APIs. `bun run test` from this directory runs both runners;
+`bunx --no-install vp test run` runs only Vitest.
 
 The server tests in `apps/server/test` truncate the separate, disposable `turnstash_test` database on port 5434. They ignore `DATABASE_URL`. Override `TEST_DATABASE_URL` only with a test database whose name ends in `_test`; the test helper rejects other names before migrations or truncation. Provider tests use anonymized fixtures under `packages/providers/test/fixtures`. Regenerate migrations with `bun run --cwd apps/server db:generate` after changing `apps/server/src/db/schema.ts`.
 

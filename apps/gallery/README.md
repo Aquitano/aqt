@@ -219,5 +219,6 @@ Shared shadcn/ui components and styles come from `@aqt/ui` in the workspace's `p
 - `bun run db:migrate`: Run database migrations
 - `bun run db:studio`: Open database studio UI
 - `bun run check`: Formatting, type-aware lint, and TypeScript diagnostics with Vite+
-- `bun run test`: Run the suite. It names source directories explicitly so the
-  server's built `dist/` copies are not collected a second time.
+- `bun run test`: Run the suite. Vitest runs the web and layout tests listed in
+  `vite.config.ts`; Bun runs the rest. `bunfig.toml` keeps Bun away from those
+  directories and from the server's built `dist/` copies.

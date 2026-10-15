@@ -13,7 +13,7 @@
     "db:migrate": "turbo -F @aqt/gallery-db db:migrate",
     "check": "vp check",
     "typecheck": "turbo typecheck -F '@aqt/gallery-*'",
-    "test": "bun test apps/server/src && vp test run"
+    "test": "bun test && vp test run"
   },
   "dependencies": {
     "@aqt/gallery-env": "workspace:*",
