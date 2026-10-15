@@ -1,0 +1,3 @@
+[test]
+# Vitest runs these through vite.config.ts.
+pathIgnorePatterns = ["apps/web/**", "packages/api/**", "packages/analysis/**"]

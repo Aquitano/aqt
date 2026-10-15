@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "bun test apps/agent/test apps/server/test packages/core/test packages/providers/test packages/pricing/test && vp test run"
+    "test": "bun test && vp test run"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
