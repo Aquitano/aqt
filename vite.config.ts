@@ -1,4 +1,95 @@
 import { defineConfig } from "vite-plus";
+import type { DummyRule, DummyRuleMap } from "vite-plus/lint";
+
+const ignorePatterns = [
+  "**/node_modules/**",
+  "**/dist/**",
+  "**/build/**",
+  "**/*.gen.ts",
+  "**/worker-configuration.d.ts",
+  "**/drizzle/**",
+  ".claude/**",
+  "tools/oxlint/anti-slop/**",
+  "**/generated/**",
+  "**/.next/**",
+  "**/.turbo/**",
+  "**/.wrangler/**",
+  "**/.output/**",
+  "apps/gallery/packages/db/src/migrations/**",
+];
+
+const rules = {
+  "typescript/no-explicit-any": "error",
+  "typescript/no-unsafe-assignment": "warn",
+  "typescript/no-unsafe-member-access": "warn",
+  "typescript/no-unsafe-call": "warn",
+  "typescript/no-unsafe-return": "warn",
+  "typescript/no-unsafe-argument": "warn",
+  "typescript/no-non-null-assertion": "warn",
+  "typescript/no-misused-promises": ["warn", { checksVoidReturn: { attributes: false } }],
+  "typescript/await-thenable": "warn",
+  "typescript/switch-exhaustiveness-check": "warn",
+  "typescript/only-throw-error": [
+    "warn",
+    {
+      allow: [
+        { from: "lib", name: "Response" },
+        { from: "package", name: ["Redirect", "NotFoundError"], package: "@tanstack/router-core" },
+      ],
+    },
+  ],
+  "typescript/use-unknown-in-catch-callback-variable": "warn",
+  "anti-slop/no-chained-type-assertions": "error",
+  "anti-slop/no-conditional-empty-object-spread": "warn",
+  "anti-slop/no-known-value-widening": "warn",
+  "anti-slop/no-module-mocking": "warn",
+  "anti-slop/no-object-parameters": "warn",
+  "anti-slop/no-reflect-apply": "warn",
+  "anti-slop/no-reflect-get": "warn",
+  "anti-slop/no-runtime-typeof": "off",
+  "anti-slop/no-shape-in-symbol-names": "warn",
+  "anti-slop/no-unknown-parameters": "warn",
+  "anti-slop/no-unknown-returns": "warn",
+  "anti-slop/no-unknown-type-aliases": "warn",
+  "anti-slop/no-unsafe-dictionary-type": "warn",
+  "anti-slop/no-widen-then-assert": "error",
+  "anti-slop/require-safety-comment-for-type-assertion": "warn",
+  "react/react-in-jsx-scope": "off",
+  "react/set-state-in-effect": "warn",
+  "react/refs": "warn",
+  "react/purity": "warn",
+  "react/immutability": "warn",
+  "react-hooks/exhaustive-deps": "warn",
+  "unicorn/no-useless-spread": "warn",
+  "unicorn/no-useless-fallback-in-spread": "warn",
+  "no-useless-escape": "warn",
+  "no-param-reassign": "warn",
+  "typescript/prefer-as-const": "warn",
+  "default-param-last": "warn",
+  "typescript/prefer-enum-initializers": "warn",
+  "react/self-closing-comp": "warn",
+  "one-var": ["warn", "never"],
+  "typescript/no-inferrable-types": "warn",
+  "no-else-return": "warn",
+  "unicorn/prefer-number-properties": "warn",
+  "vite-plus/prefer-vite-plus-imports": "error",
+} satisfies DummyRuleMap;
+
+function strict(setting: DummyRule): DummyRule {
+  if (setting === "warn") return "error";
+  if (Array.isArray(setting) && setting[0] === "warn") return ["error", ...setting.slice(1)];
+  return setting;
+}
+
+const tailwindFunctions = ["cn", "cva", "clsx"];
+
+const tailwindStylesheets = {
+  "apps/bank/**": "apps/bank/internal/webui/app/src/index.css",
+  "apps/gallery/**": "apps/gallery/packages/ui/src/styles/globals.css",
+  "apps/img/**": "apps/img/src/styles.css",
+  "apps/turnstash/**": "apps/turnstash/apps/web/src/app.css",
+  "packages/ts/ui/**": "packages/ts/ui/src/styles/globals.css",
+};
 
 export default defineConfig({
   lint: {
@@ -8,104 +99,12 @@ export default defineConfig({
       suspicious: "warn",
       perf: "warn",
     },
-    ignorePatterns: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/build/**",
-      "**/*.gen.ts",
-      "**/worker-configuration.d.ts",
-      "**/drizzle/**",
-      ".claude/**",
-      "tools/oxlint/anti-slop/**",
-      "**/generated/**",
-      "**/.next/**",
-      "**/.turbo/**",
-      "**/.wrangler/**",
-      "**/.output/**",
-      "apps/gallery/packages/db/src/migrations/**",
-      "apps/bank/internal/webui/app/dist/**",
-      "apps/bank/internal/webui/app/dist/",
-    ],
+    ignorePatterns,
     jsPlugins: [
-      {
-        name: "anti-slop",
-        specifier: "./tools/oxlint/anti-slop/index.ts",
-      },
-      {
-        name: "vite-plus",
-        specifier: "vite-plus/oxlint-plugin",
-      },
+      { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+      { name: "vite-plus", specifier: "vite-plus/oxlint-plugin" },
     ],
-    rules: {
-      "typescript/no-explicit-any": "error",
-      "typescript/no-unsafe-assignment": "warn",
-      "typescript/no-unsafe-member-access": "warn",
-      "typescript/no-unsafe-call": "warn",
-      "typescript/no-unsafe-return": "warn",
-      "typescript/no-unsafe-argument": "warn",
-      "typescript/no-non-null-assertion": "warn",
-      "typescript/no-misused-promises": [
-        "warn",
-        {
-          checksVoidReturn: {
-            attributes: false,
-          },
-        },
-      ],
-      "typescript/await-thenable": "warn",
-      "typescript/switch-exhaustiveness-check": "warn",
-      "typescript/only-throw-error": [
-        "warn",
-        {
-          allow: [
-            {
-              from: "lib",
-              name: "Response",
-            },
-            {
-              from: "package",
-              name: ["Redirect", "NotFoundError"],
-              package: "@tanstack/router-core",
-            },
-          ],
-        },
-      ],
-      "typescript/use-unknown-in-catch-callback-variable": "warn",
-      "anti-slop/no-chained-type-assertions": "error",
-      "anti-slop/no-conditional-empty-object-spread": "warn",
-      "anti-slop/no-known-value-widening": "warn",
-      "anti-slop/no-module-mocking": "warn",
-      "anti-slop/no-object-parameters": "warn",
-      "anti-slop/no-reflect-apply": "warn",
-      "anti-slop/no-reflect-get": "warn",
-      "anti-slop/no-runtime-typeof": "off",
-      "anti-slop/no-shape-in-symbol-names": "warn",
-      "anti-slop/no-unknown-parameters": "warn",
-      "anti-slop/no-unknown-returns": "warn",
-      "anti-slop/no-unknown-type-aliases": "warn",
-      "anti-slop/no-unsafe-dictionary-type": "warn",
-      "anti-slop/no-widen-then-assert": "error",
-      "anti-slop/require-safety-comment-for-type-assertion": "warn",
-      "react/react-in-jsx-scope": "off",
-      "react/set-state-in-effect": "warn",
-      "react/refs": "warn",
-      "react/purity": "warn",
-      "react/immutability": "warn",
-      "react-hooks/exhaustive-deps": "warn",
-      "unicorn/no-useless-spread": "warn",
-      "unicorn/no-useless-fallback-in-spread": "warn",
-      "no-useless-escape": "warn",
-      "no-param-reassign": "warn",
-      "typescript/prefer-as-const": "warn",
-      "default-param-last": "warn",
-      "typescript/prefer-enum-initializers": "warn",
-      "react/self-closing-comp": "warn",
-      "one-var": ["warn", "never"],
-      "typescript/no-inferrable-types": "warn",
-      "no-else-return": "warn",
-      "unicorn/prefer-number-properties": "warn",
-      "vite-plus/prefer-vite-plus-imports": "error",
-    },
+    rules,
     overrides: [
       {
         files: ["apps/img/scripts/**"],
@@ -127,78 +126,18 @@ export default defineConfig({
       {
         files: ["packages/ts/**"],
         rules: {
-          "typescript/no-explicit-any": "error",
-          "typescript/no-unsafe-assignment": "error",
-          "typescript/no-unsafe-member-access": "error",
-          "typescript/no-unsafe-call": "error",
-          "typescript/no-unsafe-return": "error",
-          "typescript/no-unsafe-argument": "error",
-          "typescript/no-non-null-assertion": "error",
-          "typescript/no-misused-promises": [
-            "error",
-            {
-              checksVoidReturn: {
-                attributes: false,
-              },
-            },
-          ],
-          "typescript/await-thenable": "error",
-          "typescript/switch-exhaustiveness-check": "error",
-          "typescript/only-throw-error": [
-            "error",
-            {
-              allow: [
-                {
-                  from: "lib",
-                  name: "Response",
-                },
-              ],
-            },
-          ],
-          "typescript/use-unknown-in-catch-callback-variable": "error",
+          ...Object.fromEntries(
+            Object.entries(rules).map(([name, setting]) => [name, strict(setting)]),
+          ),
+          "typescript/only-throw-error": ["error", { allow: [{ from: "lib", name: "Response" }] }],
           "typescript/no-unnecessary-condition": "warn",
           "typescript/no-floating-promises": "error",
-          "anti-slop/no-chained-type-assertions": "error",
-          "anti-slop/no-conditional-empty-object-spread": "error",
-          "anti-slop/no-known-value-widening": "error",
-          "anti-slop/no-module-mocking": "error",
-          "anti-slop/no-object-parameters": "error",
-          "anti-slop/no-reflect-apply": "error",
-          "anti-slop/no-reflect-get": "error",
-          "anti-slop/no-runtime-typeof": "off",
-          "anti-slop/no-shape-in-symbol-names": "error",
-          "anti-slop/no-unknown-parameters": "error",
-          "anti-slop/no-unknown-returns": "error",
-          "anti-slop/no-unknown-type-aliases": "error",
-          "anti-slop/no-unsafe-dictionary-type": "error",
-          "anti-slop/no-widen-then-assert": "error",
-          "anti-slop/require-safety-comment-for-type-assertion": "error",
-          "react/set-state-in-effect": "error",
-          "react/refs": "error",
-          "react/purity": "error",
-          "react/immutability": "error",
-          "react-hooks/exhaustive-deps": "error",
-          "unicorn/no-useless-spread": "error",
-          "unicorn/no-useless-fallback-in-spread": "error",
-          "no-useless-escape": "error",
-          "no-param-reassign": "error",
-          "typescript/prefer-as-const": "error",
-          "default-param-last": "error",
-          "typescript/prefer-enum-initializers": "error",
-          "react/self-closing-comp": "error",
-          "one-var": ["error", "never"],
-          "typescript/no-inferrable-types": "error",
-          "no-else-return": "error",
-          "unicorn/prefer-number-properties": "error",
         },
       },
       {
         files: ["apps/turnstash/**"],
         jsPlugins: [
-          {
-            name: "anti-slop-effect",
-            specifier: "./tools/oxlint/anti-slop/effect/index.ts",
-          },
+          { name: "anti-slop-effect", specifier: "./tools/oxlint/anti-slop/effect/index.ts" },
         ],
         rules: {
           "no-control-regex": "off",
@@ -209,12 +148,7 @@ export default defineConfig({
           "anti-slop/no-object-parameters": "error",
           "anti-slop/no-reflect-apply": "error",
           "anti-slop/no-reflect-get": "error",
-          "anti-slop/no-runtime-typeof": [
-            "error",
-            {
-              allowInTypeGuards: true,
-            },
-          ],
+          "anti-slop/no-runtime-typeof": ["error", { allowInTypeGuards: true }],
           "anti-slop/no-shape-in-symbol-names": "off",
           "anti-slop/no-unknown-parameters": "error",
           "anti-slop/no-unknown-returns": "error",
@@ -261,78 +195,18 @@ export default defineConfig({
     singleQuote: false,
     semi: true,
     ignorePatterns: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/build/**",
-      "**/*.gen.ts",
-      "**/worker-configuration.d.ts",
-      "**/drizzle/**",
-      "tools/oxlint/anti-slop/**",
-      "**/generated/**",
-      "**/.next/**",
-      "**/.turbo/**",
-      "**/.wrangler/**",
-      "**/.output/**",
+      ...ignorePatterns,
       "apps/tracker/**/testdata/**",
-      "apps/gallery/packages/db/src/migrations/**",
       "apps/turnstash/packages/pricing/data/**",
-      ".claude/**",
-      "apps/bank/internal/webui/app/dist/**",
-      "apps/bank/internal/webui/app/dist/",
       ".swiftlint-baseline.json",
     ],
     sortImports: true,
     sortPackageJson: true,
-    sortTailwindcss: {
-      functions: ["cn", "cva", "clsx"],
-    },
-    overrides: [
-      {
-        files: ["apps/bank/**"],
-        options: {
-          sortTailwindcss: {
-            functions: ["cn", "cva", "clsx"],
-            stylesheet: "apps/bank/internal/webui/app/src/index.css",
-          },
-        },
-      },
-      {
-        files: ["apps/gallery/**"],
-        options: {
-          sortTailwindcss: {
-            functions: ["cn", "cva", "clsx"],
-            stylesheet: "apps/gallery/packages/ui/src/styles/globals.css",
-          },
-        },
-      },
-      {
-        files: ["apps/img/**"],
-        options: {
-          sortTailwindcss: {
-            functions: ["cn", "cva", "clsx"],
-            stylesheet: "apps/img/src/styles.css",
-          },
-        },
-      },
-      {
-        files: ["apps/turnstash/**"],
-        options: {
-          sortTailwindcss: {
-            functions: ["cn", "cva", "clsx"],
-            stylesheet: "apps/turnstash/apps/web/src/app.css",
-          },
-        },
-      },
-      {
-        files: ["packages/ts/ui/**"],
-        options: {
-          sortTailwindcss: {
-            functions: ["cn", "cva", "clsx"],
-            stylesheet: "packages/ts/ui/src/styles/globals.css",
-          },
-        },
-      },
-    ],
+    sortTailwindcss: { functions: tailwindFunctions },
+    overrides: Object.entries(tailwindStylesheets).map(([files, stylesheet]) => ({
+      files: [files],
+      options: { sortTailwindcss: { functions: tailwindFunctions, stylesheet } },
+    })),
   },
   test: {
     projects: [
