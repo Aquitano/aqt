@@ -1,6 +1,8 @@
 // Package storetest gives tests a real ParadeDB to run against: a database per
-// test on the server DATABASE_URL names. Search, migrations and dedup all live
-// in SQL, so a fake store would only prove the fake works.
+// test on the server BANK_TEST_DATABASE_URL names. It creates databases and
+// roles there, so it never uses the application's DATABASE_URL. Search,
+// migrations and dedup all live in SQL, so a fake store would only prove the
+// fake works.
 package storetest
 
 import (
@@ -17,7 +19,7 @@ import (
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
-var env = pgschematest.Env{URL: "DATABASE_URL", Require: "BANK_REQUIRE_DB"}
+var env = pgschematest.Env{URL: "BANK_TEST_DATABASE_URL", Require: "BANK_REQUIRE_DB"}
 
 var migrator = pgschematest.Migrator(store.Migrations, func(ctx context.Context, dsn string) error {
 	st, err := store.Open(ctx, dsn)
