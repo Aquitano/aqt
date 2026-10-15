@@ -20,6 +20,7 @@
       "zod": "^4.6.5",
       "typescript": "^7.0.2",
       "@types/bun": "^1.4.2",
+      "@types/node": "^26.6.5",
       "hono": "^4.13.13",
       "@trpc/server": "^11.19.0",
       "next-themes": "^0.4.6",
@@ -43,7 +44,7 @@
     "test": "vp test run"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "catalog:",
     "turbo": "2.11.7",
     "typescript": "7.0.2",
     "vite": "catalog:",
