@@ -16,7 +16,7 @@
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
-    "@types/node": "^26.6.5",
+    "@types/node": "catalog:",
     "@webext-core/fake-browser": "^2.0.1",
     "fake-indexeddb": "^6.2.5",
     "typescript": "catalog:",
