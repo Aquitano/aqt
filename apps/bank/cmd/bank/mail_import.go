@@ -10,6 +10,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
 )
 
 type importMailTreeCmd struct {
@@ -63,26 +64,20 @@ func withMailImporter(ctx context.Context, source string, noExtract bool, run fu
 			return err
 		})
 	}
-	local, closeStore, err := openLocal(ctx)
+	d, closeStore, err := openLocal(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeStore()
 	err = run(func(kind, path string, observation eml.MailImportContext) error {
-		var result eml.Result
-		var err error
-		if kind == "eml" {
-			result, err = eml.ImportEmlPath(ctx, local.st, local.blobs, local.archiveDir, source, path, &observation)
-		} else {
-			result, err = eml.ImportMbox(ctx, local.st, local.blobs, local.archiveDir, source, path, &observation)
-		}
+		result, err := importer.Run(ctx, *d, kind, importer.Input{Path: path, Source: source, Mail: &observation})
 		if err == nil {
-			printEmlResult(source, path, result)
+			printImportResult(kind, source, path, result)
 		}
 		return err
 	})
 	if err != nil {
 		return err
 	}
-	return extractAfterImport(ctx, blobtext.Local{Store: local.st, Blobs: local.blobs}, noExtract)
+	return extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, noExtract)
 }

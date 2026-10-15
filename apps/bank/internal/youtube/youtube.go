@@ -57,12 +57,6 @@ type Result struct {
 // Takeout writes by default, or watch-history.json, the "Multiple formats"
 // option). Re-importing an overlapping export is a no-op.
 func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
-	return store.RunImport(ctx, st, "youtube", inputPath, func(ctx context.Context) (Result, error) {
-		return importUnreported(ctx, st, archiveDir, inputPath)
-	})
-}
-
-func importUnreported(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
 	var res Result
 
 	raw, name, err := readHistory(inputPath)

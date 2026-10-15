@@ -318,7 +318,7 @@ func (c *libraryIndexCmd) Run(ctx context.Context, lib *libraryCmd) error {
 		return err
 	}
 	defer closeLocal()
-	return printLibrary(mediaimport.Publish(ctx, local.st, local.archiveDir, publication))
+	return printLibrary(mediaimport.Publish(ctx, local.Store, local.ArchiveDir, publication))
 }
 
 func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, noExtract bool) error {
@@ -352,7 +352,7 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 	}
 	defer closeLocal()
 	if o.ItemID != "" {
-		if _, err = local.st.LibraryItem(ctx, o.ItemID); err != nil {
+		if _, err = local.Store.LibraryItem(ctx, o.ItemID); err != nil {
 			return err
 		}
 	}
@@ -362,7 +362,7 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 		if err != nil {
 			return err
 		}
-		digest, size, err := local.blobs.Put(file)
+		digest, size, err := local.Blobs.Put(file)
 		closeErr := file.Close()
 		if err != nil {
 			return err
@@ -377,14 +377,14 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 		}
 		files = append(files, value)
 	}
-	if _, err = local.st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
+	if _, err = local.Store.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
 		return err
 	}
-	if err = extractAfterImport(ctx, blobtext.Local{Store: local.st, Blobs: local.blobs}, noExtract); err != nil {
+	if err = extractAfterImport(ctx, blobtext.Local{Store: local.Store, Blobs: local.Blobs}, noExtract); err != nil {
 		return err
 	}
 	for i := range files {
-		files[i], err = local.st.LibraryFile(ctx, files[i].ID)
+		files[i], err = local.Store.LibraryFile(ctx, files[i].ID)
 		if err != nil {
 			return err
 		}

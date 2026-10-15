@@ -159,7 +159,7 @@ func openAttachments(ctx context.Context) (attachmentBackend, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return blobtext.Local{Store: d.st, Blobs: d.blobs}, closeStore, nil
+	return blobtext.Local{Store: d.Store, Blobs: d.Blobs}, closeStore, nil
 }
 
 // stagingDir is where downloads and rasterized pages go: the data directory,

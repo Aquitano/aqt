@@ -121,57 +121,55 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 			opts.Source = "youtube"
 		}
 	}
-	return store.RunImport(ctx, st, kind, inputPath, func(ctx context.Context) (Result, error) {
-		parsed, err := Parse(kind, inputPath, opts)
-		result := Result{Skipped: parsed.Skipped, Ads: parsed.Ads, Diagnostics: parsed.Diagnostics}
+	parsed, err := Parse(kind, inputPath, opts)
+	result := Result{Skipped: parsed.Skipped, Ads: parsed.Ads, Diagnostics: parsed.Diagnostics}
+	if err != nil {
+		return result, err
+	}
+	if err := verifyBundleFiles(blobs, parsed.Batch.Files); err != nil {
+		return result, err
+	}
+	for _, message := range parsed.Diagnostics {
+		store.ImportIssue(ctx, message)
+	}
+	refs := map[string]string{}
+	for _, input := range parsed.Inputs {
+		ref, err := preserveLibraryInput(archiveDir, opts.Source, input)
 		if err != nil {
-			return result, err
+			return result, fail.Opf("preserve %s: %w", input.Name, err)
 		}
-		if err := verifyBundleFiles(blobs, parsed.Batch.Files); err != nil {
-			return result, err
+		refs["input:"+input.Name] = ref
+	}
+	replace := func(p *library.Provenance) {
+		if ref, ok := refs[p.RawRef]; ok {
+			p.RawRef = ref
 		}
-		for _, message := range parsed.Diagnostics {
-			store.ImportIssue(ctx, message)
+	}
+	for i := range parsed.Batch.Items {
+		replace(&parsed.Batch.Items[i].Provenance)
+		for j := range parsed.Batch.Items[i].Evidence {
+			replace(&parsed.Batch.Items[i].Evidence[j])
 		}
-		refs := map[string]string{}
-		for _, input := range parsed.Inputs {
-			ref, err := preserveLibraryInput(archiveDir, opts.Source, input)
-			if err != nil {
-				return result, fail.Opf("preserve %s: %w", input.Name, err)
-			}
-			refs["input:"+input.Name] = ref
+	}
+	for i := range parsed.Batch.Activity {
+		replace(&parsed.Batch.Activity[i].Provenance)
+		for j := range parsed.Batch.Activity[i].Evidence {
+			replace(&parsed.Batch.Activity[i].Evidence[j])
 		}
-		replace := func(p *library.Provenance) {
-			if ref, ok := refs[p.RawRef]; ok {
-				p.RawRef = ref
-			}
+	}
+	for i := range parsed.Batch.Collections {
+		if s := parsed.Batch.Collections[i].Snapshot; s != nil {
+			replace(&s.Provenance)
 		}
-		for i := range parsed.Batch.Items {
-			replace(&parsed.Batch.Items[i].Provenance)
-			for j := range parsed.Batch.Items[i].Evidence {
-				replace(&parsed.Batch.Items[i].Evidence[j])
-			}
-		}
-		for i := range parsed.Batch.Activity {
-			replace(&parsed.Batch.Activity[i].Provenance)
-			for j := range parsed.Batch.Activity[i].Evidence {
-				replace(&parsed.Batch.Activity[i].Evidence[j])
-			}
-		}
-		for i := range parsed.Batch.Collections {
-			if s := parsed.Batch.Collections[i].Snapshot; s != nil {
-				replace(&s.Provenance)
-			}
-		}
-		for i := range parsed.Batch.Files {
-			replace(&parsed.Batch.Files[i].Provenance)
-		}
-		for i := range parsed.Batch.Pages {
-			replace(&parsed.Batch.Pages[i].Provenance)
-		}
-		result.ImportResult, err = st.ImportLibrary(ctx, parsed.Batch)
-		return result, importFailure(err)
-	})
+	}
+	for i := range parsed.Batch.Files {
+		replace(&parsed.Batch.Files[i].Provenance)
+	}
+	for i := range parsed.Batch.Pages {
+		replace(&parsed.Batch.Pages[i].Provenance)
+	}
+	result.ImportResult, err = st.ImportLibrary(ctx, parsed.Batch)
+	return result, importFailure(err)
 }
 
 func importFailure(err error) error {

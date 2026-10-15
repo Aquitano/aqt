@@ -1,4 +1,4 @@
-package server
+package importer
 
 import (
 	"context"
@@ -14,8 +14,7 @@ import (
 // A database outage has to reach the caller as an operational failure from
 // every importer: inbox files anything else under .rejected/, so a Postgres
 // restart during the import cron would quarantine perfectly good exports, and
-// this route would answer 400 instead of 5xx. importFile is the one place that
-// knows every importer, which makes it the seam that catches the next one.
+// the import route would answer 400 instead of 5xx.
 func TestImportersReportADatabaseOutageAsOperational(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
@@ -24,7 +23,7 @@ func TestImportersReportADatabaseOutageAsOperational(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{db: st, blobs: blobs, dataDir: dir, archiveDir: filepath.Join(dir, "archive")}
+	target := Target{Store: st, Blobs: blobs, ArchiveDir: filepath.Join(dir, "archive")}
 
 	write := func(rel, content string) string {
 		t.Helper()
@@ -64,7 +63,7 @@ func TestImportersReportADatabaseOutageAsOperational(t *testing.T) {
 
 	for kind, path := range inputs {
 		t.Run(kind, func(t *testing.T) {
-			_, err := s.importFile(ctx, kind, "", path)
+			_, err := Run(ctx, target, kind, Input{Path: path})
 			if err == nil {
 				t.Fatal("importing into a closed database should fail")
 			}

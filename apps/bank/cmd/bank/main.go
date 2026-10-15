@@ -35,6 +35,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -198,15 +199,9 @@ func openStore(ctx context.Context) (*store.Store, error) {
 	return st, nil
 }
 
-// local is everything an importer needs when the CLI talks to Postgres
-// directly rather than to a `bank serve`.
-type local struct {
-	st         *store.Store
-	blobs      *blob.Store
-	archiveDir string
-}
-
-func openLocal(ctx context.Context) (*local, func(), error) {
+// openLocal is for commands that talk to Postgres and the blob store directly
+// rather than to a `bank serve`.
+func openLocal(ctx context.Context) (*importer.Target, func(), error) {
 	st, err := openStore(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -216,7 +211,7 @@ func openLocal(ctx context.Context) (*local, func(), error) {
 		st.Close()
 		return nil, nil, err
 	}
-	return &local{st: st, blobs: blobs, archiveDir: filepath.Join(dataDir(), "archive")}, st.Close, nil
+	return &importer.Target{Store: st, Blobs: blobs, ArchiveDir: filepath.Join(dataDir(), "archive")}, st.Close, nil
 }
 
 type authCmd struct {
@@ -245,7 +240,7 @@ func (c *syncCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeStore()
-	res, err := gmail.Sync(ctx, d.st, d.blobs, dataDir(), d.archiveDir, c.Full)
+	res, err := gmail.Sync(ctx, d.Store, d.Blobs, dataDir(), d.ArchiveDir, c.Full)
 	printSyncResult(res)
 	return err
 }
@@ -810,7 +805,7 @@ func (c *verifyCmd) Run(ctx context.Context) error {
 	}
 	defer closeStore()
 
-	rep, err := verify.Run(ctx, d.st, d.blobs, d.archiveDir, verify.Options{Source: c.Source, Heal: c.Heal})
+	rep, err := verify.Run(ctx, d.Store, d.Blobs, d.ArchiveDir, verify.Options{Source: c.Source, Heal: c.Heal})
 	if err != nil {
 		return err
 	}
@@ -856,7 +851,7 @@ func (c *serveCmd) Run(ctx context.Context) error {
 	if names, err := server.ListTokens(dataDir()); err == nil && len(names) == 0 {
 		fmt.Fprintln(os.Stderr, "bank: no tokens yet — every /v1 request will 401 until 'bank token new <name>'")
 	}
-	srv := server.New(d.st, d.blobs, dataDir(), d.archiveDir)
+	srv := server.New(d.Store, d.Blobs, dataDir(), d.ArchiveDir)
 	fmt.Printf("bank serve: listening on %s\n", c.Listen)
 	return srv.ListenAndServe(ctx, c.Listen)
 }

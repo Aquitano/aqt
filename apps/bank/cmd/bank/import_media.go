@@ -8,6 +8,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 )
 
@@ -28,9 +29,9 @@ func (c *importMediaCmd) Run(ctx context.Context, kctx *kong.Context) error {
 		return fmt.Errorf("--date-order requires netflix and must be mdy or dmy")
 	}
 	opts := mediaimport.Options{Source: c.Source, Account: c.Account, NetflixDateOrder: c.DateOrder, MaxSensitivity: c.MaxSensitivity, AllowConfidential: c.AllowConfidential}
-	results := []mediaimport.Result{}
+	results := []any{}
 	remote := client.FromEnv()
-	var d *local
+	var d *importer.Target
 	if remote == nil {
 		var closeStore func()
 		var err error
@@ -41,17 +42,21 @@ func (c *importMediaCmd) Run(ctx context.Context, kctx *kong.Context) error {
 		defer closeStore()
 	}
 	for _, path := range c.Paths {
-		var result mediaimport.Result
+		var result any
 		var err error
 		switch {
-		case remote == nil:
-			result, err = mediaimport.Import(ctx, d.st, d.blobs, d.archiveDir, kind, path, opts)
 		case kind == "markdown":
 			var publication mediaimport.Publication
-			publication, err = mediaimport.BuildPublication(path, opts)
-			if err == nil {
-				result, err = remote.PublishLibraryPages(ctx, publication)
+			if publication, err = mediaimport.BuildPublication(path, opts); err != nil {
+				break
 			}
+			if remote != nil {
+				result, err = remote.PublishLibraryPages(ctx, publication)
+			} else {
+				result, err = mediaimport.Publish(ctx, d.Store, d.ArchiveDir, publication)
+			}
+		case remote == nil:
+			result, err = importer.Run(ctx, *d, kind, importer.Input{Path: path, Source: c.Source, Account: c.Account, DateOrder: c.DateOrder})
 		default:
 			result, err = remote.ImportMediaFile(ctx, kind, c.Source, c.Account, path, c.DateOrder)
 		}
@@ -64,7 +69,7 @@ func (c *importMediaCmd) Run(ctx context.Context, kctx *kong.Context) error {
 		}
 	}
 	if d != nil {
-		if err := extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, c.NoExtract); err != nil {
+		if err := extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, c.NoExtract); err != nil {
 			return err
 		}
 	}

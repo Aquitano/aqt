@@ -55,7 +55,7 @@ func TestChatGPTReimportHealsBranchesAndKeepsReports(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := ImportChatGPT(ctx, st, newBlobs(t), filepath.Join(dir, "archive"), path)
+	result, err := importReported(ctx, t, st, filepath.Join(dir, "archive"), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestChatGPTReimportHealsBranchesAndKeepsReports(t *testing.T) {
 	if err != nil || parent.ExternalID != "question" {
 		t.Fatalf("parent: %+v %v", parent, err)
 	}
-	if _, err := ImportChatGPT(ctx, st, newBlobs(t), filepath.Join(dir, "archive"), path); err != nil {
+	if _, err := importReported(ctx, t, st, filepath.Join(dir, "archive"), path); err != nil {
 		t.Fatal(err)
 	}
 	reports, err := st.ImportReports(ctx, 0, 50)
@@ -105,7 +105,7 @@ func TestChatGPTReimportHealsBranchesAndKeepsReports(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not json"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ImportChatGPT(ctx, st, newBlobs(t), filepath.Join(dir, "archive"), path); err == nil {
+	if _, err := importReported(ctx, t, st, filepath.Join(dir, "archive"), path); err == nil {
 		t.Fatal("expected malformed input error")
 	}
 	reports, err = st.ImportReports(ctx, 0, 50)
@@ -123,7 +123,7 @@ func TestChatGPTCompletenessReportKeepsMissingAndUnsupportedDetails(t *testing.T
 	if err := os.WriteFile(path, []byte(raw), 0600); err != nil {
 		t.Fatal(err)
 	}
-	result, err := ImportChatGPT(ctx, st, newBlobs(t), filepath.Join(dir, "archive"), path)
+	result, err := importReported(ctx, t, st, filepath.Join(dir, "archive"), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,4 +148,12 @@ func TestChatGPTCompletenessReportKeepsMissingAndUnsupportedDetails(t *testing.T
 	if len(saved.Issues) != 2 || saved.Missing != 1 || saved.Unsupported != 1 {
 		t.Fatalf("saved: %+v", saved)
 	}
+}
+
+// importReported records the attempt the way importer.Run does, so the tests
+// can read back the report row.
+func importReported(ctx context.Context, t *testing.T, st *store.Store, archiveDir, path string) (Result, error) {
+	return store.RunImport(ctx, st, "chatgpt", path, func(ctx context.Context) (Result, error) {
+		return ImportChatGPT(ctx, st, newBlobs(t), archiveDir, path)
+	})
 }

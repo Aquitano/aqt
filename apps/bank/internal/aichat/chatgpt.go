@@ -64,12 +64,6 @@ type cgptAttachment struct {
 }
 
 func ImportChatGPT(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
-	return store.RunImport(ctx, st, "chatgpt", path, func(ctx context.Context) (Result, error) {
-		return importChatGPTUnreported(ctx, st, blobs, archiveDir, path)
-	})
-}
-
-func importChatGPTUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
 	var res Result
 	raw, rawRef, md, closeExport, err := loadChatGPTExport(archiveDir, blobs, path, ctx)
 	if err != nil {
