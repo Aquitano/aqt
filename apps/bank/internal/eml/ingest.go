@@ -233,16 +233,14 @@ func ImportEmlPath(ctx context.Context, st *store.Store, blobs *blob.Store, arch
 	if err != nil {
 		return Result{}, err
 	}
-	return store.RunImport(ctx, st, "eml", path, func(ctx context.Context) (Result, error) {
-		result, err := importEmlPathUnreported(ctx, st, blobs, archiveDir, source, path, observation)
-		if err == nil && observation != nil {
-			result.MailContextVersion = 1
-		}
-		return result, err
-	})
+	result, err := importEmlPath(ctx, st, blobs, archiveDir, source, path, observation)
+	if err == nil && observation != nil {
+		result.MailContextVersion = 1
+	}
+	return result, err
 }
 
-func importEmlPathUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string, observation *MailImportContext) (Result, error) {
+func importEmlPath(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string, observation *MailImportContext) (Result, error) {
 	var res Result
 	if err := archive.ValidSource(source); err != nil {
 		return res, err
@@ -293,16 +291,14 @@ func ImportMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archive
 	if err != nil {
 		return Result{}, err
 	}
-	return store.RunImport(ctx, st, "mbox", path, func(ctx context.Context) (Result, error) {
-		result, err := importMboxUnreported(ctx, st, blobs, archiveDir, source, path, observation)
-		if err == nil && observation != nil {
-			result.MailContextVersion = 1
-		}
-		return result, err
-	})
+	result, err := importMbox(ctx, st, blobs, archiveDir, source, path, observation)
+	if err == nil && observation != nil {
+		result.MailContextVersion = 1
+	}
+	return result, err
 }
 
-func importMboxUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string, observation *MailImportContext) (Result, error) {
+func importMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, source, path string, observation *MailImportContext) (Result, error) {
 	var res Result
 	if err := archive.ValidSource(source); err != nil {
 		return res, err

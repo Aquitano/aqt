@@ -30,12 +30,6 @@ type claudeConversation struct {
 }
 
 func ImportClaude(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
-	return store.RunImport(ctx, st, "claude", path, func(ctx context.Context) (Result, error) {
-		return importClaudeUnreported(ctx, st, archiveDir, path)
-	})
-}
-
-func importClaudeUnreported(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
 	var res Result
 	// The export is several zips; anything that is not conversations
 	// (projects, memories, design chats) is handled by claudeextras.go. An

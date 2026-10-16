@@ -45,7 +45,7 @@ services:
       context: ../..
       dockerfile: apps/bank/Dockerfile
       args:
-        VERSION: ${BANK_VERSION:-dev}
+        VERSION: ${GIT_SHA:-${BANK_VERSION:-dev}}
     image: aqt-bank:local
     # Extraction parses decades of hostile attachments; a bug that slips the
     # in-process limits must not take the box (and Postgres) down with it.
@@ -57,6 +57,7 @@ services:
       DATABASE_URL: postgres://bank:${POSTGRES_PASSWORD:-bank}@db:5432/bank?sslmode=disable
       BANK_DATA_DIR: /data
       BANK_QUERY_DATABASE_URL: ${BANK_QUERY_DATABASE_URL:-}
+      BANK_LOG_LEVEL: ${BANK_LOG_LEVEL:-info}
       # Dates and WhatsApp export timestamps are read in local time; without
       # this the container would read them as UTC and shift them.
       TZ: ${TZ:-UTC}
@@ -106,7 +107,7 @@ services:
       context: ../..
       dockerfile: apps/bank/Dockerfile
       args:
-        VERSION: ${BANK_VERSION:-dev}
+        VERSION: ${GIT_SHA:-${BANK_VERSION:-dev}}
       target: ocr
     image: aqt-bank-ocr:local
     mem_limit: 2g

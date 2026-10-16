@@ -17,7 +17,6 @@
 package youtube
 
 import (
-	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -32,6 +31,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/export"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -57,12 +57,6 @@ type Result struct {
 // Takeout writes by default, or watch-history.json, the "Multiple formats"
 // option). Re-importing an overlapping export is a no-op.
 func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
-	return store.RunImport(ctx, st, "youtube", inputPath, func(ctx context.Context) (Result, error) {
-		return importUnreported(ctx, st, archiveDir, inputPath)
-	})
-}
-
-func importUnreported(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
 	var res Result
 
 	raw, name, err := readHistory(inputPath)
@@ -184,27 +178,19 @@ var historyNames = []string{"watch-history.json", "watch-history.html"}
 // readHistory returns the history file's bytes and its base name, given the
 // export zip, an unpacked export directory, or the file itself.
 func readHistory(inputPath string) ([]byte, string, error) {
-	info, err := os.Stat(inputPath)
+	exp, err := export.Open(inputPath)
 	if err != nil {
 		return nil, "", err
 	}
-	switch {
-	case info.IsDir():
-		return readHistoryFS(os.DirFS(inputPath), inputPath)
-	case strings.EqualFold(filepath.Ext(inputPath), ".zip"):
-		zr, err := zip.OpenReader(inputPath)
-		if err != nil {
-			return nil, "", err
-		}
-		defer zr.Close()
-		return readHistoryFS(&zr.Reader, inputPath)
-	default:
-		raw, err := os.ReadFile(inputPath)
-		if err != nil {
-			return nil, "", err
-		}
-		return raw, filepath.Base(inputPath), nil
+	defer exp.Close()
+	if exp.FS != nil {
+		return readHistoryFS(exp.FS, inputPath)
 	}
+	raw, err := os.ReadFile(inputPath)
+	if err != nil {
+		return nil, "", err
+	}
+	return raw, filepath.Base(inputPath), nil
 }
 
 func readHistoryFS(fsys fs.FS, inputPath string) ([]byte, string, error) {

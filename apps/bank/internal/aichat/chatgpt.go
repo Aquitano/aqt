@@ -1,13 +1,11 @@
 package aichat
 
 import (
-	"archive/zip"
 	"context"
 	"encoding/json"
 	"io"
 	"io/fs"
 	"math"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/export"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -64,12 +63,6 @@ type cgptAttachment struct {
 }
 
 func ImportChatGPT(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
-	return store.RunImport(ctx, st, "chatgpt", path, func(ctx context.Context) (Result, error) {
-		return importChatGPTUnreported(ctx, st, blobs, archiveDir, path)
-	})
-}
-
-func importChatGPTUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
 	var res Result
 	raw, rawRef, md, closeExport, err := loadChatGPTExport(archiveDir, blobs, path, ctx)
 	if err != nil {
@@ -337,85 +330,44 @@ func assetID(pointer string) string {
 }
 
 // loadChatGPTExport is loadConversations plus the export's media: an opener
-// for <asset-id>.dat files and the original-filename map, when the input is
-// a directory or zip that carries them. A bare conversations.json has no
-// media and imports text-only, exactly as before.
+// for <asset-id>.dat files and the original-filename map, looked up by name
+// anywhere in a directory or zip that carries them. A bare conversations.json
+// has no media and imports text-only, exactly as before.
 func loadChatGPTExport(archiveDir string, blobs *blob.Store, path string, contexts ...context.Context) ([]byte, string, *media, func(), error) {
 	noop := func() {}
-	info, err := os.Stat(path)
+	raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path, contexts...)
 	if err != nil {
 		return nil, "", nil, noop, err
 	}
-	switch {
-	case info.IsDir():
-		raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path, contexts...)
-		if err != nil {
-			return nil, "", nil, noop, err
-		}
-		md := &media{
-			blobs: blobs,
-			names: loadAssetNames(func() ([]byte, error) {
-				return os.ReadFile(filepath.Join(path, "conversation_asset_file_names.json"))
-			}),
-			open: func(id string) io.ReadCloser {
-				if !assetIDName.MatchString(id) {
-					return nil
-				}
-				f, err := os.Open(filepath.Join(path, id+".dat"))
-				if err != nil {
-					return nil
-				}
-				return f
-			},
-		}
-		return raw, rawRef, md, noop, nil
-	case strings.EqualFold(filepath.Ext(path), ".zip"):
-		raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path, contexts...)
-		if err != nil {
-			return nil, "", nil, noop, err
-		}
-		zr, err := zip.OpenReader(path)
-		if err != nil {
-			return nil, "", nil, noop, err
-		}
-		byName := map[string]*zip.File{}
-		for _, f := range zr.File {
-			byName[filepath.Base(f.Name)] = f
-		}
-		md := &media{
-			blobs: blobs,
-			names: loadAssetNames(func() ([]byte, error) {
-				f, ok := byName["conversation_asset_file_names.json"]
-				if !ok {
-					return nil, fs.ErrNotExist
-				}
-				rc, err := f.Open()
-				if err != nil {
-					return nil, err
-				}
-				defer rc.Close()
-				return io.ReadAll(rc)
-			}),
-			open: func(id string) io.ReadCloser {
-				if !assetIDName.MatchString(id) {
-					return nil
-				}
-				f, ok := byName[id+".dat"]
-				if !ok {
-					return nil
-				}
-				rc, err := f.Open()
-				if err != nil {
-					return nil
-				}
-				return rc
-			},
-		}
-		return raw, rawRef, md, func() { zr.Close() }, nil
-	default:
-		raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path, contexts...)
+	exp, err := export.Open(path)
+	if err != nil || exp.FS == nil {
 		return raw, rawRef, nil, noop, err
 	}
+	byName := map[string]string{}
+	_ = fs.WalkDir(exp.FS, ".", func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			byName[filepath.Base(p)] = p
+		}
+		return nil
+	})
+	md := &media{
+		blobs: blobs,
+		names: loadAssetNames(func() ([]byte, error) {
+			return fs.ReadFile(exp.FS, byName["conversation_asset_file_names.json"])
+		}),
+		open: func(id string) io.ReadCloser {
+			p, ok := byName[id+".dat"]
+			if !ok || !assetIDName.MatchString(id) {
+				return nil
+			}
+			f, err := exp.FS.Open(p)
+			if err != nil {
+				return nil
+			}
+			return f
+		},
+	}
+	return raw, rawRef, md, func() { exp.Close() }, nil
 }
 
 // loadAssetNames reads conversation_asset_file_names.json ("<id>.dat" →

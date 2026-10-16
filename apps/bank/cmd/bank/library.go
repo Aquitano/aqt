@@ -9,21 +9,14 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
-func cmdReports(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Before int64 `name:"before"`
-		Limit  int   `name:"limit" default:"50"`
-		JSON   bool  `name:"json"`
-	}{}
-	before := &options.Before
-	limit := &options.Limit
-	asJSON := &options.JSON
-	if err := parseCommand("reports", &options, args); err != nil {
-		return err
-	}
+type reportsCmd struct {
+	Before int64 `help:"Page backward from this report id."`
+	Limit  int   `default:"50" help:"Page size, 1-100."`
+	JSON   bool  `help:"JSON output."`
+}
 
-	if *before < 0 || *limit < 1 || *limit > 100 {
+func (c *reportsCmd) Run(ctx context.Context) error {
+	if c.Before < 0 || c.Limit < 1 || c.Limit > 100 {
 		return fmt.Errorf("before must be nonnegative and limit must be 1-100")
 	}
 	b, closeBackend, err := openBackend(ctx)
@@ -31,11 +24,11 @@ func cmdReports(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeBackend()
-	reports, err := b.ImportReports(ctx, *before, *limit)
+	reports, err := b.ImportReports(ctx, c.Before, c.Limit)
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(reports)
 	}
 	for _, r := range reports {
@@ -47,45 +40,32 @@ func cmdReports(ctx context.Context, args []string) error {
 	return nil
 }
 
-func cmdAttachmentFind(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Filename string `name:"filename"`
-		Text     string `name:"text"`
-		Type     string `name:"type"`
-		Person   string `name:"person"`
-		Since    string `name:"since"`
-		Until    string `name:"until"`
-		Offset   int    `name:"offset"`
-		Limit    int    `name:"limit" default:"50"`
-		JSON     bool   `name:"json"`
-	}{}
-	var o store.AttachmentFilter
-	since := &options.Since
-	until := &options.Until
-	asJSON := &options.JSON
-	if err := parseCommand("attachment find", &options, args); err != nil {
-		return err
-	}
-	o.Filename = options.Filename
-	o.Text = options.Text
-	o.FileType = options.Type
-	o.Person = options.Person
-	o.Offset = options.Offset
-	o.Limit = options.Limit
+type attachmentFindCmd struct {
+	Filename string `help:"Filename contains this."`
+	Text     string `help:"Extracted text contains this phrase."`
+	Type     string `help:"Extension, MIME type or category such as image."`
+	Person   string `help:"Contact name."`
+	Since    string `help:"YYYY-MM-DD."`
+	Until    string `help:"YYYY-MM-DD (exclusive)."`
+	Offset   int    `help:"Skip this many files."`
+	Limit    int    `default:"50" help:"Page size, 1-100."`
+	JSON     bool   `help:"JSON output."`
+}
 
+func (c *attachmentFindCmd) Run(ctx context.Context) error {
+	o := store.AttachmentFilter{Filename: c.Filename, Text: c.Text, FileType: c.Type, Person: c.Person, Offset: c.Offset, Limit: c.Limit}
 	if o.Offset < 0 || o.Offset > store.MaxSearchOffset || o.Limit < 1 || o.Limit > 100 {
 		return fmt.Errorf("invalid pagination")
 	}
 	var err error
-	if *since != "" {
-		o.Since, err = time.Parse("2006-01-02", *since)
+	if c.Since != "" {
+		o.Since, err = time.Parse("2006-01-02", c.Since)
 		if err != nil {
 			return err
 		}
 	}
-	if *until != "" {
-		o.Until, err = time.Parse("2006-01-02", *until)
+	if c.Until != "" {
+		o.Until, err = time.Parse("2006-01-02", c.Until)
 		if err != nil {
 			return err
 		}
@@ -99,7 +79,7 @@ func cmdAttachmentFind(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(files)
 	}
 	for _, f := range files {
@@ -108,25 +88,17 @@ func cmdAttachmentFind(ctx context.Context, args []string) error {
 	return nil
 }
 
-func cmdAttachmentMessages(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Offset int `name:"offset"`
-		Limit  int `name:"limit" default:"50"`
-	}{}
-	offset := &options.Offset
-	limit := &options.Limit
-	if err := parseCommand("attachment messages", &options, args); err != nil {
-		return err
-	}
+type attachmentMessagesCmd struct {
+	SHA256 string `arg:"" name:"sha256"`
+	Offset int    `help:"Skip this many messages."`
+	Limit  int    `default:"50" help:"Page size, 1-100."`
+}
 
-	if len(options.Args) != 1 {
-		return fmt.Errorf("usage: bank attachment messages <sha256> [--offset N] [--limit N]")
-	}
-	if err := blob.ValidDigest(commandArg(options.Args, 0)); err != nil {
+func (c *attachmentMessagesCmd) Run(ctx context.Context) error {
+	if err := blob.ValidDigest(c.SHA256); err != nil {
 		return err
 	}
-	if *offset < 0 || *offset > store.MaxSearchOffset || *limit < 1 || *limit > 100 {
+	if c.Offset < 0 || c.Offset > store.MaxSearchOffset || c.Limit < 1 || c.Limit > 100 {
 		return fmt.Errorf("invalid pagination")
 	}
 	b, closeBackend, err := openBackend(ctx)
@@ -134,7 +106,7 @@ func cmdAttachmentMessages(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeBackend()
-	messages, err := b.AttachmentMessages(ctx, commandArg(options.Args, 0), *offset, *limit)
+	messages, err := b.AttachmentMessages(ctx, c.SHA256, c.Offset, c.Limit)
 	if err != nil {
 		return err
 	}

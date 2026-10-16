@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -28,11 +29,14 @@ import (
 	// local time, so an image that silently fell back to UTC would shift them.
 	_ "time/tzdata"
 
+	"github.com/alecthomas/kong"
+
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -40,189 +44,123 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/webui"
 )
 
-const usage = `bank — personal message archive
-
-Usage:
-  bank auth gmail [--port n] [--bind addr]    authorize Gmail (loopback OAuth)
-  bank sync [--full]                          pull new mail from Gmail
-  bank imap --config <file> [--once]         collect IMAP mail continuously or once
-  bank imap --config <file> --check          check IMAP login and selected folders
-  bank imap --config <file> --status         read local IMAP collector status
-  bank import whatsapp <export.zip|.txt>...   WhatsApp "Export chat" files
-  bank import eml [--source s] <file|dir>...  .eml files (default source: proton)
-  bank import mbox [--source s] <file>...     mbox files (default source: gmail)
-  bank import eml|mbox --mailbox <name> <file>  preserve a folder observation
-  bank import mail-tree --source s --layout eml|thunderbird <root>
-  bank mail mailboxes --source s [--json]    list historically observed folders
-  bank mail rebuild --source s [--apply]    rebuild mail metadata (dry run by default)
-  bank mail conflict <key> --source s       page unanchored mail after a thread split
-  bank import discord <package.zip|dir>...    Discord GDPR data package
-  bank import linkedin <zip|csv|dir>...       LinkedIn data export
-  bank import youtube <takeout.zip|dir|json>  YouTube watch history (Google Takeout)
-  bank import youtube-media <zip|dir|csv|json> YouTube history, playlists and music library
-  bank import netflix <csv> [--date-order mdy|dmy]  Netflix viewing activity
-  bank import library <json>                 versioned media library bundle
-  bank import markdown <root>                checked Markdown page publication
-  bank import chatgpt <export.zip|json|dir>   ChatGPT data export
-  bank import claude <export.zip|json|dir>    Claude.ai data export
-  bank import json [--source s] <file|->      arbitrary JSON/NDJSON messages
-                                              (the escape hatch for agents; - reads stdin)
-  bank import inbox [--json]                  sweep $BANK_DATA_DIR/inbox/<kind>/
-  bank import ... [--no-extract]              skip reading text out of attachments
-  bank reimport <source>                      replay archived inputs through the current importer
-  bank reimport mbox --heal-bodies [--apply]  re-read archived mail and replace stub bodies
-                                              today's parser reads better (dry run by default)
-  bank extract [--ocr] [--status s]           read text out of attachments
-  bank attachment list [--status s]           attachment content and its text status
-  bank reports [--before ID] [--json]         saved import outcomes and gaps
-  bank attachment find [--filename invoice] [--text phrase] [--type pdf] [--person alice] [--json]
-  bank attachment messages <sha256>          every message with this file, as JSON
-  bank attachment stats [--json]              how much of the archive is searchable inside
-  bank attachment text <sha256> [--set f]     read, replace or clear that text
-  bank library <command>                     media, activity, collections, files, page indexing
-  bank library help                          library commands and JSON edit formats
-  bank search [query] [flags]                 grouped archive search, or filtered conversations
-  bank thread <id> [--source s] [--limit n]   one conversation page, oldest first
-  bank contact <add|list|show|alias|...>      one person across their many identities
-  bank show <id|ref> [--json] [--provenance]   print one message + attachments
-  bank stats [--json]                         per-source counts, date ranges, freshness
-  bank coverage <source> <text>               note what a source holds (empty text clears)
-  bank query <sql|-> [--limit n] [--json]     read-only ad-hoc SQL (analytics escape
-                                              hatch; READ ONLY tx, 15s timeout,
-                                              row cap 100, --limit up to 10000)
-  bank query --schema                         list tables and columns
-  bank fetch <sha256> [-o path]               write an attachment to a file
-  bank verify [--heal] [--source s] [--json]  check archive integrity, optionally repair
-  bank version                              print the build revision
-  bank healthcheck [url]                      check server and database health
-  bank serve [--listen addr]                  HTTP API (default 127.0.0.1:8480)
-  bank ui [--listen addr] [--no-open]         local archive browser (default
-                                              127.0.0.1:8481; needs BANK_URL)
-  bank token new <name>                       mint an API token (printed once)
-  bank token list                             token names
-  bank token revoke <name>                    drop a token
-
-Extraction flags (bank extract):
-  --status s     work on this status (repeatable; default: content never tried)
-                 pending, ok, empty, needs_ocr, unsupported, too_big, failed
-                 (not manual: transcriptions are only replaced by
-                  'bank attachment text --set' or cleared with --clear)
-  --ocr          read images and text-layer-less PDFs (needs tesseract, poppler)
-  --lang s       OCR language, tesseract syntax (default eng; "deu+eng" for two)
-  --source s     only content carried by this source
-  --limit n      stop after this many files
-  --watch        keep draining the queue instead of running once
-  --interval d   how often --watch runs (default 30m)
-
-Search flags:
-  --source s     filter by source (whatsapp, gmail, ...)
-  --kind k       message, item, activity, collection, file, page, or media subtype
-  --account a    filter library records by source account
-  --mailbox-id n  observed folder id from bank mail mailboxes; requires --source
-  --subject text subject contains this literal text, case-insensitive
-  --has-attachment true|false  filter by attachment presence
-  --from name    filter by sender (substring, case-insensitive)
-  --to name      filter by recipient (substring, case-insensitive)
-  --person name  filter by contact, across all their aliases (bank contact)
-  --since date   YYYY-MM-DD
-  --until date   YYYY-MM-DD (exclusive)
-  --match mode   any (default), all words, or phrase
-  --fuzzy n      typo tolerance 0-2 (default 1; ignored for phrase)
-  --limit n      max results, 1-500 (default 20)
-  --offset n     skip this many ranked results, for the next page (max 10000)
-  --json         JSON output
-
-Thread flags:
-  --current      read a current subgroup instead of resolving its historical alias
-  --around id    center context on this message's numeric id
-  --before id    page backward from this message
-  --after id     page forward from this message
-  --latest       start at the newest page
-                 Choose one position; pages are always chronological.
-  --limit n      page size, 1-2000 (default 2000)
-  --json         includes has_before, has_after, and attachments
+const description = `bank — personal message archive
 
 Environment:
+  DATABASE_URL             default ` + defaultDatabaseURL + `
   BANK_QUERY_DATABASE_URL  separate restricted login for ad-hoc SQL
-  DATABASE_URL   default postgres://bank:bank@localhost:5433/bank
-  BANK_DATA_DIR  default ~/.local/share/aqt-bank (blobs/, archive/, inbox/)
-  BANK_URL       talk to a remote 'bank serve' instead of Postgres
-  BANK_TOKEN     bearer token for BANK_URL (see 'bank token new')
-`
+  BANK_DATA_DIR            default ~/.local/share/aqt-bank (blobs/, archive/, inbox/)
+  BANK_URL                 talk to a remote 'bank serve' instead of Postgres
+  BANK_TOKEN               bearer token for BANK_URL (see 'bank token new')`
 
-func main() { os.Exit(run()) }
+type cli struct {
+	Version kong.VersionFlag `help:"Print the build revision."`
 
-func run() int {
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
+	VersionCmd  versionCmd     `cmd:"" name:"version" help:"Print the build revision."`
+	Help        helpCmd        `cmd:"" hidden:"" help:"Show help for a command."`
+	Auth        authCmd        `cmd:"" help:"Authorize an account."`
+	Sync        syncCmd        `cmd:"" help:"Pull new mail from Gmail."`
+	IMAP        imapCmd        `cmd:"" name:"imap" help:"Collect IMAP mail continuously, once, or check the login."`
+	Mail        mailCmd        `cmd:"" help:"Observed folders, metadata rebuilds and thread conflicts."`
+	Import      importCmd      `cmd:"" help:"Import exports into the archive."`
+	Reimport    reimportCmd    `cmd:"" help:"Replay archived inputs through the current importer."`
+	Extract     extractCmd     `cmd:"" help:"Read text out of attachments."`
+	Attachment  attachmentCmd  `cmd:"" help:"Attachment content and its text."`
+	Reports     reportsCmd     `cmd:"" help:"Saved import outcomes and gaps."`
+	Library     libraryCmd     `cmd:"" help:"Media, activity, collections, files and page indexing."`
+	Search      searchCmd      `cmd:"" help:"Grouped archive search, or filtered conversations without a query."`
+	Thread      threadCmd      `cmd:"" help:"One conversation page, oldest first."`
+	Contact     contactCmd     `cmd:"" help:"One person across their many identities."`
+	Show        showCmd        `cmd:"" help:"Print one message and its attachments."`
+	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness."`
+	Coverage    coverageCmd    `cmd:"" help:"Note what a source holds (empty text clears)."`
+	Query       queryCmd       `cmd:"" help:"Read-only ad-hoc SQL: READ ONLY tx, 15s timeout, row cap 100."`
+	Fetch       fetchCmd       `cmd:"" help:"Write an attachment to a file."`
+	Verify      verifyCmd      `cmd:"" help:"Check archive integrity, optionally repair."`
+	Healthcheck healthcheckCmd `cmd:"" help:"Check server and database health."`
+	Serve       serveCmd       `cmd:"" help:"HTTP API; logs JSON to stderr at BANK_LOG_LEVEL (default info)."`
+	UI          uiCmd          `cmd:"" name:"ui" help:"Local archive browser (needs BANK_URL)."`
+	Token       tokenCmd       `cmd:"" help:"API tokens."`
+}
+
+func main() { os.Exit(run(os.Args[1:])) }
+
+func run(args []string) int {
+	if len(args) == 0 {
+		printUsage(os.Stderr)
 		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	var err error
-	switch os.Args[1] {
-	case "version", "--version":
-		fmt.Println(buildVersion())
-	case "healthcheck":
-		err = cmdHealthcheck(ctx, os.Args[2:])
-	case "auth":
-		err = cmdAuth(ctx, os.Args[2:])
-	case "sync":
-		err = cmdSync(ctx, os.Args[2:])
-	case "imap":
-		err = cmdIMAP(ctx, os.Args[2:])
-	case "mail":
-		err = cmdMail(ctx, os.Args[2:])
-	case "import":
-		err = cmdImport(ctx, os.Args[2:])
-	case "reimport":
-		err = cmdReimport(ctx, os.Args[2:])
-	case "library":
-		err = cmdLibrary(ctx, os.Args[2:])
-	case "search":
-		err = cmdSearch(ctx, os.Args[2:])
-	case "thread":
-		err = cmdThread(ctx, os.Args[2:])
-	case "contact":
-		err = cmdContact(ctx, os.Args[2:])
-	case "show":
-		err = cmdShow(ctx, os.Args[2:])
-	case "stats":
-		err = cmdStats(ctx, os.Args[2:])
-	case "coverage":
-		err = cmdCoverage(ctx, os.Args[2:])
-	case "query":
-		err = cmdQuery(ctx, os.Args[2:])
-	case "fetch":
-		err = cmdFetch(ctx, os.Args[2:])
-	case "extract":
-		err = cmdExtract(ctx, os.Args[2:])
-	case "reports":
-		err = cmdReports(ctx, os.Args[2:])
-	case "attachment":
-		err = cmdAttachment(ctx, os.Args[2:])
-	case "verify":
-		err = cmdVerify(ctx, os.Args[2:])
-	case "serve":
-		err = cmdServe(ctx, os.Args[2:])
-	case "ui":
-		err = cmdUI(ctx, os.Args[2:])
-	case "token":
-		err = cmdToken(os.Args[2:])
-	case "help", "--help", "-h":
-		fmt.Print(usage)
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", os.Args[1], usage)
-		return 2
-	}
-	if errors.Is(err, errCommandHelp) {
+	err := execute(ctx, args)
+	if err == nil {
 		return 0
 	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "bank:", err)
-		return 1
+	fmt.Fprintln(os.Stderr, "bank:", err)
+	if parseErr, ok := errors.AsType[*kong.ParseError](err); ok && (parseErr.Context == nil || parseErr.Context.Selected() == nil) {
+		fmt.Fprintln(os.Stderr)
+		printUsage(os.Stderr)
+		return 2
 	}
-	return 0
+	return 1
+}
+
+func newParser(root *cli) *kong.Kong {
+	return kong.Must(root,
+		kong.Name("bank"),
+		kong.Description(description),
+		kong.Vars{"version": buildVersion()},
+		kong.WithHyphenPrefixedParameters(true),
+	)
+}
+
+func execute(ctx context.Context, args []string) error {
+	kctx, err := newParser(&cli{}).Parse(args)
+	if err != nil {
+		return err
+	}
+	kctx.BindTo(ctx, (*context.Context)(nil))
+	return kctx.Run()
+}
+
+func printUsage(w io.Writer) {
+	parser := newParser(&cli{})
+	parser.Stdout = w
+	if err := printHelp(parser, nil); err != nil {
+		fmt.Fprintln(os.Stderr, "bank:", err)
+	}
+}
+
+func printHelp(parser *kong.Kong, path []string) error {
+	target, err := kong.Trace(parser, path)
+	if err != nil {
+		return err
+	}
+	if target.Error != nil {
+		return target.Error
+	}
+	return target.PrintUsage(false)
+}
+
+type versionCmd struct{}
+
+func (versionCmd) Run() error {
+	fmt.Println(buildVersion())
+	return nil
+}
+
+// helpCmd answers `bank help [command]` and `bank <group> help`, the spellings
+// the old usage text advertised alongside --help.
+type helpCmd struct {
+	Command []string `arg:"" optional:""`
+}
+
+func (h *helpCmd) Run(kctx *kong.Context) error {
+	var path []string
+	for n := kctx.Selected().Parent; n != nil && n.Type == kong.CommandNode; n = n.Parent {
+		path = append([]string{n.Name}, path...)
+	}
+	return printHelp(kctx.Kong, append(path, h.Command...))
 }
 
 func dataDir() string {
@@ -239,12 +177,17 @@ func dataDir() string {
 	return filepath.Join(home, ".local", "share", "aqt-bank")
 }
 
-func openStore(ctx context.Context) (*store.Store, error) {
-	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		url = "postgres://bank:bank@localhost:5433/bank?sslmode=disable"
+const defaultDatabaseURL = "postgres://bank:bank@localhost:5433/bank?sslmode=disable"
+
+func databaseURL() string {
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		return url
 	}
-	st, err := store.Open(ctx, url)
+	return defaultDatabaseURL
+}
+
+func openStore(ctx context.Context) (*store.Store, error) {
+	st, err := store.Open(ctx, databaseURL())
 	if err != nil {
 		return nil, err
 	}
@@ -257,15 +200,9 @@ func openStore(ctx context.Context) (*store.Store, error) {
 	return st, nil
 }
 
-// local is everything an importer needs when the CLI talks to Postgres
-// directly rather than to a `bank serve`.
-type local struct {
-	st         *store.Store
-	blobs      *blob.Store
-	archiveDir string
-}
-
-func openLocal(ctx context.Context) (*local, func(), error) {
+// openLocal is for commands that talk to Postgres and the blob store directly
+// rather than to a `bank serve`.
+func openLocal(ctx context.Context) (*importer.Target, func(), error) {
 	st, err := openStore(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -275,37 +212,27 @@ func openLocal(ctx context.Context) (*local, func(), error) {
 		st.Close()
 		return nil, nil, err
 	}
-	return &local{st: st, blobs: blobs, archiveDir: filepath.Join(dataDir(), "archive")}, st.Close, nil
+	return &importer.Target{Store: st, Blobs: blobs, ArchiveDir: filepath.Join(dataDir(), "archive")}, st.Close, nil
 }
 
-func cmdAuth(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Port int    `name:"port"`
-		Bind string `name:"bind" default:"127.0.0.1"`
-	}{}
-	port := &options.Port
-	bind := &options.Bind
-	if err := parseCommand("auth", &options, args); err != nil {
-		return err
-	}
-
-	if len(options.Args) != 1 || commandArg(options.Args, 0) != "gmail" {
-		return fmt.Errorf("usage: bank auth gmail [--port n] [--bind addr]")
-	}
-	return gmail.Authorize(ctx, dataDir(), *bind, *port)
+type authCmd struct {
+	Gmail authGmailCmd `cmd:"" help:"Authorize Gmail (loopback OAuth)."`
 }
 
-func cmdSync(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Full bool `name:"full"`
-	}{}
-	full := &options.Full
-	if err := parseCommand("sync", &options, args); err != nil {
-		return err
-	}
+type authGmailCmd struct {
+	Port int    `help:"Loopback port for the OAuth redirect."`
+	Bind string `default:"127.0.0.1" help:"Address the OAuth listener binds."`
+}
 
+func (c *authGmailCmd) Run(ctx context.Context) error {
+	return gmail.Authorize(ctx, dataDir(), c.Bind, c.Port)
+}
+
+type syncCmd struct {
+	Full bool `help:"Re-fetch existing mail instead of history deltas."`
+}
+
+func (c *syncCmd) Run(ctx context.Context) error {
 	if client.FromEnv() != nil {
 		return fmt.Errorf("sync reads the OAuth token beside the blob store and writes rows, blobs and raw mail together; run it on the server, not through BANK_URL")
 	}
@@ -314,7 +241,7 @@ func cmdSync(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeStore()
-	res, err := gmail.Sync(ctx, d.st, d.blobs, dataDir(), d.archiveDir, *full)
+	res, err := gmail.Sync(ctx, d.Store, d.Blobs, dataDir(), d.ArchiveDir, c.Full)
 	printSyncResult(res)
 	return err
 }
@@ -336,62 +263,41 @@ func printSyncResult(res gmail.SyncResult) {
 	}
 }
 
-func cmdSearch(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Kind          string `name:"kind"`
-		Account       string `name:"account"`
-		Source        string `name:"source"`
-		From          string `name:"from"`
-		To            string `name:"to"`
-		Person        string `name:"person"`
-		MailboxID     int64  `name:"mailbox-id"`
-		Subject       string `name:"subject"`
-		HasAttachment string `name:"has-attachment" help:"true or false"`
-		Match         string `name:"match" default:"any"`
-		Since         string `name:"since"`
-		Until         string `name:"until"`
-		Fuzzy         int    `name:"fuzzy" default:"1"`
-		Limit         int    `name:"limit" default:"20"`
-		Offset        int    `name:"offset"`
-		JSON          bool   `name:"json"`
-	}{}
-	var o store.SearchOpts
-	var since, until string
-	var asJSON bool
-	kind := &options.Kind
-	account := &options.Account
-	attachment := &options.HasAttachment
-	if err := parseCommand("search", &options, args); err != nil {
-		return err
-	}
-	o.Source = options.Source
-	o.From = options.From
-	o.To = options.To
-	o.Person = options.Person
-	o.MailboxID = options.MailboxID
-	o.Subject = options.Subject
-	o.Match = options.Match
-	since = options.Since
-	until = options.Until
-	o.Fuzzy = options.Fuzzy
-	o.Limit = options.Limit
-	o.Offset = options.Offset
-	asJSON = options.JSON
+type searchCmd struct {
+	Query         []string `arg:"" optional:"" help:"Search words; without them, browse filtered conversations."`
+	Kind          string   `help:"message, item, activity, collection, file, page, or media subtype."`
+	Account       string   `help:"Filter library records by source account."`
+	Source        string   `help:"Filter by source (whatsapp, gmail, ...)."`
+	From          string   `help:"Sender contains this (case-insensitive)."`
+	To            string   `help:"Recipient contains this (case-insensitive)."`
+	Person        string   `help:"Filter by contact, across all their aliases."`
+	MailboxID     int64    `help:"Observed folder id from bank mail mailboxes; requires --source."`
+	Subject       string   `help:"Subject contains this literal text, case-insensitive."`
+	HasAttachment string   `help:"true or false."`
+	Match         string   `default:"any" help:"any, all words, or phrase."`
+	Since         string   `help:"YYYY-MM-DD."`
+	Until         string   `help:"YYYY-MM-DD (exclusive)."`
+	Fuzzy         int      `default:"1" help:"Typo tolerance 0-2 (ignored for phrase)."`
+	Limit         int      `default:"20" help:"Max results, 1-500."`
+	Offset        int      `help:"Skip this many ranked results, for the next page (max 10000)."`
+	JSON          bool     `help:"JSON output."`
+}
 
-	query := strings.Join(options.Args, " ")
-	if *attachment != "" {
-		value, err := strconv.ParseBool(*attachment)
-		if err != nil || (*attachment != "true" && *attachment != "false") {
+func (c *searchCmd) Run(ctx context.Context) error {
+	o := store.SearchOpts{Source: c.Source, From: c.From, To: c.To, Person: c.Person, MailboxID: c.MailboxID, Subject: c.Subject, Match: c.Match, Fuzzy: c.Fuzzy, Limit: c.Limit, Offset: c.Offset}
+	query := strings.Join(c.Query, " ")
+	if c.HasAttachment != "" {
+		value, err := strconv.ParseBool(c.HasAttachment)
+		if err != nil || (c.HasAttachment != "true" && c.HasAttachment != "false") {
 			return fmt.Errorf("has-attachment must be true or false")
 		}
 		o.HasAttachment = &value
 	}
 	var err error
-	if o.Since, err = parseDate(since); err != nil {
+	if o.Since, err = parseDate(c.Since); err != nil {
 		return err
 	}
-	if o.Until, err = parseDate(until); err != nil {
+	if o.Until, err = parseDate(c.Until); err != nil {
 		return err
 	}
 	// Checked before the query so local and remote modes reject the same
@@ -412,14 +318,14 @@ func cmdSearch(ctx context.Context, args []string) error {
 	}
 	defer closeBackend()
 	if query == "" {
-		if *kind != "" || *account != "" {
+		if c.Kind != "" || c.Account != "" {
 			return fmt.Errorf("kind/account require a search query; use bank library list to browse library records")
 		}
 		groups, err := b.BrowseThreads(ctx, store.BrowseOpts{Source: o.Source, MailboxID: o.MailboxID, Subject: o.Subject, HasAttachment: o.HasAttachment, From: o.From, To: o.To, Person: o.Person, Since: o.Since, Until: o.Until, Limit: o.Limit, Offset: o.Offset})
 		if err != nil {
 			return err
 		}
-		if asJSON {
+		if c.JSON {
 			return printJSON(groups)
 		}
 		for _, group := range groups {
@@ -428,7 +334,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 		printMorePages(len(groups), o.Limit, o.Offset)
 		return nil
 	}
-	findOptions := library.ListOptions{Query: query, Source: o.Source, Account: *account, Kind: *kind, Since: since, Until: until, Limit: o.Limit, Offset: o.Offset}
+	findOptions := library.ListOptions{Query: query, Source: o.Source, Account: c.Account, Kind: c.Kind, Since: c.Since, Until: c.Until, Limit: o.Limit, Offset: o.Offset}
 	var result catalog.Result
 	if remote, ok := b.(*client.Client); ok {
 		result, err = remote.Find(ctx, query, o, findOptions)
@@ -438,7 +344,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if asJSON {
+	if c.JSON {
 		return printJSON(result)
 	}
 	return printCatalog(result, o.Limit, o.Offset)
@@ -459,49 +365,33 @@ func printMorePages(got, limit, offset int) {
 	fmt.Printf("\n… possibly more: repeat with --offset %d\n", next)
 }
 
-func cmdThread(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Source  string `name:"source"`
-		Limit   int    `name:"limit"`
-		Before  int64  `name:"before"`
-		After   int64  `name:"after"`
-		Around  int64  `name:"around"`
-		Latest  bool   `name:"latest"`
-		Current bool   `name:"current"`
-		JSON    bool   `name:"json"`
-	}{}
-	var o store.ThreadOpts
-	source := &options.Source
-	asJSON := &options.JSON
-	if err := parseCommand("thread", &options, args); err != nil {
-		return err
-	}
-	o.Limit = options.Limit
-	o.Before = options.Before
-	o.After = options.After
-	o.Around = options.Around
-	o.Latest = options.Latest
-	o.Current = options.Current
+type threadCmd struct {
+	ID      []string `arg:"" help:"Thread id; several words are joined with spaces."`
+	Source  string   `help:"Source the thread belongs to."`
+	Limit   int      `help:"Page size, 1-2000 (default 2000)."`
+	Before  int64    `help:"Page backward from this message."`
+	After   int64    `help:"Page forward from this message."`
+	Around  int64    `help:"Center context on this message's numeric id."`
+	Latest  bool     `help:"Start at the newest page."`
+	Current bool     `help:"Read a current subgroup instead of resolving its historical alias."`
+	JSON    bool     `help:"JSON output, including has_before, has_after and attachments."`
+}
 
-	if len(options.Args) == 0 {
-		return fmt.Errorf("usage: bank thread <id> [--source s] [--around id|--before id|--after id|--latest] [--limit n] [--json]")
-	}
-	threadID := strings.Join(options.Args, " ")
-
+func (c *threadCmd) Run(ctx context.Context) error {
+	threadID := strings.Join(c.ID, " ")
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeBackend()
-	thread, err := b.GetThreadPage(ctx, *source, threadID, o)
+	thread, err := b.GetThreadPage(ctx, c.Source, threadID, store.ThreadOpts{Limit: c.Limit, Before: c.Before, After: c.After, Around: c.Around, Latest: c.Latest, Current: c.Current})
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("no thread %q", threadID)
 	}
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(thread)
 	}
 	// One subject shared by every message is the conversation's title, not
@@ -545,23 +435,13 @@ func cmdThread(ctx context.Context, args []string) error {
 	return nil
 }
 
-func cmdShow(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		JSON       bool `name:"json"`
-		Provenance bool `name:"provenance" help:"show archive, folder, and mail grouping evidence"`
-	}{}
-	asJSON := &options.JSON
-	provenance := &options.Provenance
-	if err := parseCommand("show", &options, args); err != nil {
-		return err
-	}
+type showCmd struct {
+	Ref        string `arg:"" help:"Message id, or the 12-character ref a citation carries."`
+	JSON       bool   `help:"JSON output."`
+	Provenance bool   `help:"Show archive, folder, and mail grouping evidence."`
+}
 
-	if len(options.Args) != 1 {
-		return fmt.Errorf("usage: bank show <id|ref> [--json] [--provenance]")
-	}
-	arg := commandArg(options.Args, 0)
-
+func (c *showCmd) Run(ctx context.Context) error {
 	remote := client.FromEnv() != nil
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
@@ -571,22 +451,22 @@ func cmdShow(ctx context.Context, args []string) error {
 	// A ref is 12 hex characters and is tried first: one made only of digits
 	// would otherwise parse as a row id, and no archive reaches 12-digit ids.
 	var d store.MessageDetail
-	if store.ValidRef(arg) == nil {
-		d, err = b.GetMessageDetailByRef(ctx, arg)
+	if store.ValidRef(c.Ref) == nil {
+		d, err = b.GetMessageDetailByRef(ctx, c.Ref)
 	} else {
-		id, parseErr := strconv.ParseInt(arg, 10, 64)
+		id, parseErr := strconv.ParseInt(c.Ref, 10, 64)
 		if parseErr != nil {
-			return fmt.Errorf("invalid id or ref %q (a ref is %d hex characters)", arg, store.RefChars)
+			return fmt.Errorf("invalid id or ref %q (a ref is %d hex characters)", c.Ref, store.RefChars)
 		}
 		d, err = b.GetMessageDetail(ctx, id)
 	}
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("no message %s", arg)
+		return fmt.Errorf("no message %s", c.Ref)
 	}
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(d)
 	}
 
@@ -600,7 +480,7 @@ func cmdShow(ctx context.Context, args []string) error {
 	if m.Subject != "" {
 		fmt.Printf("subject: %s\n", m.Subject)
 	}
-	if *provenance {
+	if c.Provenance {
 		printProvenance(m)
 	}
 	fmt.Printf("\n%s\n", m.Body)
@@ -688,16 +568,11 @@ func openBackend(ctx context.Context) (backend, func(), error) {
 	return st, st.Close, nil
 }
 
-func cmdStats(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		JSON bool `name:"json"`
-	}{}
-	asJSON := &options.JSON
-	if err := parseCommand("stats", &options, args); err != nil {
-		return err
-	}
+type statsCmd struct {
+	JSON bool `help:"JSON output."`
+}
 
+func (c *statsCmd) Run(ctx context.Context) error {
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
 		return err
@@ -707,7 +582,7 @@ func cmdStats(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(stats)
 	}
 	if len(stats) == 0 {
@@ -754,23 +629,17 @@ func anyStale(stats []store.SourceStats) bool {
 	return slices.ContainsFunc(stats, func(s store.SourceStats) bool { return s.Stale })
 }
 
-// cmdCoverage maintains the per-source note on what the archive actually holds
+// coverageCmd maintains the per-source note on what the archive actually holds
 // — the context that turns "search found nothing" into either "it did not
 // happen" or "that period was never imported".
-func cmdCoverage(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-	}{}
+type coverageCmd struct {
+	Source string   `arg:""`
+	Text   []string `arg:"" optional:"" help:"The note; omit it to clear."`
+}
 
-	if err := parseCommand("coverage", &options, args); err != nil {
-		return err
-	}
-
-	if len(options.Args) < 1 {
-		return fmt.Errorf("usage: bank coverage <source> <text>   (empty text clears the note)")
-	}
-	source, text := commandArg(options.Args, 0), strings.Join(options.Args[1:], " ")
-	if err := archive.ValidSource(source); err != nil {
+func (c *coverageCmd) Run(ctx context.Context) error {
+	text := strings.Join(c.Text, " ")
+	if err := archive.ValidSource(c.Source); err != nil {
 		return err
 	}
 	b, closeBackend, err := openBackend(ctx)
@@ -778,14 +647,14 @@ func cmdCoverage(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeBackend()
-	if err := b.SetCoverage(ctx, source, text); err != nil {
+	if err := b.SetCoverage(ctx, c.Source, text); err != nil {
 		return err
 	}
 	if text == "" {
-		fmt.Printf("%s: coverage note cleared\n", source)
+		fmt.Printf("%s: coverage note cleared\n", c.Source)
 		return nil
 	}
-	fmt.Printf("%s: %s\n", source, text)
+	fmt.Printf("%s: %s\n", c.Source, text)
 	return nil
 }
 
@@ -798,48 +667,40 @@ join information_schema.tables t
 where c.table_schema = 'public' and t.table_type = 'BASE TABLE'
 order by c.table_name, c.ordinal_position`
 
-func cmdQuery(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Limit  int  `name:"limit"`
-		JSON   bool `name:"json"`
-		Schema bool `name:"schema"`
-	}{}
-	limit := &options.Limit
-	asJSON := &options.JSON
-	schema := &options.Schema
-	if err := parseCommand("query", &options, args); err != nil {
-		return err
-	}
+type queryCmd struct {
+	SQL    string `arg:"" optional:"" help:"One SQL statement, or - to read it from stdin."`
+	Limit  int    `help:"Row cap, up to 10000 (default 100)."`
+	JSON   bool   `help:"JSON output."`
+	Schema bool   `help:"List tables and columns."`
+}
 
-	var query string
+func (c *queryCmd) Run(ctx context.Context) error {
+	query := c.SQL
 	switch {
-	case *schema:
-		if len(options.Args) != 0 {
+	case c.Schema:
+		if c.SQL != "" {
 			return fmt.Errorf("--schema takes no query argument")
 		}
 		query = schemaSQL
-	case len(options.Args) != 1:
+	case c.SQL == "":
 		return fmt.Errorf("usage: bank query <sql|-> [--limit n] [--json], or bank query --schema")
-	case commandArg(options.Args, 0) == "-":
+	case c.SQL == "-":
 		b, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return err
 		}
 		query = string(b)
-	default:
-		query = commandArg(options.Args, 0)
 	}
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeBackend()
-	res, err := b.Query(ctx, query, *limit)
+	res, err := b.Query(ctx, query, c.Limit)
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(res)
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
@@ -885,40 +746,32 @@ func queryCell(v any) string {
 	return s
 }
 
-func cmdFetch(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		O string `name:"o" short:"o"`
-	}{}
-	out := &options.O
-	if err := parseCommand("fetch", &options, args); err != nil {
-		return err
-	}
+type fetchCmd struct {
+	SHA256 string `arg:"" name:"sha256"`
+	Output string `short:"o" help:"Destination path (default: the digest)."`
+}
 
-	if len(options.Args) != 1 {
-		return fmt.Errorf("usage: bank fetch <sha256> [-o path]")
-	}
-	sum := commandArg(options.Args, 0)
-	if err := blob.ValidDigest(sum); err != nil {
+func (c *fetchCmd) Run(ctx context.Context) error {
+	if err := blob.ValidDigest(c.SHA256); err != nil {
 		return err
 	}
-	dest := *out
+	dest := c.Output
 	if dest == "" {
-		dest = sum
+		dest = c.SHA256
 	}
 
 	var src io.ReadCloser
 	var err error
-	if c := client.FromEnv(); c != nil {
-		src, err = c.Blob(ctx, sum)
+	if remote := client.FromEnv(); remote != nil {
+		src, err = remote.Blob(ctx, c.SHA256)
 	} else {
 		var blobs *blob.Store
 		if blobs, err = blob.New(filepath.Join(dataDir(), "blobs")); err == nil {
-			src, err = os.Open(blobs.Path(sum))
+			src, err = os.Open(blobs.Path(c.SHA256))
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("%s: %w", sum, err)
+		return fmt.Errorf("%s: %w", c.SHA256, err)
 	}
 	defer src.Close()
 
@@ -937,20 +790,13 @@ func cmdFetch(ctx context.Context, args []string) error {
 	return nil
 }
 
-func cmdVerify(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Heal   bool   `name:"heal"`
-		Source string `name:"source"`
-		JSON   bool   `name:"json"`
-	}{}
-	heal := &options.Heal
-	source := &options.Source
-	asJSON := &options.JSON
-	if err := parseCommand("verify", &options, args); err != nil {
-		return err
-	}
+type verifyCmd struct {
+	Heal   bool   `help:"Rebuild what the archived raw inputs still contain."`
+	Source string `help:"Only check this source."`
+	JSON   bool   `help:"JSON output."`
+}
 
+func (c *verifyCmd) Run(ctx context.Context) error {
 	if client.FromEnv() != nil {
 		return fmt.Errorf("verify reads the archive and blob store directly; run it on the server, not through BANK_URL")
 	}
@@ -960,11 +806,11 @@ func cmdVerify(ctx context.Context, args []string) error {
 	}
 	defer closeStore()
 
-	rep, err := verify.Run(ctx, d.st, d.blobs, d.archiveDir, verify.Options{Source: *source, Heal: *heal})
+	rep, err := verify.Run(ctx, d.Store, d.Blobs, d.ArchiveDir, verify.Options{Source: c.Source, Heal: c.Heal})
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(rep)
 	}
 	for _, f := range rep.Findings {
@@ -987,51 +833,44 @@ func cmdVerify(ctx context.Context, args []string) error {
 	if len(rep.Findings) < rep.Damaged {
 		fmt.Printf("(showing the first %d findings)\n", len(rep.Findings))
 	}
-	if !*heal {
+	if !c.Heal {
 		fmt.Println("run 'bank verify --heal' to rebuild what the archived raw inputs still contain")
 	}
 	return nil
 }
 
-func cmdServe(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Listen string `name:"listen" default:"127.0.0.1:8480"`
-	}{}
-	listen := &options.Listen
-	if err := parseCommand("serve", &options, args); err != nil {
-		return err
-	}
+type serveCmd struct {
+	Listen string `default:"127.0.0.1:8480" help:"Address to listen on."`
+}
 
+func (c *serveCmd) Run(ctx context.Context) error {
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(os.Getenv("BANK_LOG_LEVEL"))); err != nil {
+		level = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeStore()
 	if names, err := server.ListTokens(dataDir()); err == nil && len(names) == 0 {
-		fmt.Fprintln(os.Stderr, "bank: no tokens yet — every /v1 request will 401 until 'bank token new <name>'")
+		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
-	srv := server.New(d.st, d.blobs, dataDir(), d.archiveDir)
-	fmt.Printf("bank serve: listening on %s\n", *listen)
-	return srv.ListenAndServe(ctx, *listen)
+	srv := server.New(d.Store, d.Blobs, dataDir(), d.ArchiveDir)
+	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
+	return srv.ListenAndServe(ctx, c.Listen)
 }
 
-// cmdUI starts the local archive browser: the embedded page plus a proxy that
+// uiCmd starts the local archive browser: the embedded page plus a proxy that
 // signs /v1 requests with BANK_TOKEN, so the token stays out of the browser.
-func cmdUI(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Listen      string `name:"listen" default:"127.0.0.1:8481"`
-		NoOpen      bool   `name:"no-open"`
-		AllowedHost string `name:"allowed-host" help:"hostname accepted by the local UI proxy"`
-	}{}
-	listen := &options.Listen
-	noOpen := &options.NoOpen
-	allowedHost := &options.AllowedHost
-	if err := parseCommand("ui", &options, args); err != nil {
-		return err
-	}
+type uiCmd struct {
+	Listen      string `default:"127.0.0.1:8481" help:"Address to listen on."`
+	NoOpen      bool   `help:"Do not open a browser."`
+	AllowedHost string `help:"Hostname accepted by the local UI proxy."`
+}
 
+func (c *uiCmd) Run(ctx context.Context) error {
 	base := os.Getenv("BANK_URL")
 	if base == "" {
 		return fmt.Errorf("ui needs BANK_URL (and BANK_TOKEN) pointing at a 'bank serve'; on the server box, set BANK_URL=http://127.0.0.1:8480")
@@ -1040,23 +879,23 @@ func cmdUI(ctx context.Context, args []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid BANK_URL: %w", err)
 	}
-	listenHost, _, err := net.SplitHostPort(*listen)
+	listenHost, _, err := net.SplitHostPort(c.Listen)
 	if err != nil {
 		return fmt.Errorf("invalid UI listen address: %w", err)
 	}
-	if (listenHost == "" || listenHost == "0.0.0.0" || listenHost == "::") && *allowedHost == "" {
+	if (listenHost == "" || listenHost == "0.0.0.0" || listenHost == "::") && c.AllowedHost == "" {
 		return fmt.Errorf("wildcard UI listener requires --allowed-host with the hostname used to open it")
 	}
 	acceptedHosts := []string{listenHost}
-	if *allowedHost != "" {
-		acceptedHosts = append(acceptedHosts, *allowedHost)
+	if c.AllowedHost != "" {
+		acceptedHosts = append(acceptedHosts, c.AllowedHost)
 	}
-	addr := "http://" + *listen
+	addr := "http://" + c.Listen
 	fmt.Printf("bank ui: %s -> %s\n", addr, base)
-	if !*noOpen {
+	if !c.NoOpen {
 		openBrowser(addr)
 	}
-	srv := &http.Server{Addr: *listen, Handler: webui.Handler(apiBase, os.Getenv("BANK_TOKEN"), acceptedHosts...),
+	srv := &http.Server{Addr: c.Listen, Handler: webui.Handler(apiBase, os.Getenv("BANK_TOKEN"), acceptedHosts...),
 		ReadHeaderTimeout: 15 * time.Second}
 	return server.Run(ctx, srv)
 }
@@ -1072,48 +911,69 @@ func openBrowser(u string) {
 	}
 }
 
-func cmdToken(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: bank token <new|list|revoke> [name]")
-	}
-	// The token file is only ever read by the server, so writing one anywhere
-	// else produces a token that looks valid and 401s on every request. Being
-	// told the path afterwards is the diagnosis; refusing is the cure.
+type tokenCmd struct {
+	New    tokenNewCmd    `cmd:"" help:"Mint an API token (printed once)."`
+	List   tokenListCmd   `cmd:"" help:"Token names."`
+	Revoke tokenRevokeCmd `cmd:"" help:"Drop a token."`
+}
+
+// refuseRemoteToken guards every token command: the token file is only ever
+// read by the server, so writing one anywhere else produces a token that looks
+// valid and 401s on every request. Being told the path afterwards is the
+// diagnosis; refusing is the cure.
+func refuseRemoteToken() error {
 	if client.FromEnv() != nil {
 		return fmt.Errorf("token writes the file the server checks on every request; run it there, not through BANK_URL")
 	}
-	switch args[0] {
-	case "new":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: bank token new <name>")
-		}
-		token, err := server.NewToken(dataDir(), args[1])
-		if err != nil {
-			return err
-		}
-		// Only the digest is stored, so this is the one chance to copy it.
-		// The directory is printed because a token written into the wrong
-		// BANK_DATA_DIR is the usual reason a server keeps answering 401.
-		fmt.Fprintf(os.Stderr, "token stored in %s\n", server.TokensPath(dataDir()))
-		fmt.Println(token)
-	case "list":
-		names, err := server.ListTokens(dataDir())
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "tokens in %s\n", server.TokensPath(dataDir()))
-		for _, n := range names {
-			fmt.Println(n)
-		}
-	case "revoke":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: bank token revoke <name>")
-		}
-		return server.RevokeToken(dataDir(), args[1])
-	default:
-		return fmt.Errorf("usage: bank token <new|list|revoke> [name]")
+	return nil
+}
+
+type tokenNewCmd struct {
+	Name string `arg:""`
+}
+
+func (c *tokenNewCmd) Run() error {
+	if err := refuseRemoteToken(); err != nil {
+		return err
+	}
+	token, err := server.NewToken(dataDir(), c.Name)
+	if err != nil {
+		return err
+	}
+	// Only the digest is stored, so this is the one chance to copy it.
+	// The directory is printed because a token written into the wrong
+	// BANK_DATA_DIR is the usual reason a server keeps answering 401.
+	fmt.Fprintf(os.Stderr, "token stored in %s\n", server.TokensPath(dataDir()))
+	fmt.Println(token)
+	return nil
+}
+
+type tokenListCmd struct{}
+
+func (tokenListCmd) Run() error {
+	if err := refuseRemoteToken(); err != nil {
+		return err
+	}
+	names, err := server.ListTokens(dataDir())
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "tokens in %s\n", server.TokensPath(dataDir()))
+	for _, n := range names {
+		fmt.Println(n)
 	}
 	return nil
+}
+
+type tokenRevokeCmd struct {
+	Name string `arg:""`
+}
+
+func (c *tokenRevokeCmd) Run() error {
+	if err := refuseRemoteToken(); err != nil {
+		return err
+	}
+	return server.RevokeToken(dataDir(), c.Name)
 }
 
 func parseDate(s string) (time.Time, error) {
@@ -1175,17 +1035,14 @@ func buildVersion() string {
 	return version
 }
 
-func cmdHealthcheck(ctx context.Context, args []string) error {
-	address := "http://127.0.0.1:8480/healthz"
-	if len(args) > 1 {
-		return fmt.Errorf("usage: bank healthcheck [url]")
-	}
-	if len(args) == 1 {
-		address = args[0]
-	}
+type healthcheckCmd struct {
+	URL string `arg:"" optional:"" default:"http://127.0.0.1:8480/healthz"`
+}
+
+func (c *healthcheckCmd) Run(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.URL, nil)
 	if err != nil {
 		return err
 	}

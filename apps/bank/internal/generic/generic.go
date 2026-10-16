@@ -63,12 +63,6 @@ type entry struct {
 // filesystem): true for local CLI imports, false when the entries arrived
 // over HTTP — server-side path reads are an arbitrary-file-read primitive.
 func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSource, rawRef string, input []byte, now time.Time, allowAttachmentPaths bool) (Result, error) {
-	return store.RunImport(ctx, st, "json", rawRef, func(ctx context.Context) (Result, error) {
-		return importUnreported(ctx, st, blobs, defaultSource, rawRef, input, now, allowAttachmentPaths)
-	})
-}
-
-func importUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSource, rawRef string, input []byte, now time.Time, allowAttachmentPaths bool) (Result, error) {
 	var res Result
 	if defaultSource != "" {
 		if err := archive.ValidSource(defaultSource); err != nil {

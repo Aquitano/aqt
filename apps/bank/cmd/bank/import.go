@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -11,7 +11,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/alecthomas/kong"
 
 	"github.com/aquitano/aqt/apps/bank/internal/aichat"
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
@@ -21,58 +22,59 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/inbox"
 	"github.com/aquitano/aqt/apps/bank/internal/linkedin"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
 	"github.com/aquitano/aqt/apps/bank/internal/youtube"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
 
-func cmdImport(ctx context.Context, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: bank import <inbox|whatsapp|eml|mbox|mail-tree|discord|linkedin|youtube|youtube-media|netflix|library|markdown|chatgpt|claude|json> <path>...")
-	}
-	kind := args[0]
-	if kind == "netflix" || kind == "youtube-media" || kind == "library" || kind == "markdown" {
-		return cmdMediaImport(ctx, kind, args[1:])
-	}
-	if kind == "mail-tree" {
-		return cmdImportMailTree(ctx, args[1:])
-	}
-	if kind == "inbox" {
-		return cmdImportInbox(ctx, args[1:])
-	}
-	options := struct {
-		CommandArguments
-		Source    string `name:"source" default:"${source}"`
-		Mailbox   string `name:"mailbox" help:"historical mailbox observation for an EML or MBOX file"`
-		NoExtract bool   `name:"no-extract"`
-	}{}
-	source := &options.Source
-	mailbox := &options.Mailbox
-	noExtract := &options.NoExtract
-	if err := parseCommand("import "+kind, &options, args[1:], map[string]string{"source": fmt.Sprint(defaultSource(kind))}); err != nil {
-		return err
-	}
+type importCmd struct {
+	Whatsapp     importFilesCmd    `cmd:"" help:"WhatsApp \"Export chat\" files (.zip, or .txt beside its media)."`
+	Eml          importFilesCmd    `cmd:"" name:"eml" help:".eml files or directories (default source: proton)."`
+	Mbox         importFilesCmd    `cmd:"" name:"mbox" help:"mbox files (default source: gmail)."`
+	MailTree     importMailTreeCmd `cmd:"" name:"mail-tree" help:"A folder tree of mail, preserving each folder."`
+	Discord      importFilesCmd    `cmd:"" help:"Discord GDPR data package (zip or directory)."`
+	Linkedin     importFilesCmd    `cmd:"" name:"linkedin" help:"LinkedIn data export (zip, csv or directory)."`
+	Youtube      importFilesCmd    `cmd:"" name:"youtube" help:"YouTube watch history from Google Takeout (zip, directory or the history file)."`
+	YoutubeMedia importMediaCmd    `cmd:"" name:"youtube-media" help:"YouTube history, playlists and music library."`
+	Netflix      importMediaCmd    `cmd:"" help:"Netflix viewing activity CSV."`
+	Library      importMediaCmd    `cmd:"" help:"Versioned media library bundle (JSON)."`
+	Markdown     importMediaCmd    `cmd:"" help:"Checked Markdown page publication."`
+	ChatGPT      importFilesCmd    `cmd:"" name:"chatgpt" help:"ChatGPT data export (zip, json or directory)."`
+	Claude       importFilesCmd    `cmd:"" name:"claude" help:"Claude.ai data export (zip, json or directory)."`
+	JSON         importFilesCmd    `cmd:"" name:"json" help:"Arbitrary JSON/NDJSON messages; - reads stdin."`
+	Inbox        importInboxCmd    `cmd:"" help:"Sweep $BANK_DATA_DIR/inbox/<kind>/."`
+}
 
-	if len(options.Args) == 0 {
-		return fmt.Errorf("usage: bank import %s <path>...", kind)
+type importFilesCmd struct {
+	Paths     []string `arg:"" name:"path"`
+	Source    string   `help:"Source the messages are filed under."`
+	Mailbox   string   `help:"Historical mailbox observation for an EML or MBOX file."`
+	NoExtract bool     `help:"Skip reading text out of attachments."`
+}
+
+func (c *importFilesCmd) Run(ctx context.Context, kctx *kong.Context) error {
+	kind := kctx.Selected().Name
+	source := c.Source
+	if source == "" {
+		source = importer.DefaultSource(kind)
 	}
-	if *source != "" {
-		if err := archive.ValidSource(*source); err != nil {
+	if source != "" {
+		if err := archive.ValidSource(source); err != nil {
 			return err
 		}
 	}
-	if *mailbox != "" {
+	if c.Mailbox != "" {
 		if kind != "eml" && kind != "mbox" {
 			return fmt.Errorf("--mailbox requires eml or mbox")
 		}
-		return importMailboxFiles(ctx, kind, *source, *mailbox, options.Args, *noExtract)
+		return importMailboxFiles(ctx, kind, source, c.Mailbox, c.Paths, c.NoExtract)
 	}
-	if c := client.FromEnv(); c != nil {
-		return importRemote(ctx, c, kind, *source, options.Args)
+	if remote := client.FromEnv(); remote != nil {
+		return importRemote(ctx, remote, kind, source, c.Paths)
 	}
 
 	d, closeStore, err := openLocal(ctx)
@@ -80,14 +82,14 @@ func cmdImport(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeStore()
-	for _, path := range options.Args {
-		res, err := importLocal(ctx, d, kind, *source, path)
+	for _, path := range c.Paths {
+		res, err := importer.Run(ctx, *d, kind, importer.Input{Path: path, Source: source})
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
-		printImportResult(kind, *source, path, res)
+		printImportResult(kind, source, path, res)
 	}
-	return extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, *noExtract)
+	return extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, c.NoExtract)
 }
 
 // extractAfterImport reads text out of whatever the import just stored, so a
@@ -122,82 +124,22 @@ func extractAfterImport(ctx context.Context, a blobtext.Archive, skip bool) erro
 	return nil
 }
 
-func defaultSource(kind string) string {
-	return map[string]string{"eml": "proton", "mbox": "gmail"}[kind]
-}
-
-// inboxSource is defaultSource for an unattended sweep, where refusing an
+// inboxSource is the default source for an unattended sweep, where refusing an
 // entry for want of a --source would just leave the file sitting there: a JSON
 // drop that names no source of its own lands under "json".
 func inboxSource(kind string) string {
 	if kind == "json" {
 		return "json"
 	}
-	return defaultSource(kind)
+	return importer.DefaultSource(kind)
 }
 
-// importLocal runs one importer against a local store. It is the single place
-// that knows which importer owns which kind, shared by `bank import <kind>`
-// and by the inbox sweep.
-func importLocal(ctx context.Context, d *local, kind, source, path string) (any, error) {
-	if kind == "netflix" || kind == "youtube-media" || kind == "library" {
-		return mediaimport.Import(ctx, d.st, d.blobs, d.archiveDir, kind, path, mediaimport.Options{Source: source})
-	}
-	return store.RunImport(ctx, d.st, kind, path, func(ctx context.Context) (any, error) { return importLocalInput(ctx, d, kind, source, path) })
+type importInboxCmd struct {
+	JSON      bool `help:"JSON output."`
+	NoExtract bool `help:"Skip reading text out of attachments."`
 }
 
-func importLocalInput(ctx context.Context, d *local, kind, source, path string) (any, error) {
-	switch kind {
-	case "whatsapp":
-		return whatsapp.Import(ctx, d.st, d.blobs, d.archiveDir, path)
-	case "eml":
-		return eml.ImportEmlPath(ctx, d.st, d.blobs, d.archiveDir, source, path)
-	case "mbox":
-		return eml.ImportMbox(ctx, d.st, d.blobs, d.archiveDir, source, path)
-	case "discord":
-		return discord.Import(ctx, d.st, d.archiveDir, path)
-	case "linkedin":
-		return linkedin.Import(ctx, d.st, d.archiveDir, path)
-	case "youtube":
-		return youtube.Import(ctx, d.st, d.archiveDir, path)
-	case "chatgpt":
-		return aichat.ImportChatGPT(ctx, d.st, d.blobs, d.archiveDir, path)
-	case "claude":
-		return aichat.ImportClaude(ctx, d.st, d.archiveDir, path)
-	case "json":
-		input, err := readInput(path)
-		if err != nil {
-			return nil, err
-		}
-		rawRef, err := archiveJSON(d.archiveDir, path, input)
-		if err != nil {
-			return nil, err
-		}
-		return generic.Import(ctx, d.st, d.blobs, source, rawRef, input, time.Now(), true)
-	}
-	return nil, fmt.Errorf("unknown import source %q (%s)", kind, strings.Join(inbox.Kinds, ", "))
-}
-
-func archiveJSON(archiveDir, path string, input []byte) (string, error) {
-	if path == "-" {
-		sum := sha256.Sum256(input)
-		return archive.Write(archiveDir, "json", fmt.Sprintf("stdin-%x.json", sum[:6]), input)
-	}
-	return archive.Copy(archiveDir, "json", path)
-}
-
-func cmdImportInbox(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		JSON      bool `name:"json"`
-		NoExtract bool `name:"no-extract"`
-	}{}
-	asJSON := &options.JSON
-	noExtract := &options.NoExtract
-	if err := parseCommand("import inbox", &options, args); err != nil {
-		return err
-	}
-
+func (c *importInboxCmd) Run(ctx context.Context) error {
 	if client.FromEnv() != nil {
 		return fmt.Errorf("import inbox reads the server's own drop zone; run it there, not through BANK_URL")
 	}
@@ -209,16 +151,16 @@ func cmdImportInbox(ctx context.Context, args []string) error {
 
 	inboxDir := filepath.Join(dataDir(), "inbox")
 	res, sweepErr := inbox.Sweep(ctx, inboxDir, func(ctx context.Context, kind, path string) (inbox.Outcome, error) {
-		out, err := importLocal(ctx, d, kind, inboxSource(kind), path)
+		out, err := importer.Run(ctx, *d, kind, importer.Input{Path: path, Source: inboxSource(kind)})
 		if err != nil {
 			return inbox.Outcome{}, err
 		}
 		return importOutcome(out), nil
 	})
-	if err := extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
+	if err := extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, c.NoExtract); err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		if err := printJSON(res); err != nil {
 			return err
 		}
@@ -260,42 +202,31 @@ var reimportKinds = []string{"chatgpt", "claude", "discord", "whatsapp", "linked
 // operator's side: read what was archived, apply what the code learned since.
 const healBodiesKind = "mbox"
 
-// cmdReimport replays every archived raw input of one source through the
+// reimportCmd replays every archived raw input of one source through the
 // current importer. Imports are idempotent, so the only visible effect is
 // whatever today's importer does better than the one that first read the file
 // — messages it used to drop, threads it used to key wrong.
-func cmdReimport(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		NoExtract  bool   `name:"no-extract"`
-		JSON       bool   `name:"json"`
-		HealBodies bool   `name:"heal-bodies"`
-		Apply      bool   `name:"apply"`
-		Source     string `name:"source"`
-	}{}
-	noExtract := &options.NoExtract
-	asJSON := &options.JSON
-	healBodies := &options.HealBodies
-	apply := &options.Apply
-	source := &options.Source
-	if err := parseCommand("reimport", &options, args); err != nil {
-		return err
-	}
+type reimportCmd struct {
+	Kind       string `arg:"" help:"chatgpt, claude, discord, whatsapp, linkedin, youtube, or mbox with --heal-bodies."`
+	NoExtract  bool   `help:"Skip reading text out of attachments."`
+	JSON       bool   `help:"JSON output."`
+	HealBodies bool   `help:"Re-read archived mail and replace stub bodies today's parser reads better (mbox only)."`
+	Apply      bool   `help:"Write the healed bodies; without it, --heal-bodies is a dry run."`
+	Source     string `help:"Mail source for --heal-bodies (default gmail)."`
+}
 
-	if len(options.Args) != 1 {
-		return fmt.Errorf("usage: bank reimport <%s> [--no-extract] [--json]", strings.Join(reimportKinds, "|"))
-	}
-	kind := commandArg(options.Args, 0)
+func (c *reimportCmd) Run(ctx context.Context) error {
+	kind := c.Kind
 	if client.FromEnv() != nil {
 		return fmt.Errorf("reimport replays the server's own archive; run it there, not through BANK_URL")
 	}
 	if kind == healBodiesKind {
-		if !*healBodies {
+		if !c.HealBodies {
 			return fmt.Errorf("mail is not replayed wholesale; `bank reimport mbox --heal-bodies` re-reads it to replace stub bodies today's parser reads better")
 		}
-		return healMailBodies(ctx, *source, *apply, *asJSON)
+		return healMailBodies(ctx, c.Source, c.Apply, c.JSON)
 	}
-	if *healBodies || *apply || *source != "" {
+	if c.HealBodies || c.Apply || c.Source != "" {
 		return fmt.Errorf("--heal-bodies, --apply and --source belong to `bank reimport %s`", healBodiesKind)
 	}
 	if !slices.Contains(reimportKinds, kind) {
@@ -307,12 +238,12 @@ func cmdReimport(ctx context.Context, args []string) error {
 	}
 	defer closeStore()
 
-	entries, err := archive.List(d.archiveDir, kind)
+	entries, err := archive.List(d.ArchiveDir, kind)
 	if err != nil {
 		return err
 	}
 	if len(entries) == 0 {
-		fmt.Printf("nothing archived under %s\n", filepath.Join(d.archiveDir, kind))
+		fmt.Printf("nothing archived under %s\n", filepath.Join(d.ArchiveDir, kind))
 		return nil
 	}
 	staging, err := os.MkdirTemp(stagingDir(), "reimport-*")
@@ -335,11 +266,11 @@ func cmdReimport(ctx context.Context, args []string) error {
 		if err := os.Mkdir(sub, 0o700); err != nil {
 			return err
 		}
-		p, err := archive.Stage(d.archiveDir, e, sub)
+		p, err := archive.Stage(d.ArchiveDir, e, sub)
 		if err != nil {
 			return fmt.Errorf("stage %s: %w", e.Ref, err)
 		}
-		res, err := importLocal(ctx, d, kind, "", p)
+		res, err := importer.Run(ctx, *d, kind, importer.Input{Path: p})
 		if err != nil {
 			// A file today's importer cannot parse must not cost the rest of
 			// the replay; anything operational (database, archive) still
@@ -353,16 +284,16 @@ func cmdReimport(ctx context.Context, args []string) error {
 			continue
 		}
 		out = append(out, replayed{Ref: e.Ref, Result: res})
-		if !*asJSON {
+		if !c.JSON {
 			printImportResult(kind, "", e.Ref, res)
 		}
 	}
-	if *asJSON {
+	if c.JSON {
 		if err := printJSON(out); err != nil {
 			return err
 		}
 	}
-	if err := extractAfterImport(ctx, blobtext.Local{Store: d.st, Blobs: d.blobs}, *noExtract); err != nil {
+	if err := extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, c.NoExtract); err != nil {
 		return err
 	}
 	if failed > 0 {
@@ -378,7 +309,7 @@ func cmdReimport(ctx context.Context, args []string) error {
 // taken.
 func healMailBodies(ctx context.Context, source string, apply, asJSON bool) error {
 	if source == "" {
-		source = defaultSource(healBodiesKind)
+		source = importer.DefaultSource(healBodiesKind)
 	}
 	if err := archive.ValidSource(source); err != nil {
 		return err
@@ -394,7 +325,7 @@ func healMailBodies(ctx context.Context, source string, apply, asJSON bool) erro
 		verb = "healed"
 	}
 	heals := []eml.BodyHeal{}
-	res, err := eml.HealBodies(ctx, d.st, d.archiveDir, source, apply, func(h eml.BodyHeal) {
+	res, err := eml.HealBodies(ctx, d.Store, d.ArchiveDir, source, apply, func(h eml.BodyHeal) {
 		if asJSON {
 			heals = append(heals, h)
 			return
@@ -605,46 +536,15 @@ func remoteImportFiles(kind, path string) ([]string, error) {
 }
 
 func importRemoteFile(ctx context.Context, c *client.Client, kind, source, path string) error {
-	switch kind {
-	case "whatsapp":
-		res, err := client.ImportFile[whatsapp.Result](ctx, c, kind, source, path)
-		if err != nil {
-			return err
-		}
-		printWhatsAppResult(res)
-	case "eml", "mbox":
-		res, err := client.ImportFile[eml.Result](ctx, c, kind, source, path)
-		if err != nil {
-			return err
-		}
-		printEmlResult(source, path, res)
-	case "discord":
-		res, err := client.ImportFile[discord.Result](ctx, c, kind, source, path)
-		if err != nil {
-			return err
-		}
-		printDiscordResult(res)
-	case "linkedin":
-		res, err := client.ImportFile[linkedin.Result](ctx, c, kind, source, path)
-		if err != nil {
-			return err
-		}
-		printLinkedInResult(res)
-	case "youtube":
-		res, err := client.ImportFile[youtube.Result](ctx, c, kind, source, path)
-		if err != nil {
-			return err
-		}
-		printYouTubeResult(res)
-	case "chatgpt", "claude":
-		res, err := client.ImportFile[aichat.Result](ctx, c, kind, source, path)
-		if err != nil {
-			return err
-		}
-		printAIChatResult(kind, path, res)
-	default:
-		return fmt.Errorf("unknown import source %q (%s)", kind, strings.Join(inbox.Kinds, ", "))
+	raw, err := client.ImportFile[json.RawMessage](ctx, c, kind, source, path)
+	if err != nil {
+		return err
 	}
+	res, err := importer.Decode(kind, raw)
+	if err != nil {
+		return err
+	}
+	printImportResult(kind, source, path, res)
 	return nil
 }
 

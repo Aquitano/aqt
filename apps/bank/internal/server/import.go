@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,18 +15,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/aichat"
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
-	"github.com/aquitano/aqt/apps/bank/internal/discord"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
-	"github.com/aquitano/aqt/apps/bank/internal/linkedin"
-	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
-	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
-	"github.com/aquitano/aqt/apps/bank/internal/youtube"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
 
@@ -118,12 +114,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var res any
-	if kind == "netflix" || kind == "youtube-media" || kind == "library" {
-		res, err = mediaimport.Import(r.Context(), s.db, s.blobs, s.archiveDir, kind, path, mediaimport.Options{Source: source, Account: r.URL.Query().Get("account"), NetflixDateOrder: dateOrder})
-	} else {
-		res, err = s.importFile(r.Context(), kind, source, path, observation)
-	}
+	res, err := importer.Run(r.Context(), importer.Target{Store: s.db, Blobs: s.blobs, ArchiveDir: s.archiveDir}, kind, importer.Input{Path: path, Source: source, Account: r.URL.Query().Get("account"), DateOrder: dateOrder, Mail: observation})
 	if err != nil {
 		writeCause(w, err)
 		return
@@ -226,50 +217,24 @@ func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Ti
 	sel := blobtext.Selection{Limit: blobtext.PostImportLimit, NewestFirst: true, StoredSince: since, RefreshSince: refreshSince}
 	summary, err := blobtext.Run(ctx, blobtext.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)
+		slog.Error("reading attachment text", "error", err)
 		return false
 	}
 	return summary.Considered == blobtext.PostImportLimit
 }
 
 func (s *Server) importJSON(ctx context.Context, source string, body []byte) (generic.Result, error) {
-	return store.RunImport(ctx, s.db, "json", "upload", func(ctx context.Context) (generic.Result, error) { return s.importJSONInput(ctx, source, body) })
-}
-func (s *Server) importJSONInput(ctx context.Context, source string, body []byte) (generic.Result, error) {
-	sum := sha256.Sum256(body)
-	rawRef, err := archive.Write(s.archiveDir, "json", fmt.Sprintf("upload-%x.json", sum[:6]), body)
-	if err != nil {
-		return generic.Result{}, fail.Opf("archive upload: %w", err)
-	}
-	// Attachment paths would resolve on the server's filesystem — an arbitrary
-	// file-read primitive for token holders, and never what a remote caller
-	// means anyway. Local imports keep them.
-	return generic.Import(ctx, s.db, s.blobs, source, rawRef, body, time.Now(), false)
-}
-
-func (s *Server) importFile(ctx context.Context, kind, source, path string, contexts ...*eml.MailImportContext) (any, error) {
-	if source == "" {
-		source = map[string]string{"eml": "proton", "mbox": "gmail"}[kind]
-	}
-	switch kind {
-	case "whatsapp":
-		return whatsapp.Import(ctx, s.db, s.blobs, s.archiveDir, path)
-	case "eml":
-		return eml.ImportEmlPath(ctx, s.db, s.blobs, s.archiveDir, source, path, contexts...)
-	case "mbox":
-		return eml.ImportMbox(ctx, s.db, s.blobs, s.archiveDir, source, path, contexts...)
-	case "discord":
-		return discord.Import(ctx, s.db, s.archiveDir, path)
-	case "linkedin":
-		return linkedin.Import(ctx, s.db, s.archiveDir, path)
-	case "youtube":
-		return youtube.Import(ctx, s.db, s.archiveDir, path)
-	case "chatgpt":
-		return aichat.ImportChatGPT(ctx, s.db, s.blobs, s.archiveDir, path)
-	case "claude":
-		return aichat.ImportClaude(ctx, s.db, s.archiveDir, path)
-	}
-	return nil, fmt.Errorf("unknown import kind %q", kind)
+	return store.RunImport(ctx, s.db, "json", "upload", func(ctx context.Context) (generic.Result, error) {
+		sum := sha256.Sum256(body)
+		rawRef, err := archive.Write(s.archiveDir, "json", fmt.Sprintf("upload-%x.json", sum[:6]), body)
+		if err != nil {
+			return generic.Result{}, fail.Opf("archive upload: %w", err)
+		}
+		// Attachment paths would resolve on the server's filesystem — an
+		// arbitrary file-read primitive for token holders, and never what a
+		// remote caller means anyway. Local imports keep them.
+		return generic.Import(ctx, s.db, s.blobs, source, rawRef, body, time.Now(), false)
+	})
 }
 
 // uploadMaxAge is how long a staging directory may sit untouched before it is
@@ -361,7 +326,7 @@ func saveUpload(r *http.Request, dataDir string, observation **eml.MailImportCon
 		// Cheap enough to do per upload, and it keeps a long-lived server from
 		// accumulating debris between restarts.
 		if err := pruneUploads(dataDir, uploadMaxAge); err != nil {
-			fmt.Fprintf(os.Stderr, "bank: pruning abandoned uploads: %v\n", err)
+			slog.Warn("pruning abandoned uploads", "error", err)
 		}
 		dir, err := os.MkdirTemp(staging, "upload-")
 		if err != nil {

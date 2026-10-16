@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alecthomas/kong"
+
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
@@ -19,14 +21,6 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 )
-
-const libraryUsage = `bank library list|activity|collections|files [query] [--source s] [--kind k] [--limit n]
-bank library get|collection|file|page|snapshots <id>
-bank library create|collection-create <json-file|->
-bank library state|collection-edit <id> <json-file|->
-bank library upload <file>... [--source files] [--account owner] [--item-id id]
-bank library index <directory> [--source brain] [--account name] [--max-sensitivity normal|personal|confidential] [--allow-confidential]
-All library commands return JSON. Edits require expected_revision from the latest detail.`
 
 type libraryBackend interface {
 	ListLibraryItems(context.Context, library.ListOptions) ([]library.Item, error)
@@ -89,173 +83,242 @@ func readLibraryJSON(path string, dst any) error {
 	return nil
 }
 
-func cmdLibrary(ctx context.Context, args []string) error {
-	if len(args) == 0 {
-		return errors.New(libraryUsage)
-	}
-	action := args[0]
-	if action == "help" || action == "--help" {
-		fmt.Println(libraryUsage)
-		return nil
-	}
-	options := struct {
-		CommandArguments
-		Match             string `name:"match" default:"any"`
-		Source            string `name:"source"`
-		Account           string `name:"account"`
-		Kind              string `name:"kind"`
-		ItemID            string `name:"item-id"`
-		Since             string `name:"since"`
-		Until             string `name:"until"`
-		Limit             int    `name:"limit" default:"50"`
-		Offset            int    `name:"offset"`
-		JSON              bool   `name:"json"`
-		MaxSensitivity    string `name:"max-sensitivity" default:"normal"`
-		AllowConfidential bool   `name:"allow-confidential"`
-		NoExtract         bool   `name:"no-extract"`
-	}{}
-	o := library.ListOptions{}
-	maxSensitivity := &options.MaxSensitivity
-	allowConfidential := &options.AllowConfidential
-	noExtract := &options.NoExtract
-	if err := parseCommand("library "+action, &options, args[1:]); err != nil {
-		return err
-	}
-	o.Match = options.Match
-	o.Source = options.Source
-	o.Account = options.Account
-	o.Kind = options.Kind
-	o.ItemID = options.ItemID
-	o.Since = options.Since
-	o.Until = options.Until
-	o.Limit = options.Limit
-	o.Offset = options.Offset
+// libraryCmd holds every filter on the group, as before the move to kong: any
+// library command accepts them, and the listing commands are the ones that
+// read most of them.
+type libraryCmd struct {
+	Match             string `default:"any" help:"any, all words, or phrase."`
+	Source            string `help:"Source identity."`
+	Account           string `help:"Source account."`
+	Kind              string `help:"Record kind."`
+	ItemID            string `help:"Item a file belongs to."`
+	Since             string `help:"YYYY-MM-DD or RFC 3339."`
+	Until             string `help:"YYYY-MM-DD or RFC 3339."`
+	Limit             int    `default:"50" help:"Page size, 0-500."`
+	Offset            int    `help:"Skip this many records."`
+	JSON              bool   `help:"Accepted for symmetry; library output is always JSON."`
+	MaxSensitivity    string `default:"normal" help:"Maximum Markdown sensitivity for index: normal, personal or confidential."`
+	AllowConfidential bool   `help:"Explicitly publish confidential Markdown pages."`
+	NoExtract         bool   `help:"Skip file text extraction after upload."`
 
-	if err := o.Validate(); err != nil {
+	List             libraryListCmd             `cmd:"" help:"Items matching a query."`
+	Activity         libraryListCmd             `cmd:"" help:"Activity matching a query."`
+	Collections      libraryListCmd             `cmd:"" help:"Collections matching a query."`
+	Files            libraryListCmd             `cmd:"" help:"Files matching a query."`
+	Get              libraryGetCmd              `cmd:"" help:"One item."`
+	Collection       libraryGetCmd              `cmd:"" help:"One collection."`
+	File             libraryGetCmd              `cmd:"" help:"One file."`
+	Page             libraryGetCmd              `cmd:"" help:"One page."`
+	Snapshots        libraryGetCmd              `cmd:"" help:"A collection's snapshots."`
+	Create           libraryCreateCmd           `cmd:"" help:"Create an item from JSON."`
+	CollectionCreate libraryCollectionCreateCmd `cmd:"" name:"collection-create" help:"Create a collection from JSON."`
+	State            libraryStateCmd            `cmd:"" help:"Replace an item's personal state from JSON."`
+	CollectionEdit   libraryCollectionEditCmd   `cmd:"" name:"collection-edit" help:"Edit a collection from JSON."`
+	Upload           libraryUploadCmd           `cmd:"" help:"Upload standalone files."`
+	Index            libraryIndexCmd            `cmd:"" help:"Publish a directory of Markdown pages."`
+	HelpCmd          helpCmd                    `cmd:"" name:"help" hidden:"" help:"Library commands."`
+}
+
+func (libraryCmd) Help() string {
+	return "All library commands return JSON. Edits require expected_revision from the latest detail."
+}
+
+func (l *libraryCmd) options() (library.ListOptions, error) {
+	o := library.ListOptions{Match: l.Match, Source: l.Source, Account: l.Account, Kind: l.Kind, ItemID: l.ItemID, Since: l.Since, Until: l.Until, Limit: l.Limit, Offset: l.Offset}
+	return o, o.Validate()
+}
+
+type libraryListCmd struct {
+	Query []string `arg:"" optional:""`
+}
+
+func (c *libraryListCmd) Run(ctx context.Context, kctx *kong.Context, lib *libraryCmd) error {
+	o, err := lib.options()
+	if err != nil {
 		return err
 	}
-	args = options.Args
-	if action == "upload" {
-		return uploadLibrary(ctx, args, o, *noExtract)
+	o.Query = strings.Join(c.Query, " ")
+	b, closeBackend, err := openLibraryBackend(ctx)
+	if err != nil {
+		return err
 	}
-	if action == "index" {
-		if len(args) != 1 {
-			return errors.New(libraryUsage)
-		}
-		source := o.Source
-		if source == "" {
-			source = "brain"
-		}
-		opts := mediaimport.Options{Source: source, Account: o.Account, MaxSensitivity: *maxSensitivity, AllowConfidential: *allowConfidential}
-		publication, err := mediaimport.BuildPublication(args[0], opts)
-		if err != nil {
-			return err
-		}
-		if remote := client.FromEnv(); remote != nil {
-			return printLibrary(remote.PublishLibraryPages(ctx, publication))
-		}
-		local, closeLocal, err := openLocal(ctx)
-		if err != nil {
-			return err
-		}
-		defer closeLocal()
-		return printLibrary(mediaimport.Publish(ctx, local.st, local.archiveDir, publication))
+	defer closeBackend()
+	switch kctx.Selected().Name {
+	case "activity":
+		return printLibrary(b.ListLibraryActivity(ctx, o))
+	case "collections":
+		return printLibrary(b.ListLibraryCollections(ctx, o))
+	case "files":
+		return printLibrary(b.ListLibraryFiles(ctx, o))
+	default:
+		return printLibrary(b.ListLibraryItems(ctx, o))
 	}
-	if action == "create" {
-		if len(args) != 1 {
-			return errors.New(libraryUsage)
-		}
-		var item library.Item
-		if err := readLibraryJSON(args[0], &item); err != nil {
-			return err
-		}
-		if remote := client.FromEnv(); remote != nil {
-			return printLibrary(remote.CreateLibraryItem(ctx, item))
-		}
-		item.Identity = library.Identity{Source: "manual", Account: "owner", ExternalID: rand.Text()}
-		item.ID = library.StableID("item", item.Identity)
-		st, err := openStore(ctx)
-		if err != nil {
-			return err
-		}
-		defer st.Close()
-		if _, err = st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
-			return err
-		}
-		return printLibrary(st.LibraryItem(ctx, item.ID))
+}
+
+type libraryGetCmd struct {
+	ID string `arg:""`
+}
+
+func (c *libraryGetCmd) Run(ctx context.Context, kctx *kong.Context, lib *libraryCmd) error {
+	if _, err := lib.options(); err != nil {
+		return err
 	}
 	b, closeBackend, err := openLibraryBackend(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeBackend()
-	switch action {
-	case "list":
-		o.Query = strings.Join(args, " ")
-		return printLibrary(b.ListLibraryItems(ctx, o))
-	case "activity":
-		o.Query = strings.Join(args, " ")
-		return printLibrary(b.ListLibraryActivity(ctx, o))
-	case "collections":
-		o.Query = strings.Join(args, " ")
-		return printLibrary(b.ListLibraryCollections(ctx, o))
-	case "files":
-		o.Query = strings.Join(args, " ")
-		return printLibrary(b.ListLibraryFiles(ctx, o))
-	case "get", "collection", "file", "page", "snapshots":
-		if len(args) != 1 {
-			return errors.New(libraryUsage)
-		}
-		switch action {
-		case "get":
-			return printLibrary(b.LibraryItem(ctx, args[0]))
-		case "collection":
-			return printLibrary(b.LibraryCollection(ctx, args[0]))
-		case "file":
-			return printLibrary(b.LibraryFile(ctx, args[0]))
-		case "page":
-			return printLibrary(b.LibraryPage(ctx, args[0]))
-		default:
-			return printLibrary(b.LibraryCollectionSnapshots(ctx, args[0]))
-		}
-	case "state":
-		if len(args) != 2 {
-			return errors.New(libraryUsage)
-		}
-		var edit library.StateEdit
-		if err := readLibraryJSON(args[1], &edit); err != nil {
-			return err
-		}
-		if err := edit.Validate(); err != nil {
-			return err
-		}
-		return printLibrary(b.SetLibraryState(ctx, args[0], edit))
-	case "collection-create":
-		if len(args) != 1 {
-			return errors.New(libraryUsage)
-		}
-		var value library.Collection
-		if err := readLibraryJSON(args[0], &value); err != nil {
-			return err
-		}
-		value.Identity = library.Identity{Source: "manual", Account: "owner", ExternalID: rand.Text()}
-		value.ID = library.StableID("collection", value.Identity)
-		return printLibrary(b.CreateLibraryCollection(ctx, value))
-	case "collection-edit":
-		if len(args) != 2 {
-			return errors.New(libraryUsage)
-		}
-		var edit library.CollectionEdit
-		if err := readLibraryJSON(args[1], &edit); err != nil {
-			return err
-		}
-		if err := edit.Validate(); err != nil {
-			return err
-		}
-		return printLibrary(b.EditLibraryCollection(ctx, args[0], edit))
+	switch kctx.Selected().Name {
+	case "collection":
+		return printLibrary(b.LibraryCollection(ctx, c.ID))
+	case "file":
+		return printLibrary(b.LibraryFile(ctx, c.ID))
+	case "page":
+		return printLibrary(b.LibraryPage(ctx, c.ID))
+	case "snapshots":
+		return printLibrary(b.LibraryCollectionSnapshots(ctx, c.ID))
 	default:
-		return errors.New(libraryUsage)
+		return printLibrary(b.LibraryItem(ctx, c.ID))
 	}
+}
+
+type libraryCreateCmd struct {
+	Input string `arg:"" help:"JSON file, or - for stdin."`
+}
+
+func (c *libraryCreateCmd) Run(ctx context.Context, lib *libraryCmd) error {
+	if _, err := lib.options(); err != nil {
+		return err
+	}
+	var item library.Item
+	if err := readLibraryJSON(c.Input, &item); err != nil {
+		return err
+	}
+	if remote := client.FromEnv(); remote != nil {
+		return printLibrary(remote.CreateLibraryItem(ctx, item))
+	}
+	item.Identity = library.Identity{Source: "manual", Account: "owner", ExternalID: rand.Text()}
+	item.ID = library.StableID("item", item.Identity)
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	if _, err = st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
+		return err
+	}
+	return printLibrary(st.LibraryItem(ctx, item.ID))
+}
+
+type libraryCollectionCreateCmd struct {
+	Input string `arg:"" help:"JSON file, or - for stdin."`
+}
+
+func (c *libraryCollectionCreateCmd) Run(ctx context.Context, lib *libraryCmd) error {
+	if _, err := lib.options(); err != nil {
+		return err
+	}
+	var value library.Collection
+	if err := readLibraryJSON(c.Input, &value); err != nil {
+		return err
+	}
+	value.Identity = library.Identity{Source: "manual", Account: "owner", ExternalID: rand.Text()}
+	value.ID = library.StableID("collection", value.Identity)
+	b, closeBackend, err := openLibraryBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
+	return printLibrary(b.CreateLibraryCollection(ctx, value))
+}
+
+type libraryStateCmd struct {
+	ID    string `arg:""`
+	Input string `arg:"" help:"JSON file, or - for stdin."`
+}
+
+func (c *libraryStateCmd) Run(ctx context.Context, lib *libraryCmd) error {
+	if _, err := lib.options(); err != nil {
+		return err
+	}
+	var edit library.StateEdit
+	if err := readLibraryJSON(c.Input, &edit); err != nil {
+		return err
+	}
+	if err := edit.Validate(); err != nil {
+		return err
+	}
+	b, closeBackend, err := openLibraryBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
+	return printLibrary(b.SetLibraryState(ctx, c.ID, edit))
+}
+
+type libraryCollectionEditCmd struct {
+	ID    string `arg:""`
+	Input string `arg:"" help:"JSON file, or - for stdin."`
+}
+
+func (c *libraryCollectionEditCmd) Run(ctx context.Context, lib *libraryCmd) error {
+	if _, err := lib.options(); err != nil {
+		return err
+	}
+	var edit library.CollectionEdit
+	if err := readLibraryJSON(c.Input, &edit); err != nil {
+		return err
+	}
+	if err := edit.Validate(); err != nil {
+		return err
+	}
+	b, closeBackend, err := openLibraryBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeBackend()
+	return printLibrary(b.EditLibraryCollection(ctx, c.ID, edit))
+}
+
+type libraryUploadCmd struct {
+	Paths []string `arg:"" name:"file"`
+}
+
+func (c *libraryUploadCmd) Run(ctx context.Context, lib *libraryCmd) error {
+	o, err := lib.options()
+	if err != nil {
+		return err
+	}
+	return uploadLibrary(ctx, c.Paths, o, lib.NoExtract)
+}
+
+type libraryIndexCmd struct {
+	Dir string `arg:"" name:"directory"`
+}
+
+func (c *libraryIndexCmd) Run(ctx context.Context, lib *libraryCmd) error {
+	o, err := lib.options()
+	if err != nil {
+		return err
+	}
+	source := o.Source
+	if source == "" {
+		source = "brain"
+	}
+	opts := mediaimport.Options{Source: source, Account: o.Account, MaxSensitivity: lib.MaxSensitivity, AllowConfidential: lib.AllowConfidential}
+	publication, err := mediaimport.BuildPublication(c.Dir, opts)
+	if err != nil {
+		return err
+	}
+	if remote := client.FromEnv(); remote != nil {
+		return printLibrary(remote.PublishLibraryPages(ctx, publication))
+	}
+	local, closeLocal, err := openLocal(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeLocal()
+	return printLibrary(mediaimport.Publish(ctx, local.Store, local.ArchiveDir, publication))
 }
 
 func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, noExtract bool) error {
@@ -289,7 +352,7 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 	}
 	defer closeLocal()
 	if o.ItemID != "" {
-		if _, err = local.st.LibraryItem(ctx, o.ItemID); err != nil {
+		if _, err = local.Store.LibraryItem(ctx, o.ItemID); err != nil {
 			return err
 		}
 	}
@@ -299,7 +362,7 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 		if err != nil {
 			return err
 		}
-		digest, size, err := local.blobs.Put(file)
+		digest, size, err := local.Blobs.Put(file)
 		closeErr := file.Close()
 		if err != nil {
 			return err
@@ -314,14 +377,14 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 		}
 		files = append(files, value)
 	}
-	if _, err = local.st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
+	if _, err = local.Store.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
 		return err
 	}
-	if err = extractAfterImport(ctx, blobtext.Local{Store: local.st, Blobs: local.blobs}, noExtract); err != nil {
+	if err = extractAfterImport(ctx, blobtext.Local{Store: local.Store, Blobs: local.Blobs}, noExtract); err != nil {
 		return err
 	}
 	for i := range files {
-		files[i], err = local.st.LibraryFile(ctx, files[i].ID)
+		files[i], err = local.Store.LibraryFile(ctx, files[i].ID)
 		if err != nil {
 			return err
 		}

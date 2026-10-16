@@ -15,31 +15,20 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/imapsync"
 )
 
-func cmdIMAP(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Config string `name:"config" help:"JSON account configuration"`
-		Once   bool   `name:"once" help:"sync once and exit"`
-		Check  bool   `name:"check" help:"authenticate and list folders without importing"`
-		Status bool   `name:"status" help:"read local sync status without connecting"`
-	}{}
-	configPath := &options.Config
-	once := &options.Once
-	check := &options.Check
-	status := &options.Status
-	if err := parseCommand("imap", &options, args); err != nil {
-		return err
-	}
+type imapCmd struct {
+	Config string `required:"" help:"JSON account configuration."`
+	Once   bool   `xor:"mode" help:"Sync once and exit."`
+	Check  bool   `xor:"mode" help:"Authenticate and list folders without importing."`
+	Status bool   `xor:"mode" help:"Read local sync status without connecting."`
+}
 
-	if *configPath == "" || len(options.Args) != 0 || (*once && (*check || *status)) || (*check && *status) {
-		return fmt.Errorf("usage: bank imap --config <file> [--once | --check | --status]")
-	}
-	config, err := imapsync.LoadConfig(*configPath)
+func (c *imapCmd) Run(ctx context.Context) error {
+	config, err := imapsync.LoadConfig(c.Config)
 	if err != nil {
 		return err
 	}
 	encoder := json.NewEncoder(os.Stdout)
-	if *status {
+	if c.Status {
 		statuses, err := imapsync.ReadStatus(config.StateDir)
 		if err != nil {
 			return err
@@ -48,7 +37,7 @@ func cmdIMAP(ctx context.Context, args []string) error {
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if *check {
+	if c.Check {
 		mailboxes, err := imapsync.Check(ctx, config)
 		return errors.Join(err, encoder.Encode(mailboxes))
 	}
@@ -61,7 +50,7 @@ func cmdIMAP(ctx context.Context, args []string) error {
 	importer := func(ctx context.Context, source, path string, observation eml.MailImportContext) (eml.Result, error) {
 		return client.ImportFile[eml.Result](ctx, remote, "eml", source, path, &observation)
 	}
-	err = imapsync.Run(ctx, config, destination, importer, *once, func(event imapsync.Event) {
+	err = imapsync.Run(ctx, config, destination, importer, c.Once, func(event imapsync.Event) {
 		if err := encoder.Encode(event); err != nil {
 			fmt.Fprintf(os.Stderr, "bank: write IMAP status: %v\n", err)
 		}

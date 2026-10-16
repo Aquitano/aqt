@@ -19,7 +19,7 @@ func TestMediaImportOutcomeKeepsKnownRecordsWithSkippedRows(t *testing.T) {
 
 func TestMediaImportRejectsInvalidDateOrderBeforeOpeningStore(t *testing.T) {
 	for _, args := range []struct{ kind, order string }{{"netflix", "auto"}, {"youtube-media", "dmy"}} {
-		err := cmdMediaImport(context.Background(), args.kind, []string{"input.csv", "--date-order", args.order})
+		err := execute(context.Background(), []string{"import", args.kind, "input.csv", "--date-order", args.order})
 		if err == nil || !strings.Contains(err.Error(), "--date-order") {
 			t.Fatalf("invalid date order reached the importer: %v", err)
 		}

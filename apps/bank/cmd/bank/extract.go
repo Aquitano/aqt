@@ -26,51 +26,41 @@ import (
 // keeping it separate is what lets the expensive half run somewhere other than
 // the box serving the archive: `bank extract --ocr` against a remote BANK_URL
 // runs the tools on this machine and stores only the text.
-func cmdExtract(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Status   []string      `name:"status" sep:"none"`
-		Ocr      bool          `name:"ocr"`
-		Lang     string        `name:"lang" default:"eng"`
-		Source   string        `name:"source"`
-		Limit    int           `name:"limit"`
-		Watch    bool          `name:"watch"`
-		Interval time.Duration `name:"interval" default:"${interval}"`
-		JSON     bool          `name:"json"`
-	}{}
-	var statuses []string
-	ocr := &options.Ocr
-	lang := &options.Lang
-	source := &options.Source
-	limit := &options.Limit
-	watch := &options.Watch
-	interval := &options.Interval
-	asJSON := &options.JSON
-	if err := parseCommand("extract", &options, args, map[string]string{"interval": fmt.Sprint(defaultWatchInterval)}); err != nil {
-		return err
-	}
-	statuses = options.Status
+type extractCmd struct {
+	Status []string `sep:"none" help:"Work on this status (repeatable; default: content never tried): pending, ok, empty, needs_ocr, unsupported, too_big, failed. Not manual: transcriptions are only replaced by 'bank attachment text --set' or cleared with --clear."`
+	OCR    bool     `name:"ocr" help:"Read images and text-layer-less PDFs (needs tesseract, poppler)."`
+	Lang   string   `default:"eng" help:"OCR language, tesseract syntax (\"deu+eng\" for two)."`
+	Source string   `help:"Only content carried by this source."`
+	Limit  int      `help:"Stop after this many files."`
+	Watch  bool     `help:"Keep draining the queue instead of running once."`
+	// Nothing here is urgent: a scan dropped in the inbox becoming searchable
+	// within the half hour is the whole requirement.
+	Interval time.Duration `default:"30m" help:"How often --watch runs."`
+	JSON     bool          `help:"JSON output."`
+}
 
+func (c *extractCmd) Run(ctx context.Context) error {
+	statuses := c.Status
 	for _, s := range statuses {
 		if err := blobtext.ValidRunStatus(s); err != nil {
 			return err
 		}
 	}
-	if *source != "" {
-		if err := archive.ValidSource(*source); err != nil {
+	if c.Source != "" {
+		if err := archive.ValidSource(c.Source); err != nil {
 			return err
 		}
 	}
 
 	o := extract.DefaultOptions()
-	o.OCR = *ocr
-	o.OCRLang = *lang
+	o.OCR = c.OCR
+	o.OCRLang = c.Lang
 	o.TempDir = stagingDir()
 
-	sel := blobtext.Selection{Statuses: statuses, Source: *source, Limit: *limit}
+	sel := blobtext.Selection{Statuses: statuses, Source: c.Source, Limit: c.Limit}
 
 	var progress func(store.BlobRef, extract.Result)
-	if !*asJSON {
+	if !c.JSON {
 		progress = func(b store.BlobRef, r extract.Result) {
 			fmt.Fprintf(os.Stderr, "%-12s %8s  %s\n", r.Status, humanBytes(b.SizeBytes), excerpt(b.Filename, 60))
 		}
@@ -82,28 +72,23 @@ func cmdExtract(ctx context.Context, args []string) error {
 	}
 	defer closeBackend()
 
-	if *watch {
-		if *asJSON {
+	if c.Watch {
+		if c.JSON {
 			return fmt.Errorf("--json has no meaning with --watch, which runs until stopped")
 		}
-		return watchExtract(ctx, backend, sel, o, *interval)
+		return watchExtract(ctx, backend, sel, o, c.Interval)
 	}
 
 	sum, err := blobtext.Run(ctx, backend, sel, o, progress)
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(sum)
 	}
 	printExtractSummary(sum)
 	return nil
 }
-
-// defaultWatchInterval is how often --watch drains the queue. Nothing here is
-// urgent: a scan dropped in the inbox becoming searchable within the half hour
-// is the whole requirement.
-const defaultWatchInterval = 30 * time.Minute
 
 // minWatchInterval keeps a typo from turning the worker into a hot loop
 // against Postgres.
@@ -174,7 +159,7 @@ func openAttachments(ctx context.Context) (attachmentBackend, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return blobtext.Local{Store: d.st, Blobs: d.blobs}, closeStore, nil
+	return blobtext.Local{Store: d.Store, Blobs: d.Blobs}, closeStore, nil
 }
 
 // stagingDir is where downloads and rasterized pages go: the data directory,
@@ -261,38 +246,22 @@ func printExtractSummary(sum blobtext.Summary) {
 	}
 }
 
-func cmdAttachment(ctx context.Context, args []string) error {
-	if len(args) < 1 {
-		return fmt.Errorf("usage: bank attachment <find|messages|list|stats|text> ...")
-	}
-	switch args[0] {
-	case "find":
-		return cmdAttachmentFind(ctx, args[1:])
-	case "messages":
-		return cmdAttachmentMessages(ctx, args[1:])
-	case "list":
-		return cmdAttachmentList(ctx, args[1:])
-	case "stats":
-		return cmdAttachmentStats(ctx, args[1:])
-	case "text":
-		return cmdAttachmentText(ctx, args[1:])
-	}
-	return fmt.Errorf("unknown attachment command %q (want find, messages, list, stats or text)", args[0])
+type attachmentCmd struct {
+	Find     attachmentFindCmd     `cmd:"" help:"Search the attachment library."`
+	Messages attachmentMessagesCmd `cmd:"" help:"Every message with this file, as JSON."`
+	List     attachmentListCmd     `cmd:"" help:"Attachment content and its text status."`
+	Stats    attachmentStatsCmd    `cmd:"" help:"How much of the archive is searchable inside."`
+	Text     attachmentTextCmd     `cmd:"" help:"Read, replace or clear one file's text."`
 }
 
-// cmdAttachmentStats answers how much of the archive is searchable inside its
+// attachmentStatsCmd answers how much of the archive is searchable inside its
 // attachments — and, in the needs_ocr row, exactly how much OCR would add.
 // That number is what should decide whether running OCR is worth it.
-func cmdAttachmentStats(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		JSON bool `name:"json"`
-	}{}
-	asJSON := &options.JSON
-	if err := parseCommand("attachment stats", &options, args); err != nil {
-		return err
-	}
+type attachmentStatsCmd struct {
+	JSON bool `help:"JSON output."`
+}
 
+func (c *attachmentStatsCmd) Run(ctx context.Context) error {
 	b, closeBackend, err := openAttachments(ctx)
 	if err != nil {
 		return err
@@ -302,7 +271,7 @@ func cmdAttachmentStats(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(stats)
 	}
 	if len(stats) == 0 {
@@ -326,27 +295,18 @@ func printExtractionStats(stats []store.ExtractionStat) {
 		"total", blobs, humanBytes(bytes), humanCount(chars))
 }
 
-func cmdAttachmentList(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Status []string `name:"status" sep:"none"`
-		Source string   `name:"source"`
-		Limit  int      `name:"limit" default:"50"`
-		JSON   bool     `name:"json"`
-	}{}
-	var statuses []string
-	source := &options.Source
-	limit := &options.Limit
-	asJSON := &options.JSON
-	if err := parseCommand("attachment list", &options, args); err != nil {
-		return err
-	}
-	statuses = options.Status
+type attachmentListCmd struct {
+	Status []string `sep:"none" help:"Only this text status (repeatable)."`
+	Source string   `help:"Only content carried by this source."`
+	Limit  int      `default:"50" help:"How many files."`
+	JSON   bool     `help:"JSON output."`
+}
 
+func (c *attachmentListCmd) Run(ctx context.Context) error {
 	// The same check `bank extract --source` makes: a malformed source names
 	// nothing, and an empty listing reads as an archive with no attachments.
-	if *source != "" {
-		if err := archive.ValidSource(*source); err != nil {
+	if c.Source != "" {
+		if err := archive.ValidSource(c.Source); err != nil {
 			return err
 		}
 	}
@@ -355,11 +315,11 @@ func cmdAttachmentList(ctx context.Context, args []string) error {
 		return err
 	}
 	defer closeBackend()
-	blobs, err := b.ListBlobs(ctx, store.ListBlobsOpts{Statuses: statuses, Source: *source, Limit: *limit})
+	blobs, err := b.ListBlobs(ctx, store.ListBlobsOpts{Statuses: c.Status, Source: c.Source, Limit: c.Limit})
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(blobs)
 	}
 	if len(blobs) == 0 {
@@ -372,32 +332,23 @@ func cmdAttachmentList(ctx context.Context, args []string) error {
 	return nil
 }
 
-// cmdAttachmentText reads, replaces or clears one blob's text. Replacing is
+// attachmentTextCmd reads, replaces or clears one blob's text. Replacing is
 // how text from a model running here — better than tesseract, or reading a
 // language it does not — gets into the archive; it lands as "manual", which
 // no automatic pass overwrites.
-func cmdAttachmentText(ctx context.Context, args []string) error {
-	options := struct {
-		CommandArguments
-		Set   string `name:"set"`
-		Clear bool   `name:"clear"`
-		JSON  bool   `name:"json"`
-	}{}
-	set := &options.Set
-	clear := &options.Clear
-	asJSON := &options.JSON
-	if err := parseCommand("attachment text", &options, args); err != nil {
-		return err
-	}
+type attachmentTextCmd struct {
+	SHA256 string `arg:"" name:"sha256"`
+	Set    string `help:"Replace the text with this file's contents; - reads stdin."`
+	Clear  bool   `help:"Drop the stored text."`
+	JSON   bool   `help:"JSON output."`
+}
 
-	if len(options.Args) != 1 {
-		return fmt.Errorf("usage: bank attachment text <sha256> [--set <file|-> | --clear] [--json]")
-	}
-	sum := strings.ToLower(commandArg(options.Args, 0))
+func (c *attachmentTextCmd) Run(ctx context.Context) error {
+	sum := strings.ToLower(c.SHA256)
 	if err := store.ValidSHA256(sum); err != nil {
 		return err
 	}
-	if *set != "" && *clear {
+	if c.Set != "" && c.Clear {
 		return fmt.Errorf("--set and --clear do the opposite of each other")
 	}
 
@@ -408,7 +359,7 @@ func cmdAttachmentText(ctx context.Context, args []string) error {
 	defer closeBackend()
 
 	switch {
-	case *clear:
+	case c.Clear:
 		if err := b.DeleteBlobText(ctx, sum); err != nil {
 			if errors.Is(err, store.ErrNotFound) {
 				return fmt.Errorf("no extracted text for %s", sum)
@@ -417,8 +368,8 @@ func cmdAttachmentText(ctx context.Context, args []string) error {
 		}
 		return reindexAfterTextChange(ctx, b)
 
-	case *set != "":
-		text, err := readTextInput(*set)
+	case c.Set != "":
+		text, err := readTextInput(c.Set)
 		if err != nil {
 			return err
 		}
@@ -426,7 +377,7 @@ func cmdAttachmentText(ctx context.Context, args []string) error {
 		// is the one kind of text nothing here can produce again.
 		if len(text) > store.MaxAttachmentTextChars {
 			return fmt.Errorf("%s holds %d bytes of text, over the %d a row keeps",
-				*set, len(text), store.MaxAttachmentTextChars)
+				c.Set, len(text), store.MaxAttachmentTextChars)
 		}
 		if err := b.SetText(ctx, store.BlobText{
 			SHA256: sum, Text: text, Extractor: "manual", Status: string(extract.StatusManual),
@@ -443,7 +394,7 @@ func cmdAttachmentText(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if c.JSON {
 		return printJSON(bt)
 	}
 	fmt.Printf("sha256:    %s\nstatus:    %s\nextractor: %s\nchars:     %d\nextracted: %s\n\n",

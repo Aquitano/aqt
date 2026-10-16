@@ -1,12 +1,12 @@
 package whatsapp
 
 import (
-	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"os"
 	"path/filepath"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/export"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -61,12 +62,6 @@ func safeMediaName(name string) bool {
 // Import ingests one "Export chat" file (.zip with media, or bare .txt whose
 // media files sit alongside it). Re-importing the same export is a no-op.
 func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
-	return store.RunImport(ctx, st, "whatsapp", path, func(ctx context.Context) (Result, error) {
-		return importUnreported(ctx, st, blobs, archiveDir, path)
-	})
-}
-
-func importUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
 	var res Result
 	res.Thread = ThreadName(path)
 
@@ -77,37 +72,43 @@ func importUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, a
 	// the localized attachment markers ParseChat may otherwise misread.
 	var hasMedia func(name string) bool
 
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".zip":
-		zr, err := zip.OpenReader(path)
+	exp, err := export.Open(path)
+	if err != nil {
+		return res, err
+	}
+	defer exp.Close()
+	switch {
+	case exp.FS != nil && !exp.Dir:
+		byName := map[string]string{}
+		var chatFile string
+		err := fs.WalkDir(exp.FS, ".", func(p string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			byName[filepath.Base(p)] = p
+			if strings.HasSuffix(p, ".txt") && (chatFile == "" || strings.Contains(p, "_chat") || strings.Contains(p, "WhatsApp Chat")) {
+				chatFile = p
+			}
+			return nil
+		})
 		if err != nil {
 			return res, err
 		}
-		defer zr.Close()
-		byName := map[string]*zip.File{}
-		var chatFile *zip.File
-		for _, f := range zr.File {
-			byName[filepath.Base(f.Name)] = f
-			if strings.HasSuffix(f.Name, ".txt") && (chatFile == nil || strings.Contains(f.Name, "_chat") || strings.Contains(f.Name, "WhatsApp Chat")) {
-				chatFile = f
-			}
-		}
-		if chatFile == nil {
+		if chatFile == "" {
 			return res, fmt.Errorf("%s: no chat .txt inside zip", path)
 		}
-		rc, err := chatFile.Open()
+		rc, err := exp.FS.Open(chatFile)
 		if err != nil {
 			return res, err
 		}
 		defer rc.Close()
 		chat = rc
 		openMedia = func(name string) io.ReadCloser {
-			f, ok := byName[name]
+			p, ok := byName[name]
 			if !ok {
 				return nil
 			}
-			r, err := f.Open()
+			r, err := exp.FS.Open(p)
 			if err != nil {
 				return nil
 			}
@@ -117,7 +118,7 @@ func importUnreported(ctx context.Context, st *store.Store, blobs *blob.Store, a
 			_, ok := byName[name]
 			return ok
 		}
-	case ".txt":
+	case exp.FS == nil && strings.EqualFold(filepath.Ext(path), ".txt"):
 		f, err := os.Open(path)
 		if err != nil {
 			return res, err
