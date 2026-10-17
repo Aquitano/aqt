@@ -86,9 +86,9 @@ export function PhotoLibrary() {
           setUploads((prev) =>
             prev.map((u) => (u.key === key ? { ...u, status: "uploading" } : u)),
           );
-          const photo = await photoFns.create({
-            data: { width: resized.width, height: resized.height },
-          });
+          const photo = await rejectFailures(
+            photoFns.create({ data: { width: resized.width, height: resized.height } }),
+          );
           await Promise.all([
             put(photoUrl(photo.id, "display"), resized.display),
             put(photoUrl(photo.id, "thumb"), resized.thumb),

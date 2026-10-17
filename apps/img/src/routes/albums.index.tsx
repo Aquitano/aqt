@@ -38,6 +38,7 @@ import { ApiKeysDialog } from "@/components/api-keys-dialog";
 import { coverMaterial, type CoverMaterial } from "@/domain/element";
 import { requireSignedIn } from "@/lib/guard";
 import { albumsQuery } from "@/lib/queries";
+import { rejectFailures } from "@/lib/server-error";
 import { cn } from "@/lib/utils";
 import type { Album } from "@/server/db/schema";
 import * as albumFns from "@/server/fns/albums";
@@ -54,7 +55,7 @@ function Shelf() {
   const [pendingDelete, setPendingDelete] = useState<Album | null>(null);
 
   const remove = useMutation({
-    mutationFn: (albumId: string) => albumFns.remove({ data: { albumId } }),
+    mutationFn: (albumId: string) => rejectFailures(albumFns.remove({ data: { albumId } })),
     onSuccess: () => queryClient.invalidateQueries(albumsQuery()),
     onError: () => toast.error("Could not delete that album"),
   });
@@ -156,9 +157,11 @@ function CreateAlbumDialog() {
 
   const create = useMutation({
     mutationFn: () =>
-      albumFns.create({
-        data: { title: title.trim(), cover: { material, color: COVER_COLORS[color] } },
-      }),
+      rejectFailures(
+        albumFns.create({
+          data: { title: title.trim(), cover: { material, color: COVER_COLORS[color] } },
+        }),
+      ),
     onSuccess: () => {
       void queryClient.invalidateQueries(albumsQuery());
       setOpen(false);

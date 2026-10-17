@@ -122,6 +122,7 @@ func longPath(path string) string {
 	if strings.HasPrefix(path, `\\?\`) {
 		return path
 	}
+	path = filepath.FromSlash(path)
 	if strings.HasPrefix(path, `\\`) {
 		return `\\?\UNC\` + path[2:]
 	}

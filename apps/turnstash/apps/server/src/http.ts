@@ -40,7 +40,6 @@ import {
   projectDetail,
   projectRows,
 } from "./stats.ts";
-import { getTimeline } from "./timeline.ts";
 import {
   activateCatalog,
   deleteRule,
@@ -128,11 +127,6 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
       getMessages(params.id, query.cursor, query.limit ?? 200, query).pipe(databaseFailure),
     )
     .handle("getRequest", ({ params }) => getRequest(params.id).pipe(databaseFailure))
-    .handle("getTimeline", ({ params, query }) =>
-      getTimeline(params.id, query.cursor, query.limit ?? 200, query.expectedVersion).pipe(
-        databaseFailure,
-      ),
-    )
     .handle("search", ({ query }) => search(query).pipe(databaseFailure))
     .handle("listMachines", () => machineSummaries({}).pipe(databaseFailure))
     .handle("getMachine", ({ params, query }) =>

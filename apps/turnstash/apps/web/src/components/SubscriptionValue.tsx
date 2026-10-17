@@ -7,8 +7,6 @@ import { DataTable, Td, Th } from "./DataTable";
 import { Section } from "./Section";
 import { ShareCell, shareOf } from "./ShareCell";
 
-const signedUsd = (value: number) => (value < 0 ? `-${usd(-value)}` : usd(value));
-
 // API rates are in USD and the archive keeps no exchange rates, so only a USD plan has a value to compare.
 const usdOnly = (costs: ReadonlyArray<PlanCost>): number | null => {
   const [cost, ...others] = costs;
@@ -55,7 +53,7 @@ export const SubscriptionValueTable = ({
                 ) : (
                   <>
                     <Td numeric>{planUsd > 0 ? `${(row.apiUsd / planUsd).toFixed(1)}x` : ""}</Td>
-                    <Td numeric>{signedUsd(row.apiUsd - planUsd)}</Td>
+                    <Td numeric>{usd(row.apiUsd - planUsd)}</Td>
                   </>
                 )}
               </TableRow>
