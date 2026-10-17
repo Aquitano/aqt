@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import { PgClient } from "@effect/sql-pg";
 import { sql } from "drizzle-orm";
 import * as PgDrizzle from "drizzle-orm/effect-postgres";
@@ -27,7 +29,7 @@ export const PgLive = Layer.unwrap(
 
 export const DbLive = Layer.effect(Db, PgDrizzle.makeWithDefaults());
 
-export const migrationsFolder = new URL("../../drizzle", import.meta.url).pathname;
+export const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
 const migrationLock = 7_365_742_019;
 
