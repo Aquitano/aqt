@@ -160,7 +160,7 @@ export const ConversationPage = () => {
           </Alert>
         ) : (
           <MessageThread
-            key={`${id}:${search.message ?? ""}:${search.q ?? ""}`}
+            key={id}
             conversationId={id}
             turns={detail.data?.turns ?? []}
             messageKey={search.message}

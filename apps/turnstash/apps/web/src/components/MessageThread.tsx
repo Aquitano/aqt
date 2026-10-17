@@ -30,6 +30,11 @@ import { ToolRun } from "./ToolRun";
 
 type Selection = ReturnType<typeof useExportSelection>;
 
+interface Selections {
+  readonly messages: Selection;
+  readonly turns: Selection;
+}
+
 const billedTokens = (request: RequestSummary) =>
   request.inputTokens +
   request.cacheReadTokens +
@@ -155,10 +160,7 @@ const TurnHeader = ({
   readonly conversationId: string;
   readonly selection: Selection;
 }) => (
-  <div
-    id={`turn-${turn.turnIndex + 1}`}
-    className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-muted/60 px-3 py-1.5 text-xs text-muted-foreground"
-  >
+  <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-muted/60 px-3 py-1.5 text-xs text-muted-foreground">
     <span className="font-medium text-foreground">Turn {turn.turnIndex + 1}</span>
     <Badge variant="secondary">{turn.category}</Badge>
     {turn.skill !== null && <span>{turn.skill}</span>}
@@ -300,7 +302,7 @@ interface BlockProps {
   readonly conversationId: string;
   readonly messageKey: string | undefined;
   readonly query: string | undefined;
-  readonly selection: { readonly messages: Selection; readonly turns: Selection };
+  readonly selection: Selections;
   readonly onInspect: (requestId: string) => void;
 }
 
@@ -490,24 +492,25 @@ const VirtualBlocks = ({
   );
 };
 
-export const MessageThread = ({
-  conversationId,
-  turns,
-  onInspect,
-  messageKey,
-  query,
-  layoutReady,
-}: {
+interface ThreadProps {
   readonly conversationId: string;
   readonly turns: ReadonlyArray<TurnView>;
   readonly onInspect: (requestId: string) => void;
   readonly messageKey?: string | undefined;
   readonly query?: string | undefined;
   readonly layoutReady: boolean;
-}) => {
+}
+
+const Thread = ({
+  conversationId,
+  turns,
+  onInspect,
+  messageKey,
+  query,
+  layoutReady,
+  selection,
+}: ThreadProps & { readonly selection: Selections }) => {
   const pages = useInfiniteQuery(messagePagesQuery(conversationId, messageKey));
-  const messageSelection = useExportSelection();
-  const turnSelection = useExportSelection();
 
   const loaded = useMemo(() => pages.data?.pages ?? [], [pages.data]);
   const blocks = useMemo(
@@ -550,20 +553,6 @@ export const MessageThread = ({
           </Button>
         </div>
       )}
-      <div className="sticky top-12 z-10 bg-background empty:hidden">
-        <SelectionBar
-          conversationId={conversationId}
-          kind="turns"
-          selected={turnSelection.selected}
-          onClear={turnSelection.clear}
-        />
-        <SelectionBar
-          conversationId={conversationId}
-          kind="messages"
-          selected={messageSelection.selected}
-          onClear={messageSelection.clear}
-        />
-      </div>
       <VirtualBlocks
         blocks={blocks}
         messageKey={messageKey}
@@ -576,7 +565,7 @@ export const MessageThread = ({
             conversationId={conversationId}
             messageKey={messageKey}
             query={query}
-            selection={{ messages: messageSelection, turns: turnSelection }}
+            selection={selection}
             onInspect={onInspect}
           />
         )}
@@ -589,6 +578,36 @@ export const MessageThread = ({
           </Button>
         </div>
       )}
+    </>
+  );
+};
+
+// A link to another message remounts the thread around it; the selections live above it so
+// they survive that.
+export const MessageThread = (props: ThreadProps) => {
+  const messageSelection = useExportSelection();
+  const turnSelection = useExportSelection();
+  return (
+    <>
+      <div className="sticky top-12 z-10 bg-background empty:hidden">
+        <SelectionBar
+          conversationId={props.conversationId}
+          kind="turns"
+          selected={turnSelection.selected}
+          onClear={turnSelection.clear}
+        />
+        <SelectionBar
+          conversationId={props.conversationId}
+          kind="messages"
+          selected={messageSelection.selected}
+          onClear={messageSelection.clear}
+        />
+      </div>
+      <Thread
+        key={`${props.messageKey ?? ""}:${props.query ?? ""}`}
+        {...props}
+        selection={{ messages: messageSelection, turns: turnSelection }}
+      />
     </>
   );
 };
