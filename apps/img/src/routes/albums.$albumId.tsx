@@ -1,8 +1,8 @@
+import { TooltipProvider } from "@aqt/ui/components/tooltip";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
+import { useEffect, useState } from "react";
 
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { AlbumHeader } from "@/editor/AlbumHeader";
 import { attachAutosave } from "@/editor/autosave";
 import { Editor } from "@/editor/Editor";
@@ -30,14 +30,14 @@ function AlbumRoute() {
   const { albumId } = Route.useParams();
   const { data } = useSuspenseQuery(albumQuery(albumId));
   if (!data) return null;
-  return <AlbumPage album={data.album} spreads={data.spreads} />;
+  return <AlbumPage key={data.album.id} album={data.album} spreads={data.spreads} />;
 }
 
 function AlbumPage({ album, spreads }: { album: Album; spreads: Spread[] }) {
   const phone = useMediaQuery("(max-width: 767px)");
 
-  // One store per open album; recreated when the album identity changes.
-  const store = useMemo(() => createEditorStore(album, spreads), [album.id]);
+  // Seeded once so refetches never reset the editor; another album remounts through `key`.
+  const [store] = useState(() => createEditorStore(album, spreads));
 
   useEffect(() => attachAutosave(store), [store]);
 

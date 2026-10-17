@@ -1,23 +1,23 @@
-import { GripVertical, MoreHorizontal } from "lucide-react";
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-
-import { PageElements } from "@/book/Book";
-import { PageSurface } from "@/book/PageSurface";
-import { Button } from "@/components/ui/button";
+import { Button } from "@aqt/ui/components/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@aqt/ui/components/dropdown-menu";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@aqt/ui/components/sheet";
+import { GripVertical, MoreHorizontal } from "lucide-react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+
+import { PageElements } from "@/book/Book";
+import { PageSurface } from "@/book/PageSurface";
 import { pageScale } from "@/domain/page";
 import { cn } from "@/lib/utils";
 import type { Spread } from "@/server/db/schema";
@@ -41,6 +41,7 @@ export function Filmstrip() {
 
   const listRef = useRef<HTMLOListElement>(null);
   const drag = useRef<Drag | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
   const [order, setOrder] = useState<string[] | null>(null);
 
   const ordered = order
@@ -62,6 +63,7 @@ export function Filmstrip() {
       tops: items.map((item) => item.getBoundingClientRect().top + item.offsetHeight / 2),
       pointerId: event.pointerId,
     };
+    setDraggedId(spread.id);
     setOrder(spreads.map((s) => s.id));
   };
 
@@ -89,17 +91,18 @@ export function Filmstrip() {
       reorderSpreads(order);
       setCurrent(order.indexOf(d.id));
     }
+    setDraggedId(null);
     setOrder(null);
   };
 
   return (
     <Sheet open={open} onOpenChange={(next) => setPanel(next ? "pages" : null)}>
-      <SheetContent side="left" className="w-full sm:max-w-xs">
+      <SheetContent side="left" className="data-[side=left]:w-full data-[side=left]:sm:max-w-xs">
         <SheetHeader>
           <SheetTitle>Pages</SheetTitle>
           <SheetDescription>Drag the grip to reorder spreads.</SheetDescription>
         </SheetHeader>
-        <ol ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-4">
+        <ol ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-6 pb-6">
           {ordered.map((spread, index) => (
             <li
               key={spread.id}
@@ -107,7 +110,7 @@ export function Filmstrip() {
               className={cn(
                 "flex items-center gap-1 rounded-lg border p-1 transition-shadow",
                 spreads[current]?.id === spread.id && "ring-2 ring-primary",
-                order && drag.current?.id === spread.id && "shadow-lg",
+                draggedId === spread.id && "shadow-lg",
               )}
             >
               <button
@@ -147,24 +150,26 @@ export function Filmstrip() {
                 </span>
               </button>
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Actions for spread ${index + 1}`}
-                  >
-                    <MoreHorizontal />
-                  </Button>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Actions for spread ${index + 1}`}
+                    />
+                  }
+                >
+                  <MoreHorizontal />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuGroup>
-                    <DropdownMenuItem onSelect={() => insertSpread(spreads.indexOf(spread))}>
+                    <DropdownMenuItem onClick={() => insertSpread(spreads.indexOf(spread))}>
                       Insert spread after
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
                       disabled={spreads.length <= 1}
-                      onSelect={() => removeSpread(spread.id)}
+                      onClick={() => removeSpread(spread.id)}
                     >
                       Delete spread
                     </DropdownMenuItem>

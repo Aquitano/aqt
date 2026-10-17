@@ -1,3 +1,25 @@
+import { Button } from "@aqt/ui/components/button";
+import { Card, CardContent, CardFooter } from "@aqt/ui/components/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@aqt/ui/components/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@aqt/ui/components/dropdown-menu";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@aqt/ui/components/empty";
+import { Input } from "@aqt/ui/components/input";
+import { Label } from "@aqt/ui/components/label";
+import { ThemeToggle } from "@aqt/ui/components/theme-toggle";
+import { ToggleGroup, ToggleGroupItem } from "@aqt/ui/components/toggle-group";
 import { UserButton } from "@clerk/tanstack-react-start";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { Link, createFileRoute } from "@tanstack/react-router";
@@ -13,28 +35,6 @@ import {
   type CoverColorName,
 } from "@/book/palette";
 import { ApiKeysDialog } from "@/components/api-keys-dialog";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { coverMaterial, type CoverMaterial } from "@/domain/element";
 import { requireSignedIn } from "@/lib/guard";
 import { albumsQuery } from "@/lib/queries";
@@ -93,16 +93,19 @@ function Shelf() {
                   <p className="text-xs text-muted-foreground capitalize">{album.cover.material}</p>
                 </div>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label={`Actions for ${album.title}`}>
-                      <MoreHorizontal />
-                    </Button>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Actions for ${album.title}`}
+                      />
+                    }
+                  >
+                    <MoreHorizontal />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onSelect={() => setPendingDelete(album)}
-                    >
+                    <DropdownMenuItem variant="destructive" onClick={() => setPendingDelete(album)}>
                       Delete
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -166,10 +169,8 @@ function CreateAlbumDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus /> New album
-        </Button>
+      <DialogTrigger render={<Button />}>
+        <Plus /> New album
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -192,10 +193,9 @@ function CreateAlbumDialog() {
           <div className="grid gap-2">
             <Label>Material</Label>
             <ToggleGroup
-              type="single"
               variant="outline"
-              value={material}
-              onValueChange={(next) => coverMaterial.allows(next) && setMaterial(next)}
+              value={[material]}
+              onValueChange={([next]) => coverMaterial.allows(next) && setMaterial(next)}
             >
               {COVER_MATERIALS.map((value) => (
                 <ToggleGroupItem key={value} value={value} className="capitalize">
