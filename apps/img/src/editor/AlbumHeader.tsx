@@ -1,4 +1,4 @@
-import { Button } from "@aqt/ui/components/button";
+import { Button, buttonVariants } from "@aqt/ui/components/button";
 import { Input } from "@aqt/ui/components/input";
 import { Label } from "@aqt/ui/components/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@aqt/ui/components/popover";
@@ -27,15 +27,13 @@ export function AlbumHeader({ canEdit }: AlbumHeaderProps) {
   const setMode = useEditor((state) => state.setMode);
   return (
     <header className="flex items-center gap-2 px-4 py-3">
-      <Button
-        variant="ghost"
-        size="icon"
+      <Link
+        to="/albums"
         aria-label="Back to albums"
-        nativeButton={false}
-        render={<Link to="/albums" />}
+        className={buttonVariants({ variant: "ghost", size: "icon" })}
       >
         <ChevronLeft />
-      </Button>
+      </Link>
       <Title />
       <div className="ml-auto flex items-center gap-2">
         <ThemeToggle />
