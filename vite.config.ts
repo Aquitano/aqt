@@ -81,6 +81,10 @@ function strict(setting: DummyRule): DummyRule {
   return setting;
 }
 
+const strictRules = Object.fromEntries(
+  Object.entries(rules).map(([name, setting]) => [name, strict(setting)]),
+);
+
 const tailwindFunctions = ["cn", "cva", "clsx"];
 
 const tailwindStylesheets = {
@@ -126,13 +130,15 @@ export default defineConfig({
       {
         files: ["packages/ts/**"],
         rules: {
-          ...Object.fromEntries(
-            Object.entries(rules).map(([name, setting]) => [name, strict(setting)]),
-          ),
+          ...strictRules,
           "typescript/only-throw-error": ["error", { allow: [{ from: "lib", name: "Response" }] }],
           "typescript/no-unnecessary-condition": "warn",
           "typescript/no-floating-promises": "error",
         },
+      },
+      {
+        files: ["apps/bank/**"],
+        rules: strictRules,
       },
       {
         files: ["apps/turnstash/**"],
