@@ -6,10 +6,22 @@ export type ToolCall = Extract<Part, { type: "tool_call" }>;
 export type ContentPart = Exclude<Part, { type: "tool_call" | "tool_result" }>;
 
 export interface ToolStep {
-  readonly call: ToolCall;
+  readonly kind: "tool";
+  readonly toolKey: string;
+  // Undefined for a result whose call is missing from the archive or on a page not loaded yet.
+  readonly call: ToolCall | undefined;
   readonly messageKey: string;
   readonly resultKey: string | undefined;
 }
+
+export interface PartStep {
+  readonly kind: "part";
+  readonly key: string;
+  readonly part: ContentPart;
+  readonly messageKey: string;
+}
+
+export type Step = ToolStep | PartStep;
 
 export interface ToolOutcome {
   readonly output: string | null;
@@ -29,7 +41,7 @@ export type Block =
   | {
       readonly kind: "tools";
       readonly key: string;
-      readonly steps: ReadonlyArray<ToolStep>;
+      readonly steps: ReadonlyArray<Step>;
       readonly requests: ReadonlyArray<RequestSummary>;
     };
 
@@ -39,19 +51,27 @@ export const blockMessageKeys = Match.type<Block>().pipe(
     message: ({ message }) => [message.messageKey],
     tools: ({ steps }) =>
       steps.flatMap((step) =>
-        step.resultKey === undefined ? [step.messageKey] : [step.messageKey, step.resultKey],
+        step.kind === "part" || step.resultKey === undefined
+          ? [step.messageKey]
+          : [step.messageKey, step.resultKey],
       ),
   }),
 );
 
 // Agent loops alternate an assistant message holding tool calls with a message holding their results.
 // Calls from consecutive messages form one run until text appears, and results render beside their call.
+// Thinking and other parts between calls stay in the run, and a result without a loaded call is a step.
 export const transcriptBlocks = (
   messages: ReadonlyArray<MessageView>,
   turns: ReadonlyArray<TurnView>,
 ): ReadonlyArray<Block> => {
   const turnStarts = new Map(
     turns.flatMap((turn) => (turn.messageKey === null ? [] : [[turn.messageKey, turn] as const])),
+  );
+  const calls = new Set(
+    messages.flatMap((message) =>
+      message.parts.flatMap((part) => (part.type === "tool_call" ? [part.toolKey] : [])),
+    ),
   );
   const resultKeys = new Map(
     messages.flatMap((message) =>
@@ -61,13 +81,13 @@ export const transcriptBlocks = (
     ),
   );
   const blocks: Array<Block> = [];
-  let run: { steps: Array<ToolStep>; requests: Array<RequestSummary> } | null = null;
+  let run: { steps: Array<Step>; requests: Array<RequestSummary> } | null = null;
   const closeRun = () => {
     const first = run?.steps[0];
     if (run !== null && first !== undefined)
       blocks.push({
         kind: "tools",
-        key: `tools:${first.call.toolKey}`,
+        key: `tools:${first.kind === "tool" ? first.toolKey : first.key}`,
         steps: run.steps,
         requests: run.requests,
       });
@@ -83,8 +103,7 @@ export const transcriptBlocks = (
     let segment: Array<ContentPart> = [];
     let segments = 0;
     let requests = message.requests;
-    const closeSegment = () => {
-      if (segment.length === 0) return;
+    const pushSegment = () => {
       blocks.push({
         kind: "message",
         key: `${message.id}:${segments}`,
@@ -96,23 +115,37 @@ export const transcriptBlocks = (
       requests = [];
       segment = [];
     };
-    for (const part of message.parts) {
-      if (part.type === "tool_result") continue;
-      if (part.type === "tool_call") {
-        closeSegment();
-        run ??= { steps: [], requests: [] };
-        run.steps.push({
-          call: part,
+    for (const [index, part] of message.parts.entries()) {
+      let step: Step;
+      if (part.type === "tool_call" || part.type === "tool_result") {
+        if (part.type === "tool_result" && calls.has(part.toolKey)) continue;
+        step = {
+          kind: "tool",
+          toolKey: part.toolKey,
+          call: part.type === "tool_call" ? part : undefined,
           messageKey: message.messageKey,
-          resultKey: resultKeys.get(part.toolKey),
-        });
+          resultKey: part.type === "tool_call" ? resultKeys.get(part.toolKey) : undefined,
+        };
+      } else if (run !== null && part.type !== "text") {
+        step = {
+          kind: "part",
+          key: `${message.id}:${index}`,
+          part,
+          messageKey: message.messageKey,
+        };
+      } else {
+        closeRun();
+        segment.push(part);
         continue;
       }
-      closeRun();
-      segment.push(part);
+      if (segment.length > 0) pushSegment();
+      run ??= { steps: [], requests: [] };
+      run.steps.push(step);
     }
-    closeSegment();
-    if (requests.length > 0) run?.requests.push(...requests);
+    if (segment.length > 0) pushSegment();
+    if (requests.length === 0) continue;
+    if (run === null) pushSegment();
+    else run.requests.push(...requests);
   }
   closeRun();
   return blocks;

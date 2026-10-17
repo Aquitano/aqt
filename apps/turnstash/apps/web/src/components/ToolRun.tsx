@@ -7,9 +7,9 @@ import { Predicate } from "effect";
 import { ChevronRightIcon } from "lucide-react";
 
 import { int, json } from "../format";
-import { toolSummary, type ToolOutcome, type ToolStep } from "../transcript";
+import { type Step, type ToolOutcome, type ToolStep, toolSummary } from "../transcript";
 import { HighlightedText } from "./HighlightedText";
-import { codeBlock } from "./MessagePartView";
+import { codeBlock, MessagePartView } from "./MessagePartView";
 
 const trigger =
   "flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-xs outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50";
@@ -21,6 +21,8 @@ const status = (outcome: ToolOutcome | undefined) => {
     ? { label: "failed", dot: "bg-destructive" }
     : { label: "ok", dot: "bg-success" };
 };
+
+const toolName = (step: ToolStep) => step.call?.name ?? "Tool result";
 
 const ToolRow = ({
   step,
@@ -34,23 +36,32 @@ const ToolRow = ({
   readonly defaultOpen: boolean;
 }) => {
   const { label, dot } = status(outcome);
-  const input = step.call.input;
+  const input = step.call?.input;
   return (
     <Collapsible defaultOpen={defaultOpen}>
       <CollapsibleTrigger className={`group/tool ${trigger}`}>
         <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground transition-transform group-data-panel-open/tool:rotate-90" />
         <span className={`size-1.5 shrink-0 rounded-full ${dot}`} title={label} />
         <span className="sr-only">{label}</span>
-        <span className="shrink-0 font-medium">{step.call.name}</span>
-        <span className="min-w-0 truncate font-mono text-muted-foreground">
-          <HighlightedText text={toolSummary(input)} query={query} />
-        </span>
+        <span className="shrink-0 font-medium">{toolName(step)}</span>
+        {input !== undefined && (
+          <span className="min-w-0 truncate font-mono text-muted-foreground">
+            <HighlightedText text={toolSummary(input)} query={query} />
+          </span>
+        )}
       </CollapsibleTrigger>
       <CollapsibleContent className="flex min-w-0 flex-col gap-1.5 pt-1 pb-3 pl-7 text-xs text-muted-foreground">
-        Input
-        <pre className={codeBlock}>
-          <HighlightedText text={Predicate.isString(input) ? input : json(input)} query={query} />
-        </pre>
+        {input !== undefined && (
+          <>
+            Input
+            <pre className={codeBlock}>
+              <HighlightedText
+                text={Predicate.isString(input) ? input : json(input)}
+                query={query}
+              />
+            </pre>
+          </>
+        )}
         Output
         <pre className={codeBlock}>
           <HighlightedText text={outcome?.output ?? "(no output recorded)"} query={query} />
@@ -62,14 +73,18 @@ const ToolRow = ({
 
 const tally = (steps: ReadonlyArray<ToolStep>): string => {
   const counts = new Map<string, number>();
-  for (const step of steps) counts.set(step.call.name, (counts.get(step.call.name) ?? 0) + 1);
+  for (const step of steps) {
+    const name = toolName(step);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
   const ranked = [...counts].toSorted((a, b) => b[1] - a[1]);
   const shown = ranked.slice(0, 4).map(([name, count]) => `${name} ${count}`);
   return ranked.length > 4 ? `${shown.join(" · ")} · ${ranked.length - 4} more` : shown.join(" · ");
 };
 
-const targets = (step: ToolStep, key: string | undefined) =>
-  key !== undefined && (step.messageKey === key || step.resultKey === key);
+const targets = (step: Step, key: string | undefined) =>
+  key !== undefined &&
+  (step.messageKey === key || (step.kind === "tool" && step.resultKey === key));
 
 // Short runs show every call; longer ones fold behind a count so the agent's text stays readable.
 const foldAbove = 3;
@@ -80,28 +95,40 @@ export const ToolRun = ({
   query,
   targetedKey,
 }: {
-  readonly steps: ReadonlyArray<ToolStep>;
+  readonly steps: ReadonlyArray<Step>;
   readonly outcomes: ReadonlyMap<string, ToolOutcome>;
   readonly query: string | undefined;
   readonly targetedKey: string | undefined;
 }) => {
-  const rows = steps.map((step) => (
-    <ToolRow
-      key={step.call.toolKey}
-      step={step}
-      outcome={outcomes.get(step.call.toolKey)}
-      query={query}
-      defaultOpen={targets(step, targetedKey)}
-    />
-  ));
-  if (steps.length <= foldAbove) return <div className="flex flex-col">{rows}</div>;
-  const failed = steps.filter((step) => outcomes.get(step.call.toolKey)?.failed === true).length;
+  const rows = steps.map((step) =>
+    step.kind === "tool" ? (
+      <ToolRow
+        key={step.toolKey}
+        step={step}
+        outcome={outcomes.get(step.toolKey)}
+        query={query}
+        defaultOpen={targets(step, targetedKey)}
+      />
+    ) : (
+      <div key={step.key} className="px-2 py-1">
+        <MessagePartView
+          part={step.part}
+          markdown={false}
+          query={query}
+          targeted={targets(step, targetedKey)}
+        />
+      </div>
+    ),
+  );
+  const tools = steps.filter((step) => step.kind === "tool");
+  if (tools.length <= foldAbove) return <div className="flex flex-col">{rows}</div>;
+  const failed = tools.filter((step) => outcomes.get(step.toolKey)?.failed === true).length;
   return (
     <Collapsible defaultOpen={steps.some((step) => targets(step, targetedKey))}>
       <CollapsibleTrigger className={`group/run ${trigger} text-muted-foreground`}>
         <ChevronRightIcon className="size-3 shrink-0 transition-transform group-data-panel-open/run:rotate-90" />
-        <span className="shrink-0 font-medium text-foreground">{int(steps.length)} tool calls</span>
-        <span className="min-w-0 truncate">{tally(steps)}</span>
+        <span className="shrink-0 font-medium text-foreground">{int(tools.length)} tool calls</span>
+        <span className="min-w-0 truncate">{tally(tools)}</span>
         {failed > 0 && <span className="shrink-0 text-destructive">{int(failed)} failed</span>}
       </CollapsibleTrigger>
       <CollapsibleContent className="ml-3.5 flex flex-col border-l pl-2">{rows}</CollapsibleContent>

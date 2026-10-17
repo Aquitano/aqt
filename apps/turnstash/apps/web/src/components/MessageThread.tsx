@@ -216,7 +216,7 @@ const MessageBlock = ({
 
   if (message.role === "user") {
     const injected = parts.map((part) => (part.type === "text" ? injectedLabel(part.text) : null));
-    if (injected.every((label) => label !== null))
+    if (parts.length > 0 && injected.every((label) => label !== null))
       return (
         <div className={`${meta} justify-end`}>
           <Disclosure summary={injected.join(" · ")} defaultOpen={targeted}>

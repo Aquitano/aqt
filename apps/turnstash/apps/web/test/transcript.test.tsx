@@ -1,4 +1,4 @@
-import type { MessageView, TurnView } from "@aqt/turnstash-api";
+import type { MessageView, RequestSummary, TurnView } from "@aqt/turnstash-api";
 import { Match } from "effect";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vite-plus/test";
@@ -10,6 +10,7 @@ const messageView = (
   messageKey: string,
   role: MessageView["role"],
   parts: MessageView["parts"],
+  requests: ReadonlyArray<RequestSummary> = [],
 ): MessageView => ({
   id: `00000000-0000-4000-8000-${messageKey.padStart(12, "0")}`,
   messageKey,
@@ -18,7 +19,7 @@ const messageView = (
   parentMessageKey: null,
   createdAt: "2026-10-16T10:00:00.000Z",
   parts,
-  requests: [],
+  requests,
 });
 
 const turnView = (turnIndex: number, messageKey: string): TurnView => ({
@@ -37,7 +38,48 @@ const turnView = (turnIndex: number, messageKey: string): TurnView => ({
   costUsd: 0,
 });
 
-test("tool calls across an agent loop form one run beside their results, and turns head their prompt", () => {
+const requestView = (messageKey: string): RequestSummary => ({
+  id: "00000000-0000-4000-8000-00000000000a",
+  conversationId: "00000000-0000-4000-8000-00000000000b",
+  messageKey,
+  requestKey: messageKey,
+  modelRaw: "sonnet",
+  modelId: "sonnet",
+  route: null,
+  requestedAt: "2026-10-16T10:00:00.000Z",
+  inputTokens: 1,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  cacheWrite1hTokens: 0,
+  outputTokens: 1,
+  reasoningTokens: 0,
+  usageBasis: "reported",
+  costUsd: 0.01,
+  unpricedReason: null,
+});
+
+const outline = (blocks: ReadonlyArray<Block>) =>
+  blocks.map(
+    Match.type<Block>().pipe(
+      Match.discriminatorsExhaustive("kind")({
+        turn: ({ turn }) => `turn ${turn.turnIndex}`,
+        message: ({ message, requests }) =>
+          requests.length === 0 ? message.messageKey : `${message.messageKey} +requests`,
+        tools: ({ steps }) =>
+          steps
+            .map((step) =>
+              step.kind === "part"
+                ? step.part.type
+                : step.call === undefined
+                  ? `result ${step.messageKey}`
+                  : `${step.call.name}:${step.resultKey}`,
+            )
+            .join(","),
+      }),
+    ),
+  );
+
+test("tool calls across an agent loop form one run beside their results, thinking stays in it, and turns head their prompt", () => {
   const messages = [
     messageView("1", "user", [{ type: "text", text: "fix the build" }]),
     messageView("2", "assistant", [
@@ -48,28 +90,38 @@ test("tool calls across an agent loop form one run beside their results, and tur
       { type: "tool_result", toolKey: "a", output: "1 fail", isError: true },
     ]),
     messageView("4", "assistant", [
+      { type: "thinking", text: "The import is wrong." },
       { type: "tool_call", toolKey: "b", name: "Edit", input: { file_path: "src/a.ts" } },
     ]),
     messageView("5", "user", [{ type: "tool_result", toolKey: "b", output: "ok" }]),
     messageView("6", "assistant", [{ type: "text", text: "Fixed." }]),
     messageView("7", "user", [{ type: "text", text: "thanks" }]),
   ];
-  const blocks = transcriptBlocks(messages, [turnView(0, "1"), turnView(1, "7")]);
-  expect(
-    blocks.map(
-      Match.type<Block>().pipe(
-        Match.discriminatorsExhaustive("kind")({
-          turn: ({ turn }) => `turn ${turn.turnIndex}`,
-          message: ({ message }) => message.messageKey,
-          tools: ({ steps }) =>
-            steps.map((step) => `${step.call.name}:${step.resultKey}`).join(","),
-        }),
-      ),
-    ),
-  ).toEqual(["turn 0", "1", "2", "Bash:3,Edit:5", "6", "turn 1", "7"]);
+  expect(outline(transcriptBlocks(messages, [turnView(0, "1"), turnView(1, "7")]))).toEqual([
+    "turn 0",
+    "1",
+    "2",
+    "Bash:3,thinking,Edit:5",
+    "6",
+    "turn 1",
+    "7",
+  ]);
   const outcomes = toolOutcomes(messages, []);
   expect(outcomes.get("a")).toEqual({ output: "1 fail", failed: true, known: true });
   expect(outcomes.get("b")?.failed).toBe(false);
+});
+
+test("a result whose call is not loaded and the requests of a message without parts stay visible", () => {
+  const messages = [
+    messageView("1", "user", [{ type: "tool_result", toolKey: "earlier", output: "partial" }]),
+    messageView("2", "assistant", [
+      { type: "tool_call", toolKey: "a", name: "Bash", input: { command: "ls" } },
+    ]),
+    messageView("3", "user", [{ type: "tool_result", toolKey: "a", output: "src" }]),
+    messageView("4", "assistant", [{ type: "text", text: "Done." }]),
+    messageView("5", "assistant", [], [requestView("5")]),
+  ];
+  expect(outline(transcriptBlocks(messages, []))).toEqual(["result 1,Bash:3", "4", "5 +requests"]);
 });
 
 test("tool summaries name the command or file and drop the shell wrapper", () => {
