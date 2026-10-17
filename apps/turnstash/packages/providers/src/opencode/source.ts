@@ -1,3 +1,5 @@
+import { Database } from "bun:sqlite";
+
 import {
   hostEnvFromProcess,
   isExcludedPath,
@@ -14,6 +16,34 @@ import { walkFiles } from "../walk.ts";
 const scannedTables = ["session_v2", "session_message", "session", "message", "part"] as const;
 
 const fileStoreDirectories = ["session", "message", "part"] as const;
+
+// OpenCode moved from JSON files to SQLite and left the files behind. Normalize prefers the SQLite row,
+// so a file whose id a database also holds is not collected. A database that cannot be read hides nothing.
+const idsInDatabase = (absolutePath: string): ReadonlyArray<string> => {
+  let db: Database | undefined;
+  try {
+    const opened = new Database(absolutePath, { readonly: true });
+    db = opened;
+    const tables = new Set(
+      opened
+        .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
+        .all()
+        .map((row) => row.name),
+    );
+    return fileStoreDirectories
+      .filter((table) => tables.has(table))
+      .flatMap((table) =>
+        opened
+          .query<{ id: string }, []>(`SELECT id FROM ${table}`)
+          .all()
+          .map((row) => row.id),
+      );
+  } catch {
+    return [];
+  } finally {
+    db?.close();
+  }
+};
 
 const defaultDbPrefix = "opencode";
 
@@ -66,12 +96,17 @@ export const opencodeSource: SourceProvider = {
         keyColumn: "id",
       })),
     );
+    const inDatabase = new Set(
+      databases.flatMap((relativePath) => idsInDatabase(path.join(root.path, relativePath))),
+    );
     for (const directory of fileStoreDirectories) {
       const store = { path: path.join(root.path, "storage", directory), label: root.label };
       const files = yield* walkFiles(store, (relativePath) => relativePath.endsWith(".json"), {
         maxDepth: 3,
       });
       for (const file of files) {
+        const name = file.relativePath.slice(file.relativePath.lastIndexOf("/") + 1);
+        if (inDatabase.has(name.slice(0, -".json".length))) continue;
         descriptors.push({
           kind: "json",
           root,
