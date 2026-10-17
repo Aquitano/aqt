@@ -1,4 +1,4 @@
-import { Button } from "@aqt/ui/components/button";
+import { Button, buttonVariants } from "@aqt/ui/components/button";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
@@ -25,14 +25,13 @@ export function FilePreview({ file }: { file: Attachment }) {
     <section className="flex min-w-0 flex-col gap-3" aria-label={`Preview of ${file.filename}`}>
       <h3 className="font-medium break-all">{file.filename}</h3>
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          nativeButton={false}
-          render={<a href={`/v1/blobs/${file.sha256}`} download={file.filename} />}
+        <a
+          href={`/v1/blobs/${file.sha256}`}
+          download={file.filename}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
         >
           Download original
-        </Button>
+        </a>
         {query && content && (!phrase || matchIndex >= 0) && (
           <Button
             variant="outline"

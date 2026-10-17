@@ -1,5 +1,5 @@
 import { Badge } from "@aqt/ui/components/badge";
-import { Button } from "@aqt/ui/components/button";
+import { Button, buttonVariants } from "@aqt/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@aqt/ui/components/card";
 import { Field, FieldGroup, FieldLabel } from "@aqt/ui/components/field";
 import { Input } from "@aqt/ui/components/input";
@@ -378,15 +378,15 @@ export function ItemDetail({ id }: { id: string }) {
           )}
           {original && (
             <div>
-              <Button
-                variant="outline"
-                size="sm"
-                nativeButton={false}
-                render={<a href={original} target="_blank" rel="noreferrer" />}
+              <a
+                href={original}
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants({ variant: "outline", size: "sm" })}
               >
                 <ExternalLink data-icon="inline-start" />
                 Open original
-              </Button>
+              </a>
             </div>
           )}
         </header>
