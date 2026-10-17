@@ -106,7 +106,8 @@ test("OIDC login sets a private session and rejects a missing, forged or tampere
       callback.headers.getSetCookie().some((value) => value.startsWith(`${loginCookie}=;`)),
     ).toBe(true);
     const sealed = cookie(login, loginCookie).slice(`${loginCookie}=`.length);
-    const tampered = `${sealed.slice(0, -2)}${sealed.endsWith("AA") ? "AB" : "AA"}`;
+    // The last base64url character can carry only padding bits, so the change goes into the IV up front.
+    const tampered = `${sealed.startsWith("A") ? "B" : "A"}${sealed.slice(1)}`;
     const forged = sealLogin(
       { ...oidcAuth, clientSecret: Redacted.make("another-secret") },
       { state: "state", verifier: "verifier", nonce: "nonce", expiresAt: Date.now() + 60_000 },
