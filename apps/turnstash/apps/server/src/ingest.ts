@@ -42,7 +42,7 @@ export const markDirty = Effect.fn("Ingest.markDirty")(function* (
   if (keys.length === 0) return;
   const db = yield* Db;
   const { normalizeSettleMillis } = yield* ServerConfig;
-  const due = sql`now() + make_interval(secs => ${normalizeSettleMillis / 1000})`;
+  const due = sql`statement_timestamp() + make_interval(secs => ${normalizeSettleMillis / 1000})`;
   yield* db
     .insert(dirtyConversations)
     .values(
