@@ -396,17 +396,17 @@ const BlockView = ({
 // distance from the top of the document. The summary above it loads
 // separately and pushes it down, so the distance is re-read whenever the page
 // changes size.
-const usePageOffset = (ref: RefObject<HTMLElement | null>, layoutReady: boolean) => {
+const usePageOffset = (ref: RefObject<HTMLElement | null>) => {
   const [offset, setOffset] = useState(0);
   useLayoutEffect(() => {
     const element = ref.current;
-    if (element === null) return;
+    if (element === null) return undefined;
     const measure = () => setOffset(element.getBoundingClientRect().top + window.scrollY);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(document.body);
     return () => observer.disconnect();
-  }, [ref, layoutReady]);
+  }, [ref]);
   return offset;
 };
 
@@ -431,7 +431,8 @@ const VirtualBlocks = ({
   const listRef = useRef<HTMLDivElement>(null);
   const sought = useRef(false);
   const focused = useRef(false);
-  const scrollMargin = usePageOffset(listRef, layoutReady);
+  const loadedAt = useRef<number | null>(null);
+  const scrollMargin = usePageOffset(listRef);
   const getItemKey = useCallback((index: number) => blocks[index]?.key ?? index, [blocks]);
   // oxlint-disable-next-line react/incompatible-library -- "use no memo" keeps this component unmemoized, as TanStack Virtual needs
   const virtualizer = useWindowVirtualizer({
@@ -446,8 +447,13 @@ const VirtualBlocks = ({
   });
   const items = virtualizer.getVirtualItems();
   const lastIndex = items.at(-1)?.index ?? -1;
+  // A page that only extends a folded tool run adds no blocks, so loading stops there instead of
+  // fetching every remaining page; the Load more button continues it.
   useEffect(() => {
-    if (blocks.length > 0 && lastIndex >= blocks.length - 6) onNearEnd();
+    if (blocks.length === 0 || lastIndex < blocks.length - 6 || loadedAt.current === blocks.length)
+      return;
+    loadedAt.current = blocks.length;
+    onNearEnd();
   }, [blocks.length, lastIndex, onNearEnd]);
   useLayoutEffect(() => {
     const element = listRef.current;
@@ -571,10 +577,10 @@ const Thread = ({
         )}
       />
       {isFetchingNextPage && <Pending />}
-      {isFetchNextPageError && (
+      {hasNextPage && !isFetchingNextPage && (
         <div className="pt-3">
           <Button size="sm" variant="outline" onClick={() => void fetchNextPage()}>
-            Retry loading messages
+            {isFetchNextPageError ? "Retry loading messages" : "Load more messages"}
           </Button>
         </div>
       )}
