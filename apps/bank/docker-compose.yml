@@ -40,7 +40,7 @@ services:
 
   bank:
     profiles: ["server"]
-    # The repository root, so the image can build packages/go/extract.
+    # The repository root, so the image can build against packages/go.
     build:
       context: ../..
       dockerfile: apps/bank/Dockerfile

@@ -15,26 +15,20 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
 	"github.com/uptrace/bun/migrate"
+
+	"github.com/aquitano/aqt/packages/go/pgschema/paradedb"
 )
 
-// Migrations holds the schema as SQL files under migrations/.
-//
 //go:embed migrations/*.sql
-var Migrations embed.FS
+var migrationFiles embed.FS
+
+// Migrations is the schema history Open applies, one numbered file per step.
+var Migrations, _ = fs.Sub(migrationFiles, "migrations")
 
 // migrationLock is an arbitrary fixed advisory-lock key ("trkmig"): two
 // processes starting against an unmigrated database serialize on it instead
 // of racing the same DDL.
 const migrationLock int64 = 0x74726b6d6967
-
-// A new ParadeDB image only replaces the pg_search binary, and its SQL functions
-// fail until the catalog is updated to match.
-const updatePgSearch = `do $$ begin
-  if exists (select from pg_extension e join pg_available_extensions a on a.name = e.extname
-    where e.extname = 'pg_search' and e.extversion <> a.default_version) then
-    alter extension pg_search update;
-  end if;
-end $$`
 
 type Store struct {
 	db *bun.DB
@@ -59,12 +53,8 @@ func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
 func (s *Store) migrate(ctx context.Context) error {
-	sub, err := fs.Sub(Migrations, "migrations")
-	if err != nil {
-		return err
-	}
 	migrations := migrate.NewMigrations()
-	if err := migrations.Discover(sub); err != nil {
+	if err := migrations.Discover(Migrations); err != nil {
 		return err
 	}
 	conn, err := s.db.Conn(ctx)
@@ -80,7 +70,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		defer cancel()
 		_, _ = conn.ExecContext(cleanupCtx, `select pg_advisory_unlock(?)`, migrationLock)
 	}()
-	if _, err := conn.ExecContext(ctx, updatePgSearch); err != nil {
+	if _, err := conn.ExecContext(ctx, paradedb.UpdatePgSearch); err != nil {
 		return err
 	}
 	m := migrate.NewMigrator(s.db, migrations, migrate.WithMarkAppliedOnSuccess(true))

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 // historyPath is where a Takeout puts the file, product folder and all, so the
@@ -104,7 +105,7 @@ func TestImportFromTakeoutZip(t *testing.T) {
 	if got := entries[0].Name(); !strings.HasSuffix(got, "-watch-history.json") {
 		t.Errorf("archived as %q, want a content-hashed watch-history.json", got)
 	}
-	if n := storetest.QueryInt(t, dsn,
+	if n := pgschematest.QueryInt(t, dsn,
 		`select count(*) from messages where raw_ref = $1`, "youtube/"+entries[0].Name()); n != 4 {
 		t.Errorf("%d messages cite the archived history, want 4", n)
 	}

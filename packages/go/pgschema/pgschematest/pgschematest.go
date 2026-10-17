@@ -1,0 +1,124 @@
+// Package pgschematest gives each integration test a database of its own on a
+// disposable ParadeDB server. pgtestdb clones it from a template migrated once
+// per set of migrations, so a test pays for a copy instead of a migration.
+package pgschematest
+
+import (
+	"context"
+	"database/sql"
+	"io/fs"
+	"net/url"
+	"os"
+	"strconv"
+	"testing"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/peterldowns/pgtestdb"
+	"github.com/peterldowns/pgtestdb/migrators/common"
+)
+
+// Database returns the URL of a fresh database migrated by m, on the server
+// whose connection URL the environment variable urlVar holds. That URL's user
+// creates and owns every test database, as the app's user owns its own. Tests
+// skip when the variable is unset or nothing listens there, unless CI is set.
+// A server that answers and refuses fails even locally: skipping would
+// silently disable every database test while go test stays green.
+func Database(t testing.TB, urlVar string, m pgtestdb.Migrator) string {
+	t.Helper()
+	required := os.Getenv("CI") != ""
+	dsn := os.Getenv(urlVar)
+	if dsn == "" {
+		if required {
+			t.Fatalf("%s must name a disposable ParadeDB server", urlVar)
+		}
+		t.Skipf("%s not set", urlVar)
+	}
+	u, err := url.Parse(dsn)
+	if err != nil || u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		t.Fatalf("%s must be a PostgreSQL URL", urlVar)
+	}
+	conf, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		t.Fatalf("parse %s: %v", urlVar, err)
+	}
+	if err := ping(t.Context(), conf); err != nil {
+		if !required && !listening(t.Context(), conf) {
+			t.Skipf("no database at %s: %v", u.Redacted(), err)
+		}
+		t.Fatalf("database at %s is unavailable: %v", u.Redacted(), err)
+	}
+	return pgtestdb.Custom(t, pgtestdb.Config{
+		DriverName: "pgx",
+		Host:       conf.Host,
+		Port:       strconv.Itoa(int(conf.Port)),
+		User:       conf.User,
+		Password:   conf.Password,
+		Database:   conf.Database,
+		Options:    u.RawQuery,
+		TestRole:   &pgtestdb.Role{Username: conf.User, Password: conf.Password},
+	}, m).URL()
+}
+
+func ping(ctx context.Context, conf *pgx.ConnConfig) error {
+	conn, err := pgx.ConnectConfig(ctx, conf)
+	if err != nil {
+		return err
+	}
+	return conn.Close(ctx)
+}
+
+// listening reports whether anything accepts a connection at one of conf's
+// addresses. Only a server that is not there at all is worth a skip; one that
+// answers and then refuses, hangs up or times out is a failure.
+func listening(ctx context.Context, conf *pgx.ConnConfig) bool {
+	hosts := append([]*pgconn.FallbackConfig{{Host: conf.Host, Port: conf.Port}}, conf.Fallbacks...)
+	for _, h := range hosts {
+		network, address := pgconn.NetworkAddress(h.Host, h.Port)
+		if conn, err := conf.DialFunc(ctx, network, address); err == nil {
+			conn.Close()
+			return true
+		}
+	}
+	return false
+}
+
+// Migrator builds the template with open, the call the app itself makes at
+// startup, and rebuilds it whenever a file in migrations changes.
+func Migrator(migrations fs.FS, open func(ctx context.Context, dsn string) error) pgtestdb.Migrator {
+	return migrator{migrations: migrations, open: open}
+}
+
+type migrator struct {
+	migrations fs.FS
+	open       func(context.Context, string) error
+}
+
+func (m migrator) Hash() (string, error) {
+	hash, err := common.HashDirs(m.migrations, "*.sql", ".")
+	// The prefix keeps templates that earlier runners built from these same
+	// files from being reused.
+	return "pgschema-v1-" + hash, err
+}
+
+func (m migrator) Migrate(ctx context.Context, _ *sql.DB, conf pgtestdb.Config) error {
+	return m.open(ctx, conf.URL())
+}
+
+// QueryInt runs a single-value integer query, for assertions on rows an app's
+// API does not expose.
+func QueryInt(t testing.TB, dsn, query string, args ...any) int64 {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer conn.Close(ctx)
+	var n int64
+	if err := conn.QueryRow(ctx, query, args...).Scan(&n); err != nil {
+		t.Fatalf("query: %v\n%s", err, query)
+	}
+	return n
+}

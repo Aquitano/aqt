@@ -10,6 +10,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
 	"github.com/aquitano/aqt/apps/tracker/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func TestForgetHostDeletesEverythingRecordedForIt(t *testing.T) {
@@ -56,7 +57,7 @@ func TestForgetHostDeletesEverythingRecordedForIt(t *testing.T) {
 		`select count(*) from derivations`:                                                2,
 		`select count(*) from derivations where status = 'pending' and record_id is null`: 1,
 	} {
-		if n := storetest.QueryInt(t, dsn, query); n != want {
+		if n := pgschematest.QueryInt(t, dsn, query); n != want {
 			t.Errorf("%s: %d, want %d", query, n, want)
 		}
 	}
@@ -79,7 +80,7 @@ func TestADerivationForgottenWhileItRanWritesNoRecord(t *testing.T) {
 	if !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
-	if n := storetest.QueryInt(t, dsn, `select (select count(*) from records) + (select count(*) from urls)`); n != 0 {
+	if n := pgschematest.QueryInt(t, dsn, `select (select count(*) from records) + (select count(*) from urls)`); n != 0 {
 		t.Errorf("%d records and urls rows written for a forgotten page", n)
 	}
 }

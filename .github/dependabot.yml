@@ -37,7 +37,8 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
   - package-ecosystem: gomod
-    directories: [/apps/attic, /apps/bank, /apps/tracker, /packages/go/extract]
+    directories:
+      [/apps/attic, /apps/bank, /apps/tracker, /packages/go/extract, /packages/go/pgschema]
     schedule: { interval: weekly }
     groups:
       go:

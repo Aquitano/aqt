@@ -13,6 +13,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 const mailWithAttachments = "From: a@example.com\r\n" +
@@ -240,7 +241,7 @@ func TestWhatsAppZipMediaIsHealed(t *testing.T) {
 	if err != nil || res.Attachments != 1 {
 		t.Fatalf("import = %+v, %v", res, err)
 	}
-	msgID := storetest.QueryInt(t, dsn, `select message_id from attachments limit 1`)
+	msgID := pgschematest.QueryInt(t, dsn, `select message_id from attachments limit 1`)
 	_, atts, err := st.GetMessage(ctx, msgID)
 	if err != nil || len(atts) != 1 {
 		t.Fatalf("attachments = %v, %v", atts, err)

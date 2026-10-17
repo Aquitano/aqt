@@ -13,6 +13,7 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func pngFile(t *testing.T, root, name string) {
@@ -82,7 +83,7 @@ func TestMetadataScanDeduplicatesAndSearches(t *testing.T) {
 	if hits, err := st.SearchMetadata(context.Background(), store.SearchOptions{Query: "PNG", Ext: "jpg"}); err != nil || len(hits) != 0 {
 		t.Fatalf("extension filter: %+v %v", hits, err)
 	}
-	if got := storetest.QueryInt(t, dsn, "select metadata from scans where id=$1", first.ScanID); got != 1 {
+	if got := pgschematest.QueryInt(t, dsn, "select metadata from scans where id=$1", first.ScanID); got != 1 {
 		t.Fatalf("scan metadata count %d", got)
 	}
 	stats, err := st.Totals(context.Background())

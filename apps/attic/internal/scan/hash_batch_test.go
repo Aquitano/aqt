@@ -11,6 +11,7 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 	"lukechampine.com/blake3"
 )
 
@@ -36,7 +37,7 @@ func TestHashBatchesKeepDuplicatesAndSizeGuards(t *testing.T) {
 	if err != nil || len(pending) != 130 {
 		t.Fatalf("pending: %d files, %v", len(pending), err)
 	}
-	storetest.QueryInt(t, dsn, "update entries set size_bytes=size_bytes+1 where id=$1 returning size_bytes", pending[0].ID)
+	pgschematest.QueryInt(t, dsn, "update entries set size_bytes=size_bytes+1 where id=$1 returning size_bytes", pending[0].ID)
 	for i, p := range pending {
 		digest := blake3.Sum256([]byte(fmt.Sprintf("content-%d", i%5)))
 		if err := sc.SetContent(ctx, p, digest); err != nil {
@@ -52,10 +53,10 @@ func TestHashBatchesKeepDuplicatesAndSizeGuards(t *testing.T) {
 	if sc.Counts.Hashed != 129 || sc.Counts.Duplicates != 125 || sc.Counts.HashedBytes != 129*int64(len("content-0")) {
 		t.Fatalf("hash counts: %+v", sc.Counts)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from entries where hash_state='done'"); n != 129 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from entries where hash_state='done'"); n != 129 {
 		t.Fatalf("hashed rows: %d", n)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from contents"); n != 5 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from contents"); n != 5 {
 		t.Fatalf("contents: %d", n)
 	}
 	if again := scanAt(t, st, root, testVolume); again.Counts.Hashed != 1 || again.Counts.Duplicates != 1 {
@@ -97,7 +98,7 @@ func TestCancelledHashCommitsCompletedWork(t *testing.T) {
 	if err := sc.Finish(ctx, "interrupted", ctx.Err()); err != nil {
 		t.Fatal(err)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from entries where hash_state='done'"); n != 64 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from entries where hash_state='done'"); n != 64 {
 		t.Fatalf("completed hashes: %d", n)
 	}
 	if again := scanAt(t, st, root, testVolume); again.Counts.Hashed != 66 || again.Counts.Duplicates != 66 {

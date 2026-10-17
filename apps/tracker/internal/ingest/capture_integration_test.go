@@ -17,6 +17,7 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/metrics"
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
 	"github.com/aquitano/aqt/apps/tracker/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func TestCaptureTransaction(t *testing.T) {
@@ -62,10 +63,10 @@ func TestCaptureTransaction(t *testing.T) {
 	if stats.Blobs != 1 || stats.Captures != 2 || stats.Derivations[store.StatusPending] != 1 || stats.PageViews != 1 {
 		t.Errorf("blobs=%d captures=%d derivations=%v page_views=%d", stats.Blobs, stats.Captures, stats.Derivations, stats.PageViews)
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from urls where host = 'example.com'`); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from urls where host = 'example.com'`); n != 1 {
 		t.Errorf("%d urls rows for example.com, want 1", n)
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from captures where browser_title = 'Page'`); n != 2 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from captures where browser_title = 'Page'`); n != 2 {
 		t.Errorf("%d captures without NUL in their browser title, want 2", n)
 	}
 }
@@ -78,7 +79,7 @@ func TestCaptureOfAnUnknownPageViewIsRefusedAndWritesNothing(t *testing.T) {
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422: %s", rec.Code, rec.Body.String())
 	}
-	if n := storetest.QueryInt(t, dsn, `select (select count(*) from urls) + (select count(*) from raw_html_blobs)
+	if n := pgschematest.QueryInt(t, dsn, `select (select count(*) from urls) + (select count(*) from raw_html_blobs)
 		+ (select count(*) from captures) + (select count(*) from derivations)`); n != 0 {
 		t.Errorf("%d rows written for a refused capture", n)
 	}

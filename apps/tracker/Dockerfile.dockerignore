@@ -1,0 +1,10 @@
+# The build context is the repository root, so tracker can build against
+# packages/go. BuildKit reads this file instead of the root .dockerignore. An
+# allowlist, so a .env, the extension's node_modules or an Xcode build can
+# never end up in a layer.
+*
+!apps/tracker/go.mod
+!apps/tracker/go.sum
+!apps/tracker/cmd/
+!apps/tracker/internal/
+!packages/go/pgschema

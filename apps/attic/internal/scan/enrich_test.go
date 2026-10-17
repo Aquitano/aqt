@@ -18,6 +18,7 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/enrich"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 type visionStub struct {
@@ -80,7 +81,7 @@ func TestEnrichDedupRetriesVersionsAndSearch(t *testing.T) {
 	if s := run(); s.Attempted != 0 {
 		t.Fatalf("reused %+v", s)
 	}
-	if n := storetest.QueryInt(t, dsn, "select max(attempts) from ai_results"); n != 2 {
+	if n := pgschematest.QueryInt(t, dsn, "select max(attempts) from ai_results"); n != 2 {
 		t.Fatalf("attempts %d", n)
 	}
 	p.key.Model = "two"
@@ -124,7 +125,7 @@ func TestEnrichDedupRetriesVersionsAndSearch(t *testing.T) {
 	if s := run(); s.Failed != 2 {
 		t.Fatalf("forced %+v", s)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from ai_results where status='ok'"); n != 4 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from ai_results where status='ok'"); n != 4 {
 		t.Fatalf("lost good answers: %d", n)
 	}
 	// A concurrent request cannot claim work already held by another runner.
@@ -167,7 +168,7 @@ func TestEnrichSelectionRulesChangedFilesLimitAndCancel(t *testing.T) {
 	if err != nil || s.Attempted != 1 || s.Skipped != 2 {
 		t.Fatalf("rules and changed file: %+v %v", s, err)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from ai_results"); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from ai_results"); n != 1 {
 		t.Fatalf("stored %d", n)
 	}
 	// Explicit refs select only that content; changing the model doesn't broaden it.
@@ -210,7 +211,7 @@ func TestEnrichSelectionRulesChangedFilesLimitAndCancel(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel %v", err)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from ai_results"); n != 2 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from ai_results"); n != 2 {
 		t.Fatalf("cancel changed persisted work: %d", n)
 	}
 }
@@ -224,7 +225,7 @@ func TestEnrichPDFQueueAndFolderSelection(t *testing.T) {
 	scanAt(t, st, root, testVolume)
 	// Seed the text phase's no-text-layer outcome. Failed PDFs stay outside
 	// this queue; actual rasterization is tested in the shared extractor.
-	n := storetest.QueryInt(t, dsn, `with changed as (update texts set status='needs_ocr' where content_id=(select content_id from entries where path='/docs/scanned.pdf') returning content_id) select count(*) from changed`)
+	n := pgschematest.QueryInt(t, dsn, `with changed as (update texts set status='needs_ocr' where content_id=(select content_id from entries where path='/docs/scanned.pdf') returning content_id) select count(*) from changed`)
 	if n != 1 {
 		t.Fatalf("seeded %d PDF states", n)
 	}
@@ -326,7 +327,7 @@ func TestEnrichUnavailableProviderAndRejectedInput(t *testing.T) {
 			if requests.Load() != 1 || s.Attempted != 1 {
 				t.Fatalf("requests=%d summary=%+v err=%v", requests.Load(), s, err)
 			}
-			rows := storetest.QueryInt(t, dsn, "select count(*) from ai_results")
+			rows := pgschematest.QueryInt(t, dsn, "select count(*) from ai_results")
 			if unavailable {
 				if !errors.Is(err, ai.ErrUnavailable) || rows != 0 {
 					t.Fatalf("outage: %+v %v rows=%d", s, err, rows)

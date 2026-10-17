@@ -4,16 +4,15 @@ go 1.27.2
 
 require (
 	github.com/aquitano/aqt/packages/go/extract v0.0.0
+	github.com/aquitano/aqt/packages/go/pgschema v0.0.0
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/gofrs/flock v0.13.1
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/jackc/tern/v2 v2.4.3
 	github.com/klauspost/compress v1.20.3
 	github.com/mholt/archives v0.1.5
 	github.com/nwaples/rardecode/v2 v2.4.5
 	github.com/pelletier/go-toml/v2 v2.4.3
-	github.com/peterldowns/pgtestdb v0.1.1
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 	lukechampine.com/blake3 v1.4.1
@@ -37,6 +36,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jackc/tern/v2 v2.4.3 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
@@ -44,6 +44,7 @@ require (
 	github.com/minio/minlz v1.0.1 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+	github.com/peterldowns/pgtestdb v0.1.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sorairolake/lzip-go v0.3.8 // indirect
@@ -59,3 +60,5 @@ require (
 )
 
 replace github.com/aquitano/aqt/packages/go/extract => ../../packages/go/extract
+
+replace github.com/aquitano/aqt/packages/go/pgschema => ../../packages/go/pgschema

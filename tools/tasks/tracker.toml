@@ -1,5 +1,12 @@
 ["tracker:check"]
-depends = ["shared:ts", "tracker:ts", "tracker:go", "tracker:swift", "tracker:desktop:test"]
+depends = [
+  "shared:ts",
+  "shared:go",
+  "tracker:ts",
+  "tracker:go",
+  "tracker:swift",
+  "tracker:desktop:test",
+]
 
 ["tracker:ts"]
 run = [

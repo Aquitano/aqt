@@ -5,4 +5,5 @@ use (
 	./apps/bank
 	./apps/tracker
 	./packages/go/extract
+	./packages/go/pgschema
 )

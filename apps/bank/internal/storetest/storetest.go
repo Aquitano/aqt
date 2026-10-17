@@ -1,39 +1,34 @@
-// Package storetest gives tests a real ParadeDB to run against: pgtestdb clones
-// a database per test from a template it migrates once. Search, migrations and
-// dedup all live in SQL, so a fake store would only prove the fake works.
-//
-// Tests skip only when nothing is listening at all — the machine that has not
-// started the compose stack. A database that answers and refuses (wrong
-// password, missing database) fails the test instead: skipping there would
-// silently disable every DB-backed test while `go test ./...` stays green.
+// Package storetest gives tests a real ParadeDB to run against: a database per
+// test on the server BANK_TEST_DATABASE_URL names. It creates databases and
+// roles there, so it never uses the application's DATABASE_URL. Search,
+// migrations and dedup all live in SQL, so a fake store would only prove the
+// fake works.
 package storetest
 
 import (
 	"context"
-	"database/sql"
-	"errors"
-	"net"
 	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/peterldowns/pgtestdb"
-	"github.com/peterldowns/pgtestdb/migrators/common"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
-// DSN is the development database, matching the CLI's own default.
-func DSN() string {
-	if dsn := os.Getenv("DATABASE_URL"); dsn != "" {
-		return dsn
+const urlVar = "BANK_TEST_DATABASE_URL"
+
+var migrator = pgschematest.Migrator(store.Migrations, func(ctx context.Context, dsn string) error {
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		return err
 	}
-	return "postgres://bank:bank@localhost:5433/bank?sslmode=disable"
-}
+	st.Close()
+	return nil
+})
 
 // New returns a Store on a migrated database of its own, dropped when the
 // test passes.
@@ -48,7 +43,7 @@ func New(t *testing.T) *store.Store {
 // does not expose.
 func NewNamed(t *testing.T) (*store.Store, string) {
 	t.Helper()
-	dsn := database(t, migrator{})
+	dsn := pgschematest.Database(t, urlVar, migrator)
 	return Open(t, dsn), dsn
 }
 
@@ -56,7 +51,7 @@ func NewNamed(t *testing.T) (*store.Store, string) {
 // to seed a pre-migration state before opening a Store.
 func NewEmpty(t *testing.T) string {
 	t.Helper()
-	return database(t, pgtestdb.NoopMigrator{})
+	return pgschematest.Database(t, urlVar, pgtestdb.NoopMigrator{})
 }
 
 // Exec runs setup SQL against a test database before or beside a Store.
@@ -71,23 +66,6 @@ func Exec(t *testing.T, dsn, sql string, args ...any) {
 	if _, err := conn.Exec(ctx, sql, args...); err != nil {
 		t.Fatalf("exec: %v\n%s", err, sql)
 	}
-}
-
-// QueryInt runs a single-value integer query, for assertions about rows the
-// Store API does not expose.
-func QueryInt(t *testing.T, dsn, sql string, args ...any) int64 {
-	t.Helper()
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, dsn)
-	if err != nil {
-		t.Fatalf("connect: %v", err)
-	}
-	defer conn.Close(ctx)
-	var n int64
-	if err := conn.QueryRow(ctx, sql, args...).Scan(&n); err != nil {
-		t.Fatalf("query: %v\n%s", err, sql)
-	}
-	return n
 }
 
 // Open migrates and returns a Store for an existing test database.
@@ -110,81 +88,7 @@ func Open(t *testing.T, dsn string) *store.Store {
 // the absence of rows.
 func CountAttachments(t *testing.T, dsn string) int64 {
 	t.Helper()
-	return QueryInt(t, dsn, `select count(*) from attachments`)
-}
-
-func database(t *testing.T, m pgtestdb.Migrator) string {
-	t.Helper()
-	if err := reachable(); err != nil {
-		if unreachable(err) && os.Getenv("BANK_REQUIRE_DB") != "1" && os.Getenv("CI") == "" {
-			t.Skipf("no database at %s: %v", redacted(DSN()), err)
-		}
-		t.Fatalf("required database at %s is unavailable — fix DATABASE_URL rather than skipping DB-backed tests: %v",
-			redacted(DSN()), err)
-	}
-	u, err := url.Parse(DSN())
-	if err != nil {
-		t.Fatalf("DATABASE_URL: %v", err)
-	}
-	password, _ := u.User.Password()
-	// The test databases belong to the configured user, as the archive does in
-	// production: a superuser that also provisions the query role.
-	conf := pgtestdb.Config{
-		DriverName:                "pgx",
-		Host:                      u.Hostname(),
-		Port:                      u.Port(),
-		User:                      u.User.Username(),
-		Password:                  password,
-		Database:                  strings.TrimPrefix(u.Path, "/"),
-		Options:                   u.RawQuery,
-		TestRole:                  &pgtestdb.Role{Username: u.User.Username(), Password: password},
-		ForceTerminateConnections: true,
-	}
-	return pgtestdb.Custom(t, conf, m).URL()
-}
-
-var reachable = sync.OnceValue(func() error {
-	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, DSN())
-	if err != nil {
-		return err
-	}
-	return conn.Close(ctx)
-})
-
-// migrator builds the template every migrated test database is cloned from,
-// through the same Open the binary runs at startup.
-type migrator struct{}
-
-func (migrator) Hash() (string, error) {
-	hash, err := common.HashDirs(store.Migrations, "*.sql", ".")
-	return "tern-v1-" + hash, err
-}
-
-func (migrator) Migrate(ctx context.Context, _ *sql.DB, conf pgtestdb.Config) error {
-	st, err := store.Open(ctx, conf.URL())
-	if err != nil {
-		return err
-	}
-	st.Close()
-	return nil
-}
-
-// unreachable reports whether a connect failure means nothing is listening —
-// connection refused, unknown host. That is the one condition worth a skip.
-func unreachable(err error) bool {
-	var op *net.OpError
-	var dns *net.DNSError
-	return errors.As(err, &op) || errors.As(err, &dns)
-}
-
-func redacted(dsn string) string {
-	if at := strings.LastIndex(dsn, "@"); at > 0 {
-		if scheme := strings.Index(dsn, "//"); scheme > 0 && scheme+2 < at {
-			return dsn[:scheme+2] + "***" + dsn[at:]
-		}
-	}
-	return dsn
+	return pgschematest.QueryInt(t, dsn, `select count(*) from attachments`)
 }
 
 // QueryDSN authenticates as a real restricted login, never SET ROLE on the
@@ -204,7 +108,7 @@ func QueryDSN(t *testing.T, dsn string) string {
 
 var provisionQueryRole = sync.OnceValue(func() error {
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, DSN())
+	conn, err := pgx.Connect(ctx, os.Getenv(urlVar))
 	if err != nil {
 		return err
 	}

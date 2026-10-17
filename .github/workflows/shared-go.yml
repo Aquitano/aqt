@@ -1,0 +1,40 @@
+name: shared-go
+on:
+  push:
+    branches: [main]
+    paths: ["packages/go/**", ".golangci.yml", "mise.toml", ".github/workflows/shared-go.yml"]
+  pull_request:
+    paths: ["packages/go/**", ".golangci.yml", "mise.toml", ".github/workflows/shared-go.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: shared-go-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  # Otherwise mise run installs every tool in mise.toml, not only the ones the job asked for.
+  MISE_TASK_RUN_AUTO_INSTALL: "false"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        # pg_search 0.26.1, also used by the apps' Compose stacks.
+        image: paradedb/paradedb:v0.26.1-pg18@sha256:29bd8cc90a89ff15f8350f89b4849c2ef807aa9381c79febd1afb1a8a25fb706
+        env:
+          POSTGRES_USER: pgschema
+          POSTGRES_PASSWORD: pgschema
+          POSTGRES_DB: pgschema
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pgschema -d pgschema"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGSCHEMA_TEST_DATABASE_URL: postgres://pgschema:pgschema@localhost:5432/pgschema?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: go golangci-lint
+      - run: mise run shared:go

@@ -69,8 +69,10 @@ services:
 
   tracker:
     profiles: ["server"]
+    # The repository root, so the image can build against packages/go.
     build:
-      context: .
+      context: ../..
+      dockerfile: apps/tracker/Dockerfile
       args:
         # ops/deploy.sh sets it to the commit it pulled; serve logs it on start.
         GIT_SHA: ${GIT_SHA:-dev}

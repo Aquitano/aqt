@@ -14,6 +14,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func TestMalformedMessageIDDoesNotBlockIngest(t *testing.T) {
@@ -174,9 +175,9 @@ func TestMailReimportLeavesUnchangedThreadRowsAlone(t *testing.T) {
 		union all select xmin from mail_details union all select xmin from mail_thread_edges
 		union all select xmin from mailboxes) written`
 	ingest()
-	before := storetest.QueryInt(t, dsn, versions)
+	before := pgschematest.QueryInt(t, dsn, versions)
 	ingest()
-	if after := storetest.QueryInt(t, dsn, versions); after != before {
+	if after := pgschematest.QueryInt(t, dsn, versions); after != before {
 		t.Fatal("re-importing an unchanged thread rewrote its thread rows")
 	}
 }
