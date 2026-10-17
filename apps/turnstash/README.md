@@ -140,7 +140,7 @@ Turnstash is part of the aqt workspace. From the repository root:
 
 ```sh
 bun install
-mise run turnstash:db     # dev database on 5433, disposable test database on 5434
+mise run turnstash:db     # dev database on 5437, disposable test database on 5434
 mise run turnstash:check  # lint, format, typecheck and every test
 mise run turnstash:dev    # server on 4320 with ADMIN_TOKEN=dev, web UI with hot reload
 ```
