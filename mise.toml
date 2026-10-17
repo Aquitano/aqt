@@ -127,7 +127,7 @@ depends = ["notch:lint", "notch:test"]
 [tasks."notch:lint"]
 run = [
   "swiftformat --lint apps/notch",
-  "swiftlint lint --strict --quiet apps/notch",
+  "tools/swiftlint.sh apps/notch",
   "bunx --no-install vp fmt --check apps/notch",
 ]
 
@@ -135,6 +135,7 @@ run = [
 dir = "apps/notch"
 run = [
   "xcodegen generate",
+  "xcodebuild -project Notch.xcodeproj -scheme Notch -configuration Debug -destination platform=macOS -derivedDataPath DerivedData -quiet build CODE_SIGNING_ALLOWED=NO",
   "xcodebuild -project Notch.xcodeproj -scheme NotchTests -destination platform=macOS -derivedDataPath DerivedData -quiet test",
   "swift test --package-path Packages/NotchCore",
 ]
@@ -149,7 +150,7 @@ depends = ["starboard:lint", "starboard:test"]
 [tasks."starboard:lint"]
 run = [
   "swiftformat --lint apps/starboard",
-  "swiftlint lint --strict --quiet apps/starboard",
+  "tools/swiftlint.sh apps/starboard",
   "bunx --no-install vp fmt --check apps/starboard",
 ]
 

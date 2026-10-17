@@ -2,7 +2,7 @@
 
 ## 1. Project Patterns & Conventions
 
-- Native macOS 26 app generated with XcodeGen from `project.yml`. Foundation-only logic (models, policies, parsers, wire types, the preferences document, persistence) lives in the local SwiftPM package `Packages/NotchCore`, which the app, `notch-hook` and the Xcode test bundle import with `package` access (`SWIFT_PACKAGE_NAME: notchcore`). External packages: the pinned, embedded-but-unlinked media bridge and Sparkle.
+- Native macOS 26 app generated with XcodeGen from `project.yml`. Foundation-only logic (models, policies, parsers, wire types, the preferences document, persistence) lives in the local SwiftPM package `Packages/NotchCore`, which the app, `notch-hook` and the Xcode test bundle import with `package` access (`SWIFT_PACKAGE_NAME: notchcore`). External packages: the pinned, embedded-but-unlinked media bridge, Sparkle, and KeyboardShortcuts for the toggle hotkey (stored in UserDefaults, not `preferences.json`).
 - Managers are `@MainActor @Observable` classes; views read them with `@Environment(Type.self)`, non-view observers use `watch()` (Platform/Watch.swift) over `Observations`. No Combine. File/process/network work runs off-main and returns to the main actor only to publish state. Sources are grouped by feature (`Notch/Shell`, `Notch/Features/*`, `Notch/Platform`).
 - Build with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` because the system-selected developer directory may point at Command Line Tools.
 - Keep the main app, `notch-hook`, the NotchCore package (`swift test` in `Packages/NotchCore`) and the host-less `NotchTests` bundle (SwiftUI-dependent pieces: NotchState, NotchCoordinator, HitRegion) independently buildable. All targets are in Swift 6 language mode.

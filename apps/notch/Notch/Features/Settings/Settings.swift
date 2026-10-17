@@ -1,4 +1,5 @@
 import Foundation
+import KeyboardShortcuts
 import NotchCore
 import Observation
 
@@ -9,7 +10,7 @@ import Observation
 @Observable
 final class Settings {
     var general: Preferences.General {
-        didSet { generalChanged(from: oldValue) }
+        didSet { generalChanged() }
     }
 
     var notch: Preferences.Notch {
@@ -40,19 +41,16 @@ final class Settings {
         didSet { persist() }
     }
 
-    /// True while the Settings recorder is capturing a chord. Not persisted;
-    /// the AppDelegate suspends the live registration so the current chord can
-    /// be re-typed without toggling the notch.
-    var isRecordingHotkey = false
+    private(set) var launchesAtLogin = LoginItem.isEnabled
 
     @ObservationIgnored private let store: PreferencesStore
+    @ObservationIgnored private let diagnostics: Diagnostics
 
-    init(store: PreferencesStore) {
+    init(store: PreferencesStore, diagnostics: Diagnostics) {
         self.store = store
-        var loaded = store.load()
-        // Trust the OS registration over the stored bool so a login item the user
-        // removed in System Settings isn't silently re-shown as enabled.
-        loaded.general.launchAtLogin = LoginItem.isEnabled
+        self.diagnostics = diagnostics
+        let legacyHotkey = store.legacyHotkey()
+        let loaded = store.load()
         general = loaded.general
         notch = loaded.notch
         display = loaded.display
@@ -62,6 +60,7 @@ final class Settings {
         widgets = loaded.widgets
         agents = loaded.agents
         Haptics.isEnabled = general.hapticFeedback
+        importLegacyHotkey(legacyHotkey)
     }
 
     var snapshot: Preferences {
@@ -81,12 +80,36 @@ final class Settings {
         store.save(snapshot)
     }
 
-    private func generalChanged(from old: Preferences.General) {
-        if general.launchAtLogin != old.launchAtLogin {
-            LoginItem.setEnabled(general.launchAtLogin)
+    /// Runs once: saving the document drops the chord from it.
+    private func importLegacyHotkey(_ legacy: LegacyHotkey?) {
+        guard let legacy else { return }
+        // Check before resolving .toggleNotch, whose initial value also creates
+        // a stored entry. A retried document write must not replace a newer chord.
+        if !KeyboardShortcuts.storedNames.contains(where: { $0.rawValue == "toggleNotch" }) {
+            KeyboardShortcuts.setShortcut(
+                KeyboardShortcuts.Shortcut(carbonKeyCode: legacy.keyCode, carbonModifiers: legacy.modifiers),
+                for: .toggleNotch
+            )
         }
+        persist()
+    }
+
+    private func generalChanged() {
         Haptics.isEnabled = general.hapticFeedback
         persist()
+    }
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            try LoginItem.setEnabled(enabled)
+        } catch {
+            diagnostics.report(source: "Launch at Login", error)
+        }
+        refreshLaunchAtLogin()
+    }
+
+    func refreshLaunchAtLogin() {
+        launchesAtLogin = LoginItem.isEnabled
     }
 
     // MARK: - Tabs

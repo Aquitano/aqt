@@ -54,10 +54,7 @@ description = "Follow the LaunchAgent log"
 run = "tail -f \"$HOME/Library/Logs/tracker.log\""
 
 ["tracker:swift"]
-run = [
-  "swiftformat --lint apps/tracker/desktop",
-  "swiftlint lint --strict --quiet apps/tracker/desktop",
-]
+run = ["swiftformat --lint apps/tracker/desktop", "tools/swiftlint.sh apps/tracker/desktop"]
 
 ["tracker:desktop:test"]
 dir = "apps/tracker/desktop"
@@ -66,23 +63,17 @@ env = { DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer" }
 run = ["xcodegen generate", "swift test --package-path Packages/TrackerCore"]
 
 ["tracker:desktop:build"]
-dir = "apps/tracker/desktop"
 description = "Build TrackerAgent.app (Debug, ad-hoc signed)"
-env = { DEVELOPER_DIR = "/Applications/Xcode.app/Contents/Developer" }
-run = [
-  "xcodegen generate",
-  "xcodebuild -project TrackerAgent.xcodeproj -scheme TrackerAgent -configuration Debug -destination platform=macOS -derivedDataPath DerivedData -quiet build",
-]
+run = "tools/macos-app.sh apps/tracker/desktop TrackerAgent com.aquitano.tracker-agent"
 
 ["tracker:desktop:service"]
 dir = "apps/tracker"
 description = "Install the menu-bar agent in ~/Applications and start it at login"
 depends = ["tracker:desktop:build"]
 run = [
-  "mkdir -p \"$HOME/Applications\" \"$HOME/Library/LaunchAgents\"",
+  "mkdir -p \"$HOME/Library/LaunchAgents\"",
   "launchctl bootout \"gui/$(id -u)/com.aqt.tracker-agent\" 2>/dev/null || true",
-  "rm -rf \"$HOME/Applications/TrackerAgent.app\"",
-  "cp -R desktop/DerivedData/Build/Products/Debug/TrackerAgent.app \"$HOME/Applications/TrackerAgent.app\"",
+  "../../tools/macos-app.sh desktop TrackerAgent com.aquitano.tracker-agent --copy-user",
   "cp deploy/com.aqt.tracker-agent.plist \"$HOME/Library/LaunchAgents/com.aqt.tracker-agent.plist\"",
   "launchctl bootstrap \"gui/$(id -u)\" \"$HOME/Library/LaunchAgents/com.aqt.tracker-agent.plist\"",
 ]
