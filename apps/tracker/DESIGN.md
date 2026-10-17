@@ -90,6 +90,7 @@ urls (
   created_at    timestamptz not null default now()
 );
 create index on urls (host);
+create index on urls using hash (normalized_url);
 
 page_views (
   id              uuid primary key,             -- from the extension
@@ -105,6 +106,7 @@ page_views (
 );
 create index on page_views (device_id, started_at desc);
 create index on page_views (url_id, started_at desc);
+create index on page_views (referrer_url_id);
 
 activity_spans (
   id            uuid primary key,
@@ -173,6 +175,7 @@ derivations (
   status            text not null default 'pending', -- pending | running | done | failed
   attempts          integer not null default 0,
   claimed_at        timestamptz,
+  retry_at          timestamptz,                -- a failed attempt's backoff: not claimed again before it
   last_error        text,
   error_class       text,                       -- panic | parse | no_match | stale | timeout | too_large | unregistered | store | abandoned
   record_id         bigint references records,
@@ -182,6 +185,7 @@ derivations (
   primary key (raw_hash, extractor, extractor_version)
 );
 create index on derivations (status, created_at) where status in ('pending', 'running');
+create index on derivations (record_id);
 
 records (
   id            bigint generated always as identity primary key,
@@ -196,6 +200,7 @@ records (
   last_seen_at  timestamptz not null,
   unique (extractor, canonical_url)
 );
+create index on records (url_id);
 create index records_search on records using bm25 (id, title, search_text, extractor)
   with (key_field = 'id');
 ```
@@ -217,12 +222,13 @@ Source data: `urls`, `page_views`, `activity_spans`, `raw_html_blobs`, `captures
 update derivations set status = 'running', claimed_at = now(), attempts = attempts + 1
 where (raw_hash, extractor, extractor_version) in (
   select raw_hash, extractor, extractor_version from derivations
-  where status = 'pending' or (status = 'running' and claimed_at < now() - interval '2 minutes')
+  where (status = 'pending' and (retry_at is null or retry_at <= now()))
+     or (status = 'running' and claimed_at < now() - interval '2 minutes')
   order by created_at limit 1 for update skip locked)
 returning *;
 ```
 
-Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, canonical_url)`, set derivation `done` with `record_id`. The upsert always widens the seen window (`first_seen_at`, `last_seen_at` from the blob's captures) and replaces `record_hash`, `url_id`, `title`, `search_text` and `data` only when the blob was last seen no earlier than the record, so replaying an older blob never overwrites newer content. NUL is dropped from every string and key in the record's data before it is hashed, since jsonb rejects `\u0000`. On error, including a failed write (`store`): `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class`. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL), `unregistered` (a derivation for an extractor or version this binary does not carry) and `timeout` (an extractor cannot be interrupted, so a retry would run beside the copy still going) fail on the first attempt. A stale `running` row that has used its 5 attempts is failed as `abandoned` rather than claimed again. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
+Then, outside any transaction: fetch blob, decompress, run the extractor with a 30 s context timeout and panic recovery. Then one short transaction: upsert `records` on `(extractor, canonical_url)`, set derivation `done` with `record_id`. The upsert always widens the seen window (`first_seen_at`, `last_seen_at` from the blob's captures) and replaces `record_hash`, `url_id`, `title`, `search_text` and `data` only when the blob was last seen no earlier than the record, so replaying an older blob never overwrites newer content. NUL is dropped from every string and key in the record's data before it is hashed, since jsonb rejects `\u0000`. On error, including a failed read or write (`store`): `failed` once `attempts >= 5`, else back to `pending` with `last_error`/`error_class` and a `retry_at` 1 minute out, doubling with each attempt (1, 2, 4, 8 minutes), so a passing fault does not burn every attempt at once. `no_match`, `stale` (the page's embedded state belongs to another URL: a single-page app navigated in place, so an extractor checks what it reads against the URL), `unregistered` (a derivation for an extractor or version this binary does not carry) and `timeout` (an extractor cannot be interrupted, so a retry would run beside the copy still going) fail on the first attempt. A stale `running` row that has used its 5 attempts is failed as `abandoned` rather than claimed again. Idle workers sleep 2 s; a successful ingest wakes them through a channel.
 
 `serve`, after migrating, queues every capture under each registered extractor's current version wherever that version has no derivation yet, so neither a version bump nor a migration that clears the derived tables waits on a manual step; the new version's records land on the same `(extractor, canonical_url)` as the old ones. `reprocess` without flags does the same and also deletes the older versions' derivations and the records only they produced, which drops a page a new version no longer reads or keys differently; `--failed` resets failed rows; `--all` deletes the targets' derivations and records and re-queues from `captures`; `--extractor` narrows any of them. Workers in `serve` pick the rows up.
 
@@ -264,7 +270,7 @@ An article's canonical URL is its `<link rel=canonical>` only when that is on th
 
 ## HTTP API
 
-All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403; with `TRACKER_EXTENSION_ID` set, so does one from any other extension than that id. While no issuer is configured, a request to any route but `/healthz` and `/metrics` whose `Host` is not loopback (`127.0.0.1`, `localhost`, `[::1]`) gets 403 too: a DNS-rebound page is same-origin and sends no `Origin` on a GET. CORS headers allow `chrome-extension://*` and the `Authorization` header.
+All routes on `127.0.0.1:8490`. JSON bodies, `Content-Type: application/json`. A request with an `Origin` header that does not start with `chrome-extension://` gets 403; with `TRACKER_EXTENSION_ID` set, so does one from any other extension than that id. While no issuer is configured, a request to any route but `/healthz` and `/metrics` whose `Host` is not loopback (`127.0.0.1`, `localhost`, `[::1]`) gets 403 too: a DNS-rebound page is same-origin and sends no `Origin` on a GET. Off loopback that check is no credential, so `serve` refuses to listen on a non-loopback address without an issuer. CORS headers allow `chrome-extension://*` and the `Authorization` header.
 
 With an issuer configured, every route below except `/healthz` and `/metrics` needs `Authorization: Bearer <jwt>` and answers 401 without one. 401 is never treated as permanent by a client: the fix is a login, not dropping the data.
 

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -147,7 +148,7 @@ func (s *Store) searchTextTable(ctx context.Context, o SearchOptions, table stri
 		err := r.Scan(&id, &h.Ref, &score, &snippet)
 		h.Score = float64(score)
 		if snippet != nil {
-			h.Snippet = *snippet
+			h.Snippet = html.UnescapeString(*snippet)
 		}
 		ids = append(ids, id)
 		return h, err

@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,6 +91,24 @@ func TestRecordVisitsCountEachPageViewOnce(t *testing.T) {
 	}
 	if rec.SearchText != "bun orm for postgres" || rec.Visits.Count != v.Count || rec.Visits.ActiveSeconds != v.ActiveSeconds {
 		t.Errorf("record = %+v, want the search text and the hit's visits", rec)
+	}
+}
+
+func TestSearchSnippetsArePlainText(t *testing.T) {
+	st := storetest.New(t)
+	device, pv := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	page := urlKey(t, "https://example.com/markup")
+	at := time.Date(2026, 9, 30, 10, 0, 0, 0, time.UTC)
+	apply(t, st, device, store.Events{PageViews: []store.PageViewEvent{{ID: pv, URL: page, StartedAt: at, NavigationType: "load"}}})
+	text := `wrap it in <b>bold</b> & "quotes" for R&D`
+	completeRecord(t, st, insertCapture(t, st, device, pv, page, "<p>markup</p>", at), page, text, at)
+
+	hits, err := st.Search(context.Background(), store.SearchOpts{Query: "bold", Limit: 10})
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("hits = %+v (%v)", hits, err)
+	}
+	if !strings.Contains(hits[0].Snippet, text) {
+		t.Errorf("snippet = %q, want the text as written", hits[0].Snippet)
 	}
 }
 

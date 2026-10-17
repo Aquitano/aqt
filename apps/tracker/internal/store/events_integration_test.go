@@ -2,6 +2,8 @@ package store_test
 
 import (
 	"context"
+	"crypto/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,7 +15,7 @@ import (
 )
 
 func TestResentPageViewUpdatesTitleButNeverClearsIt(t *testing.T) {
-	st, schema := storetest.NewNamed(t)
+	st, dsn := storetest.NewNamed(t)
 	ctx := context.Background()
 	normalized, host, err := urlnorm.Normalize("https://github.com/uptrace/bun")
 	if err != nil {
@@ -30,7 +32,7 @@ func TestResentPageViewUpdatesTitleButNeverClearsIt(t *testing.T) {
 		}
 	}
 	titled := func() int64 {
-		return storetest.QueryInt(t, schema,
+		return storetest.QueryInt(t, dsn,
 			"select count(*) from page_views where id = $1 and title = $2", id, "uptrace/bun: SQL-first Golang ORM")
 	}
 	send("")
@@ -42,4 +44,16 @@ func TestResentPageViewUpdatesTitleButNeverClearsIt(t *testing.T) {
 	if titled() != 1 {
 		t.Fatal("empty resend cleared the title")
 	}
+}
+
+func TestAPageViewOfAURLPastTheBtreeRowLimitIsStored(t *testing.T) {
+	st := storetest.New(t)
+	// Random, so Postgres cannot compress the index entry under the limit.
+	var query strings.Builder
+	for range 150 {
+		query.WriteString(rand.Text())
+	}
+	page := urlKey(t, "https://example.com/search?q="+query.String())
+	apply(t, st, uuid.Must(uuid.NewV7()), store.Events{PageViews: []store.PageViewEvent{
+		{ID: uuid.Must(uuid.NewV7()), URL: page, StartedAt: time.Now(), NavigationType: "load"}}})
 }

@@ -462,8 +462,8 @@ func TestDocumentsAreReadForTheirWords(t *testing.T) {
 	st, _ := storetest.New(t)
 	ctx := context.Background()
 	root := t.TempDir()
-	write(t, root, "Verträge/Werkstudent.txt", "Arbeitszeit zwanzig Stunden pro Woche")
-	write(t, root, "Backup/Werkstudent copy.txt", "Arbeitszeit zwanzig Stunden pro Woche")
+	write(t, root, "Verträge/Werkstudent.txt", "Arbeitszeit <zwanzig> Stunden & pro Woche")
+	write(t, root, "Backup/Werkstudent copy.txt", "Arbeitszeit <zwanzig> Stunden & pro Woche")
 	write(t, root, "project/settings.json", `{"note": "Stunden pro Woche"}`)
 	write(t, root, "long.md", strings.Repeat("lang ", 300_000))
 	// Too short for the PDF reader: a broken file, not a disk error.
@@ -480,7 +480,7 @@ func TestDocumentsAreReadForTheirWords(t *testing.T) {
 	if err != nil || len(hits) != 1 {
 		t.Fatalf("text hits %+v, %v; want only the contract, not settings.json", hits, err)
 	}
-	if len(hits[0].Places) != 2 || !strings.Contains(hits[0].Snippet, "Stunden") {
+	if len(hits[0].Places) != 2 || !strings.Contains(hits[0].Snippet, "<zwanzig> Stunden & pro Woche") {
 		t.Errorf("hit %+v, want both copies and a snippet with the words", hits[0])
 	}
 	long, err := st.Text(ctx, find(t, st, "long").ID, "")

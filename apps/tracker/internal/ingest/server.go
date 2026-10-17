@@ -90,7 +90,7 @@ func (s *Server) Handler() http.Handler {
 // reject; its Host is still the attacker's name.
 func (s *Server) protect(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.auth.Enabled() && !loopbackHost(r.Host) {
+		if !s.auth.Enabled() && !LoopbackHost(r.Host) {
 			s.log.Warn("non-loopback host without auth", "path", r.URL.Path, "host", r.Host)
 			writeErr(w, http.StatusForbidden, "authentication is off, so only loopback hosts are served")
 			return
@@ -136,7 +136,7 @@ func (s *Server) observe(next http.Handler) http.Handler {
 	})
 }
 
-func loopbackHost(hostport string) bool {
+func LoopbackHost(hostport string) bool {
 	host, _, err := net.SplitHostPort(hostport)
 	if err != nil {
 		host = hostport

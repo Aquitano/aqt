@@ -8,12 +8,15 @@ import (
 	"encoding/json"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/andybalholm/cascadia"
 	"golang.org/x/net/html"
 
 	"github.com/aquitano/aqt/apps/tracker/internal/extractor"
+	"github.com/aquitano/aqt/apps/tracker/internal/extractor/dom"
 )
 
 const Name = "youtube"
@@ -74,14 +77,14 @@ func (Extractor) Extract(_ context.Context, raw []byte, pageURL *url.URL) (extra
 	}, nil
 }
 
+var transcriptScript = cascadia.MustCompile("script#tracker-transcript")
+
 // The extension appends the transcript YouTube loaded for the video it was
 // showing, which after in-app navigation can be another video than the one
 // read here; only the text is kept, the timestamps stay in the blob.
 func transcript(doc *html.Node, videoID string) *Transcript {
-	script := findNode(doc, func(n *html.Node) bool {
-		return n.Data == "script" && attr(n, "id") == "tracker-transcript" && n.FirstChild != nil
-	})
-	if script == nil {
+	script := transcriptScript.MatchFirst(doc)
+	if script == nil || script.FirstChild == nil {
 		return nil
 	}
 	var attached struct {
@@ -126,36 +129,47 @@ func currentVideo(doc *html.Node, videoID string) (Data, error) {
 	return Data{}, err
 }
 
+var (
+	watchFlexy          = cascadia.MustCompile("ytd-watch-flexy")
+	watchMetadata       = cascadia.MustCompile("ytd-watch-metadata")
+	heading             = cascadia.MustCompile("h1")
+	formattedString     = cascadia.MustCompile("yt-formatted-string")
+	videoOwner          = cascadia.MustCompile("ytd-video-owner-renderer")
+	channelName         = cascadia.MustCompile("#channel-name")
+	link                = cascadia.MustCompile("a")
+	descriptionExpander = cascadia.MustCompile("#description-inline-expander")
+	expanded            = cascadia.MustCompile("#expanded")
+	snippet             = cascadia.MustCompile("#snippet-text")
+)
+
 func watchData(doc *html.Node, videoID string) (Data, bool) {
 	if videoID == "" {
 		return Data{}, false
 	}
-	watch := findNode(doc, func(n *html.Node) bool {
-		return n.Data == "ytd-watch-flexy" && attr(n, "video-id") == videoID
-	})
-	metadata := findNode(doc, func(n *html.Node) bool {
-		return n.Data == "ytd-watch-metadata" && attr(n, "video-id") == videoID
-	})
+	watch := ofVideo(watchFlexy, videoID).MatchFirst(doc)
+	metadata := ofVideo(watchMetadata, videoID).MatchFirst(doc)
 	if metadata == nil {
-		metadata = findNode(watch, func(n *html.Node) bool {
-			return n.Data == "ytd-watch-metadata" && (attr(n, "video-id") == "" || attr(n, "video-id") == videoID)
-		})
+		metadata = dom.First(watch, ofVideo(watchMetadata, "", videoID))
 	}
-	heading := findNode(metadata, func(n *html.Node) bool { return n.Data == "h1" })
-	title := nodeText(findNode(heading, func(n *html.Node) bool { return n.Data == "yt-formatted-string" }))
+	title := nodeText(dom.First(dom.First(metadata, heading), formattedString))
 	if title == "" {
 		return Data{}, false
 	}
-	owner := findNode(metadata, func(n *html.Node) bool { return n.Data == "ytd-video-owner-renderer" })
-	channel := nodeText(findNode(findNode(owner, byAttr("id", "channel-name")), func(n *html.Node) bool {
-		return n.Data == "a"
-	}))
-	description := findNode(metadata, byAttr("id", "description-inline-expander"))
-	text := nodeText(findNode(description, byAttr("id", "expanded")))
+	owner := videoOwner.MatchFirst(metadata)
+	channel := nodeText(dom.First(dom.First(owner, channelName), link))
+	description := descriptionExpander.MatchFirst(metadata)
+	text := nodeText(dom.First(description, expanded))
 	if text == "" {
-		text = nodeText(findNode(description, byAttr("id", "snippet-text")))
+		text = nodeText(dom.First(description, snippet))
 	}
 	return Data{VideoID: videoID, Title: title, Channel: channel, Description: text, Keywords: []string{}}, true
+}
+
+// ofVideo narrows sel to elements whose video-id is one of ids.
+func ofVideo(sel cascadia.Selector, ids ...string) cascadia.Selector {
+	return func(n *html.Node) bool {
+		return sel.Match(n) && slices.Contains(ids, dom.Attr(n, "video-id"))
+	}
 }
 
 func nodeText(n *html.Node) string {
@@ -195,11 +209,11 @@ type playerResponse struct {
 
 const playerMarker = "ytInitialPlayerResponse"
 
+var playerScript = cascadia.MustCompile("script:matches(" + playerMarker + ")")
+
 func playerData(doc *html.Node) (Data, bool) {
 	var pr playerResponse
-	script := findNode(doc, func(n *html.Node) bool {
-		return n.Data == "script" && n.FirstChild != nil && strings.Contains(n.FirstChild.Data, playerMarker)
-	})
+	script := playerScript.MatchFirst(doc)
 	if script == nil {
 		return Data{}, false
 	}
@@ -267,23 +281,33 @@ func jsonObject(s, marker string) (string, bool) {
 	return "", false
 }
 
+var (
+	identifierProp    = cascadia.MustCompile("[itemprop=identifier]")
+	nameProp          = cascadia.MustCompile("[itemprop=name]")
+	descriptionProp   = cascadia.MustCompile("[itemprop=description]")
+	durationProp      = cascadia.MustCompile("[itemprop=duration]")
+	datePublishedProp = cascadia.MustCompile("[itemprop=datePublished]")
+	authorProp        = cascadia.MustCompile("[itemprop=author]")
+	keywordsProp      = cascadia.MustCompile("[itemprop=keywords]")
+)
+
 func microdata(doc *html.Node) (Data, bool) {
-	id := itemprop(doc, "identifier")
+	id := itemprop(doc, identifierProp)
 	if id == "" {
 		return Data{}, false
 	}
 	d := Data{
 		VideoID:         id,
-		Title:           itemprop(doc, "name"),
-		Description:     itemprop(doc, "description"),
-		DurationSeconds: parseISODuration(itemprop(doc, "duration")),
-		Published:       isoDate(itemprop(doc, "datePublished")),
+		Title:           itemprop(doc, nameProp),
+		Description:     itemprop(doc, descriptionProp),
+		DurationSeconds: parseISODuration(itemprop(doc, durationProp)),
+		Published:       isoDate(itemprop(doc, datePublishedProp)),
 		Keywords:        []string{},
 	}
-	if author := findNode(doc, byAttr("itemprop", "author")); author != nil {
-		d.Channel = itemprop(author, "name")
+	if author := authorProp.MatchFirst(doc); author != nil {
+		d.Channel = itemprop(author, nameProp)
 	}
-	if keywords := itemprop(doc, "keywords"); keywords != "" {
+	if keywords := itemprop(doc, keywordsProp); keywords != "" {
 		d.Keywords = strings.Split(keywords, ",")
 	}
 	return d, true
@@ -291,12 +315,8 @@ func microdata(doc *html.Node) (Data, bool) {
 
 // itemprop reads the content of a microdata <meta>/<link>; YouTube puts the
 // channel name in a <link itemprop="name" content=...>, which is not a link.
-func itemprop(root *html.Node, name string) string {
-	n := findNode(root, byAttr("itemprop", name))
-	if n == nil {
-		return ""
-	}
-	return attr(n, "content")
+func itemprop(root *html.Node, prop cascadia.Selector) string {
+	return dom.Attr(prop.MatchFirst(root), "content")
 }
 
 var durationRe = regexp.MustCompile(`^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$`)
@@ -320,32 +340,4 @@ func isoDate(s string) string {
 		return ""
 	}
 	return s[:10]
-}
-
-func byAttr(key, value string) func(*html.Node) bool {
-	return func(n *html.Node) bool { return attr(n, key) == value }
-}
-
-func findNode(n *html.Node, pred func(*html.Node) bool) *html.Node {
-	if n == nil {
-		return nil
-	}
-	if n.Type == html.ElementNode && pred(n) {
-		return n
-	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		if found := findNode(c, pred); found != nil {
-			return found
-		}
-	}
-	return nil
-}
-
-func attr(n *html.Node, key string) string {
-	for _, a := range n.Attr {
-		if a.Key == key {
-			return a.Val
-		}
-	}
-	return ""
 }

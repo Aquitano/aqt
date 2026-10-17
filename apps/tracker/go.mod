@@ -10,6 +10,8 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.20.3
+	github.com/natefinch/atomic v1.0.1
+	github.com/peterldowns/pgtestdb v0.1.1
 	github.com/prometheus/client_golang v1.25.0
 	github.com/uptrace/bun v1.3.0
 	github.com/uptrace/bun/dialect/pgdialect v1.3.0
