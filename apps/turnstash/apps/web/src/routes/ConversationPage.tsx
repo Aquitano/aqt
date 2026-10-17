@@ -11,7 +11,7 @@ import { BookmarkButton } from "../components/BookmarkButton";
 import { CommitList } from "../components/CommitList";
 import { conversationLabel } from "../components/ConversationsTable";
 import { MarkdownExportButton } from "../components/MarkdownExportButton";
-import { MessageThread } from "../components/MessageThread";
+import { MessageThread, Requests } from "../components/MessageThread";
 import { Page, PageHead } from "../components/Page";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { RequestInspector } from "../components/RequestInspector";
@@ -24,7 +24,13 @@ import { conversationQuery } from "../queries";
 const row = "flex flex-wrap items-center gap-2";
 const textLink = "underline underline-offset-2 hover:decoration-primary";
 
-const Summary = ({ detail }: { readonly detail: ConversationDetail }) => {
+const Summary = ({
+  detail,
+  onInspect,
+}: {
+  readonly detail: ConversationDetail;
+  readonly onInspect: (requestId: string) => void;
+}) => {
   const { conversation } = detail;
   const label = conversationLabel(conversation);
   return (
@@ -93,6 +99,14 @@ const Summary = ({ detail }: { readonly detail: ConversationDetail }) => {
             </Badge>
           ))}
         </dd>
+        {detail.requestsWithoutMessage.length > 0 && (
+          <>
+            <dt>Requests without a message</dt>
+            <dd>
+              <Requests requests={detail.requestsWithoutMessage} onInspect={onInspect} />
+            </dd>
+          </>
+        )}
         {conversation.parentId !== null && (
           <>
             <dt>Continued from</dt>
@@ -136,7 +150,9 @@ export const ConversationPage = () => {
 
   return (
     <Page>
-      <Async query={detail}>{(data) => <Summary key={data.conversation.id} detail={data} />}</Async>
+      <Async query={detail}>
+        {(data) => <Summary key={data.conversation.id} detail={data} onInspect={setInspecting} />}
+      </Async>
 
       {detail.data !== undefined && detail.data.commits.length > 0 && (
         <Section title="Commits" note={`${detail.data.commits.length} linked by time window`}>

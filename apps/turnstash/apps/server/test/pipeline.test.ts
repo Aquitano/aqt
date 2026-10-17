@@ -209,7 +209,7 @@ test("conversation search matches % and _ in the query literally", async () => {
   );
 });
 
-test("message pages group multiple requests without including unlinked requests", async () => {
+test("message pages group multiple requests, and the conversation lists the requests no message holds", async () => {
   await runTest(
     Effect.gen(function* () {
       const db = yield* Db;
@@ -235,7 +235,7 @@ test("message pages group multiple requests without including unlinked requests"
         })),
       );
       yield* db.insert(modelRequests).values(
-        ["first", "last", "first", null].map((messageKey, index) => ({
+        ["first", "last", "first", null, "missing"].map((messageKey, index) => ({
           conversationId,
           provider: "claude" as const,
           messageKey,
@@ -265,6 +265,11 @@ test("message pages group multiple requests without including unlinked requests"
       expect(next.items.map((row) => row.messageKey)).toEqual(["last"]);
       expect(next.items[0]?.requests.map((row) => row.requestKey)).toEqual(["request-1"]);
       expect(next.nextCursor).toBeNull();
+      const detail = yield* getConversation(conversationId);
+      expect(detail.requestsWithoutMessage.map((row) => row.requestKey)).toEqual([
+        "request-3",
+        "request-4",
+      ]);
     }),
   );
 });

@@ -457,6 +457,7 @@ export const ConversationDetail = Schema.Struct({
   redactions: Schema.Natural,
   commits: Schema.Array(CommitView),
   turns: Schema.Array(TurnView),
+  requestsWithoutMessage: Schema.Array(RequestSummary),
 });
 export type ConversationDetail = typeof ConversationDetail.Type;
 
