@@ -84,9 +84,10 @@ const dedupeKeyOf = (row: Schema.JsonObject): string | undefined => {
   return composerId === undefined ? undefined : `header:${composerId}`;
 };
 
+// Ties compare the trimmed form, so a stored record picks the same version before and after trimming.
 const isNewer = (candidate: SourceRecordRow, current: SourceRecordRow): boolean =>
   candidate.observedAt === current.observedAt
-    ? candidate.payload > current.payload
+    ? trim(candidate.streamId, candidate.payload) > trim(current.streamId, current.payload)
     : candidate.observedAt > current.observedAt;
 
 const latestRows = (records: ReadonlyArray<SourceRecordRow>): ReadonlyArray<Schema.JsonObject> => {
@@ -262,7 +263,7 @@ const modelOf = (composer: Schema.JsonObject | undefined): string => {
   const configured = stringAt(objectAt(composer, "modelConfig"), "modelName");
   if (configured !== undefined && configured !== "default") return configured;
   const usageData = objectAt(composer, "usageData");
-  return usageData === undefined ? autoModel : (Object.keys(usageData).sort()[0] ?? autoModel);
+  return usageData === undefined ? autoModel : (Object.keys(usageData).toSorted()[0] ?? autoModel);
 };
 
 const orderOf = (composer: Schema.JsonObject | undefined): ReadonlyMap<string, number> => {

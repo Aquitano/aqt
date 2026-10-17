@@ -72,12 +72,13 @@ const normalized = (records: ReadonlyArray<SourceRecordRow>) => {
 
 const iso = (milliseconds: number): string => new Date(milliseconds).toISOString();
 
+const host = (os: HostEnv["os"], home: string, env: HostEnv["env"] = {}): HostEnv => ({
+  os,
+  home,
+  env,
+});
+
 test("roots cover both Cursor installs per OS and the database override", () => {
-  const host = (os: HostEnv["os"], home: string, env: HostEnv["env"] = {}): HostEnv => ({
-    os,
-    home,
-    env,
-  });
   expect(cursorSource.roots(host("darwin", "/Users/dev")).map((root) => root.path)).toEqual([
     "/Users/dev/Library/Application Support/Cursor/User/globalStorage",
     "/Users/dev/Library/Application Support/Cursor Nightly/User/globalStorage",
@@ -99,14 +100,15 @@ test("roots cover both Cursor installs per OS and the database override", () => 
   ).toEqual({ path: "/tmp/fixture/globalStorage", label: "TURNSTASH_CURSOR_DB" });
 });
 
+const discover = (path: string) =>
+  Effect.runPromise(
+    cursorSource.discover({ path, label: "test" }).pipe(Effect.provide(BunServices.layer)),
+  );
+
 test("discovery yields both table streams and nothing without the database", async () => {
   const directory = await mkdtemp(join(tmpdir(), "turnstash-cursor-"));
   try {
     await Bun.write(join(directory, "state.vscdb"), "SQLite format 3\u0000");
-    const discover = (path: string) =>
-      Effect.runPromise(
-        cursorSource.discover({ path, label: "test" }).pipe(Effect.provide(BunServices.layer)),
-      );
     const descriptors = await discover(directory);
     expect(
       descriptors.map((descriptor) => descriptor.kind === "sqlite" && descriptor.table),
@@ -127,15 +129,22 @@ test("discovery yields both table streams and nothing without the database", asy
   }
 });
 
+const conversationKey = (payload: string) =>
+  Option.getOrUndefined(cursorNormalizer.conversationKeyOf(StreamId.make(diskKvStream), payload));
+
 test("conversation keys come from the row key and skip tool-call sub-composers", () => {
-  const key = (payload: string) =>
-    Option.getOrUndefined(cursorNormalizer.conversationKeyOf(StreamId.make(diskKvStream), payload));
-  expect(key(rowPayload(bubbleKey(userA), { type: 1 }))).toBe(composerId);
-  expect(key(rowPayload(`composerData:${composerId}`, { composerId }))).toBe(composerId);
-  expect(key(rowPayload("bubbleId:task-call_x\nfc_y:aaaa", { type: 2 }))).toBeUndefined();
-  expect(key(rowPayload(`checkpointId:${composerId}:cp-1`, {}))).toBeUndefined();
-  expect(key(canonical({ composerId, recency: 1747141000000, value: "{}" }))).toBe(composerId);
-  expect(key("not json")).toBeUndefined();
+  expect(conversationKey(rowPayload(bubbleKey(userA), { type: 1 }))).toBe(composerId);
+  expect(conversationKey(rowPayload(`composerData:${composerId}`, { composerId }))).toBe(
+    composerId,
+  );
+  expect(
+    conversationKey(rowPayload("bubbleId:task-call_x\nfc_y:aaaa", { type: 2 })),
+  ).toBeUndefined();
+  expect(conversationKey(rowPayload(`checkpointId:${composerId}:cp-1`, {}))).toBeUndefined();
+  expect(conversationKey(canonical({ composerId, recency: 1747141000000, value: "{}" }))).toBe(
+    composerId,
+  );
+  expect(conversationKey("not json")).toBeUndefined();
 });
 
 test("bubbles become messages in the order the composer header list records", () => {
@@ -311,7 +320,7 @@ test("without a composer row the model falls back to the auto label and time ord
   const bubbles = diskKvRecords().filter(
     (row) => row.recordKey === bubbleKey(userA) || row.recordKey === bubbleKey(assistantA),
   );
-  const conversation = normalized([...bubbles].reverse());
+  const conversation = normalized(bubbles.toReversed());
   expect(conversation.messages.map((message) => message.messageKey)).toEqual([userA, assistantA]);
   expect(conversation.title).toBe("Rename the parser entry point");
   expect(conversation.projectPath).toBeUndefined();
@@ -329,8 +338,20 @@ test("bubbles without timing fall back to when the agent saw them", () => {
   ]);
 });
 
+const competing = (streamId: string, text: string) =>
+  record(
+    streamId,
+    bubbleKey(userA),
+    rowPayload(bubbleKey(userA), { _v: 2, type: 1, text }),
+    "2026-09-20T10:00:00.000Z",
+  );
+
 test("trimming keeps JSON values as values and leaves the conversation unchanged", () => {
-  const records = allRecords();
+  const records = [
+    ...allRecords().filter((row) => row.recordKey !== bubbleKey(userA)),
+    competing(diskKvStream, "a"),
+    competing("machine-b/sqlite/state.vscdb#cursorDiskKV", "aB"),
+  ];
   const trimmed = records.map((row) => ({
     ...row,
     payload: cursorNormalizer.trim?.(row.streamId, row.payload) ?? row.payload,
