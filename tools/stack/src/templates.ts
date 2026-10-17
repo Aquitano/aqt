@@ -119,42 +119,6 @@ NODE_ENV=development
 # NEXT_PUBLIC_APP_URL=http://localhost:3000
 `;
 
-const THEME_PROVIDER = `"use client";
-
-import { ThemeProvider as NextThemesProvider } from "next-themes";
-import type { ComponentProps } from "react";
-
-export function ThemeProvider({
-  children,
-  ...props
-}: ComponentProps<typeof NextThemesProvider>) {
-  return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
-}
-`;
-
-const THEME_TOGGLE = `"use client";
-
-import { Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
-
-export function ThemeToggle() {
-  const { setTheme, resolvedTheme } = useTheme();
-
-  return (
-    <button
-      type="button"
-      aria-label="Toggle theme"
-      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-      className="hover:bg-accent hover:text-accent-foreground inline-flex size-9 items-center justify-center rounded-md border"
-    >
-      <Sun className="size-4 dark:hidden" />
-      <Moon className="hidden size-4 dark:block" />
-      <span className="sr-only">Toggle theme</span>
-    </button>
-  );
-}
-`;
-
 const VITEST_CONFIG = `import { defineConfig, lazyPlugins } from "vite-plus";
 import react from "@vitejs/plugin-react";
 
@@ -216,7 +180,7 @@ describe("user validation", () => {
 export interface TemplateOptions {
   projectName: string;
   hono: boolean;
-  shadcn: boolean;
+  ui: boolean;
   themes: boolean;
   testing: boolean;
 }
@@ -236,13 +200,14 @@ describe("Home", () => {
 }
 
 function buildLanding(opts: TemplateOptions): string {
+  const themes = opts.ui && opts.themes;
   const imports = [];
-  if (opts.themes) imports.push('import { ThemeToggle } from "@/components/theme-toggle";');
-  if (opts.shadcn)
+  if (themes) imports.push('import { ThemeToggle } from "@aqt/ui/components/theme-toggle";');
+  if (opts.ui)
     imports.push(
-      'import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";',
+      'import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@aqt/ui/components/card";',
     );
-  const content = opts.shadcn
+  const content = opts.ui
     ? `<Card>
         <CardHeader>
           <CardTitle>${opts.projectName}</CardTitle>
@@ -257,7 +222,7 @@ function buildLanding(opts: TemplateOptions): string {
 export default function Home() {
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 p-6">
-      ${opts.themes ? "<ThemeToggle />" : ""}
+      ${themes ? "<ThemeToggle />" : ""}
       ${content}
       ${opts.hono ? "<p>API health: <code>/api/health</code></p>" : ""}
     </main>
@@ -267,10 +232,11 @@ export default function Home() {
 }
 
 function buildLayout(opts: TemplateOptions): string {
+  const themes = opts.ui && opts.themes;
   return `import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
-${opts.themes ? 'import { ThemeProvider } from "@/components/theme-provider";' : ""}
+${themes ? 'import { ThemeProvider } from "@aqt/ui/components/theme-provider";' : ""}
 
 export const metadata: Metadata = {
   title: "${opts.projectName}",
@@ -279,9 +245,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en"${opts.themes ? " suppressHydrationWarning" : ""}>
+    <html lang="en"${themes ? " suppressHydrationWarning" : ""}>
       <body className="min-h-screen antialiased">
-        ${opts.themes ? '<ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>{children}</ThemeProvider>' : "{children}"}
+        ${themes ? "<ThemeProvider>{children}</ThemeProvider>" : "{children}"}
       </body>
     </html>
   );
@@ -296,7 +262,7 @@ on:
     branches: [main]
     paths: &paths
       - "apps/${opts.projectName}/**"
-      - "packages/ts/config/**"
+      - "packages/ts/config/**"${opts.ui ? '\n      - "packages/ts/ui/**"' : ""}
       - "tools/oxlint/**"
       - "package.json"
       - "bun.lock"
@@ -353,11 +319,41 @@ From \`apps/${opts.projectName}\`:
 - \`bun run fmt\`: format with Vite+ and the workspace configuration.
 ${opts.testing ? "- `bun run test:watch`: run Vitest interactively.\n" : ""}
 TypeScript extends \`@aqt/config\`. Validation uses ArkType. React Compiler is enabled.
-${opts.shadcn ? "Components use shadcn Base UI and the `cn` package. Add components with `bunx --bun shadcn add <component>` from this directory.\n" : ""}
+${opts.ui ? "Components, tokens and fonts come from `@aqt/ui` (`packages/ts/ui`); its README covers theming, `--brand` and adding components. App-specific shadcn blocks go in `src/components` with `bunx --bun shadcn add <block>` from this directory.\n" : ""}
 ${opts.hono ? "Hono exposes `/api/health` and example `/api/users` routes. The example user store is in memory and has no authentication; replace it before deploying.\n" : ""}
 Deployment is not configured. Add app-specific deployment instructions here.
 `;
 }
+
+const COMPONENTS_JSON =
+  JSON.stringify(
+    {
+      $schema: "https://ui.shadcn.com/schema.json",
+      style: "base-maia",
+      rsc: true,
+      tsx: true,
+      tailwind: {
+        config: "",
+        css: "../../packages/ts/ui/src/styles/globals.css",
+        baseColor: "neutral",
+        cssVariables: true,
+        prefix: "",
+      },
+      iconLibrary: "lucide",
+      aliases: {
+        components: "@/components",
+        utils: "@aqt/ui/lib/utils",
+        ui: "@aqt/ui/components",
+        lib: "@/lib",
+        hooks: "@/hooks",
+      },
+      menuColor: "default",
+      menuAccent: "subtle",
+      registries: {},
+    },
+    null,
+    2,
+  ) + "\n";
 
 export interface ProjectFiles {
   [path: string]: string;
@@ -367,7 +363,9 @@ export function getTemplates(opts: TemplateOptions): ProjectFiles {
   const files: ProjectFiles = {
     "src/app/page.tsx": buildLanding(opts),
     "src/app/layout.tsx": buildLayout(opts),
-    "src/app/globals.css": '@import "tailwindcss";\n',
+    "src/app/globals.css": opts.ui
+      ? '@import "@aqt/ui/styles/globals.css";\n'
+      : '@import "tailwindcss";\n',
     "src/lib/env.ts": ENV_FILE,
     ".env.example": ENV_EXAMPLE,
     ".gitignore":
@@ -376,7 +374,9 @@ export function getTemplates(opts: TemplateOptions): ProjectFiles {
     "next.config.ts": `import type { NextConfig } from "next";
 import "./src/lib/env";
 
-const nextConfig: NextConfig = { reactCompiler: true };
+const nextConfig: NextConfig = {
+  reactCompiler: true,${opts.ui ? '\n  transpilePackages: ["@aqt/ui"],' : ""}
+};
 export default nextConfig;
 `,
     "tsconfig.json":
@@ -412,10 +412,7 @@ export default nextConfig;
     files["src/lib/hono/client.ts"] = HONO_CLIENT;
     files["src/app/api/[[...route]]/route.ts"] = API_ROUTE;
   }
-  if (opts.themes) {
-    files["src/components/theme-provider.tsx"] = THEME_PROVIDER;
-    files["src/components/theme-toggle.tsx"] = THEME_TOGGLE;
-  }
+  if (opts.ui) files["components.json"] = COMPONENTS_JSON;
   if (opts.testing) {
     files["vite.config.ts"] = VITEST_CONFIG;
     files["vitest.setup.ts"] = VITEST_SETUP;
