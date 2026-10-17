@@ -176,10 +176,12 @@ turnstash_compose up -d --wait --wait-timeout 300
 
 Totals are incomplete until the worker finishes. See the [main README](../README.md#server) for what reprocessing keeps.
 
-Once `dirty_conversations` is empty, return the space freed by trimmed records and rebuilt conversations to the file system. `VACUUM FULL` rewrites each table and its indexes, including the search index, and locks the table while it runs:
+Once `dirty_conversations` is empty, return the space freed by trimmed records and rebuilt conversations to the file system. `VACUUM FULL` rewrites each table and its indexes, including the search index, and locks the table while it runs. It needs free space for a full copy of the largest table and its indexes:
 
 ```sh
 turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) FROM dirty_conversations"'
+turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt+ source_records"'
+df -h
 turnstash_compose stop server
 turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "VACUUM FULL source_records, messages, tool_executions"'
 turnstash_compose up -d --wait --wait-timeout 300
