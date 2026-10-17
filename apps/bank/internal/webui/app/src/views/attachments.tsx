@@ -1,8 +1,8 @@
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { getLibrary } from "@/lib/api";
 import { Highlight } from "@/lib/format";
 import {
@@ -97,7 +97,7 @@ function AttachmentList({
           {q.error.message}
         </p>
       )}
-      {q.data?.pages[0].length === 0 && (
+      {q.data?.pages[0]?.length === 0 && (
         <p className="mt-4 text-sm text-muted-foreground">No files match these filters.</p>
       )}
       <div className="mt-4 space-y-2">

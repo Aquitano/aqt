@@ -1,7 +1,7 @@
+import { Button, buttonVariants } from "@aqt/ui/components/button";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { getFileMessages, getFileText, RequestError, type Attachment } from "@/lib/api";
 import { Highlight } from "@/lib/format";
 import { select, useLocation } from "@/lib/navigation";
@@ -25,11 +25,13 @@ export function FilePreview({ file }: { file: Attachment }) {
     <section className="flex min-w-0 flex-col gap-3" aria-label={`Preview of ${file.filename}`}>
       <h3 className="font-medium break-all">{file.filename}</h3>
       <div className="flex flex-wrap gap-2">
-        <Button asChild variant="outline" size="sm">
-          <a href={`/v1/blobs/${file.sha256}`} download={file.filename}>
-            Download original
-          </a>
-        </Button>
+        <a
+          href={`/v1/blobs/${file.sha256}`}
+          download={file.filename}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+        >
+          Download original
+        </a>
         {query && content && (!phrase || matchIndex >= 0) && (
           <Button
             variant="outline"

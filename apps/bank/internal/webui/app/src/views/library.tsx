@@ -1,3 +1,10 @@
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@aqt/ui/components/card";
+import { Field, FieldGroup, FieldLabel } from "@aqt/ui/components/field";
+import { Input } from "@aqt/ui/components/input";
+import { Textarea } from "@aqt/ui/components/textarea";
+import { cn } from "@aqt/ui/lib/utils";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, Film, Heart, Plus, Star } from "lucide-react";
 import { useState } from "react";
@@ -12,15 +19,8 @@ import {
   SourceLabel,
   STATUSES,
 } from "@/components/library-common";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { createItem, getActivity, getItems, LIBRARY_PAGE, type MediaItem } from "@/lib/library-api";
 import { select, useLibraryFilters, type Selection } from "@/lib/navigation";
-import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/views/search";
 
 export function ItemRow({ item, selected = false }: { item: MediaItem; selected?: boolean }) {
@@ -141,7 +141,7 @@ function AddItem({ onClose }: { onClose: () => void }) {
           </FieldGroup>
           {mutation.isError && <ErrorNotice error={mutation.error} />}
           <div className="flex gap-2">
-            <Button disabled={!title.trim() || mutation.isPending}>
+            <Button type="submit" disabled={!title.trim() || mutation.isPending}>
               {mutation.isPending ? "Saving…" : "Add item"}
             </Button>
             <Button type="button" variant="ghost" onClick={onClose}>

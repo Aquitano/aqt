@@ -1,3 +1,11 @@
+import { Badge } from "@aqt/ui/components/badge";
+import { Button, buttonVariants } from "@aqt/ui/components/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@aqt/ui/components/card";
+import { Field, FieldGroup, FieldLabel } from "@aqt/ui/components/field";
+import { Input } from "@aqt/ui/components/input";
+import { Separator } from "@aqt/ui/components/separator";
+import { Spinner } from "@aqt/ui/components/spinner";
+import { Textarea } from "@aqt/ui/components/textarea";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Film, Heart } from "lucide-react";
 import { useMemo } from "react";
@@ -15,14 +23,6 @@ import {
   STATUSES,
   UploadFiles,
 } from "@/components/library-common";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
 import { RequestError } from "@/lib/api";
 import { keepLatest, useDraft } from "@/lib/draft";
 import {
@@ -240,7 +240,7 @@ function StateEditor({ item }: { item: MediaItem }) {
             </DraftRecovery>
           )}
           <div className="flex items-center gap-3">
-            <Button disabled={mutation.isPending || draft.newer}>
+            <Button type="submit" disabled={mutation.isPending || draft.newer}>
               {mutation.isPending ? "Saving…" : "Save tracking"}
             </Button>
             <span className="text-xs text-muted-foreground">
@@ -316,7 +316,7 @@ function ItemActivity({ id }: { id: string }) {
             )}
           </div>
         ))}
-        {activity.data?.pages[0].length === 0 && (
+        {activity.data?.pages[0]?.length === 0 && (
           <p className="text-sm text-muted-foreground">
             No activity is recorded for this item. Its viewing history is unknown.
           </p>
@@ -378,12 +378,15 @@ export function ItemDetail({ id }: { id: string }) {
           )}
           {original && (
             <div>
-              <Button asChild variant="outline" size="sm">
-                <a href={original} target="_blank" rel="noreferrer">
-                  <ExternalLink data-icon="inline-start" />
-                  Open original
-                </a>
-              </Button>
+              <a
+                href={original}
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                <ExternalLink data-icon="inline-start" />
+                Open original
+              </a>
             </div>
           )}
         </header>
