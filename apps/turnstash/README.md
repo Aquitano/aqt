@@ -128,7 +128,7 @@ turnstash stats --from 2026-09-01
 turnstash analysis --provider codex
 ```
 
-The server URL comes from `--server`, then `TURNSTASH_SERVER`, then the enrolled config, and `--token` overrides `TURNSTASH_READ_TOKEN`. `sessions list`, `stats` and `analysis` filter by `--provider`, `--machine` (name or id), `--project`, `--from` and `--to`. The date flags take a UTC date or a UTC timestamp such as `2026-10-01T08:00:00Z`, and a date-only `--to` includes that day. Sessions are listed by start time, newest first, with the id breaking ties. Subagent sessions are included and marked `↳`, and carry a `parentId` in JSON. A page holds 50 sessions unless `--limit` asks for up to 500; repeat the command with the printed `--cursor` for the next one. Every command takes `--json` to print the server's response unchanged, for scripts and agents.
+The server URL comes from `--server`, then `TURNSTASH_SERVER`, then the enrolled config, and `--token` overrides `TURNSTASH_READ_TOKEN`. `sessions list`, `stats` and `analysis` filter by `--provider`, `--machine` (name or id), `--project`, `--from` and `--to`. The date flags take a UTC date or a UTC timestamp such as `2026-10-01T08:00:00Z`, and a date-only `--to` includes that day. The daily totals in `stats` follow this machine's time zone, as the web UI follows the browser's. Sessions are listed by start time, newest first, with the id breaking ties. Subagent sessions are included and marked `↳`, and carry a `parentId` in JSON. A page holds 50 sessions unless `--limit` asks for up to 500; repeat the command with the printed `--cursor` for the next one. Every command takes `--json` to print the server's response unchanged, for scripts and agents.
 
 ### Upgrade a Codeburn agent
 
@@ -140,7 +140,7 @@ Turnstash is part of the aqt workspace. From the repository root:
 
 ```sh
 bun install
-mise run turnstash:db     # dev database on 5433, disposable test database on 5434
+mise run turnstash:db     # dev database on 5437, disposable test database on 5434
 mise run turnstash:check  # lint, format, typecheck and every test
 mise run turnstash:dev    # server on 4320 with ADMIN_TOKEN=dev, web UI with hot reload
 ```

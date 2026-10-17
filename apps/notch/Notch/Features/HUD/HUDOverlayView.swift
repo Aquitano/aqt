@@ -13,7 +13,7 @@ struct HUDOverlayView: View {
     var body: some View {
         HStack(spacing: 10) {
             PixelIcon(
-                systemName: hud.muted ? "speaker.slash.fill" : hud.kind.symbol,
+                systemName: hud.kind.symbol,
                 size: 16,
                 tint: .white
             )
@@ -76,7 +76,7 @@ struct HUDOverlayView: View {
     }
 
     private var accessibilityLabel: String {
-        if hud.muted {
+        if hud.kind == .mute {
             return "Muted"
         }
         return "\(hud.kind.title) \(percent) percent"

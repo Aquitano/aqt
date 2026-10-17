@@ -44,7 +44,7 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 		lower = after.Path
 	}
 	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, e.size_bytes, e.content_id`+pendingArchiveWhere+`
-		  and (e.path collate "C" > $5 or (e.path = $5 and e.id > $6))
+		  and (e.path collate "C", e.id) > ($5, $6)
 		order by e.path collate "C", e.id limit $7`,
 		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lower, after.ID, limit)
 	if err != nil {

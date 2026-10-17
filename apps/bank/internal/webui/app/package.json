@@ -15,7 +15,7 @@
   "dependencies": {
     "@aqt/ui": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
-    "@tanstack/react-query": "^5.104.1",
+    "@tanstack/react-query": "^5.104.2",
     "arktype": "^2.2.8",
     "lucide-react": "catalog:",
     "react": "^19.3.0",
