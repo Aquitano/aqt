@@ -185,6 +185,18 @@ test("reprocessing removes OpenCode file store records whose readable database r
         ),
         wire(
           "opencode",
+          streamIdOf({
+            kind: "sqlite",
+            root,
+            relativePath: "opencode.db",
+            table: "part",
+            keyColumn: "id",
+          }),
+          "prt_4",
+          JSON.stringify({ id: "prt_4", message_id: "msg_1", session_id: "ses_1" }),
+        ),
+        wire(
+          "opencode",
           streamIdOf(file("storage/part/msg_1/prt_1.json")),
           "0",
           opencodePart("prt_1"),
@@ -201,6 +213,12 @@ test("reprocessing removes OpenCode file store records whose readable database r
           "0",
           opencodePart("prt_3"),
         ),
+        wire(
+          "opencode",
+          streamIdOf(file("storage/part/msg_1/prt_4.json")),
+          "0",
+          opencodePart("prt_4"),
+        ),
       ]);
 
       const result = yield* reprocessArchive();
@@ -208,6 +226,7 @@ test("reprocessing removes OpenCode file store records whose readable database r
       expect((yield* stored).map((row) => row.payload)).not.toContain(opencodePart("prt_1"));
       expect((yield* stored).map((row) => row.payload)).toContain(opencodePart("prt_2"));
       expect((yield* stored).map((row) => row.payload)).toContain(opencodePart("prt_3"));
+      expect((yield* stored).map((row) => row.payload)).toContain(opencodePart("prt_4"));
     }),
   );
 });
