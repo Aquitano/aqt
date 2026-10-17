@@ -131,7 +131,7 @@ test("reprocessing trims records stored before their provider's trim and rebuild
 const opencodePart = (id: string) =>
   JSON.stringify({ id, messageID: "msg_1", sessionID: "ses_1", type: "text", text: id });
 
-test("reprocessing removes OpenCode file store records whose database row the archive holds", async () => {
+test("reprocessing removes OpenCode file store records whose readable database row the archive holds", async () => {
   await runTest(
     Effect.gen(function* () {
       yield* insertMachine;
@@ -153,6 +153,18 @@ test("reprocessing removes OpenCode file store records whose database row the ar
           }),
           "prt_1",
           JSON.stringify({ id: "prt_1", message_id: "msg_1", session_id: "ses_1", data: "{}" }),
+        ),
+        wire(
+          "opencode",
+          streamIdOf({
+            kind: "sqlite",
+            root,
+            relativePath: "opencode.db",
+            table: "part",
+            keyColumn: "id",
+          }),
+          "prt_2",
+          JSON.stringify({ id: "prt_2", message_id: "msg_1", session_id: "ses_1", data: "@@@" }),
         ),
         wire(
           "opencode",
