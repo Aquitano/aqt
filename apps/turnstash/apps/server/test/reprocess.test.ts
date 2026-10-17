@@ -18,7 +18,7 @@ import { Db } from "../src/db/client.ts";
 import { machines, messages, modelRequests, sourceRecords } from "../src/db/schema.ts";
 import { applyBatch } from "../src/ingest.ts";
 import { Normalizers } from "../src/registry.ts";
-import { trimArchive } from "../src/trim.ts";
+import { reprocessArchive } from "../src/reprocess.ts";
 import { workOnce } from "../src/worker.ts";
 import { runTest } from "./support.ts";
 
@@ -93,7 +93,7 @@ const conversation = Effect.gen(function* () {
   };
 });
 
-test("trimming the archive slims stored payloads and leaves their conversations as they were", async () => {
+test("reprocessing trims records stored before their provider's trim and rebuilds the same conversation", async () => {
   await runTest(
     Effect.gen(function* () {
       yield* insertMachine;
@@ -115,10 +115,8 @@ test("trimming the archive slims stored payloads and leaves their conversations 
       const built = yield* conversation;
       expect(before.some((row) => row.payload.includes("encrypted_content"))).toBe(true);
 
-      const result = yield* trimArchive();
-      expect(result.trimmed.find((entry) => entry.provider === "codex")?.records).toBeGreaterThan(
-        0,
-      );
+      const result = yield* reprocessArchive();
+      expect(result.trimmed).toBeGreaterThan(0);
       expect(result.queued).toBe(1);
       yield* workOnce();
 
@@ -130,7 +128,10 @@ test("trimming the archive slims stored payloads and leaves their conversations 
   );
 });
 
-test("trimming the archive removes OpenCode file store records whose database row it holds", async () => {
+const opencodePart = (id: string) =>
+  JSON.stringify({ id, messageID: "msg_1", sessionID: "ses_1", type: "text", text: id });
+
+test("reprocessing removes OpenCode file store records whose database row the archive holds", async () => {
   await runTest(
     Effect.gen(function* () {
       yield* insertMachine;
@@ -140,8 +141,6 @@ test("trimming the archive removes OpenCode file store records whose database ro
         root,
         relativePath,
       });
-      const part = (id: string) =>
-        JSON.stringify({ id, messageID: "msg_1", sessionID: "ses_1", type: "text", text: id });
       yield* ingest("11111111-0000-4000-8000-000000000002", [
         wire(
           "opencode",
@@ -155,14 +154,24 @@ test("trimming the archive removes OpenCode file store records whose database ro
           "prt_1",
           JSON.stringify({ id: "prt_1", message_id: "msg_1", session_id: "ses_1", data: "{}" }),
         ),
-        wire("opencode", streamIdOf(file("storage/part/msg_1/prt_1.json")), "0", part("prt_1")),
-        wire("opencode", streamIdOf(file("storage/part/msg_1/prt_2.json")), "0", part("prt_2")),
+        wire(
+          "opencode",
+          streamIdOf(file("storage/part/msg_1/prt_1.json")),
+          "0",
+          opencodePart("prt_1"),
+        ),
+        wire(
+          "opencode",
+          streamIdOf(file("storage/part/msg_1/prt_2.json")),
+          "0",
+          opencodePart("prt_2"),
+        ),
       ]);
 
-      const result = yield* trimArchive();
+      const result = yield* reprocessArchive();
       expect(result.opencodeFileTwins).toBe(1);
-      expect((yield* stored).map((row) => row.payload)).not.toContain(part("prt_1"));
-      expect((yield* stored).map((row) => row.payload)).toContain(part("prt_2"));
+      expect((yield* stored).map((row) => row.payload)).not.toContain(opencodePart("prt_1"));
+      expect((yield* stored).map((row) => row.payload)).toContain(opencodePart("prt_2"));
     }),
   );
 });

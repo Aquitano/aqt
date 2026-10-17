@@ -164,9 +164,11 @@ Check the dashboard and run an agent sync. Migrations can change the database ir
 
 ## Reprocess the archive
 
-After a parser or model-alias correction, rebuild conversations and costs from the retained raw records with the server image's `reprocess` script:
+After a parser or model-alias correction, or an upgrade that stores records in a smaller form, rebuild conversations and costs from the retained raw records with the server image's `reprocess` script. It also rewrites records stored before their provider's trim and removes OpenCode file store records whose rows the same machine's OpenCode database sent. Back up first. A run that trims many records needs free disk space for them: Postgres writes each trimmed row before the old one can be reclaimed, so compare the free space with the size of `source_records`.
 
 ```sh
+turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt+ source_records"'
+df -h
 turnstash_compose stop server
 turnstash_compose run --rm server bun run --cwd apps/turnstash/apps/server reprocess
 turnstash_compose up -d --wait --wait-timeout 300
@@ -174,19 +176,7 @@ turnstash_compose up -d --wait --wait-timeout 300
 
 Totals are incomplete until the worker finishes. See the [main README](../README.md#server) for what reprocessing keeps.
 
-## Shrink the archive
-
-Records ingested before the server trimmed payloads still hold fields that no normalizer reads. The server image's `trim` script rewrites them. It also removes OpenCode file store records whose rows the same machine's OpenCode database holds, and queues every conversation so tool output is stored once. Back up first, then compare the free disk space with the size of `source_records`: Postgres writes each trimmed row before the old one can be reclaimed.
-
-```sh
-turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt+ source_records"'
-df -h
-turnstash_compose stop server
-turnstash_compose run --rm server bun run --cwd apps/turnstash/apps/server trim
-turnstash_compose up -d --wait --wait-timeout 300
-```
-
-The worker then rebuilds every conversation. Once `dirty_conversations` is empty, return the freed space to the file system. `VACUUM FULL` rewrites each table and its indexes, including the search index, and locks the table while it runs:
+Once `dirty_conversations` is empty, return the space freed by trimmed records and rebuilt conversations to the file system. `VACUUM FULL` rewrites each table and its indexes, including the search index, and locks the table while it runs:
 
 ```sh
 turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) FROM dirty_conversations"'

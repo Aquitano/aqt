@@ -9,7 +9,6 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun src/migrate.ts",
     "reprocess": "bun src/reprocess-main.ts",
-    "trim": "bun src/trim-main.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
