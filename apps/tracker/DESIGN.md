@@ -90,7 +90,7 @@ urls (
   created_at    timestamptz not null default now()
 );
 create index on urls (host);
-create index on urls (normalized_url);
+create index on urls using hash (normalized_url);
 
 page_views (
   id              uuid primary key,             -- from the extension
