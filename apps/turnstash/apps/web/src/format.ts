@@ -1,18 +1,19 @@
 import type { Schema } from "effect";
 
-export const usd = (value: number): string =>
-  "$" +
-  (Number.isFinite(value) ? value : 0).toLocaleString(undefined, {
+const dollars = (maximumFractionDigits: number) => {
+  const format = new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    currencyDisplay: "narrowSymbol",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits,
   });
+  return (value: number): string => format.format(Number.isFinite(value) ? value : 0);
+};
 
-export const preciseUsd = (value: number): string =>
-  "$" +
-  (Number.isFinite(value) ? value : 0).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  });
+export const usd = dollars(2);
+
+export const preciseUsd = dollars(6);
 
 export const money = (value: number, currency: string): string =>
   (Number.isFinite(value) ? value : 0).toLocaleString(undefined, {

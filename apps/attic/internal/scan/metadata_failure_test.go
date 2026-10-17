@@ -47,13 +47,16 @@ func TestMetadataBadBatchDoesNotStarveLaterFiles(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "a-poison.png", "poison")
 	write(t, root, "b-good.png", "good")
+	for i := range 64 {
+		write(t, root, fmt.Sprintf("b-good-%02d.png", i), fmt.Sprintf("good %d", i))
+	}
 	cfg := config.Config{Metadata: config.Metadata{Enabled: true, ExifTool: binary, Temp: t.TempDir(), MaxBytes: 1 << 20}}
 	first := scanAt(t, st, root, testVolume, func(o *Options) { o.Config = cfg })
-	if first.Counts.Metadata != 1 || first.Counts.Skipped != 1 {
+	if first.Counts.Metadata != 65 || first.Counts.Skipped != 1 {
 		t.Fatalf("first: %+v", first)
 	}
-	if n := pgschematest.QueryInt(t, dsn, "select count(*) from metadata"); n != 1 {
-		t.Fatalf("stored %d, want only good file", n)
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from metadata"); n != 65 {
+		t.Fatalf("stored %d, want all good files", n)
 	}
 	second := scanAt(t, st, root, testVolume, func(o *Options) { o.Config = cfg })
 	if second.Counts.Metadata != 0 || second.Counts.Skipped != 1 {

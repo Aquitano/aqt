@@ -1,14 +1,13 @@
-import type { MessageView, ToolExecutionView } from "@aqt/turnstash-api";
-import { Badge } from "@aqt/ui/components/badge";
+import { absurd } from "effect/Function";
 import { ImageIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { compact, json } from "../format";
+import type { ContentPart } from "../transcript";
 import { Disclosure } from "./Disclosure";
 import { HighlightedText } from "./HighlightedText";
-
-type Part = MessageView["parts"][number];
-
-export type ToolIndex = ReadonlyMap<string, ToolExecutionView>;
 
 export const codeBlock =
   "m-0 max-h-105 overflow-auto rounded-md bg-muted px-3 py-2.5 font-mono text-xs leading-normal whitespace-pre-wrap wrap-anywhere";
@@ -16,9 +15,10 @@ export const codeBlock =
 const partLabel = "flex items-center gap-1.5 text-xs text-muted-foreground";
 
 /**
- * Transcript text is untrusted: it is whatever the model and the user typed,
- * stored verbatim. It is rendered as text in a pre-wrap block, never as HTML
- * and never through a markdown-to-HTML pass.
+ * Transcript text is untrusted: it is whatever the model and the user typed, stored verbatim.
+ * Plain text renders in a pre-wrap block. Assistant markdown goes through react-markdown, which
+ * builds React elements and turns raw HTML into literal text; images are dropped so a transcript
+ * cannot load remote content.
  */
 const PlainText = ({
   text,
@@ -32,20 +32,45 @@ const PlainText = ({
   </pre>
 );
 
+const markdownComponents: Components = {
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  ),
+};
+
+export const Markdown = ({ text }: { readonly text: string }) => (
+  <div className="prose prose-sm max-w-[80ch] wrap-anywhere dark:prose-invert prose-headings:mt-4 prose-headings:mb-2 prose-headings:font-semibold prose-p:my-2 prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none prose-pre:max-h-105 prose-pre:overflow-auto prose-pre:bg-muted prose-pre:text-xs prose-pre:text-foreground prose-ol:my-2 prose-ul:my-2 prose-li:my-0.5 prose-table:my-2 prose-table:block prose-table:overflow-x-auto">
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      disallowedElements={["img"]}
+      components={markdownComponents}
+    >
+      {text}
+    </ReactMarkdown>
+  </div>
+);
+
+// Search highlights only exist on plain text, so a transcript opened from a search stays plain.
 export const MessagePartView = ({
   part,
-  tools,
+  markdown,
   query,
   targeted = false,
 }: {
-  readonly part: Part;
-  readonly tools: ToolIndex;
+  readonly part: ContentPart;
+  readonly markdown: boolean;
   readonly query?: string | undefined;
   readonly targeted?: boolean;
 }) => {
   switch (part.type) {
     case "text":
-      return <PlainText text={part.text} query={query} />;
+      return markdown && query === undefined ? (
+        <Markdown text={part.text} />
+      ) : (
+        <PlainText text={part.text} query={query} />
+      );
 
     case "thinking":
       return (
@@ -56,37 +81,6 @@ export const MessagePartView = ({
           <PlainText text={part.text} query={query} />
         </Disclosure>
       );
-
-    case "tool_call":
-      return (
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <span className={partLabel}>
-            <Badge variant="secondary">tool</Badge>
-            {part.name}
-          </span>
-          <Disclosure summary="Input" defaultOpen={targeted}>
-            <pre className={codeBlock}>
-              <HighlightedText text={json(part.input)} query={query} />
-            </pre>
-          </Disclosure>
-        </div>
-      );
-
-    case "tool_result": {
-      const execution = tools.get(part.toolKey);
-      const name = execution?.name ?? part.toolKey;
-      const failed = part.isError === true || execution?.status === "error";
-      return (
-        <Disclosure summary={`Result of ${name}${failed ? " (error)" : ""}`} defaultOpen={targeted}>
-          <pre className={codeBlock}>
-            <HighlightedText
-              text={part.output ?? execution?.output ?? "(no output)"}
-              query={query}
-            />
-          </pre>
-        </Disclosure>
-      );
-    }
 
     case "image":
       return (
@@ -105,5 +99,8 @@ export const MessagePartView = ({
           </pre>
         </Disclosure>
       );
+
+    default:
+      return absurd<ReactNode>(part);
   }
 };

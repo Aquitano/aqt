@@ -11,7 +11,7 @@ docker compose up -d --wait        # ParadeDB on 127.0.0.1:5436, or: mise run at
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 ```
 
-`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. Migrations run on start through tern. Existing databases keep their `schema_migrations` history and adopt `schema_version` after validating that history. Unknown or missing migration entries stop startup before any schema changes.
+`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. Migrations run on start through tern. Existing databases keep their `schema_migrations` history and adopt `schema_version` after validating that history. Unknown or missing migration entries stop startup before any migration runs; only a pending pg_search extension update applies first.
 
 ## Use
 

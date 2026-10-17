@@ -4,7 +4,7 @@
   "bunVersion": "1.4.x",
   "installCommand": "cd ../../../.. && bun install --frozen-lockfile --filter aqt-gallery --filter '@aqt/gallery-*' --filter @aqt/ui",
   "buildCommand": "vp build",
-  "ignoreCommand": "[ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- ../.. ../../../../bun.lock ../../../../packages/ts/ui",
+  "ignoreCommand": "if [ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- ../.. ../../../../bun.lock ../../../../packages/ts/ui; then exit 0; else exit 1; fi",
   "regions": ["fra1"],
   "rewrites": [
     {

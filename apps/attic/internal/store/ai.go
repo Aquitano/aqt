@@ -40,7 +40,7 @@ func (o AISelection) candidates(after int64) (string, []any, error) {
 	q := &search{args: []any{after, o.Volumes, o.Extensions, strings.TrimSuffix(o.Under, "/"), o.Key.Task, o.Key.Provider, o.Key.Model, o.Key.PromptVersion, o.Force}}
 	sql := ` from entries e join contents c on c.id=e.content_id
  left join ai_results a on a.content_id=c.id and a.task=$5 and a.provider=$6 and a.model=$7 and a.prompt_version=$8
- where e.id > $1 and e.volume_id::text=any($2) and e.kind='file' and e.hash_state='done' and e.missing_scan is null
+ where e.id > $1 and e.volume_id=any($2::uuid[]) and e.kind='file' and e.hash_state='done' and e.missing_scan is null
  and e.ext=any($3) and ($4='' or (e.path collate "C" > $4 || '/' and e.path collate "C" < $4 || '0'))
  and ($5 <> 'ocr' or e.ext <> 'pdf' or exists (select 1 from texts t where t.content_id=c.id and t.status='needs_ocr'))
  and ($9 or a.id is null or a.status='failed')`
@@ -215,7 +215,7 @@ func (s *Store) SearchAI(ctx context.Context, o SearchOptions) ([]AIHit, error) 
 	q.where = append(q.where, "a.id @@@ paradedb.boolean("+mode+" => array["+strings.Join(clauses, ", ")+"])", "a.status in ('ok','truncated')")
 	place := []string{"e.content_id=a.content_id"}
 	if o.VolumeID != "" {
-		place = append(place, "e.volume_id::text="+q.next(o.VolumeID))
+		place = append(place, "e.volume_id="+q.next(o.VolumeID))
 	}
 	if o.Under != "" {
 		under := strings.TrimSuffix(o.Under, "/")
