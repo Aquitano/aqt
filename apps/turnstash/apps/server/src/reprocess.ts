@@ -5,10 +5,9 @@ import { Db, inTransaction } from "./db/client.ts";
 import { dirtyConversations, sourceRecords, tombstones } from "./db/schema.ts";
 import { ensureBundledCatalog, recalculateCatalogs } from "./valuation.ts";
 
-export const reprocessArchive = Effect.fn("Archive.reprocess")(function* () {
+// Marks every archived conversation dirty, so the worker rebuilds each one from its records.
+export const queueArchive = Effect.fn("Archive.queue")(function* () {
   const db = yield* Db;
-  yield* ensureBundledCatalog();
-  const catalogVersion = yield* recalculateCatalogs();
   const queued = yield* db.execute<{ count: number }>(
     sql`
       WITH queued AS (
@@ -26,5 +25,12 @@ export const reprocessArchive = Effect.fn("Archive.reprocess")(function* () {
     `,
     "objects",
   );
-  return { queued: queued[0]?.count ?? 0, catalogVersion };
+  return queued[0]?.count ?? 0;
+});
+
+export const reprocessArchive = Effect.fn("Archive.reprocess")(function* () {
+  yield* ensureBundledCatalog();
+  const catalogVersion = yield* recalculateCatalogs();
+  const queued = yield* queueArchive();
+  return { queued, catalogVersion };
 }, inTransaction);

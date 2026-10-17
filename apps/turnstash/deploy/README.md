@@ -174,6 +174,27 @@ turnstash_compose up -d --wait --wait-timeout 300
 
 Totals are incomplete until the worker finishes. See the [main README](../README.md#server) for what reprocessing keeps.
 
+## Shrink the archive
+
+Records ingested before the server trimmed payloads still hold fields that no normalizer reads. The server image's `trim` script rewrites them. It also removes OpenCode file store records whose rows the same machine's OpenCode database holds, and queues every conversation so tool output is stored once. Back up first, then compare the free disk space with the size of `source_records`: Postgres writes each trimmed row before the old one can be reclaimed.
+
+```sh
+turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt+ source_records"'
+df -h
+turnstash_compose stop server
+turnstash_compose run --rm server bun run --cwd apps/turnstash/apps/server trim
+turnstash_compose up -d --wait --wait-timeout 300
+```
+
+The worker then rebuilds every conversation. Once `dirty_conversations` is empty, return the freed space to the file system. `VACUUM FULL` rewrites each table and its indexes, including the search index, and locks the table while it runs:
+
+```sh
+turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) FROM dirty_conversations"'
+turnstash_compose stop server
+turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "VACUUM FULL source_records, messages, tool_executions"'
+turnstash_compose up -d --wait --wait-timeout 300
+```
+
 ## Restore
 
 The following commands replace the entire database selected by `POSTGRES_DB`, which defaults to `turnstash`. Keep a backup of the current database before restoring. Stop agent schedules during recovery and use the Git revision recorded with the backup. Set `SERVER_IMAGE` to the image in the backup's `server.env` before starting the server, because a newer image migrates the restored database again; without a pin there, the restore starts whatever `latest` points to now. Restore the other saved credentials to `deploy/.env` only if needed; retain the password of the target Postgres instance.
