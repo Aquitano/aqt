@@ -4,10 +4,9 @@ updates:
     directory: /
     schedule: { interval: weekly }
     ignore:
-      # Gallery and img move from drizzle 0.x to 1.0 by hand once 1.0 is stable; a version range
-      # did not stop Dependabot from proposing turnstash's release candidate for them.
+      # Turnstash pins a drizzle 1.0 release candidate while gallery and img stay on 0.x. Dependabot
+      # rewrites every requirement of a dependency to one version, so any drizzle update breaks one side.
       - dependency-name: "drizzle-*"
-        update-types: ["version-update:semver-major"]
       # vite-plus and its vite alias move together by hand; see the README's dependency updates.
       - dependency-name: "vite-plus"
       - dependency-name: "vite"
