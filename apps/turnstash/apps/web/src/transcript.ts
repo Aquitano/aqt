@@ -189,12 +189,14 @@ export const toolOutcomes = (
   return outcomes;
 };
 
-const injectedTag = /^<([a-z][\w-]*)>[\s\S]*<\/[a-z][\w-]*>$/;
+const injectedTag =
+  /^<(bash-input|bash-stdout|command-message|command-name|fork-boilerplate|local-command-caveat|local-command-stdout|new-diagnostics|system-reminder|task-notification)>[\s\S]*<\/[a-z-]+>$/;
 const commandName = /<command-name>([\s\S]*?)<\/command-name>/;
 const commandArgs = /<command-args>([\s\S]*?)<\/command-args>/;
 
-// Agents file slash commands, hook output and local command caveats as user messages wrapped in
-// tags. They are named by their command or tag so they do not read as something the user typed.
+// Claude Code files slash commands, their output, shell-mode commands, reminders and background task
+// notices as user messages wrapped in these tags. They are named by their command or tag so they do
+// not read as something the user typed; any other tag is the user's own.
 export const injectedLabel = (text: string): string | null => {
   const trimmed = text.trim();
   const tag = injectedTag.exec(trimmed)?.[1];

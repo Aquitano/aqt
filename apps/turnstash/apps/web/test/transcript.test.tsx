@@ -4,7 +4,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vite-plus/test";
 
 import { Markdown } from "../src/components/MessagePartView";
-import { type Block, toolOutcomes, toolSummary, transcriptBlocks } from "../src/transcript";
+import {
+  type Block,
+  injectedLabel,
+  toolOutcomes,
+  toolSummary,
+  transcriptBlocks,
+} from "../src/transcript";
 
 const messageView = (
   messageKey: string,
@@ -141,6 +147,18 @@ test("a result whose call is not loaded and the requests of a message without pa
     messageView("5", "assistant", [], [requestView("5")]),
   ];
   expect(outline(transcriptBlocks(messages, []))).toEqual(["result 1,Bash:3", "4", "5 +requests"]);
+});
+
+test("only the tags Claude Code injects fold a prompt into a label", () => {
+  expect(
+    injectedLabel(
+      "<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>110</command-args>",
+    ),
+  ).toBe("/review 110");
+  expect(injectedLabel("<local-command-stdout>Compacted</local-command-stdout>")).toBe(
+    "local command stdout",
+  );
+  expect(injectedLabel("<instructions>Keep it short.</instructions>")).toBeNull();
 });
 
 test("tool summaries name the command or file and drop the shell wrapper", () => {
