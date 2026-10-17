@@ -344,36 +344,6 @@ export const MessageQuery = Schema.Struct({
 );
 export type MessageQuery = typeof MessageQuery.Type;
 
-export const TimelineCursor = NulFreeString.check(Schema.isPattern(/^(request|tool):/));
-export const TimelineVersion = Schema.String.check(Schema.isPattern(/^[0-9a-f]{32}$/));
-
-export const TimelineEvent = Schema.Struct({
-  eventKey: TimelineCursor,
-  kind: Schema.Literals(["request", "tool"]),
-  timestamp: Schema.NullOr(Iso),
-  messageKey: Schema.NullOr(Schema.String),
-  requestId: Schema.NullOr(Uuid),
-  modelId: Schema.NullOr(Schema.String),
-  previousModelId: Schema.NullOr(Schema.String),
-  toolName: Schema.NullOr(Schema.String),
-  toolStatus: Schema.NullOr(ToolStatus),
-  costUsd: Schema.NullOr(Money),
-  unpricedReason: Schema.NullOr(RequestUnpricedReason),
-  cumulativeCostUsd: Money,
-  cumulativeUnpricedRequests: Schema.Natural,
-});
-export interface TimelineEvent extends Schema.Schema.Type<typeof TimelineEvent> {}
-
-export const TimelinePage = Schema.Struct({
-  version: TimelineVersion,
-  items: Schema.Array(TimelineEvent),
-  nextCursor: Schema.NullOr(TimelineCursor),
-  totalEvents: Schema.Natural,
-  pricedCostUsd: Money,
-  unpricedRequests: Schema.Natural,
-});
-export interface TimelinePage extends Schema.Schema.Type<typeof TimelinePage> {}
-
 export const CategoryRow = Schema.Struct({
   category: TaskCategory,
   turns: Schema.Natural,
