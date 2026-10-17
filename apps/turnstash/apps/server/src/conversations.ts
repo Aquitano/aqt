@@ -349,6 +349,14 @@ export const getMessages = Effect.fn("Conversations.messages")(function* (
           .where(
             and(eq(modelRequests.conversationId, id), inArray(modelRequests.messageKey, keys)),
           );
+  // A result part leaves its output to the tool execution, which belongs to the call's message.
+  const resultKeys = [
+    ...new Set(
+      page.flatMap((row) =>
+        row.parts.flatMap((part) => (part.type === "tool_result" ? [part.toolKey] : [])),
+      ),
+    ),
+  ];
   const tools =
     keys.length === 0
       ? []
@@ -356,7 +364,13 @@ export const getMessages = Effect.fn("Conversations.messages")(function* (
           .select()
           .from(toolExecutions)
           .where(
-            and(eq(toolExecutions.conversationId, id), inArray(toolExecutions.messageKey, keys)),
+            and(
+              eq(toolExecutions.conversationId, id),
+              or(
+                inArray(toolExecutions.messageKey, keys),
+                resultKeys.length === 0 ? undefined : inArray(toolExecutions.toolKey, resultKeys),
+              ),
+            ),
           );
   const requestsMap = new Map<string, typeof requests>();
   for (const entry of requests) {

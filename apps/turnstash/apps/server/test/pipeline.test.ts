@@ -356,6 +356,38 @@ test("tool output is stored on its execution and not repeated in the result part
   );
 });
 
+test("a message page with a tool result carries its execution when the call is on another page", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachines;
+      yield* applyBatch(
+        machineA,
+        batch("11111111-0000-4000-8000-0000000000bc", machineA, fixtureRecords()),
+      );
+      yield* workOnce();
+      const db = yield* Db;
+      const rows = yield* db
+        .select({
+          conversationId: messages.conversationId,
+          seq: messages.seq,
+          parts: messages.parts,
+        })
+        .from(messages);
+      const [result] = rows.flatMap(({ conversationId, seq, parts }) =>
+        parts.flatMap((part) =>
+          part.type === "tool_result" ? [{ conversationId, seq, toolKey: part.toolKey }] : [],
+        ),
+      );
+      if (result === undefined) throw new Error("the fixture holds no tool result");
+      const page = yield* getMessages(result.conversationId, String(result.seq - 1), 1);
+      const tool = page.toolExecutions.find((candidate) => candidate.toolKey === result.toolKey);
+      expect(page.items.map((message) => message.seq)).toEqual([result.seq]);
+      expect(tool?.messageKey).not.toBe(page.items[0]?.messageKey);
+      expect(typeof tool?.output).toBe("string");
+    }),
+  );
+});
+
 test("NUL characters in a raw record or a conversation title are stored as replacement characters", async () => {
   await runTest(
     Effect.gen(function* () {
