@@ -48,6 +48,7 @@ targets:
         codeSign: true
       - package: NotchCore
       - package: Sparkle
+      - package: KeyboardShortcuts
     settings:
       base:
         PRODUCT_NAME: Notch
@@ -148,7 +149,10 @@ packages:
     path: Packages/NotchCore
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
-    from: "2.10.0"
+    exactVersion: "2.10.0"
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    exactVersion: "3.1.0"
   mediaremote-adapter:
     url: https://github.com/ejbills/mediaremote-adapter
     revision: cf30c4f1af29b5829d859f088f8dbdf12611a046

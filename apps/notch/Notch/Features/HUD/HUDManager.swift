@@ -17,6 +17,7 @@ final class HUDManager {
     /// True while the consuming tap is active (we own the keys and the HUD).
     private(set) var replacingSystemHUD = false
 
+    private let diagnostics: Diagnostics
     private let settings: Settings
     private let tap = SystemDefinedTap()
     private let audio: AudioHardware
@@ -31,12 +32,23 @@ final class HUDManager {
     private let coarseStep: Float = 1 / 16
     private let fineStep: Float = 1 / 64
 
-    init(settings: Settings, audio: AudioHardware) {
+    init(settings: Settings, audio: AudioHardware, diagnostics: Diagnostics) {
+        self.diagnostics = diagnostics
         self.settings = settings
         self.audio = audio
     }
 
     func start() {
+        tap.onFailure = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.replacingSystemHUD = false
+                self.diagnostics.report(
+                    source: "Media-key HUD",
+                    message: "The event tap stopped after repeated stalls. Toggle the HUD off and on to retry."
+                )
+            }
+        }
         tap.onMediaKey = { [weak self] key, fine in
             // The tap delivers on the main run loop, so hopping into the actor
             // is safe and keeps the swallow decision synchronous.

@@ -40,6 +40,54 @@ struct PreferencesTests {
         #expect(imported.notch.tabLayout.contains(.home))
     }
 
+    @Test func legacyHotkeyIsReadUntilTheDocumentIsSavedAgain() throws {
+        let older = Data("""
+        {"version": 1, "general": {"hotkeyEnabled": true, "hotkeyKeyCode": 45, "hotkeyModifiers": 6144}}
+        """.utf8)
+        let hotkey = try #require(LegacyHotkey(document: older))
+        #expect(hotkey.keyCode == 45)
+        #expect(hotkey.modifiers == 6144)
+
+        let resaved = try JSONEncoder().encode(Preferences.decode(older))
+        #expect(LegacyHotkey(document: resaved) == nil)
+    }
+
+    @Test func legacyDefaultsHotkeySurvivesTheFirstDocumentWrite() throws {
+        let suite = "PreferencesTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(40, forKey: "hotkeyKeyCode")
+        defaults.set(768, forKey: "hotkeyModifiers")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = PreferencesStore(persistence: Persistence(rootDirectory: root), legacyDefaults: defaults)
+
+        let hotkey = try #require(store.legacyHotkey())
+        _ = store.load()
+        #expect(hotkey.keyCode == 40)
+        #expect(hotkey.modifiers == 768)
+        #expect(store.legacyHotkey() == nil, "the new document must not reimport stale UserDefaults")
+    }
+
+    @Test func undecodableDocumentYieldsNoLegacyHotkey() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let persistence = Persistence(rootDirectory: root)
+        try Data("""
+        {"version": 1, "hud": {"enabled": "yes"}, "general": {"hotkeyKeyCode": 45, "hotkeyModifiers": 6144}}
+        """.utf8).write(to: root.appendingPathComponent(PreferencesStore.fileName))
+        let store = PreferencesStore(persistence: persistence, legacyDefaults: nil)
+
+        #expect(store.legacyHotkey() == nil, "importing would persist defaults over the unreadable file")
+    }
+
+    @Test func malformedLegacyHotkeyCannotOverflowCarbonValues() {
+        for fields in ["\"hotkeyKeyCode\": -1", "\"hotkeyModifiers\": -1", "\"hotkeyKeyCode\": 999999"] {
+            let data = Data("{\"general\": {\(fields)}}".utf8)
+            #expect(LegacyHotkey(document: data) == nil)
+        }
+    }
+
     @Test func roundTripThroughEncoder() throws {
         var prefs = Preferences()
         prefs.display.placement = .all

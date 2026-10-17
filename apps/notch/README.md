@@ -18,7 +18,7 @@ Agent app (no Dock icon), Developer-ID signed, **not sandboxed**. Direct distrib
 ## Build
 
 ```sh
-cd notch
+cd apps/notch
 ./run.sh                    # regenerate the Xcode project and build Debug
 ./run.sh --run              # build, stop an older Notch instance, and launch
 ```
@@ -26,15 +26,18 @@ cd notch
 The app is written to `DerivedData/Build/Products/Debug/Notch.app`. The script selects the
 full Xcode toolchain at `/Applications/Xcode.app/Contents/Developer`, since the system-wide
 developer directory may otherwise point at Command Line Tools. Run `./run.sh --help` for its
-options.
+options. Notch, Starboard, and TrackerAgent use `tools/macos-app.sh` for building and installing.
+A media-key tap disabled three times in 30 seconds stays off until you toggle the HUD off and on.
+Settings > Diagnostics records the failure.
 
 To work in Xcode instead, run `xcodegen generate`, open `Notch.xcodeproj`, and choose the
 Notch scheme. Quit any already-running Notch instance before using Xcode Run; macOS prohibits
 multiple instances of this app.
 
-The sole Swift package dependency is the audited `mediaremote-adapter`, pinned to an exact
-revision in `project.yml`. It is embedded as a runtime bridge and deliberately not linked into
-the app binary. All other features use system frameworks.
+Swift package dependencies are pinned exactly in `project.yml`, since the generated project and
+its `Package.resolved` are not checked in: Sparkle and KeyboardShortcuts by version, and the
+audited `mediaremote-adapter` by revision. The adapter is embedded as a runtime bridge and
+deliberately not linked into the app binary. All other features use system frameworks.
 
 ### Signing
 
@@ -50,13 +53,13 @@ Calendars, Automation) are keyed to the identity, so ad-hoc re-signing makes mac
 ## Releases and updates
 
 Updates ship through [Sparkle](https://sparkle-project.org). Local builds leave `SUFeedURL`
-empty, so they never check; `.github/workflows/release.yml` builds, signs, notarizes and
+empty, so they never check; [`.github/workflows/notch-release.yml`](../../.github/workflows/notch-release.yml) builds, signs, notarizes and
 publishes a tagged release together with a signed `appcast.xml` served from the latest
 release's assets. One-time setup:
 
 1. `generate_keys` (from Sparkle's `bin/`) once; keep the private key out of the repo.
 2. Add the secrets listed at the top of the workflow to the GitHub repository.
-3. Tag a commit `vX.Y.Z` and push the tag.
+3. Tag a commit `notch/vX.Y.Z` and push the tag.
 
 ## Permissions
 
@@ -123,8 +126,8 @@ Features/       One folder per feature: model, manager, services and views toget
   Widgets/        Battery, Calendar, Weather, Bluetooth, Focus, Shortcuts, Note, Clock
   Settings/       Preferences document, Settings (live), SettingsView
   Onboarding/
-Platform/       Shared adapters and utilities: Persistence, Diagnostics, ImageCache, HotKey,
-                LoginItem, Haptics, Keychain, Logging, watch()
+Platform/       Shared adapters and utilities: Persistence, Diagnostics, ImageCache, LoginItem,
+                Haptics, Keychain, Logging, watch()
 ```
 
 **Iconography:** custom controls and status glyphs use one crisp 7×7 pixel system,
