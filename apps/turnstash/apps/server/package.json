@@ -20,7 +20,7 @@
     "@effect/platform-bun": "catalog:",
     "@effect/sql-pg": "catalog:",
     "countries-and-timezones": "^3.10.0",
-    "drizzle-orm": "1.0.0-rc.5-5935859",
+    "drizzle-orm": "0.45.4",
     "effect": "catalog:",
     "openid-client": "^6.8.8"
   },
