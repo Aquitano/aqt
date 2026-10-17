@@ -138,7 +138,8 @@ const latestOf = (a: Entry, b: Entry): Entry => {
   if (a.kind === "file_part" && b.kind === "part") return b;
   if (a.updatedAt !== b.updatedAt) return a.updatedAt > b.updatedAt ? a : b;
   if (a.observedAt !== b.observedAt) return a.observedAt > b.observedAt ? a : b;
-  return a.payload >= b.payload ? a : b;
+  // Ties compare the trimmed form, so a stored record picks the same version before and after trimming.
+  return trimmedPayload(a.kind, a.payload) >= trimmedPayload(b.kind, b.payload) ? a : b;
 };
 
 const builtinTools = new Set(
@@ -587,14 +588,18 @@ const normalize = (
 };
 
 // Rows whose data normalize parses are kept with that data as an object rather than escaped JSON text.
-const trim = (streamId: StreamId, payload: string): string => {
-  const kind = kindOfStream(streamId);
-  if (kind === undefined || !isSqliteKind(kind) || sessionKinds.has(kind)) return payload;
+const trimmedPayload = (kind: SourceKind, payload: string): string => {
+  if (!isSqliteKind(kind) || sessionKinds.has(kind)) return payload;
   const row = parseJsonObject(payload);
   const data = row?.["data"];
   if (row === undefined || !Predicate.isString(data)) return payload;
   const parsed = parseJsonObject(data);
   return parsed === undefined ? payload : JSON.stringify(withJsonField(row, "data", parsed));
+};
+
+const trim = (streamId: StreamId, payload: string): string => {
+  const kind = kindOfStream(streamId);
+  return kind === undefined ? payload : trimmedPayload(kind, payload);
 };
 
 export const opencodeNormalizer: Normalizer = {

@@ -538,15 +538,28 @@ test("a message without timestamps falls back to when the agent saw its row", ()
   expect(conversation.startedAt).toBe("2026-09-20T10:00:00.000Z");
 });
 
+const trim = (record: SourceRecordRow): SourceRecordRow => ({
+  ...record,
+  payload: opencodeNormalizer.trim?.(record.streamId, record.payload) ?? record.payload,
+});
+
 test("trimming keeps row data as an object and leaves the conversation unchanged", () => {
-  const trim = (record: SourceRecordRow): SourceRecordRow => ({
-    ...record,
-    payload: opencodeNormalizer.trim?.(record.streamId, record.payload) ?? record.payload,
-  });
   const trimmed = legacyRecords.map(trim);
   expect(normalized(legacy.session.id, trimmed)).toEqual(
     normalized(legacy.session.id, legacyRecords),
   );
   expect(legacyRecords.some((record) => record.payload.includes('"data":{'))).toBe(false);
   expect(trimmed.some((record) => record.payload.includes('"data":{'))).toBe(true);
+});
+
+test("a tie between two versions of a part picks the same one before and after trimming", () => {
+  const [part] = legacy.parts;
+  if (part === undefined) throw new Error("the fixture has no parts");
+  const records = [
+    ...legacyRecords.filter((record) => record.recordKey !== part.id),
+    ...["a", "aB"].map((text) => sqliteRow("part", { ...part, data: { ...part.data, text } })),
+  ];
+  expect(normalized(legacy.session.id, records.map(trim))).toEqual(
+    normalized(legacy.session.id, records),
+  );
 });
