@@ -86,7 +86,7 @@ export const opencodeSource: SourceProvider = {
       .filter(
         (entry) => entry.startsWith(prefix) && entry.endsWith(".db") && !isExcludedPath(entry),
       )
-      .sort();
+      .toSorted();
     const descriptors: Array<SourceDescriptor> = databases.flatMap((relativePath) =>
       scannedTables.map((table) => ({
         kind: "sqlite" as const,
@@ -96,24 +96,22 @@ export const opencodeSource: SourceProvider = {
         keyColumn: "id",
       })),
     );
-    const inDatabase = new Set(
-      databases.flatMap((relativePath) => idsInDatabase(path.join(root.path, relativePath))),
-    );
+    const files: Array<string> = [];
     for (const directory of fileStoreDirectories) {
       const store = { path: path.join(root.path, "storage", directory), label: root.label };
-      const files = yield* walkFiles(store, (relativePath) => relativePath.endsWith(".json"), {
+      const found = yield* walkFiles(store, (relativePath) => relativePath.endsWith(".json"), {
         maxDepth: 3,
       });
-      for (const file of files) {
-        const name = file.relativePath.slice(file.relativePath.lastIndexOf("/") + 1);
-        if (inDatabase.has(name.slice(0, -".json".length))) continue;
-        descriptors.push({
-          kind: "json",
-          root,
-          relativePath: `storage/${directory}/${file.relativePath}`,
-        });
-      }
+      files.push(...found.map((file) => `storage/${directory}/${file.relativePath}`));
     }
+    const inDatabase = new Set(
+      files.length === 0
+        ? []
+        : databases.flatMap((relativePath) => idsInDatabase(path.join(root.path, relativePath))),
+    );
+    for (const relativePath of files)
+      if (!inDatabase.has(path.basename(relativePath, ".json")))
+        descriptors.push({ kind: "json", root, relativePath });
     return descriptors;
   }),
 };
