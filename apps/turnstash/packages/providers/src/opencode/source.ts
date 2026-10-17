@@ -56,7 +56,7 @@ export const opencodeSource: SourceProvider = {
       .filter(
         (entry) => entry.startsWith(prefix) && entry.endsWith(".db") && !isExcludedPath(entry),
       )
-      .sort();
+      .toSorted();
     const descriptors: Array<SourceDescriptor> = databases.flatMap((relativePath) =>
       scannedTables.map((table) => ({
         kind: "sqlite" as const,

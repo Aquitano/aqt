@@ -47,6 +47,7 @@ import {
   pricingCatalogs,
   sourceRecords,
   tombstones,
+  toolExecutions,
   valuations,
 } from "../src/db/schema.ts";
 import {
@@ -326,6 +327,63 @@ test("a conversation still receiving batches is normalized once it settles, not 
       ).pipe(Effect.provideService(ServerConfig, { ...config, normalizeSettleMillis: 60_000 }));
       expect(yield* workOnce()).toMatchObject({ normalized: 0 });
       expect((yield* counts).conversations).toBe(0);
+    }),
+  );
+});
+
+test("tool output is stored on its execution and not repeated in the result part", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachines;
+      yield* applyBatch(
+        machineA,
+        batch("11111111-0000-4000-8000-0000000000bb", machineA, fixtureRecords()),
+      );
+      yield* workOnce();
+      const db = yield* Db;
+      const executions = new Map(
+        (yield* db.select().from(toolExecutions)).map((tool) => [tool.toolKey, tool.output]),
+      );
+      const results = (yield* db.select({ parts: messages.parts }).from(messages)).flatMap((row) =>
+        row.parts.flatMap((part) => (part.type === "tool_result" ? [part] : [])),
+      );
+      const withExecution = results.filter(
+        (part) => (executions.get(part.toolKey) ?? null) !== null,
+      );
+      expect(withExecution.length).toBeGreaterThan(0);
+      expect(withExecution.map((part) => part.output)).toEqual(withExecution.map(() => null));
+    }),
+  );
+});
+
+test("a message page with a tool result carries its execution when the call is on another page", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachines;
+      yield* applyBatch(
+        machineA,
+        batch("11111111-0000-4000-8000-0000000000bc", machineA, fixtureRecords()),
+      );
+      yield* workOnce();
+      const db = yield* Db;
+      const rows = yield* db
+        .select({
+          conversationId: messages.conversationId,
+          seq: messages.seq,
+          parts: messages.parts,
+        })
+        .from(messages);
+      const [result] = rows.flatMap(({ conversationId, seq, parts }) =>
+        parts.flatMap((part) =>
+          part.type === "tool_result" ? [{ conversationId, seq, toolKey: part.toolKey }] : [],
+        ),
+      );
+      if (result === undefined) throw new Error("the fixture holds no tool result");
+      const page = yield* getMessages(result.conversationId, String(result.seq - 1), 1);
+      const tool = page.toolExecutions.find((candidate) => candidate.toolKey === result.toolKey);
+      expect(page.items.map((message) => message.seq)).toEqual([result.seq]);
+      expect(tool?.messageKey).not.toBe(page.items[0]?.messageKey);
+      expect(typeof tool?.output).toBe("string");
     }),
   );
 });

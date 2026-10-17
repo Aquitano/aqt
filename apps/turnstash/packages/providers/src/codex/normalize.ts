@@ -15,9 +15,11 @@ import {
   type Normalizer,
   type Role,
   type SourceRecordRow,
+  type StreamId,
   type ToolStatus,
   type Usage,
   type UsageBasis,
+  withJsonField,
 } from "@aqt/turnstash-core";
 import { Option, type Schema } from "effect";
 
@@ -516,6 +518,27 @@ const normalize = (
   };
 };
 
+// Event messages whose every field is copied or derived from a response item. Other kinds, including
+// item_completed and the tool end events, carry turn ids, timings or output that no response item holds.
+const repeatedEvents = new Set(["agent_message", "agent_reasoning", "agent_reasoning_raw_content"]);
+
+const withoutKey = (object: Schema.JsonObject, key: string): Schema.JsonObject =>
+  Object.fromEntries(Object.entries(object).filter(([name]) => name !== key));
+
+// A repeated event keeps its envelope and kind, so ordering and record keys stay as they were. Reasoning
+// loses its encrypted copy, which only the Codex API can read.
+const trim = (_streamId: StreamId, payload: string): string => {
+  const line = parseJsonObject(payload);
+  const body = line?.["payload"];
+  if (line === undefined || !isObject(body)) return payload;
+  const kind = stringOf(body["type"]);
+  if (line["type"] === "event_msg" && kind !== undefined && repeatedEvents.has(kind))
+    return JSON.stringify(withJsonField(line, "payload", { type: kind }));
+  if (line["type"] === "response_item" && kind === "reasoning" && "encrypted_content" in body)
+    return JSON.stringify(withJsonField(line, "payload", withoutKey(body, "encrypted_content")));
+  return payload;
+};
+
 export const codexNormalizer: Normalizer = {
   id: "codex",
   parserVersion: 3,
@@ -524,4 +547,5 @@ export const codexNormalizer: Normalizer = {
     return uuid === undefined ? Option.none() : Option.some(uuid.toLowerCase());
   },
   normalize,
+  trim,
 };

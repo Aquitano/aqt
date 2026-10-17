@@ -75,6 +75,10 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
     Option.getOrNull(
       normalizers[record.provider].conversationKeyOf(record.streamId, record.payload),
     );
+  // The stored payload drops what the provider's normalizer never reads; the agent's hash stays, so a
+  // resent record is still recognised as a duplicate.
+  const storedPayloadOf = (record: WireRecord): string =>
+    normalizers[record.provider].trim?.(record.streamId, record.payload) ?? record.payload;
   const providers = [...new Set(batch.records.map((record) => record.provider))];
   const conversationKeys = batch.records.flatMap((record) => {
     const conversationKey = conversationKeyOf(record);
@@ -210,7 +214,7 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
           provider: record.provider,
           recordKey: record.recordKey,
           contentHash: record.contentHash,
-          payload: scrubText(record.payload),
+          payload: scrubText(storedPayloadOf(record)),
           observedAt,
           redactions: record.redactions,
           conversationKey,

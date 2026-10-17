@@ -50,6 +50,8 @@ Migrations run on startup. The bundled pricing catalog is inserted on first star
 
 After a parser or model-alias correction, stop the server and run `bun run --cwd apps/server reprocess` with the server's database and authentication environment; on the Compose deployment, follow [Reprocess the archive](deploy/README.md#reprocess-the-archive). Restart the server to let its worker rebuild conversations from retained raw records and recalculate the active catalog's costs. This includes records that previously produced no conversation and excludes deleted conversations. It preserves valuations for other catalog versions when the normalized request is unchanged. Totals are incomplete until the worker finishes.
 
+The server stores each raw record without copies of what other records hold: Codex keeps only the kind of an agent message or reasoning event, which repeat a response item, and drops encrypted reasoning, which only the Codex API can read. OpenCode and Cursor JSON columns are kept as parsed values rather than escaped text. A tool result's message part no longer copies the output its tool execution holds. Reprocessing applies this to records stored earlier and removes OpenCode file store records whose row the same machine's OpenCode database sent. [Reprocess the archive](deploy/README.md#reprocess-the-archive) also describes how to return the freed space to the disk.
+
 ## Agent
 
 Install [Bun](https://bun.sh/docs/installation) 1.4.2 or newer and [GitHub CLI](https://cli.github.com/) on each machine that collects transcripts. Run the agent as the same OS user who runs your coding tools. Authenticate with an account that can access the private repository:

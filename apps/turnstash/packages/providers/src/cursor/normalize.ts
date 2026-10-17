@@ -1,4 +1,5 @@
 import {
+  isJsonArray,
   isJsonObject,
   isoTimestampOf,
   jsonArrayAt as arrayAt,
@@ -14,10 +15,12 @@ import {
   type NormalizedToolExecution,
   type Normalizer,
   type SourceRecordRow,
+  type StreamId,
   type ToolStatus,
   type Usage,
+  withJsonField,
 } from "@aqt/turnstash-core";
-import { Option, type Schema } from "effect";
+import { Option, Predicate, type Schema } from "effect";
 
 const bubblePrefix = "bubbleId:";
 const composerPrefix = "composerData:";
@@ -61,9 +64,14 @@ const conversationKeyOf = (_streamId: string, payload: string): Option.Option<st
     : Option.none();
 };
 
+const isStructured = (
+  value: Schema.Json | undefined,
+): value is Schema.JsonObject | Schema.JsonArray => isJsonObject(value) || isJsonArray(value);
+
 const valueOf = (row: Schema.JsonObject): Schema.Json | undefined => {
   const value = row["value"];
-  if (typeof value !== "string") return undefined;
+  if (isStructured(value)) return value;
+  if (!Predicate.isString(value)) return undefined;
   const text = parseJson(value);
   // A BLOB column reaches the normalizer base64 encoded, never as JSON text.
   return text ?? parseJson(Buffer.from(value, "base64").toString("utf8"));
@@ -76,9 +84,10 @@ const dedupeKeyOf = (row: Schema.JsonObject): string | undefined => {
   return composerId === undefined ? undefined : `header:${composerId}`;
 };
 
+// Ties compare the trimmed form, so a stored record picks the same version before and after trimming.
 const isNewer = (candidate: SourceRecordRow, current: SourceRecordRow): boolean =>
   candidate.observedAt === current.observedAt
-    ? candidate.payload > current.payload
+    ? trim(candidate.streamId, candidate.payload) > trim(current.streamId, current.payload)
     : candidate.observedAt > current.observedAt;
 
 const latestRows = (records: ReadonlyArray<SourceRecordRow>): ReadonlyArray<Schema.JsonObject> => {
@@ -254,7 +263,7 @@ const modelOf = (composer: Schema.JsonObject | undefined): string => {
   const configured = stringAt(objectAt(composer, "modelConfig"), "modelName");
   if (configured !== undefined && configured !== "default") return configured;
   const usageData = objectAt(composer, "usageData");
-  return usageData === undefined ? autoModel : (Object.keys(usageData).sort()[0] ?? autoModel);
+  return usageData === undefined ? autoModel : (Object.keys(usageData).toSorted()[0] ?? autoModel);
 };
 
 const orderOf = (composer: Schema.JsonObject | undefined): ReadonlyMap<string, number> => {
@@ -415,9 +424,18 @@ const normalize = (
   };
 };
 
+// A value holding JSON text is kept as the parsed value rather than escaped text.
+const trim = (_streamId: StreamId, payload: string): string => {
+  const row = parseJson(payload);
+  if (!isJsonObject(row) || !Predicate.isString(row["value"])) return payload;
+  const value = parseJson(row["value"]);
+  return isStructured(value) ? JSON.stringify(withJsonField(row, "value", value)) : payload;
+};
+
 export const cursorNormalizer: Normalizer = {
   id: "cursor",
   parserVersion: 3,
   conversationKeyOf,
   normalize,
+  trim,
 };

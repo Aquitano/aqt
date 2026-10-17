@@ -1,6 +1,6 @@
 import { BadRequest, type MarkdownExportInput, NotFound } from "@aqt/turnstash-api";
 import { MessagePart, Role } from "@aqt/turnstash-core";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { Effect, Schema } from "effect";
 
 import { lockConversations } from "./conversation-locks.ts";
@@ -23,7 +23,12 @@ const fence = (value: string, language = "") => {
   return `${delimiter}${language}\n${value}\n${delimiter}`;
 };
 
-export const messageMarkdown = (message: ExportMessage, includeTools: boolean): string => {
+// Stored result parts usually leave their output to the tool execution, so it is looked up by tool key.
+export const messageMarkdown = (
+  message: ExportMessage,
+  includeTools: boolean,
+  outputs: ReadonlyMap<string, string> = new Map(),
+): string => {
   if (message.role === "system" || (message.role === "tool" && !includeTools)) return "";
   return message.parts
     .flatMap((part) => {
@@ -36,8 +41,10 @@ export const messageMarkdown = (message: ExportMessage, includeTools: boolean): 
                 `Tool: ${escapeLabel(part.name)}\n\n${fence(JSON.stringify(part.input, null, 2), "json")}`,
               ]
             : [];
-        case "tool_result":
-          return includeTools && part.output !== null ? [fence(part.output)] : [];
+        case "tool_result": {
+          const output = part.output ?? outputs.get(part.toolKey);
+          return includeTools && output !== undefined ? [fence(output)] : [];
+        }
         case "image":
           return ["[Archived image]"];
         case "thinking":
@@ -102,27 +109,45 @@ export const exportMarkdown = Effect.fn("Export.markdown")(function* (
   const conversationLink = `${input.sourceOrigin ?? ""}/conversations/${id}`;
   const sourceLink = (messageKey: string) =>
     `${conversationLink}?message=${encodeURIComponent(messageKey).replaceAll("(", "%28").replaceAll(")", "%29")}`;
+  const keys = selected.map((row) => row.messageKey);
+  const resultKeys = [
+    ...new Set(
+      parsed.flatMap((message) =>
+        message.parts.flatMap((part) => (part.type === "tool_result" ? [part.toolKey] : [])),
+      ),
+    ),
+  ];
+  const tools =
+    !includeTools || keys.length === 0
+      ? []
+      : yield* db
+          .select()
+          .from(toolExecutions)
+          .where(
+            and(
+              eq(toolExecutions.conversationId, id),
+              or(
+                inArray(toolExecutions.messageKey, keys),
+                resultKeys.length === 0 ? undefined : inArray(toolExecutions.toolKey, resultKeys),
+              ),
+            ),
+          )
+          .orderBy(asc(toolExecutions.startedAt), asc(toolExecutions.toolKey));
+  const outputs = new Map(
+    tools.flatMap((tool) => (tool.output === null ? [] : [[tool.toolKey, tool.output] as const])),
+  );
   const sections = parsed.flatMap((message) => {
-    const content = messageMarkdown(message, includeTools);
+    const content = messageMarkdown(message, includeTools, outputs);
     if (content === "") return [];
     return [`## ${message.role}\n\n[Source](${sourceLink(message.messageKey)})\n\n${content}`];
   });
   if (includeTools) {
-    const keys = selected.map((row) => row.messageKey);
-    const tools =
-      keys.length === 0
-        ? []
-        : yield* db
-            .select()
-            .from(toolExecutions)
-            .where(
-              and(eq(toolExecutions.conversationId, id), inArray(toolExecutions.messageKey, keys)),
-            )
-            .orderBy(asc(toolExecutions.startedAt), asc(toolExecutions.toolKey));
     const embedded = new Set(
       parsed.flatMap((message) =>
         message.parts.flatMap((part) =>
-          part.type === "tool_result" && part.output !== null ? [part.toolKey] : [],
+          part.type === "tool_result" && (part.output ?? outputs.get(part.toolKey)) !== undefined
+            ? [part.toolKey]
+            : [],
         ),
       ),
     );
