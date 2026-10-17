@@ -1,13 +1,6 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { Search as SearchIcon } from "lucide-react";
-import { useState } from "react";
-
-import type { Selection } from "@/components/detail-pane";
-import { LibrarySearchGroups } from "@/components/library-search";
-import { MailboxSelect } from "@/components/mailbox-select";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Kbd } from "@/components/ui/kbd";
+import { Button } from "@aqt/ui/components/button";
+import { Input } from "@aqt/ui/components/input";
+import { Kbd } from "@aqt/ui/components/kbd";
 import {
   Select,
   SelectContent,
@@ -15,8 +8,16 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@aqt/ui/components/select";
+import { Skeleton } from "@aqt/ui/components/skeleton";
+import { cn } from "@aqt/ui/lib/utils";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { Search as SearchIcon } from "lucide-react";
+import { useState } from "react";
+
+import type { Selection } from "@/components/detail-pane";
+import { LibrarySearchGroups } from "@/components/library-search";
+import { MailboxSelect } from "@/components/mailbox-select";
 import {
   browseThreads,
   SEARCH_PAGE,
@@ -26,7 +27,6 @@ import {
 } from "@/lib/api";
 import { fmtDate, Highlight, SourceBadge } from "@/lib/format";
 import { find } from "@/lib/library-api";
-import { cn } from "@/lib/utils";
 
 type SearchForm = Required<Omit<SearchParams, "offset" | "mailbox_id" | "has_attachment">> &
   Pick<SearchParams, "mailbox_id" | "has_attachment">;
@@ -47,6 +47,18 @@ function formFrom(params: SearchParams | null): SearchForm {
     has_attachment: params?.has_attachment,
   };
 }
+
+const ATTACHMENT_FILTERS = [
+  { value: "any", label: "Any attachment status" },
+  { value: "true", label: "Has attachments" },
+  { value: "false", label: "No attachments" },
+];
+
+const MATCH_MODES: { value: SearchForm["match"]; label: string }[] = [
+  { value: "any", label: "Any words" },
+  { value: "all", label: "All words" },
+  { value: "phrase", label: "Exact phrase" },
+];
 
 const fullDate = /^[1-9]\d{3}-\d{2}-\d{2}$/;
 
@@ -287,9 +299,12 @@ export function SearchView({
             onKeyDown={(event) => event.key === "Enter" && submit()}
           />
           <Select
+            items={ATTACHMENT_FILTERS}
             value={form.has_attachment === undefined ? "any" : String(form.has_attachment)}
             onValueChange={(value) =>
-              submit({ has_attachment: value === "any" ? undefined : value === "true" })
+              submit({
+                has_attachment: value === null || value === "any" ? undefined : value === "true",
+              })
             }
           >
             <SelectTrigger aria-label="Attachment presence">
@@ -297,9 +312,11 @@ export function SearchView({
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value="any">Any attachment status</SelectItem>
-                <SelectItem value="true">Has attachments</SelectItem>
-                <SelectItem value="false">No attachments</SelectItem>
+                {ATTACHMENT_FILTERS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
               </SelectGroup>
             </SelectContent>
           </Select>
@@ -312,18 +329,23 @@ export function SearchView({
         )}
         <div className="flex flex-wrap items-center gap-2">
           <Select
+            items={MATCH_MODES}
             value={form.match}
-            onValueChange={(v) => {
-              if (v === "any" || v === "all" || v === "phrase") submit({ match: v });
+            onValueChange={(next) => {
+              if (next !== null) submit({ match: next });
             }}
           >
             <SelectTrigger size="sm" className="text-xs" aria-label="Match mode">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="any">Any words</SelectItem>
-              <SelectItem value="all">All words</SelectItem>
-              <SelectItem value="phrase">Exact phrase</SelectItem>
+              <SelectGroup>
+                {MATCH_MODES.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">

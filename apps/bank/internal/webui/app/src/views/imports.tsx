@@ -1,7 +1,7 @@
+import { Button } from "@aqt/ui/components/button";
 import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { LibraryImportForm } from "@/components/library-import";
-import { Button } from "@/components/ui/button";
 import { getImportReports } from "@/lib/api";
 
 export function ImportsView() {
@@ -9,7 +9,7 @@ export function ImportsView() {
     queryKey: ["import-reports"],
     initialPageParam: 0,
     queryFn: ({ pageParam }) => getImportReports(pageParam),
-    getNextPageParam: (last) => (last.length === 50 ? last[last.length - 1].id : undefined),
+    getNextPageParam: (last) => (last.length === 50 ? last.at(-1)?.id : undefined),
     refetchInterval: 10000,
   });
   return (
@@ -22,7 +22,7 @@ export function ImportsView() {
       </p>
       {q.isPending && <p>Loading reports…</p>}
       {q.isError && <p role="alert">{q.error.message}</p>}
-      {q.data?.pages[0].length === 0 && <p>No imports recorded yet.</p>}
+      {q.data?.pages[0]?.length === 0 && <p>No imports recorded yet.</p>}
       <div className="space-y-4">
         {q.data?.pages.flat().map((report) => {
           const r = report.result;

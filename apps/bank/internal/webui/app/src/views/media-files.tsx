@@ -1,3 +1,6 @@
+import { Badge } from "@aqt/ui/components/badge";
+import { Button } from "@aqt/ui/components/button";
+import { cn } from "@aqt/ui/lib/utils";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { File } from "lucide-react";
 
@@ -8,11 +11,8 @@ import {
   SourceLabel,
   UploadFiles,
 } from "@/components/library-common";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { getMediaFiles, LIBRARY_PAGE } from "@/lib/library-api";
 import { select, useLibraryFilters, type Selection } from "@/lib/navigation";
-import { cn } from "@/lib/utils";
 import { ListSkeleton } from "@/views/search";
 
 export function MediaFilesView({ selection }: { selection: Selection }) {

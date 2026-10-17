@@ -1,5 +1,6 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@aqt/ui/components/badge";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@aqt/ui/components/card";
+
 import type { SourceStat } from "@/lib/api";
 import { fmtDay, SourceBadge } from "@/lib/format";
 
