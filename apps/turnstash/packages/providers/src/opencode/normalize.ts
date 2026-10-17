@@ -21,8 +21,9 @@ import {
   type StreamId,
   type ToolStatus,
   type Usage,
+  withJsonField,
 } from "@aqt/turnstash-core";
-import { Option, type Schema } from "effect";
+import { Option, Predicate, type Schema } from "effect";
 
 type Json = Schema.Json;
 
@@ -585,9 +586,21 @@ const normalize = (
   };
 };
 
+// Rows whose data normalize parses are kept with that data as an object rather than escaped JSON text.
+const trim = (streamId: StreamId, payload: string): string => {
+  const kind = kindOfStream(streamId);
+  if (kind === undefined || !isSqliteKind(kind) || sessionKinds.has(kind)) return payload;
+  const row = parseJsonObject(payload);
+  const data = row?.["data"];
+  if (row === undefined || !Predicate.isString(data)) return payload;
+  const parsed = parseJsonObject(data);
+  return parsed === undefined ? payload : JSON.stringify(withJsonField(row, "data", parsed));
+};
+
 export const opencodeNormalizer: Normalizer = {
   id: "opencode",
   parserVersion: 3,
   conversationKeyOf,
   normalize,
+  trim,
 };

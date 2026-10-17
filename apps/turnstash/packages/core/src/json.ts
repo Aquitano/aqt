@@ -9,6 +9,16 @@ export const isJsonArray = (value: Schema.Json | undefined): value is Schema.Jso
 export const jsonObject = (value: Schema.Json | undefined): Schema.JsonObject | undefined =>
   isJsonObject(value) ? value : undefined;
 
+// A copy with one existing field's value replaced, in the original field order.
+export const withJsonField = (
+  object: Schema.JsonObject,
+  key: string,
+  value: Schema.Json,
+): Schema.JsonObject =>
+  Object.fromEntries(
+    Object.entries(object).map(([name, current]) => [name, name === key ? value : current]),
+  );
+
 export const jsonArray = (value: Schema.Json | undefined): Schema.JsonArray =>
   isJsonArray(value) ? value : [];
 

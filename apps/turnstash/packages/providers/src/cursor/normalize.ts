@@ -1,4 +1,5 @@
 import {
+  isJsonArray,
   isJsonObject,
   isoTimestampOf,
   jsonArrayAt as arrayAt,
@@ -14,10 +15,12 @@ import {
   type NormalizedToolExecution,
   type Normalizer,
   type SourceRecordRow,
+  type StreamId,
   type ToolStatus,
   type Usage,
+  withJsonField,
 } from "@aqt/turnstash-core";
-import { Option, type Schema } from "effect";
+import { Option, Predicate, type Schema } from "effect";
 
 const bubblePrefix = "bubbleId:";
 const composerPrefix = "composerData:";
@@ -61,9 +64,14 @@ const conversationKeyOf = (_streamId: string, payload: string): Option.Option<st
     : Option.none();
 };
 
+const isStructured = (
+  value: Schema.Json | undefined,
+): value is Schema.JsonObject | Schema.JsonArray => isJsonObject(value) || isJsonArray(value);
+
 const valueOf = (row: Schema.JsonObject): Schema.Json | undefined => {
   const value = row["value"];
-  if (typeof value !== "string") return undefined;
+  if (isStructured(value)) return value;
+  if (!Predicate.isString(value)) return undefined;
   const text = parseJson(value);
   // A BLOB column reaches the normalizer base64 encoded, never as JSON text.
   return text ?? parseJson(Buffer.from(value, "base64").toString("utf8"));
@@ -415,9 +423,18 @@ const normalize = (
   };
 };
 
+// A value holding JSON text is kept as the parsed value rather than escaped text.
+const trim = (_streamId: StreamId, payload: string): string => {
+  const row = parseJson(payload);
+  if (!isJsonObject(row) || !Predicate.isString(row["value"])) return payload;
+  const value = parseJson(row["value"]);
+  return isStructured(value) ? JSON.stringify(withJsonField(row, "value", value)) : payload;
+};
+
 export const cursorNormalizer: Normalizer = {
   id: "cursor",
   parserVersion: 3,
   conversationKeyOf,
   normalize,
+  trim,
 };

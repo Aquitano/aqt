@@ -121,4 +121,7 @@ export interface Normalizer {
     conversationKey: string,
     records: ReadonlyArray<SourceRecordRow>,
   ) => NormalizedConversation | null;
+  // The payload the archive keeps: the record without what normalize and conversationKeyOf never
+  // read, so normalizing the trimmed record gives the same conversation.
+  readonly trim?: (streamId: StreamId, payload: string) => string;
 }

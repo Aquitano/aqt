@@ -328,3 +328,13 @@ test("bubbles without timing fall back to when the agent saw them", () => {
     "2026-09-20T10:00:00.000Z",
   ]);
 });
+
+test("trimming keeps JSON values as values and leaves the conversation unchanged", () => {
+  const records = allRecords();
+  const trimmed = records.map((row) => ({
+    ...row,
+    payload: cursorNormalizer.trim?.(row.streamId, row.payload) ?? row.payload,
+  }));
+  expect(normalized(trimmed)).toEqual(normalized(records));
+  expect(trimmed.some((row) => row.payload.includes('"value":{'))).toBe(true);
+});

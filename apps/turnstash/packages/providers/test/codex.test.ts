@@ -399,3 +399,17 @@ test("forks keep their own usage and ignore replayed usage owned by the parent t
   ]);
   expect(withLegacy.requests.map((request) => request.requestKey)).toEqual(["ordinal:3"]);
 });
+
+test("trimming drops event mirrors and encrypted reasoning and leaves the conversation unchanged", async () => {
+  const rows = await rowsOf(guardian);
+  const trimmed = rows.map((row) => ({
+    ...row,
+    payload: codexNormalizer.trim?.(row.streamId, row.payload) ?? row.payload,
+  }));
+  expect(normalized(trimmed)).toEqual(normalized(rows));
+  const kept = trimmed.map((row) => row.payload).join("\n");
+  expect(kept).not.toContain("encrypted_content");
+  expect(kept).toContain('"payload":{"type":"item_completed"}');
+  for (const row of rows.filter((candidate) => candidate.payload.includes('"token_count"')))
+    expect(codexNormalizer.trim?.(row.streamId, row.payload)).toBe(row.payload);
+});
