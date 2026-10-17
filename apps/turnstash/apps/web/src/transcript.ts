@@ -58,12 +58,18 @@ export const blockMessageKeys = Match.type<Block>().pipe(
   }),
 );
 
+export const isLinked = (step: Step, linkedKey: string | undefined): boolean =>
+  linkedKey !== undefined &&
+  (step.messageKey === linkedKey || (step.kind === "tool" && step.resultKey === linkedKey));
+
 // Agent loops alternate an assistant message holding tool calls with a message holding their results.
 // Calls from consecutive messages form one run until text appears, and results render beside their call.
 // Thinking and other parts between calls stay in the run, and a result without a loaded call is a step.
+// The first linked step starts a run of its own, so a link scrolls to it rather than to a long run's start.
 export const transcriptBlocks = (
   messages: ReadonlyArray<MessageView>,
   turns: ReadonlyArray<TurnView>,
+  linkedKey?: string,
 ): ReadonlyArray<Block> => {
   const turnStarts = new Map(
     turns.flatMap((turn) => (turn.messageKey === null ? [] : [[turn.messageKey, turn] as const])),
@@ -93,6 +99,7 @@ export const transcriptBlocks = (
       });
     run = null;
   };
+  let linkSeen = false;
 
   for (const message of messages) {
     const turn = turnStarts.get(message.messageKey);
@@ -139,6 +146,10 @@ export const transcriptBlocks = (
         continue;
       }
       if (segment.length > 0) pushSegment();
+      if (!linkSeen && isLinked(step, linkedKey)) {
+        linkSeen = true;
+        closeRun();
+      }
       run ??= { steps: [], requests: [] };
       run.steps.push(step);
     }

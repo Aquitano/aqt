@@ -111,6 +111,25 @@ test("tool calls across an agent loop form one run beside their results, thinkin
   expect(outcomes.get("b")?.failed).toBe(false);
 });
 
+test("a link to a tool result starts a run at its call, so the link lands on that call", () => {
+  const messages = [
+    messageView("1", "assistant", [
+      { type: "tool_call", toolKey: "a", name: "Bash", input: { command: "bun test" } },
+      { type: "tool_call", toolKey: "b", name: "Read", input: { file_path: "src/a.ts" } },
+    ]),
+    messageView("2", "user", [
+      { type: "tool_result", toolKey: "a", output: "1 fail" },
+      { type: "tool_result", toolKey: "b", output: "export {}" },
+    ]),
+    messageView("3", "assistant", [
+      { type: "tool_call", toolKey: "c", name: "Edit", input: { file_path: "src/a.ts" } },
+    ]),
+    messageView("4", "user", [{ type: "tool_result", toolKey: "c", output: "ok" }]),
+  ];
+  expect(outline(transcriptBlocks(messages, [], "4"))).toEqual(["Bash:2,Read:2", "Edit:4"]);
+  expect(outline(transcriptBlocks(messages, [], "2"))).toEqual(["Bash:2,Read:2,Edit:4"]);
+});
+
 test("a result whose call is not loaded and the requests of a message without parts stay visible", () => {
   const messages = [
     messageView("1", "user", [{ type: "tool_result", toolKey: "earlier", output: "partial" }]),

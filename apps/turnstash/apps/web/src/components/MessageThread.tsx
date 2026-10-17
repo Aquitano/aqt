@@ -77,12 +77,48 @@ const Requests = ({
   );
 };
 
-// Every block carries the same two actions, so they stay out of the way until the pointer or focus
-// reaches the block, or something is already selected.
-const Actions = ({ children }: { readonly children: ReactNode }) => (
-  <div className="flex items-center gap-1 opacity-0 transition-opacity group-focus-within/block:opacity-100 group-hover/block:opacity-100 has-data-checked:opacity-100 [@media(hover:none)]:opacity-100">
+// Every block and tool step carries the same two actions, so they stay out of the way until the
+// pointer or focus reaches it, or something is already selected.
+const reveal = {
+  block: "group-focus-within/block:opacity-100 group-hover/block:opacity-100",
+  row: "group-focus-within/row:opacity-100 group-hover/row:opacity-100",
+} as const;
+
+const Actions = ({
+  group,
+  children,
+}: {
+  readonly group: keyof typeof reveal;
+  readonly children: ReactNode;
+}) => (
+  <div
+    className={`flex items-center gap-1 opacity-0 transition-opacity has-data-checked:opacity-100 [@media(hover:none)]:opacity-100 ${reveal[group]}`}
+  >
     {children}
   </div>
+);
+
+const MessageActions = ({
+  group,
+  label,
+  messageKey,
+  conversationId,
+  selection,
+}: {
+  readonly group: keyof typeof reveal;
+  readonly label: string;
+  readonly messageKey: string;
+  readonly conversationId: string;
+  readonly selection: Selection;
+}) => (
+  <Actions group={group}>
+    <SelectForExport
+      label={`Select ${label} for export`}
+      messageKey={messageKey}
+      selection={selection}
+    />
+    <BookmarkButton conversationId={conversationId} target={{ kind: "message", messageKey }} />
+  </Actions>
 );
 
 // Pasted logs and file dumps make some prompts thousands of lines long; they open on request.
@@ -132,7 +168,7 @@ const TurnHeader = ({
     <span className="font-medium text-foreground tabular-nums">{usd(turn.costUsd)}</span>
     {turn.messageKey !== null && (
       <div className="ml-auto">
-        <Actions>
+        <Actions group="block">
           <SelectForExport
             label={`Select turn ${turn.turnIndex + 1} for export`}
             messageKey={turn.messageKey}
@@ -186,44 +222,35 @@ const MessageBlock = ({
     </Link>
   );
   const actions = (
-    <Actions>
-      <SelectForExport
-        label={`Select ${message.role} message ${message.seq + 1} for export`}
-        messageKey={message.messageKey}
-        selection={selection}
-      />
-      <BookmarkButton
-        conversationId={conversationId}
-        target={{ kind: "message", messageKey: message.messageKey }}
-      />
-    </Actions>
+    <MessageActions
+      group="block"
+      label={`${message.role} message ${message.seq + 1}`}
+      messageKey={message.messageKey}
+      conversationId={conversationId}
+      selection={selection}
+    />
   );
   const meta =
     "flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-normal text-muted-foreground";
 
   // System messages and injected commands are context, not conversation, so they get one quiet line.
+  const collapsed = (summary: string, justify: "justify-start" | "justify-end") => (
+    <div className={`flex items-start gap-2 text-xs text-muted-foreground ${justify}`}>
+      <Disclosure summary={summary} defaultOpen={targeted}>
+        <div className="flex min-w-0 flex-col gap-1.5">{rendered}</div>
+      </Disclosure>
+      <Requests requests={requests} onInspect={onInspect} />
+      {actions}
+    </div>
+  );
+
   if (message.role === "system")
-    return (
-      <div className={meta}>
-        <Disclosure
-          summary={`System message · ${dateTime(message.createdAt)}`}
-          defaultOpen={targeted}
-        >
-          <div className="flex min-w-0 flex-col gap-1.5">{rendered}</div>
-        </Disclosure>
-      </div>
-    );
+    return collapsed(`System message · ${dateTime(message.createdAt)}`, "justify-start");
 
   if (message.role === "user") {
     const injected = parts.map((part) => (part.type === "text" ? injectedLabel(part.text) : null));
     if (parts.length > 0 && injected.every((label) => label !== null))
-      return (
-        <div className={`${meta} justify-end`}>
-          <Disclosure summary={injected.join(" · ")} defaultOpen={targeted}>
-            <div className="flex min-w-0 flex-col gap-1.5">{rendered}</div>
-          </Disclosure>
-        </div>
-      );
+      return collapsed(injected.join(" · "), "justify-end");
     const length = parts.reduce(
       (sum, part) => sum + (part.type === "text" ? part.text.length : 0),
       0,
@@ -310,7 +337,16 @@ const BlockContent = ({
             steps={block.steps}
             outcomes={outcomes}
             query={query}
-            targetedKey={targeted ? messageKey : undefined}
+            targetedKey={messageKey}
+            renderActions={(key, label) => (
+              <MessageActions
+                group="row"
+                label={label}
+                messageKey={key}
+                conversationId={conversationId}
+                selection={selection.messages}
+              />
+            )}
           />
           <div className="pl-2">
             <Requests requests={block.requests} onInspect={onInspect} />
@@ -331,12 +367,10 @@ const BlockView = ({
   selection,
   onInspect,
 }: BlockProps) => {
-  const targeted =
-    messageKey !== undefined &&
-    block.kind !== "turn" &&
-    blockMessageKeys(block).includes(messageKey);
+  // A tool run marks its linked step, so a long run is not highlighted as a whole.
+  const targeted = block.kind === "message" && block.message.messageKey === messageKey;
   return (
-    <div
+    <article
       className="group/block py-1.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-targeted:rounded-md data-targeted:bg-primary/8 data-targeted:px-3 data-targeted:ring-1 data-targeted:ring-primary/40 [&_mark]:rounded-[3px] [&_mark]:bg-primary/30 [&_mark]:px-0.5 [&_mark]:text-foreground"
       data-targeted={targeted ? "" : undefined}
       tabIndex={targeted ? -1 : undefined}
@@ -352,7 +386,7 @@ const BlockView = ({
         selection={selection}
         onInspect={onInspect}
       />
-    </div>
+    </article>
   );
 };
 
@@ -481,8 +515,9 @@ export const MessageThread = ({
       transcriptBlocks(
         loaded.flatMap((page) => page.items),
         turns,
+        messageKey,
       ),
-    [loaded, turns],
+    [loaded, turns, messageKey],
   );
   const outcomes = useMemo(
     () =>

@@ -5,9 +5,10 @@ import {
 } from "@aqt/ui/components/collapsible";
 import { Predicate } from "effect";
 import { ChevronRightIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { int, json } from "../format";
-import { type Step, type ToolOutcome, type ToolStep, toolSummary } from "../transcript";
+import { isLinked, type Step, type ToolOutcome, type ToolStep, toolSummary } from "../transcript";
 import { HighlightedText } from "./HighlightedText";
 import { codeBlock, MessagePartView } from "./MessagePartView";
 
@@ -71,6 +72,27 @@ const ToolRow = ({
   );
 };
 
+const StepRow = ({
+  targeted,
+  actions,
+  children,
+}: {
+  readonly targeted: boolean;
+  readonly actions: ReactNode;
+  readonly children: ReactNode;
+}) => (
+  <div
+    className="group/row flex min-w-0 items-start gap-2 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-targeted:bg-primary/8 data-targeted:ring-1 data-targeted:ring-primary/40"
+    data-targeted={targeted ? "" : undefined}
+    tabIndex={targeted ? -1 : undefined}
+    role={targeted ? "group" : undefined}
+    aria-label={targeted ? "Linked message" : undefined}
+  >
+    <div className="min-w-0 flex-1">{children}</div>
+    {actions}
+  </div>
+);
+
 const tally = (steps: ReadonlyArray<ToolStep>): string => {
   const counts = new Map<string, number>();
   for (const step of steps) {
@@ -82,10 +104,6 @@ const tally = (steps: ReadonlyArray<ToolStep>): string => {
   return ranked.length > 4 ? `${shown.join(" · ")} · ${ranked.length - 4} more` : shown.join(" · ");
 };
 
-const targets = (step: Step, key: string | undefined) =>
-  key !== undefined &&
-  (step.messageKey === key || (step.kind === "tool" && step.resultKey === key));
-
 // Short runs show every call; longer ones fold behind a count so the agent's text stays readable.
 const foldAbove = 3;
 
@@ -94,37 +112,46 @@ export const ToolRun = ({
   outcomes,
   query,
   targetedKey,
+  renderActions,
 }: {
   readonly steps: ReadonlyArray<Step>;
   readonly outcomes: ReadonlyMap<string, ToolOutcome>;
   readonly query: string | undefined;
   readonly targetedKey: string | undefined;
+  readonly renderActions: (messageKey: string, label: string) => ReactNode;
 }) => {
-  const rows = steps.map((step) =>
-    step.kind === "tool" ? (
-      <ToolRow
+  const rows = steps.map((step) => {
+    const targeted = isLinked(step, targetedKey);
+    return step.kind === "tool" ? (
+      <StepRow
         key={step.toolKey}
-        step={step}
-        outcome={outcomes.get(step.toolKey)}
-        query={query}
-        defaultOpen={targets(step, targetedKey)}
-      />
-    ) : (
-      <div key={step.key} className="px-2 py-1">
-        <MessagePartView
-          part={step.part}
-          markdown={false}
+        targeted={targeted}
+        actions={renderActions(step.messageKey, `${toolName(step)} call`)}
+      >
+        <ToolRow
+          step={step}
+          outcome={outcomes.get(step.toolKey)}
           query={query}
-          targeted={targets(step, targetedKey)}
+          defaultOpen={targeted}
         />
-      </div>
-    ),
-  );
+      </StepRow>
+    ) : (
+      <StepRow
+        key={step.key}
+        targeted={targeted}
+        actions={renderActions(step.messageKey, step.part.type)}
+      >
+        <div className="px-2 py-1">
+          <MessagePartView part={step.part} markdown={false} query={query} targeted={targeted} />
+        </div>
+      </StepRow>
+    );
+  });
   const tools = steps.filter((step) => step.kind === "tool");
   if (tools.length <= foldAbove) return <div className="flex flex-col">{rows}</div>;
   const failed = tools.filter((step) => outcomes.get(step.toolKey)?.failed === true).length;
   return (
-    <Collapsible defaultOpen={steps.some((step) => targets(step, targetedKey))}>
+    <Collapsible defaultOpen={steps.some((step) => isLinked(step, targetedKey))}>
       <CollapsibleTrigger className={`group/run ${trigger} text-muted-foreground`}>
         <ChevronRightIcon className="size-3 shrink-0 transition-transform group-data-panel-open/run:rotate-90" />
         <span className="shrink-0 font-medium text-foreground">{int(tools.length)} tool calls</span>
