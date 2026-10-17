@@ -26,6 +26,7 @@ import { HttpApiClient } from "effect/http-api";
 
 import { computeAnalysis } from "../src/analysis.ts";
 import { AuthLive } from "../src/auth.ts";
+import { ServerConfig } from "../src/config.ts";
 import {
   conversationSummaries,
   deleteConversation,
@@ -310,6 +311,21 @@ test("ingesting the same session twice, from two machines, or with a retried bat
       expect(yield* counts).toEqual(baseline);
       const stats = yield* computeStats({});
       expect(stats.byMachine.map((machine) => machine.conversations)).toEqual([1, 1]);
+    }),
+  );
+});
+
+test("a conversation still receiving batches is normalized once it settles, not after every batch", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachines;
+      const config = yield* ServerConfig;
+      yield* applyBatch(
+        machineA,
+        batch("11111111-0000-4000-8000-0000000000aa", machineA, fixtureRecords()),
+      ).pipe(Effect.provideService(ServerConfig, { ...config, normalizeSettleMillis: 60_000 }));
+      expect(yield* workOnce()).toMatchObject({ normalized: 0 });
+      expect((yield* counts).conversations).toBe(0);
     }),
   );
 });
@@ -674,7 +690,9 @@ test("the HTTP api enrols a machine, accepts its batches and maps bad tokens, cu
     ),
   );
   // SAFETY: the client only ever calls fetch; Bun's extra preconnect static is never used.
-  const fetchWith = (context: Context.Context<Db | Normalizers | HttpClient.HttpClient>) =>
+  const fetchWith = (
+    context: Context.Context<Db | Normalizers | HttpClient.HttpClient | ServerConfig>,
+  ) =>
     ((input: string | URL | Request, init?: RequestInit) =>
       web.handler(
         input instanceof Request ? input : new Request(String(input), init),
@@ -710,7 +728,9 @@ test("the HTTP api enrols a machine, accepts its batches and maps bad tokens, cu
         yield* workOnce();
         const stats = yield* admin.read.stats({ query: {} });
         expect(stats.overall.conversations).toBe(1);
-        const context = yield* Effect.context<Db | Normalizers | HttpClient.HttpClient>();
+        const context = yield* Effect.context<
+          Db | Normalizers | HttpClient.HttpClient | ServerConfig
+        >();
         const badCursor = yield* Effect.promise(() =>
           web.handler(
             new Request("http://turnstash.test/api/conversations?cursor=0%7Cjunk", {
@@ -726,7 +746,10 @@ test("the HTTP api enrols a machine, accepts its batches and maps bad tokens, cu
         Effect.provide(
           Layer.effect(
             FetchHttpClient.Fetch,
-            Effect.map(Effect.context<Db | Normalizers | HttpClient.HttpClient>(), fetchWith),
+            Effect.map(
+              Effect.context<Db | Normalizers | HttpClient.HttpClient | ServerConfig>(),
+              fetchWith,
+            ),
           ),
         ),
         Effect.provide(FetchHttpClient.layer),

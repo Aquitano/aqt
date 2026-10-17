@@ -20,6 +20,7 @@ const ConfigTest = ServerConfigLive.pipe(
         ADMIN_TOKEN: "admin-secret",
         PORT: "0",
         WORKER_INTERVAL_MS: "50",
+        NORMALIZE_SETTLE_MS: "0",
       }),
     ),
   ),
