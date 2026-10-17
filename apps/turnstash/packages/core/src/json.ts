@@ -9,7 +9,9 @@ export const isJsonArray = (value: Schema.Json | undefined): value is Schema.Jso
 export const jsonObject = (value: Schema.Json | undefined): Schema.JsonObject | undefined =>
   isJsonObject(value) ? value : undefined;
 
-// A copy with one existing field's value replaced, in the original field order.
+// A copy with one existing field's value replaced, in the original field order. A spread does the same,
+// but no-misused-spread rejects it: Effect declares JsonObject as an interface and a value, which the rule
+// takes for a class.
 export const withJsonField = (
   object: Schema.JsonObject,
   key: string,
