@@ -19,7 +19,7 @@ import (
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
-var env = pgschematest.Env{URL: "BANK_TEST_DATABASE_URL", Require: "BANK_REQUIRE_DB"}
+const urlVar = "BANK_TEST_DATABASE_URL"
 
 var migrator = pgschematest.Migrator(store.Migrations, func(ctx context.Context, dsn string) error {
 	st, err := store.Open(ctx, dsn)
@@ -43,7 +43,7 @@ func New(t *testing.T) *store.Store {
 // does not expose.
 func NewNamed(t *testing.T) (*store.Store, string) {
 	t.Helper()
-	dsn := pgschematest.Database(t, env, migrator)
+	dsn := pgschematest.Database(t, urlVar, migrator)
 	return Open(t, dsn), dsn
 }
 
@@ -51,7 +51,7 @@ func NewNamed(t *testing.T) (*store.Store, string) {
 // to seed a pre-migration state before opening a Store.
 func NewEmpty(t *testing.T) string {
 	t.Helper()
-	return pgschematest.Database(t, env, pgtestdb.NoopMigrator{})
+	return pgschematest.Database(t, urlVar, pgtestdb.NoopMigrator{})
 }
 
 // Exec runs setup SQL against a test database before or beside a Store.
@@ -108,7 +108,7 @@ func QueryDSN(t *testing.T, dsn string) string {
 
 var provisionQueryRole = sync.OnceValue(func() error {
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, os.Getenv(env.URL))
+	conn, err := pgx.Connect(ctx, os.Getenv(urlVar))
 	if err != nil {
 		return err
 	}

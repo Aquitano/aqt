@@ -10,7 +10,7 @@ import (
 )
 
 func TestRefusedLoginIsNotUnreachable(t *testing.T) {
-	u, err := url.Parse(Database(t, Env{URL: "PGSCHEMA_TEST_DATABASE_URL", Require: "PGSCHEMA_REQUIRE_DB"}, pgtestdb.NoopMigrator{}))
+	u, err := url.Parse(Database(t, "PGSCHEMA_TEST_DATABASE_URL", pgtestdb.NoopMigrator{}))
 	if err != nil {
 		t.Fatal(err)
 	}

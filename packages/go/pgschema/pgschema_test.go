@@ -23,13 +23,11 @@ var files = fstest.MapFS{
 	"003_tags.sql":  {Data: []byte(`create table tags (name text primary key)`)},
 }
 
-var env = pgschematest.Env{URL: "PGSCHEMA_TEST_DATABASE_URL", Require: "PGSCHEMA_REQUIRE_DB"}
-
 // legacyDatabase applies the first prefix files the way the legacy runner did,
 // recording each in schema_migrations.
 func legacyDatabase(t *testing.T, prefix int) string {
 	t.Helper()
-	dsn := pgschematest.Database(t, env, pgtestdb.NoopMigrator{})
+	dsn := pgschematest.Database(t, "PGSCHEMA_TEST_DATABASE_URL", pgtestdb.NoopMigrator{})
 	exec(t, dsn, `create table schema_migrations (filename text primary key, applied_at timestamptz not null default now())`)
 	names := []string{"001_items.sql", "002_notes.sql", "003_tags.sql"}
 	for _, name := range names[:prefix] {

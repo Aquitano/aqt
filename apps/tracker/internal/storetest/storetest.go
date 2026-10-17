@@ -11,8 +11,6 @@ import (
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
-var env = pgschematest.Env{URL: "TRACKER_TEST_DATABASE_URL", Require: "TRACKER_REQUIRE_DB"}
-
 var migrator = pgschematest.Migrator(store.Migrations, func(ctx context.Context, dsn string) error {
 	st, err := store.Open(ctx, dsn)
 	if err != nil {
@@ -31,7 +29,7 @@ func New(t *testing.T) *store.Store {
 // API does not expose.
 func NewNamed(t *testing.T) (*store.Store, string) {
 	t.Helper()
-	dsn := pgschematest.Database(t, env, migrator)
+	dsn := pgschematest.Database(t, "TRACKER_TEST_DATABASE_URL", migrator)
 	st, err := store.Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("open store: %v", err)

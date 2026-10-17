@@ -21,37 +21,29 @@ import (
 	"github.com/peterldowns/pgtestdb/migrators/common"
 )
 
-// Env names the environment variables that point an app's tests at a server.
-type Env struct {
-	// URL names the variable holding the server's connection URL. Its user
-	// creates and owns every test database, as the app's user owns its own.
-	URL string
-	// Require names the variable that, set to 1, fails tests instead of
-	// skipping them, as CI always does.
-	Require string
-}
-
-// Database returns the URL of a fresh database migrated by m. Tests skip when
-// the server is unset or nothing listens there, unless CI or env.Require
-// demands it. A server that answers and refuses fails even locally: skipping
-// would silently disable every database test while go test stays green.
-func Database(t testing.TB, env Env, m pgtestdb.Migrator) string {
+// Database returns the URL of a fresh database migrated by m, on the server
+// whose connection URL the environment variable urlVar holds. That URL's user
+// creates and owns every test database, as the app's user owns its own. Tests
+// skip when the variable is unset or nothing listens there, unless CI is set.
+// A server that answers and refuses fails even locally: skipping would
+// silently disable every database test while go test stays green.
+func Database(t testing.TB, urlVar string, m pgtestdb.Migrator) string {
 	t.Helper()
-	required := os.Getenv("CI") != "" || os.Getenv(env.Require) == "1"
-	dsn := os.Getenv(env.URL)
+	required := os.Getenv("CI") != ""
+	dsn := os.Getenv(urlVar)
 	if dsn == "" {
 		if required {
-			t.Fatalf("%s must name a disposable ParadeDB server", env.URL)
+			t.Fatalf("%s must name a disposable ParadeDB server", urlVar)
 		}
-		t.Skipf("%s not set", env.URL)
+		t.Skipf("%s not set", urlVar)
 	}
 	u, err := url.Parse(dsn)
 	if err != nil || u.Scheme != "postgres" && u.Scheme != "postgresql" {
-		t.Fatalf("%s must be a PostgreSQL URL", env.URL)
+		t.Fatalf("%s must be a PostgreSQL URL", urlVar)
 	}
 	conf, err := pgx.ParseConfig(dsn)
 	if err != nil {
-		t.Fatalf("parse %s: %v", env.URL, err)
+		t.Fatalf("parse %s: %v", urlVar, err)
 	}
 	if err := ping(t.Context(), conf); err != nil {
 		if !required && unreachable(err) {

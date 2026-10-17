@@ -51,7 +51,7 @@ The image is pinned by version and digest in [docker-compose.yml](docker-compose
 
 ## Tests
 
-`go test -race ./...` runs the database tests against a superuser on the disposable ParadeDB server `TRACKER_TEST_DATABASE_URL` names. pgtestdb clones a migrated template for each test and drops successful test databases. Tests skip when the variable is unset or no server is listening, unless `TRACKER_REQUIRE_DB=1` or `CI` requires them.
+`go test -race ./...` runs the database tests against a superuser on the disposable ParadeDB server `TRACKER_TEST_DATABASE_URL` names. pgtestdb clones a migrated template for each test and drops successful test databases. Tests skip when the variable is unset or no server is listening, unless `CI` is set.
 
 ## Desktop agent
 
