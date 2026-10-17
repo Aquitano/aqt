@@ -23,7 +23,7 @@ import {
   Uuid,
 } from "@aqt/turnstash-api";
 import { hostEnvFromProcess, type MessagePart, Role, type ToolStatus } from "@aqt/turnstash-core";
-import { Config, Effect, Match, Option, Record, Schema } from "effect";
+import { Config, DateTime, Effect, Match, Option, Record, Schema } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
 import { agentPaths, readConfig } from "./config.ts";
@@ -197,6 +197,7 @@ const statsFilterOf = Effect.fn("Archive.statsFilter")(function* (
     ...optionalKey("projectKey", flags.project),
     ...optionalKey("from", flags.from),
     ...optionalKey("to", flags.to),
+    timeZone: DateTime.zoneMakeLocal().id,
   } satisfies StatsFilter;
 });
 
@@ -623,7 +624,7 @@ const stats = Command.make(
     const { client } = yield* clientFor(flags);
     const filter = yield* statsFilterOf(client, flags);
     const result = yield* client.read.stats({ query: filter });
-    yield* output(flags, result, (stats) => describeStats(filter, stats));
+    yield* output(flags, result, (response) => describeStats(filter, response));
   }, explainFailures),
 ).pipe(Command.withDescription("Show cost and usage by provider, model, project and machine"));
 

@@ -94,7 +94,7 @@ test("sessions list pages the archive with a read token and leaves collector sta
             "50",
             "--json",
           ],
-          { TURNSTASH_READ_TOKEN: "fixture-read-token" },
+          { TURNSTASH_READ_TOKEN: "fixture-read-token", TZ: "Europe/Vienna" },
         );
         expect({ exitCode: result.exitCode, stderr: result.stderr }).toEqual({
           exitCode: 0,
@@ -107,11 +107,17 @@ test("sessions list pages the archive with a read token and leaves collector sta
       { path: "/api/machines", query: {}, authorization: "Bearer fixture-read-token" },
       {
         path: "/api/conversations",
-        query: { machineId, from: "2026-10-01", cursor, limit: "50" },
+        query: {
+          machineId,
+          from: "2026-10-01",
+          timeZone: "Europe/Vienna",
+          cursor,
+          limit: "50",
+        },
         authorization: "Bearer fixture-read-token",
       },
     ]);
-    expect((await readdir(directory)).sort()).toEqual(["config", "state"]);
+    expect((await readdir(directory)).toSorted()).toEqual(["config", "state"]);
   }));
 
 test("a token the read API refuses is explained without being printed", () =>
