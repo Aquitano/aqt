@@ -212,7 +212,7 @@ export const redact = (input: string): Redacted => {
   let credentialEnd: number | null = null;
   // Replace only string tokens so JSON numbers and deep nesting survive unchanged.
   const text = input.replace(
-    /("(?:[^"\\]|\\.)*")(\s*:)?/g,
+    /("[^"\\]*(?:\\.[^"\\]*)*")(\s*:)?/g,
     (token: string, quoted: string, colon: string | undefined, offset: number) => {
       const value: string = quoted.includes("\\") ? JSON.parse(quoted) : quoted.slice(1, -1);
       if (colon !== undefined) {

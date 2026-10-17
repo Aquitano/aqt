@@ -249,6 +249,11 @@ test("preserves JSON numbers and handles deeply nested records while redacting",
   expect(redact(deep)).toEqual({ text: deep.replace('"abc"', '"[REDACTED]"'), count: 1 });
 });
 
+test("redacts JSON values that follow a multi-megabyte string", () => {
+  const input = JSON.stringify({ output: "x".repeat(5 * 1024 * 1024), password: "abc" });
+  expect(redact(input)).toEqual({ text: input.replace('"abc"', '"[REDACTED]"'), count: 1 });
+});
+
 test("redacts quoted keys in plain text, credential flags and pass-suffixed names", () => {
   const text = [
     '  12  "apiKey": "k3y-v4lue-9x",',
