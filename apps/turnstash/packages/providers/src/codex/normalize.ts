@@ -1,6 +1,7 @@
 import {
   isJsonArray as isArray,
   isJsonObject as isObject,
+  isOmittedBlob,
   isoTimestampOf,
   jsonCount,
   jsonNumber as numberOf,
@@ -115,7 +116,14 @@ const roleOf = (value: string | undefined): Role | undefined => {
 const dataUri = /^data:([^;,]+)?(;base64)?,(.*)$/s;
 
 const imagePartOf = (item: Schema.JsonObject): MessagePart => {
-  const match = dataUri.exec(stringOf(item["image_url"]) ?? "");
+  const url = item["image_url"];
+  if (isOmittedBlob(url))
+    return {
+      type: "image",
+      ...(url.mediaType === undefined ? {} : { mediaType: url.mediaType }),
+      bytes: url.bytes,
+    };
+  const match = dataUri.exec(stringOf(url) ?? "");
   const mediaType = match?.[1];
   const encoded = match?.[3];
   return {

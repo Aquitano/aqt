@@ -134,6 +134,18 @@ const make = Effect.fn("AgentState.make")(function* (path: string) {
       if (!existing.includes(column))
         db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
+    // Earlier agents skipped every line over the send limit and moved their checkpoints past it. Most of
+    // those lines now fit without their inline images, so their streams are read again once; records
+    // already sent are recognised by hash and not sent again.
+    db.transaction(() => {
+      const first = db
+        .query("INSERT OR IGNORE INTO meta (key, value) VALUES ('reread_skipped_records', '1')")
+        .run();
+      if (first.changes === 0) return;
+      db.run(`UPDATE streams SET byte_offset = 0, prefix_hash = NULL, fingerprint = NULL
+        WHERE (provider, stream_id) IN (SELECT provider, stream_id FROM skipped_records)`);
+      db.run("DELETE FROM skipped_records");
+    })();
   });
   // Delivered outbox payloads leave free pages behind, gigabytes after a first sync. Incremental
   // auto-vacuum lets markDelivered return them to the file system; an existing database needs one

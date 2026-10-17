@@ -12,6 +12,7 @@ import { ConversationKey } from "@aqt/turnstash-core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { Effect, Metric, Option } from "effect";
 
+import { ServerConfig } from "./config.ts";
 import { lockConversations } from "./conversation-locks.ts";
 import { Db, inTransaction } from "./db/client.ts";
 import {
@@ -33,17 +34,27 @@ const streamKey = (provider: string, streamId: string) => `${provider}\u0000${st
 const recordRef = (streamRef: number, recordKey: string) => `${streamRef}\u0000${recordKey}`;
 
 // New records may be exactly what a failing conversation was missing, so a fresh mark also clears its backoff.
+// The mark comes due once the conversation stops receiving batches. Otherwise a first sync rebuilds a long
+// session from all its records after every batch.
 export const markDirty = Effect.fn("Ingest.markDirty")(function* (
   keys: ReadonlyArray<{ readonly provider: ProviderId; readonly conversationKey: string }>,
 ) {
   if (keys.length === 0) return;
   const db = yield* Db;
+  const { normalizeSettleMillis } = yield* ServerConfig;
+  const due = sql`statement_timestamp() + make_interval(secs => ${normalizeSettleMillis / 1000})`;
   yield* db
     .insert(dirtyConversations)
-    .values(keys.map((key) => ({ provider: key.provider, conversationKey: key.conversationKey })))
+    .values(
+      keys.map((key) => ({
+        provider: key.provider,
+        conversationKey: key.conversationKey,
+        markedAt: due,
+      })),
+    )
     .onConflictDoUpdate({
       target: [dirtyConversations.provider, dirtyConversations.conversationKey],
-      set: { markedAt: sql`now()`, attempts: 0 },
+      set: { markedAt: due, attempts: 0 },
     });
 });
 

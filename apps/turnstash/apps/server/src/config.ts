@@ -24,6 +24,7 @@ export interface ServerConfigShape {
   readonly port: number;
   readonly webDist: Option.Option<string>;
   readonly workerIntervalMillis: number;
+  readonly normalizeSettleMillis: number;
   readonly statementTimeoutMillis: number;
   readonly pricingRefreshHours: number;
 }
@@ -35,7 +36,7 @@ export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShap
 const HttpsUrl = Schema.String.check(Schema.isPattern(/^https:\/\/[^?#]+$/));
 const HttpsOrigin = Schema.String.check(Schema.isPattern(/^https:\/\/[a-zA-Z0-9.-]+(?::[0-9]+)?$/));
 const StatementTimeout = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 2_147_483_647 }));
-const RefreshHours = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 
 const secret = (name: string) => Config.NonEmptyString(name).pipe(Config.map(Redacted.make));
 
@@ -61,11 +62,14 @@ export const ServerConfigLive = Layer.effect(
       port: yield* Config.Int("PORT").pipe(Config.withDefault(4320)),
       webDist: yield* Config.String("WEB_DIST").pipe(Config.option),
       workerIntervalMillis: yield* Config.Int("WORKER_INTERVAL_MS").pipe(Config.withDefault(2000)),
+      normalizeSettleMillis: yield* Config.schema(NonNegativeInt, "NORMALIZE_SETTLE_MS").pipe(
+        Config.withDefault(10_000),
+      ),
       statementTimeoutMillis: yield* Config.schema(
         StatementTimeout,
         "DB_STATEMENT_TIMEOUT_MS",
       ).pipe(Config.withDefault(30_000)),
-      pricingRefreshHours: yield* Config.schema(RefreshHours, "PRICING_REFRESH_HOURS").pipe(
+      pricingRefreshHours: yield* Config.schema(NonNegativeInt, "PRICING_REFRESH_HOURS").pipe(
         Config.withDefault(24),
       ),
     });

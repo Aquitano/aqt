@@ -1,4 +1,5 @@
 import {
+  filePathOf,
   type HostEnv,
   type ProviderId,
   type RawRecord,
@@ -98,7 +99,7 @@ const scanDescriptor = Effect.fn("Agent.scanDescriptor")(function* (
   const state = yield* AgentState.Service;
   const { conversationKeyOf } = yield* Providers;
   const streamId = streamIdOf(descriptor);
-  const absolutePath = path.join(descriptor.root.path, descriptor.relativePath);
+  const absolutePath = path.join(descriptor.root.path, filePathOf(descriptor));
   const fingerprint = yield* fingerprintOf(descriptor, absolutePath);
   if (fingerprint !== null && (yield* state.streamFingerprint(provider, streamId)) === fingerprint)
     return 0;
@@ -148,7 +149,12 @@ const scanDescriptor = Effect.fn("Agent.scanDescriptor")(function* (
     case "jsonl": {
       yield* Effect.gen(function* () {
         const checkpoint = (yield* state.streamCheckpoint(provider, streamId)) ?? { byteOffset: 0 };
-        const readPage = yield* openJsonl(streamId, absolutePath, checkpoint);
+        const readPage = yield* openJsonl(
+          streamId,
+          absolutePath,
+          checkpoint,
+          descriptor.compression,
+        );
         while (true) {
           const page = yield* readPage();
           const changed = yield* changedOf(page.records);
@@ -212,7 +218,7 @@ const scanRoot = Effect.fn("Agent.scanRoot")(function* (
     if (Result.isFailure(scanned)) {
       errors.push({
         provider: source.id,
-        path: `${root.path}/${descriptor.relativePath}`,
+        path: `${root.path}/${filePathOf(descriptor)}`,
         error: describeError(scanned.failure),
       });
     } else {

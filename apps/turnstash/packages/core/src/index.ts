@@ -5,6 +5,7 @@ export * from "./normalized.ts";
 export * from "./source.ts";
 export * from "./redact.ts";
 export * from "./json.ts";
+export * from "./blobs.ts";
 export * from "./timestamps.ts";
 export * from "./hash.ts";
 export * from "./pricing-rules.ts";

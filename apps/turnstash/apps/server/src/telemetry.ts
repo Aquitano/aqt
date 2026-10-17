@@ -70,7 +70,7 @@ const sampleGauges = Effect.fn("Telemetry.sampleGauges")(function* () {
   const [totals] = yield* db.execute<Totals>(
     sql`select
       (select count(*) from dirty_conversations where marked_at <= now()) as due,
-      (select count(*) from dirty_conversations where marked_at > now()) as backoff,
+      (select count(*) from dirty_conversations where marked_at > now() and attempts > 0) as backoff,
       (select count(*) from model_requests r where not exists (
         select 1 from valuations v where v.request_id = r.id and v.active)) as unpriced,
       (select count(*) from conversations) as conversations,

@@ -67,6 +67,39 @@ test("file extraction bounds each read and skips a line too large to send once i
     expect(Result.isFailure(missing) && missing.failure._tag).toBe("PlatformError");
   }));
 
+test("a line over the send limit is sent without its inline images when that makes it fit", () =>
+  withDirectory(async (directory) => {
+    const path = join(directory, "session.jsonl");
+    const image = (data: unknown) => ({ type: "image", source: { type: "base64", data } });
+    const line = JSON.stringify(image("A".repeat(4000)));
+    await Bun.write(
+      path,
+      `${line}
+{}
+`,
+    );
+    const page = await run(extractJsonl(streamId, path, { byteOffset: 0 }, { maxBytes: 1000 }));
+    expect(page.skipped).toEqual([]);
+    expect(page.records.map((record) => record.payload)).toEqual([
+      JSON.stringify(image({ omitted: "base64", bytes: 3000 })),
+    ]);
+    expect(page.checkpoint.byteOffset).toBe(Buffer.byteLength(line) + 1);
+    expect(page.hasMore).toBe(true);
+  }));
+
+test("a line over the send limit nested too deeply to strip is skipped", () =>
+  withDirectory(async (directory) => {
+    const path = join(directory, "session.jsonl");
+    const depth = 100_000;
+    await Bun.write(path, `${"[".repeat(depth)}${"]".repeat(depth)}\n{}\n`);
+    const page = await run(extractJsonl(streamId, path, { byteOffset: 0 }, { maxBytes: 1000 }));
+    expect(page.records).toEqual([]);
+    expect(page.skipped.map((record) => [String(record.recordKey), record.bytes])).toEqual([
+      ["0", 2 * depth + 1],
+    ]);
+    expect(page.hasMore).toBe(true);
+  }));
+
 test("JSONL checkpoints detect larger rewrites anywhere in the consumed prefix", () =>
   withDirectory(async (directory) => {
     const path = join(directory, "session.jsonl");
@@ -143,6 +176,37 @@ test("a paged JSONL reader stops when the file shrinks between pages", () =>
     );
     expect(page.records).toEqual([]);
     expect(page.hasMore).toBe(false);
+  }));
+
+test("a zstd JSONL file pages with the keys and checkpoint of the file it was compressed from", () =>
+  withDirectory(async (directory) => {
+    const path = join(directory, "session.jsonl");
+    const lines = '{"a":1}\n{"b":2}\n{"c":3}\n';
+    await Bun.write(path, lines);
+    await Bun.write(`${path}.zst`, Bun.zstdCompressSync(Buffer.from(lines)));
+    const readAll = (checkpoint: { readonly byteOffset: number }) =>
+      run(
+        Effect.gen(function* () {
+          const readPage = yield* openJsonl(streamId, `${path}.zst`, checkpoint, "zstd");
+          return yield* readPage();
+        }).pipe(Effect.scoped),
+      );
+    const plain = await run(extractJsonl(streamId, path, { byteOffset: 0 }, { maxRecords: 2 }));
+    const compressed = await readAll(plain.checkpoint);
+    expect(compressed.records.map((record) => String(record.recordKey))).toEqual(["16"]);
+    expect(compressed.checkpoint).toEqual({
+      byteOffset: Buffer.byteLength(lines),
+      prefixHash: sha256Hex(lines),
+    });
+    const fromStart = await readAll({ byteOffset: 0 });
+    expect(fromStart.records.map((record) => String(record.recordKey))).toEqual(["0", "8", "16"]);
+    await Bun.write(`${path}.zst`, "not zstd");
+    const corrupt = await run(
+      Effect.gen(function* () {
+        return yield* openJsonl(streamId, `${path}.zst`, { byteOffset: 0 }, "zstd");
+      }).pipe(Effect.scoped, Effect.result),
+    );
+    expect(Result.isFailure(corrupt) && corrupt.failure._tag).toBe("CompressedFileUnreadable");
   }));
 
 test("SQLite extraction pages by the native key and sees updates on a fresh scan", () =>

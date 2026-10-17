@@ -304,3 +304,32 @@ test("a request whose message names no model is billed as unknown", () => {
   ]);
   expect(conversation?.requests.map((request) => request.modelRaw)).toEqual(["unknown"]);
 });
+
+test("an image the agent sent without its data still records its size", () => {
+  const streamId = streamIdOf({ kind: "jsonl", root: configRoot, relativePath: transcript });
+  const payload = JSON.stringify({
+    type: "user",
+    uuid: "00000000-0000-4000-8000-000000000003",
+    timestamp: "2026-09-21T09:00:04.000Z",
+    sessionId: session,
+    message: {
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: "image/png",
+            data: { omitted: "base64", bytes: 3000 },
+          },
+        },
+      ],
+    },
+  });
+  const conversation = claudeNormalizer.normalize(session, [
+    { streamId, recordKey: RecordKey.make("0"), payload, observedAt: "2026-09-21T12:00:00.000Z" },
+  ]);
+  expect(conversation?.messages.flatMap((message) => message.parts)).toEqual([
+    { type: "image", mediaType: "image/png", bytes: 3000 },
+  ]);
+});

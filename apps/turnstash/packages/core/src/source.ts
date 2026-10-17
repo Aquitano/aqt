@@ -16,7 +16,10 @@ export interface SourceRoot {
 export interface JsonlSource {
   readonly kind: "jsonl";
   readonly root: SourceRoot;
+  // A compressed file keeps the stream of the name it had before compression, so records already
+  // sent keep their keys and the checkpoint stays valid.
   readonly relativePath: string;
+  readonly compression?: "zstd";
 }
 
 export interface JsonFileSource {
@@ -52,6 +55,13 @@ export const streamIdOf = (source: SourceDescriptor): StreamId =>
         : source.relativePath
     }`,
   );
+
+export const zstdSuffix = ".zst";
+
+export const filePathOf = (source: SourceDescriptor): string =>
+  source.kind === "jsonl" && source.compression === "zstd"
+    ? `${source.relativePath}${zstdSuffix}`
+    : source.relativePath;
 
 export interface StreamParts {
   readonly kind: string;

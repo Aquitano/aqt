@@ -1,5 +1,6 @@
 import {
   isJsonArray as isArray,
+  isOmittedBlob,
   isoTimestampOf,
   jsonArray as asArray,
   jsonCount as count,
@@ -168,14 +169,20 @@ const requestsOf = (draft: RequestDraft): ReadonlyArray<NormalizedRequest> => {
 
 const base64Bytes = (data: string): number => Math.floor((data.replace(/=+$/, "").length * 3) / 4);
 
+const blobBytes = (data: Schema.Json | undefined): number | undefined => {
+  if (isOmittedBlob(data)) return data.bytes;
+  const encoded = asString(data);
+  return encoded === undefined ? undefined : base64Bytes(encoded);
+};
+
 const imagePartOf = (block: Schema.JsonObject): MessagePart => {
   const source = asObject(block["source"]);
   const mediaType = asString(source?.["media_type"]);
-  const data = asString(source?.["data"]);
+  const bytes = blobBytes(source?.["data"]);
   return {
     type: "image",
     ...(mediaType === undefined ? {} : { mediaType }),
-    ...(data === undefined ? {} : { bytes: base64Bytes(data) }),
+    ...(bytes === undefined ? {} : { bytes }),
   };
 };
 

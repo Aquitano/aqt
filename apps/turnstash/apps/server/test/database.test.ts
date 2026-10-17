@@ -76,6 +76,7 @@ test("database deadlines cancel slow statements and leave connections usable", a
         expect(failureSummary(result.failure)).toMatchObject({
           reason: "StatementTimeoutError",
           sqlState: "57014",
+          operation: "query",
         });
       const response = yield* db.execute(sql`select pg_sleep(0.25)`).pipe(databaseFailure);
       expect(response).toMatchObject({ status: 503 });

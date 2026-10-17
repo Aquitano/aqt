@@ -201,7 +201,7 @@ test("requests report the 1h cache bucket, keep reasoning inside output and skip
     usage: {
       inputTokens: 1636,
       cacheReadTokens: 6016,
-      cacheWriteTokens: 128,
+      cacheWriteTokens: 64,
       cacheWrite1hTokens: 64,
       outputTokens: 223,
       reasoningTokens: 39,
