@@ -252,6 +252,7 @@ export const normalizeVscodeChat = (
     clientVersion = request.agent?.extensionVersion ?? clientVersion;
     pushMessage(`user:${id}`, "user", createdAt, [{ type: "text", text: request.message.text }]);
     const parts: Array<MessagePart> = [];
+    const toolKeys = new Set<string>();
     if (typeof request.response === "string") parts.push({ type: "text", text: request.response });
     else
       for (const part of request.response ?? []) {
@@ -265,17 +266,22 @@ export const normalizeVscodeChat = (
         ) {
           const toolKey = `tool:${id}:${part.toolCallId ?? parts.length}`;
           const name = part.toolId ?? "unknown";
-          parts.push({ type: "tool_call", toolKey, name, input: null });
+          // A response can list one call twice: a copy, or the tool and its `_internal` implementation.
+          const repeat = toolKeys.has(toolKey);
+          if (!repeat) parts.push({ type: "tool_call", toolKey, name, input: null });
           const summary = textOf(part.invocationMessage);
           if (summary) parts.push({ type: "text", text: summary });
-          tools.push({
-            toolKey,
-            messageKey: `assistant:${id}`,
-            name,
-            input: null,
-            output: null,
-            status: "unknown",
-          });
+          if (!repeat) {
+            toolKeys.add(toolKey);
+            tools.push({
+              toolKey,
+              messageKey: `assistant:${id}`,
+              name,
+              input: null,
+              output: null,
+              status: "unknown",
+            });
+          }
         }
       }
     if (parts.length > 0) {
