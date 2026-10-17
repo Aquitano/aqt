@@ -339,6 +339,30 @@ func TestMovedHardLinkKeepsItsRow(t *testing.T) {
 	}
 }
 
+// A path kept as a link that went missing and then received the file by a
+// rename keeps its row, and the file's old path stops counting as present.
+func TestRenameOntoAMissingLinkVacatesTheOldPath(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "a/vacate.bin", "linked bytes")
+	if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(filepath.Join(root, "a", "vacate.bin"), filepath.Join(root, "b", "vacate.bin")); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	scanAt(t, st, root, testVolume)
+	if err := os.Remove(filepath.Join(root, "b", "vacate.bin")); err != nil {
+		t.Fatal(err)
+	}
+	scanUnder(t, st, root, "b")
+	if err := os.Rename(filepath.Join(root, "a", "vacate.bin"), filepath.Join(root, "b", "vacate.bin")); err != nil {
+		t.Fatal(err)
+	}
+	scanUnder(t, st, root, "b")
+	livePaths(t, st, "vacate", "/b/vacate.bin")
+}
+
 // A path that cannot be reopened, here a folder name that is not valid
 // UTF-8, neither fails the scan nor gives up its row to another link.
 func TestHardLinksUnderInvalidNamesKeepTheirPaths(t *testing.T) {

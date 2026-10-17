@@ -328,6 +328,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 	}
 	matched := make([]*entryRow, len(listed))
 	claimed := map[int64]bool{}
+	var vacated []int64
 	claim := func(i int, r *entryRow) {
 		matched[i] = r
 		claimed[r.ID] = true
@@ -339,7 +340,9 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		byName[existing[i].Name] = append(byName[existing[i].Name], &existing[i])
 	}
 	// A path the catalogue keeps as a hard link stays one when its file id
-	// turns up on another row: that row's path holds the id or is gone.
+	// turns up on another row: that row's path holds the id or is gone. A row
+	// whose path is gone is vacated, marked missing now rather than whenever
+	// its own folder is next scanned.
 	keptAsLink := func(l Listed) bool {
 		return l.Kind == "file" && slices.ContainsFunc(byName[l.Name], func(r *entryRow) bool { return r.FileID == nil })
 	}
@@ -383,7 +386,14 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 				if matched[i] != nil || r == nil || claimed[r.ID] {
 					continue
 				}
-				if l.Kind == "file" && (keptAsLink(l) || r.MissingScan == nil && holds(r.Path, l.FileID)) {
+				if l.Kind == "file" && keptAsLink(l) {
+					listed[i].FileID = 0
+					if r.MissingScan == nil && !holds(r.Path, l.FileID) {
+						vacated = append(vacated, r.ID)
+					}
+					continue
+				}
+				if l.Kind == "file" && r.MissingScan == nil && holds(r.Path, l.FileID) {
 					listed[i].FileID = 0
 					continue
 				}
@@ -488,6 +498,11 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			batch.Queue(`update entries set listed_scan = $2 where id = $1`, parent.ID, sc.ID)
 			reads = append(reads, execResult)
 		}
+	}
+	if len(vacated) > 0 {
+		batch.Queue(`update entries set missing_scan = $2 where id = any($1) and missing_scan is null`, vacated, sc.ID)
+		reads = append(reads, execResult)
+		sc.dirty += len(vacated)
 	}
 	inserted := map[string]int64{}
 	if len(fresh.name) > 0 {
