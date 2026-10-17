@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/peterldowns/pgtestdb"
 	"github.com/peterldowns/pgtestdb/migrators/common"
@@ -79,8 +80,13 @@ func ping(ctx context.Context, conf *pgx.ConnConfig) error {
 }
 
 // unreachable reports whether nothing is listening: connection refused or an
-// unknown host, the one failure worth a skip.
+// unknown host, the one failure worth a skip. pgx joins the errors of every
+// address it tried, so a server that answered on any of them rules it out.
 func unreachable(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return false
+	}
 	var op *net.OpError
 	var dns *net.DNSError
 	return errors.As(err, &op) || errors.As(err, &dns)
