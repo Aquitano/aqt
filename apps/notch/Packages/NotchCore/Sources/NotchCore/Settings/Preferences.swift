@@ -413,6 +413,9 @@ package struct PreferencesStore {
     package func legacyHotkey() -> LegacyHotkey? {
         do {
             if let data = try persistence.loadData(from: Self.fileName) {
+                // load() falls back to defaults for a document it cannot decode; importing a chord
+                // from it would then persist those defaults over the user's file.
+                guard (try? Preferences.decode(data)) != nil else { return nil }
                 return LegacyHotkey(document: data)
             }
             return legacyDefaults.flatMap { LegacyHotkey(defaults: $0) }

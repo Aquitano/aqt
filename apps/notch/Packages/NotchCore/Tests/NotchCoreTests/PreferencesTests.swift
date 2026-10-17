@@ -69,6 +69,18 @@ struct PreferencesTests {
         #expect(store.legacyHotkey() == nil, "the new document must not reimport stale UserDefaults")
     }
 
+    @Test func undecodableDocumentYieldsNoLegacyHotkey() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let persistence = Persistence(rootDirectory: root)
+        try Data("""
+        {"version": 1, "hud": {"enabled": "yes"}, "general": {"hotkeyKeyCode": 45, "hotkeyModifiers": 6144}}
+        """.utf8).write(to: root.appendingPathComponent(PreferencesStore.fileName))
+        let store = PreferencesStore(persistence: persistence, legacyDefaults: nil)
+
+        #expect(store.legacyHotkey() == nil, "importing would persist defaults over the unreadable file")
+    }
+
     @Test func malformedLegacyHotkeyCannotOverflowCarbonValues() {
         for fields in ["\"hotkeyKeyCode\": -1", "\"hotkeyModifiers\": -1", "\"hotkeyKeyCode\": 999999"] {
             let data = Data("{\"general\": {\(fields)}}".utf8)
