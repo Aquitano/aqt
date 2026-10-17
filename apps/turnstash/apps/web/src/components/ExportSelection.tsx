@@ -7,11 +7,13 @@ import { MarkdownExportButton } from "./MarkdownExportButton";
 
 export const useExportSelection = () => {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const toggle = (key: string, on: boolean) =>
+  const toggle = (keys: ReadonlyArray<string>, on: boolean) =>
     setSelected((previous) => {
       const next = new Set(previous);
-      if (on) next.add(key);
-      else next.delete(key);
+      for (const key of keys) {
+        if (on) next.add(key);
+        else next.delete(key);
+      }
       return next;
     });
   const clear = () => setSelected(new Set());
@@ -47,18 +49,18 @@ export const SelectionBar = ({
 
 export const SelectForExport = ({
   label,
-  messageKey,
+  messageKeys,
   selection,
 }: {
   readonly label: string;
-  readonly messageKey: string;
+  readonly messageKeys: ReadonlyArray<string>;
   readonly selection: ReturnType<typeof useExportSelection>;
 }) => (
   <Label className="gap-1.5 text-xs font-normal whitespace-nowrap">
     <Checkbox
       aria-label={label}
-      checked={selection.selected.has(messageKey)}
-      onCheckedChange={(checked) => selection.toggle(messageKey, checked)}
+      checked={messageKeys.every((key) => selection.selected.has(key))}
+      onCheckedChange={(checked) => selection.toggle(messageKeys, checked)}
     />
     Select
   </Label>

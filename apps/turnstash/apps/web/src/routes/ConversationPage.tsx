@@ -1,7 +1,7 @@
 import type { ConversationDetail } from "@aqt/turnstash-api";
 import { Alert, AlertDescription, AlertTitle } from "@aqt/ui/components/alert";
 import { Badge } from "@aqt/ui/components/badge";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { CircleAlertIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
@@ -11,21 +11,26 @@ import { BookmarkButton } from "../components/BookmarkButton";
 import { CommitList } from "../components/CommitList";
 import { conversationLabel } from "../components/ConversationsTable";
 import { MarkdownExportButton } from "../components/MarkdownExportButton";
-import { MessageThread } from "../components/MessageThread";
+import { MessageThread, Requests } from "../components/MessageThread";
 import { Page, PageHead } from "../components/Page";
 import { ProviderBadge } from "../components/ProviderBadge";
 import { RequestInspector } from "../components/RequestInspector";
 import { Section } from "../components/Section";
-import { SessionTimeline } from "../components/SessionTimeline";
 import { routeLabel } from "../components/Tables";
-import { TurnList } from "../components/TurnList";
+import { TurnStrip } from "../components/TurnStrip";
 import { dateTime, duration, int, usd } from "../format";
-import { conversationQuery, timelinePagesQuery } from "../queries";
+import { conversationQuery } from "../queries";
 
 const row = "flex flex-wrap items-center gap-2";
 const textLink = "underline underline-offset-2 hover:decoration-primary";
 
-const Summary = ({ detail }: { readonly detail: ConversationDetail }) => {
+const Summary = ({
+  detail,
+  onInspect,
+}: {
+  readonly detail: ConversationDetail;
+  readonly onInspect: (requestId: string) => void;
+}) => {
   const { conversation } = detail;
   const label = conversationLabel(conversation);
   return (
@@ -94,6 +99,20 @@ const Summary = ({ detail }: { readonly detail: ConversationDetail }) => {
             </Badge>
           ))}
         </dd>
+        {detail.requestsWithoutMessage.length > 0 && (
+          <>
+            <dt>Requests without a message</dt>
+            <dd>
+              <Requests requests={detail.requestsWithoutMessage} onInspect={onInspect} />
+              {detail.requestsWithoutMessageTotal > detail.requestsWithoutMessage.length && (
+                <p className="text-xs text-muted-foreground">
+                  First {int(detail.requestsWithoutMessage.length)} of{" "}
+                  {int(detail.requestsWithoutMessageTotal)}
+                </p>
+              )}
+            </dd>
+          </>
+        )}
         {conversation.parentId !== null && (
           <>
             <dt>Continued from</dt>
@@ -133,30 +152,28 @@ export const ConversationPage = () => {
   const { id } = useParams({ from: "/conversations/$id" });
   const search = useSearch({ from: "/conversations/$id" });
   const detail = useQuery(conversationQuery(id));
-  const timeline = useInfiniteQuery(timelinePagesQuery(id));
   const [inspecting, setInspecting] = useState<string | null>(null);
 
   return (
     <Page>
-      <Async query={detail}>{(data) => <Summary key={data.conversation.id} detail={data} />}</Async>
+      <Async query={detail}>
+        {(data) => <Summary key={data.conversation.id} detail={data} onInspect={setInspecting} />}
+      </Async>
 
       {detail.data !== undefined && detail.data.commits.length > 0 && (
         <Section title="Commits" note={`${detail.data.commits.length} linked by time window`}>
           <CommitList commits={detail.data.commits} />
         </Section>
       )}
-      {detail.data !== undefined && detail.data.turns.length > 0 && (
+      {detail.data !== undefined && detail.data.turns.length > 1 && (
         <Section
-          title="Turns"
-          note={`${detail.data.turns.length} turns, categories are rule-based`}
+          title="Cost by turn"
+          note={`${int(detail.data.turns.length)} turns · select a bar to open it`}
         >
-          <TurnList key={id} turns={detail.data.turns} conversationId={id} />
+          <TurnStrip turns={detail.data.turns} conversationId={id} />
         </Section>
       )}
-      <Section title="Session timeline">
-        <SessionTimeline key={id} conversationId={id} onInspect={setInspecting} />
-      </Section>
-      <Section title="Transcript">
+      <Section title="Transcript" note="Turn categories are rule-based">
         {search.invalidMessage === true ? (
           <Alert variant="destructive">
             <CircleAlertIcon />
@@ -165,11 +182,12 @@ export const ConversationPage = () => {
           </Alert>
         ) : (
           <MessageThread
-            key={`${id}:${search.message ?? ""}:${search.q ?? ""}`}
+            key={id}
             conversationId={id}
+            turns={detail.data?.turns ?? []}
             messageKey={search.message}
             query={search.q}
-            layoutReady={!detail.isPending && !timeline.isPending}
+            layoutReady={!detail.isPending}
             onInspect={setInspecting}
           />
         )}

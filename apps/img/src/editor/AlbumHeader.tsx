@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { albumQuery, albumsQuery } from "@/lib/queries";
+import { rejectFailures } from "@/lib/server-error";
 import * as albumFns from "@/server/fns/albums";
 import * as shareFns from "@/server/fns/share";
 
@@ -61,7 +62,8 @@ function Title() {
   const [draft, setDraft] = useState<string | null>(null);
 
   const rename = useMutation({
-    mutationFn: (title: string) => albumFns.update({ data: { albumId: album.id, title } }),
+    mutationFn: (title: string) =>
+      rejectFailures(albumFns.update({ data: { albumId: album.id, title } })),
     onSuccess: () => {
       void queryClient.invalidateQueries(albumsQuery());
       void queryClient.invalidateQueries(albumQuery(album.id));
@@ -116,8 +118,9 @@ function SharePopover() {
 
   const toggle = useMutation({
     mutationFn: async (enable: boolean) => {
-      if (enable) return (await shareFns.enable({ data: { albumId: album.id } })).slug;
-      await shareFns.disable({ data: { albumId: album.id } });
+      const data = { albumId: album.id };
+      if (enable) return (await rejectFailures(shareFns.enable({ data }))).slug;
+      await rejectFailures(shareFns.disable({ data }));
       return null;
     },
     onSuccess: (shareSlug) => {

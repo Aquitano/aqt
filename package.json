@@ -17,9 +17,9 @@
     ],
     "catalog": {
       "dotenv": "^18.0.7",
-      "zod": "^4.6.5",
+      "zod": "^4.6.7",
       "typescript": "^7.0.2",
-      "@types/bun": "^1.4.2",
+      "@types/bun": "^1.4.3",
       "@types/node": "^26.6.5",
       "hono": "^4.13.13",
       "@trpc/server": "^11.19.0",
@@ -51,7 +51,8 @@
     "vite-plus": "catalog:"
   },
   "overrides": {
-    "@tanstack/query-core": "5.104.1",
+    "@tanstack/query-core": "5.104.3",
+    "postcss-selector-parser": "^7.1.6",
     "vite": "catalog:"
   },
   "packageManager": "bun@1.4.3"

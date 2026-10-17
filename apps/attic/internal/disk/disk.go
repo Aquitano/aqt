@@ -6,6 +6,7 @@ package disk
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	"lukechampine.com/blake3"
@@ -56,6 +57,8 @@ type Entry struct {
 
 type Digest [32]byte
 
+var hashBuffers = sync.Pool{New: func() any { return new([1 << 20]byte) }}
+
 // Hash reads the whole file once and returns its BLAKE3-256 digest and the
 // number of bytes read. Cancelling ctx stops it within one buffer, so a
 // 50 GB disk image does not hold up Ctrl+C.
@@ -66,8 +69,10 @@ func Hash(ctx context.Context, path string) (Digest, int64, error) {
 		return d, 0, err
 	}
 	defer f.Close()
+	buffer := hashBuffers.Get().(*[1 << 20]byte)
+	defer hashBuffers.Put(buffer)
 	h := blake3.New(len(d), nil)
-	n, err := io.CopyBuffer(h, ctxReader{ctx, f}, make([]byte, 1<<20))
+	n, err := io.CopyBuffer(h, ctxReader{ctx, f}, buffer[:])
 	if err != nil {
 		return d, n, err
 	}
