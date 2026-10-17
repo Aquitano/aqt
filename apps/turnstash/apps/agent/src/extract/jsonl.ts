@@ -138,7 +138,11 @@ const fittedLine = Effect.fn("Extract.fittedLine")(function* (
   yield* file.seek(from);
   const line = yield* readBytes(file, length, length);
   const contentEnd = line[length - 2] === 0x0d ? length - 2 : length - 1;
-  const payload = omitInlineBlobs(new TextDecoder().decode(line.subarray(0, contentEnd)));
+  const text = new TextDecoder().decode(line.subarray(0, contentEnd));
+  // A line nested deeply enough to overflow the stack while walking it keeps its blobs.
+  const payload = yield* Effect.try(() => omitInlineBlobs(text)).pipe(
+    Effect.orElseSucceed(() => text),
+  );
   return Buffer.byteLength(payload) <= maxBytes ? payload : undefined;
 });
 

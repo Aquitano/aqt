@@ -87,6 +87,19 @@ test("a line over the send limit is sent without its inline images when that mak
     expect(page.hasMore).toBe(true);
   }));
 
+test("a line over the send limit nested too deeply to strip is skipped", () =>
+  withDirectory(async (directory) => {
+    const path = join(directory, "session.jsonl");
+    const depth = 100_000;
+    await Bun.write(path, `${"[".repeat(depth)}${"]".repeat(depth)}\n{}\n`);
+    const page = await run(extractJsonl(streamId, path, { byteOffset: 0 }, { maxBytes: 1000 }));
+    expect(page.records).toEqual([]);
+    expect(page.skipped.map((record) => [String(record.recordKey), record.bytes])).toEqual([
+      ["0", 2 * depth + 1],
+    ]);
+    expect(page.hasMore).toBe(true);
+  }));
+
 test("JSONL checkpoints detect larger rewrites anywhere in the consumed prefix", () =>
   withDirectory(async (directory) => {
     const path = join(directory, "session.jsonl");
