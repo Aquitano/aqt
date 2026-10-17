@@ -6,9 +6,7 @@ package pgschematest
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"io/fs"
-	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -46,7 +44,7 @@ func Database(t testing.TB, urlVar string, m pgtestdb.Migrator) string {
 		t.Fatalf("parse %s: %v", urlVar, err)
 	}
 	if err := ping(t.Context(), conf); err != nil {
-		if !required && unreachable(err) {
+		if !required && !listening(t.Context(), conf) {
 			t.Skipf("no database at %s: %v", u.Redacted(), err)
 		}
 		t.Fatalf("database at %s is unavailable: %v", u.Redacted(), err)
@@ -71,17 +69,19 @@ func ping(ctx context.Context, conf *pgx.ConnConfig) error {
 	return conn.Close(ctx)
 }
 
-// unreachable reports whether nothing is listening: connection refused or an
-// unknown host, the one failure worth a skip. pgx joins the errors of every
-// address it tried, so a server that answered on any of them rules it out.
-func unreachable(err error) bool {
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		return false
+// listening reports whether anything accepts a connection at one of conf's
+// addresses. Only a server that is not there at all is worth a skip; one that
+// answers and then refuses, hangs up or times out is a failure.
+func listening(ctx context.Context, conf *pgx.ConnConfig) bool {
+	hosts := append([]*pgconn.FallbackConfig{{Host: conf.Host, Port: conf.Port}}, conf.Fallbacks...)
+	for _, h := range hosts {
+		network, address := pgconn.NetworkAddress(h.Host, h.Port)
+		if conn, err := conf.DialFunc(ctx, network, address); err == nil {
+			conn.Close()
+			return true
+		}
 	}
-	var op *net.OpError
-	var dns *net.DNSError
-	return errors.As(err, &op) || errors.As(err, &dns)
+	return false
 }
 
 // Migrator builds the template with open, the call the app itself makes at
