@@ -232,14 +232,14 @@ func save(path string, s session) error {
 	if err != nil {
 		return err
 	}
-	// A crash mid-write would otherwise leave a truncated file that only
-	// `tracker logout` clears.
-	if err := atomic.WriteFile(path, bytes.NewReader(raw)); err != nil {
+	// atomic copies the replaced file's mode onto the new one, so tighten it
+	// first and the new token is never readable by anyone else, even briefly.
+	if err := os.Chmod(path, 0o600); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	// atomic keeps the mode of the file it replaces, so a session written
-	// with looser permissions before this is tightened here.
-	return os.Chmod(path, 0o600)
+	// A crash mid-write would otherwise leave a truncated file that only
+	// `tracker logout` clears.
+	return atomic.WriteFile(path, bytes.NewReader(raw))
 }
 
 // Healthy reports whether the server answers /healthz, which it does only
