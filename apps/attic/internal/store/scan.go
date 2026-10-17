@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,12 +26,14 @@ type Scan struct {
 	// Phases is how long each phase took, written when the scan finishes.
 	Phases PhaseTimes
 
-	store      *Store
-	lock       *pgxpool.Conn
-	tx         pgx.Tx
-	dirty      int
-	lastCommit time.Time
-	skips      [][]any
+	store       *Store
+	lock        *pgxpool.Conn
+	tx          pgx.Tx
+	dirty       int
+	lastCommit  time.Time
+	skips       [][]any
+	hashes      []completedHash
+	hashInserts map[int64]bool
 }
 
 type ScanCounts struct {
@@ -61,6 +64,7 @@ type PhaseTimes struct {
 const (
 	commitEvery = 2 * time.Second
 	commitRows  = 5000
+	hashBatch   = 64
 )
 
 // Dir is a folder the scan has recorded and may descend into.
@@ -189,6 +193,9 @@ func (sc *Scan) MaybeCommit(ctx context.Context) error {
 
 // Commit makes everything so far visible, to search and to the hashing queue.
 func (sc *Scan) Commit(ctx context.Context) error {
+	if err := sc.flushContents(ctx); err != nil {
+		return err
+	}
 	if len(sc.skips) > 0 {
 		tx, err := sc.begin(ctx)
 		if err != nil {
@@ -258,17 +265,21 @@ func collectEntryRows(rows pgx.Rows) ([]entryRow, error) {
 // the subfolders to descend into, in listing order.
 //
 // A listed entry is matched to an existing row by, in order: its file id among
-// the folder's rows; its file id anywhere on the volume, which means it moved
-// here; its name among rows nothing else claimed. On NTFS a name match with a
-// new file id is a file replaced in place by a save-via-rename, and keeps its
-// row. A matched row is only written when something about it changed, so
-// rescanning an unchanged disk writes almost nothing.
+// the folder's rows; its file id elsewhere on the volume, unless that row's
+// path still holds the file, which makes the entry another hard link; its name
+// among rows nothing else claimed. On NTFS a name match with a new file id is
+// a file replaced in place by a save-via-rename, and keeps its row. A matched
+// row is only written when something about it changed, so rescanning an
+// unchanged disk writes almost nothing.
 //
 // parent is nil for the volume root. complete says the listing is the whole
 // folder: only then are rows it no longer contains marked missing, never
 // after a partial read. keep names entries that exist but were excluded,
-// which are neither indexed nor marked missing.
-func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, keep map[string]bool, complete bool) ([]Dir, error) {
+// which are neither indexed nor marked missing. holds reports whether a
+// catalogued path still holds a file id, and says yes when it cannot tell: a
+// wrong yes costs a hash, a wrong no moves a row away from a path that exists.
+func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, keep map[string]bool, complete bool,
+	holds func(entryPath string, fileID int64) bool) ([]Dir, error) {
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return nil, err
@@ -292,23 +303,48 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 	for name := range keep {
 		kept[cleanText(name)] = true
 	}
-	seenIDs := map[int64]bool{}
+	listedNames := make(map[string]int, len(listed))
 	for i := range listed {
 		listed[i] = normalize(listed[i], sc.Volume.StableIDs)
-		// Hard links in one folder share a file id. The second keeps its
-		// path as identity instead; ids are unique per volume.
+		listedNames[listed[i].Name] = i
+	}
+	owners := map[int64]int{}
+	for _, r := range existing {
+		if r.FileID == nil {
+			continue
+		}
+		if i, ok := listedNames[r.Name]; ok && listed[i].FileID == *r.FileID {
+			owners[*r.FileID] = i
+		}
+	}
+	for i := range listed {
 		if id := listed[i].FileID; id != 0 {
-			if seenIDs[id] {
+			if owner, ok := owners[id]; ok && owner != i {
 				listed[i].FileID = 0
+			} else {
+				owners[id] = i
 			}
-			seenIDs[id] = true
 		}
 	}
 	matched := make([]*entryRow, len(listed))
 	claimed := map[int64]bool{}
+	var vacated []int64
 	claim := func(i int, r *entryRow) {
 		matched[i] = r
 		claimed[r.ID] = true
+	}
+	// A folder can hold several rows of one name: a missing one beside the
+	// live one, or a hard link kept by path.
+	byName := map[string][]*entryRow{}
+	for i := range existing {
+		byName[existing[i].Name] = append(byName[existing[i].Name], &existing[i])
+	}
+	// A path the catalogue keeps as a hard link stays one when its file id
+	// turns up on another row: that row's path holds the id or is gone. A row
+	// whose path is gone is vacated, marked missing now rather than whenever
+	// its own folder is next scanned.
+	keptAsLink := func(l Listed) bool {
+		return l.Kind == "file" && slices.ContainsFunc(byName[l.Name], func(r *entryRow) bool { return r.FileID == nil })
 	}
 
 	if sc.Volume.StableIDs {
@@ -320,10 +356,15 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		}
 		var elsewhere []int64
 		for i, l := range listed {
-			if r := byID[l.FileID]; l.FileID != 0 && r != nil && !claimed[r.ID] {
-				claim(i, r)
-			} else if l.FileID != 0 {
+			r := byID[l.FileID]
+			switch {
+			case l.FileID == 0:
+			case r == nil || claimed[r.ID]:
 				elsewhere = append(elsewhere, l.FileID)
+			case r.Name != l.Name && keptAsLink(l):
+				listed[i].FileID = 0
+			default:
+				claim(i, r)
 			}
 		}
 		if len(elsewhere) > 0 {
@@ -341,20 +382,27 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 				byMovedID[*moved[i].FileID] = &moved[i]
 			}
 			for i, l := range listed {
-				if r := byMovedID[l.FileID]; matched[i] == nil && r != nil && !claimed[r.ID] {
-					claim(i, r)
+				r := byMovedID[l.FileID]
+				if matched[i] != nil || r == nil || claimed[r.ID] {
+					continue
 				}
+				if l.Kind == "file" && keptAsLink(l) {
+					listed[i].FileID = 0
+					if r.MissingScan == nil && !holds(r.Path, l.FileID) {
+						vacated = append(vacated, r.ID)
+					}
+					continue
+				}
+				if l.Kind == "file" && r.MissingScan == nil && holds(r.Path, l.FileID) {
+					listed[i].FileID = 0
+					continue
+				}
+				claim(i, r)
 			}
 		}
 	}
-	// A folder can hold several rows of one name: a missing one beside the
-	// live one, or a hard link kept by path. Prefer the row without a file id,
-	// so a listed entry that also has none never collides with it in the
-	// (parent, name) index.
-	byName := map[string][]*entryRow{}
-	for i := range existing {
-		byName[existing[i].Name] = append(byName[existing[i].Name], &existing[i])
-	}
+	// Prefer the row without a file id, so a listed entry that also has none
+	// never collides with it in the (parent, name) index.
 	for i, l := range listed {
 		if matched[i] != nil {
 			continue
@@ -450,6 +498,11 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			batch.Queue(`update entries set listed_scan = $2 where id = $1`, parent.ID, sc.ID)
 			reads = append(reads, execResult)
 		}
+	}
+	if len(vacated) > 0 {
+		batch.Queue(`update entries set missing_scan = $2 where id = any($1) and missing_scan is null`, vacated, sc.ID)
+		reads = append(reads, execResult)
+		sc.dirty += len(vacated)
 	}
 	inserted := map[string]int64{}
 	if len(fresh.name) > 0 {
@@ -653,6 +706,11 @@ type Pending struct {
 	Size int64
 }
 
+type completedHash struct {
+	file   Pending
+	digest [32]byte
+}
+
 // subtree bounds paths at or below the scan root as a byte-order range.
 func (sc *Scan) subtree() (lower, upper string) {
 	if sc.Root == "" {
@@ -683,7 +741,7 @@ func (sc *Scan) NextPending(ctx context.Context, after Pending, limit int) ([]Pe
 	rows, err := sc.store.pool.Query(ctx, `
 		select id, path, size_bytes from entries
 		where volume_id = $1 and hash_state in ('pending', 'failed') and kind = 'file' and missing_scan is null
-		  and (path collate "C" > $2 or (path = $2 and id > $5)) and ($3 = '' or path collate "C" < $3)
+		  and (path collate "C", id) > ($2, $5) and ($3 = '' or path collate "C" < $3)
 		order by path collate "C", id limit $4`,
 		sc.Volume.ID, lower, upper, limit, after.ID)
 	if err != nil {
@@ -696,43 +754,118 @@ func (sc *Scan) NextPending(ctx context.Context, after Pending, limit int) ([]Pe
 	})
 }
 
-// SetContent attaches a digest to a file. The update only applies while the
-// row still has the size that was hashed; a rescan in between would have
-// queued it again anyway.
+// SetContent queues a digest for a file. Batches flush at 64 files and before
+// Commit; each entry update still requires the size that was hashed.
 //
-// The contents row commits on its own, outside the scan's transaction: held
-// there, it would stay locked for as long as the next file takes to hash, and
-// a scan of another disk meeting the same bytes would wait on it.
+// Contents commit independently, so their locks never span later hashing.
+// Sorting digests keeps overlapping scans from taking those locks in opposite
+// orders. A separate lookup sees contents another scan committed meanwhile.
 func (sc *Scan) SetContent(ctx context.Context, p Pending, digest [32]byte) error {
-	var contentID int64
-	inserted := true
-	err := sc.store.pool.QueryRow(ctx, `
-		insert into contents (blake3, size_bytes) values ($1, $2) on conflict (blake3) do nothing returning id`,
-		digest[:], p.Size).Scan(&contentID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		inserted = false
-		err = sc.store.pool.QueryRow(ctx, `select id from contents where blake3 = $1`, digest[:]).Scan(&contentID)
+	if err := ctx.Err(); err != nil {
+		return err
 	}
+	sc.hashes = append(sc.hashes, completedHash{file: p, digest: digest})
+	if len(sc.hashes) >= hashBatch {
+		return sc.flushContents(ctx)
+	}
+	return nil
+}
+
+func (sc *Scan) flushContents(ctx context.Context) error {
+	if len(sc.hashes) == 0 {
+		return nil
+	}
+	contentIDs := make(map[[32]byte]int64, len(sc.hashes))
+	var digests [][]byte
+	var contentSizes []int64
+	for i, h := range sc.hashes {
+		if _, seen := contentIDs[h.digest]; seen {
+			continue
+		}
+		contentIDs[h.digest] = 0
+		digests = append(digests, sc.hashes[i].digest[:])
+		contentSizes = append(contentSizes, h.file.Size)
+	}
+	rows, err := sc.store.pool.Query(ctx, `
+		insert into contents (blake3, size_bytes)
+		select u.digest, u.size from unnest($1::bytea[], $2::bigint[]) as u(digest, size)
+		order by u.digest on conflict (blake3) do nothing returning id`, digests, contentSizes)
 	if err != nil {
 		return err
+	}
+	insertedIDs, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return err
+	}
+	// Kept on the scan: Finish retries a failed flush after these inserts
+	// committed, and they must not count as duplicates then.
+	if sc.hashInserts == nil {
+		sc.hashInserts = make(map[int64]bool, len(insertedIDs))
+	}
+	for _, id := range insertedIDs {
+		sc.hashInserts[id] = true
+	}
+	rows, err = sc.store.pool.Query(ctx, `select id, blake3 from contents where blake3 = any($1::bytea[])`, digests)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var digest []byte
+		if err := rows.Scan(&id, &digest); err != nil {
+			return err
+		}
+		contentIDs[[32]byte(digest)] = id
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	ids := make([]int64, len(sc.hashes))
+	contents := make([]int64, len(sc.hashes))
+	sizes := make([]int64, len(sc.hashes))
+	for i, h := range sc.hashes {
+		id := contentIDs[h.digest]
+		if id == 0 {
+			return fmt.Errorf("resolve content %x: %w", h.digest[:8], pgx.ErrNoRows)
+		}
+		ids[i], contents[i], sizes[i] = h.file.ID, id, h.file.Size
 	}
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return err
 	}
-	tag, err := tx.Exec(ctx, `
-		update entries set content_id = $2, hash_state = 'done', updated_scan = $3
-		where id = $1 and size_bytes = $4`,
-		p.ID, contentID, sc.ID, p.Size)
-	if err != nil || tag.RowsAffected() == 0 {
+	rows, err = tx.Query(ctx, `
+		update entries e set content_id = u.content_id, hash_state = 'done', updated_scan = $4
+		from unnest($1::bigint[], $2::bigint[], $3::bigint[]) as u(id, content_id, size)
+		where e.id = u.id and e.size_bytes = u.size returning e.id`, ids, contents, sizes, sc.ID)
+	if err != nil {
 		return err
 	}
-	sc.Counts.Hashed++
-	sc.Counts.HashedBytes += p.Size
-	if !inserted {
-		sc.Counts.Duplicates++
+	updatedIDs, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return err
 	}
-	sc.dirty++
+	updated := make(map[int64]bool, len(updatedIDs))
+	for _, id := range updatedIDs {
+		updated[id] = true
+	}
+	for _, h := range sc.hashes {
+		contentID := contentIDs[h.digest]
+		first := sc.hashInserts[contentID]
+		delete(sc.hashInserts, contentID)
+		// The first occurrence owns the insert even when its size guard fails.
+		if !updated[h.file.ID] {
+			continue
+		}
+		sc.Counts.Hashed++
+		sc.Counts.HashedBytes += h.file.Size
+		if !first {
+			sc.Counts.Duplicates++
+		}
+		sc.dirty++
+	}
+	sc.hashes = sc.hashes[:0]
 	return nil
 }
 
