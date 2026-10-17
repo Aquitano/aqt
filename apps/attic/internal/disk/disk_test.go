@@ -38,21 +38,3 @@ func TestHashConcurrentCallsAndCancellation(t *testing.T) {
 	}
 	wg.Wait()
 }
-
-func BenchmarkHash(b *testing.B) {
-	for _, size := range []int{4 << 10, 8 << 20} {
-		b.Run(fmt.Sprintf("%dKiB", size>>10), func(b *testing.B) {
-			path := filepath.Join(b.TempDir(), "file")
-			if err := os.WriteFile(path, bytes.Repeat([]byte{17}, size), 0o600); err != nil {
-				b.Fatal(err)
-			}
-			b.SetBytes(int64(size))
-			b.ReportAllocs()
-			for b.Loop() {
-				if _, _, err := Hash(context.Background(), path); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}

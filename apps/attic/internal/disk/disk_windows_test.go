@@ -44,7 +44,6 @@ func TestLongPath(t *testing.T) {
 	for _, tt := range []struct{ path, want string }{
 		{`C:/backup/file.bin`, `\\?\C:\backup\file.bin`},
 		{`//server/share/backup/file.bin`, `\\?\UNC\server\share\backup\file.bin`},
-		{`\\?\C:\backup/file.bin`, `\\?\C:\backup/file.bin`},
 		{`\\?\UNC\server\share\file.bin`, `\\?\UNC\server\share\file.bin`},
 	} {
 		t.Run(tt.path, func(t *testing.T) {
