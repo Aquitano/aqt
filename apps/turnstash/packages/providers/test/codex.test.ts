@@ -147,6 +147,35 @@ test("discovery keeps rollouts with a session_meta head and prefers the live cop
   }
 });
 
+test("discovery reads compressed rollouts under their uncompressed name, preferring an uncompressed copy", async () => {
+  const root = await mkdtemp(join(tmpdir(), "turnstash-codex-"));
+  try {
+    await mkdir(join(root, "sessions/2026/09/20"), { recursive: true });
+    const rollout = (id: string) =>
+      `sessions/2026/09/20/rollout-2026-09-20T10-58-17-00000000-0000-7000-0000-0000000${id}.jsonl`;
+    const head = '{"type":"session_meta","payload":{}}\n';
+    const compressed = Bun.zstdCompressSync(Buffer.from(head));
+    await Bun.write(join(root, `${rollout("0aaaa")}.zst`), compressed);
+    await Bun.write(join(root, `${rollout("0bbbb")}.zst`), compressed);
+    await Bun.write(join(root, rollout("0bbbb")), head);
+
+    const descriptors = await Effect.runPromise(
+      codexSource.discover({ path: root, label: "test" }).pipe(Effect.provide(BunServices.layer)),
+    );
+    expect(descriptors).toEqual([
+      {
+        kind: "jsonl",
+        root: { path: root, label: "test" },
+        relativePath: rollout("0aaaa"),
+        compression: "zstd",
+      },
+      { kind: "jsonl", root: { path: root, label: "test" }, relativePath: rollout("0bbbb") },
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("the conversation key is the filename uuid, whatever the record holds", () => {
   const key = codexNormalizer.conversationKeyOf(
     StreamId.make(`abc/jsonl/${guardian}`),

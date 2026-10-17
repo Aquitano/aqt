@@ -145,6 +145,37 @@ test("a paged JSONL reader stops when the file shrinks between pages", () =>
     expect(page.hasMore).toBe(false);
   }));
 
+test("a zstd JSONL file pages with the keys and checkpoint of the file it was compressed from", () =>
+  withDirectory(async (directory) => {
+    const path = join(directory, "session.jsonl");
+    const lines = '{"a":1}\n{"b":2}\n{"c":3}\n';
+    await Bun.write(path, lines);
+    await Bun.write(`${path}.zst`, Bun.zstdCompressSync(Buffer.from(lines)));
+    const readAll = (checkpoint: { readonly byteOffset: number }) =>
+      run(
+        Effect.gen(function* () {
+          const readPage = yield* openJsonl(streamId, `${path}.zst`, checkpoint, "zstd");
+          return yield* readPage();
+        }).pipe(Effect.scoped),
+      );
+    const plain = await run(extractJsonl(streamId, path, { byteOffset: 0 }, { maxRecords: 2 }));
+    const compressed = await readAll(plain.checkpoint);
+    expect(compressed.records.map((record) => String(record.recordKey))).toEqual(["16"]);
+    expect(compressed.checkpoint).toEqual({
+      byteOffset: Buffer.byteLength(lines),
+      prefixHash: sha256Hex(lines),
+    });
+    const fromStart = await readAll({ byteOffset: 0 });
+    expect(fromStart.records.map((record) => String(record.recordKey))).toEqual(["0", "8", "16"]);
+    await Bun.write(`${path}.zst`, "not zstd");
+    const corrupt = await run(
+      Effect.gen(function* () {
+        return yield* openJsonl(streamId, `${path}.zst`, { byteOffset: 0 }, "zstd");
+      }).pipe(Effect.scoped, Effect.result),
+    );
+    expect(Result.isFailure(corrupt) && corrupt.failure._tag).toBe("CompressedFileUnreadable");
+  }));
+
 test("SQLite extraction pages by the native key and sees updates on a fresh scan", () =>
   withDirectory(async (directory) => {
     const path = join(directory, "source.db");

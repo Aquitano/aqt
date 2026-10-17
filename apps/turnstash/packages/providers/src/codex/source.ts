@@ -5,13 +5,15 @@ import {
   type SourceDescriptor,
   type SourceProvider,
   type SourceRoot,
+  zstdSuffix,
 } from "@aqt/turnstash-core";
 import { Effect, FileSystem, Option, Stream } from "effect";
 
 import { distinctRoots } from "../roots.ts";
 import { walkFiles, type WalkedFile } from "../walk.ts";
 
-const rolloutPath = /^(?:sessions\/\d{4}\/\d{2}\/\d{2}|archived_sessions)\/rollout-[^/]+\.jsonl$/;
+const rolloutPath =
+  /^(?:sessions\/\d{4}\/\d{2}\/\d{2}|archived_sessions)\/rollout-[^/]+\.jsonl(?:\.zst)?$/;
 const archivedPrefix = "archived_sessions/";
 
 // session_meta embeds the full system prompt and runs to 21 KB, so the head read has to be
@@ -50,16 +52,31 @@ const isRollout = Effect.fn("Codex.isRollout")(function* (absolutePath: string) 
   return line !== undefined && line["type"] === "session_meta" && isJsonObject(line["payload"]);
 });
 
+const isCompressed = (file: WalkedFile): boolean => file.relativePath.endsWith(zstdSuffix);
+
+const uncompressedPath = (file: WalkedFile): string =>
+  isCompressed(file) ? file.relativePath.slice(0, -zstdSuffix.length) : file.relativePath;
+
+// Codex archives rollouts and compresses finished ones in place, so one session can briefly exist
+// as several files. The unarchived copy wins, then the uncompressed one.
+const rank = (file: WalkedFile): number =>
+  (file.relativePath.startsWith(archivedPrefix) ? 2 : 0) + (isCompressed(file) ? 1 : 0);
+
 const liveFirst = (files: ReadonlyArray<WalkedFile>): ReadonlyArray<WalkedFile> => {
   const byBasename = new Map<string, WalkedFile>();
   for (const file of files) {
-    const basename = file.relativePath.slice(file.relativePath.lastIndexOf("/") + 1);
+    const path = uncompressedPath(file);
+    const basename = path.slice(path.lastIndexOf("/") + 1);
     const kept = byBasename.get(basename);
-    if (kept === undefined || kept.relativePath.startsWith(archivedPrefix))
-      byBasename.set(basename, file);
+    if (kept === undefined || rank(file) < rank(kept)) byBasename.set(basename, file);
   }
   return [...byBasename.values()].sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 };
+
+const descriptorOf = (root: SourceRoot, file: WalkedFile): SourceDescriptor =>
+  isCompressed(file)
+    ? { kind: "jsonl", root, relativePath: uncompressedPath(file), compression: "zstd" }
+    : { kind: "jsonl", root, relativePath: file.relativePath };
 
 export const codexSource: SourceProvider = {
   id: "codex",
@@ -70,13 +87,18 @@ export const codexSource: SourceProvider = {
       within: ["sessions", "archived_sessions"],
       maxDepth: 4,
     });
+    // Checking a compressed head would decompress every finished rollout on every scan. Codex only
+    // compresses rollouts it wrote, so the name is enough.
     const checked = yield* Effect.forEach(
       liveFirst(files),
-      (file) => Effect.map(isRollout(file.absolutePath), (accepted) => ({ file, accepted })),
+      (file) =>
+        isCompressed(file)
+          ? Effect.succeed({ file, accepted: true })
+          : Effect.map(isRollout(file.absolutePath), (accepted) => ({ file, accepted })),
       { concurrency: 8 },
     );
     return checked.flatMap(({ accepted, file }): ReadonlyArray<SourceDescriptor> =>
-      accepted ? [{ kind: "jsonl", root, relativePath: file.relativePath }] : [],
+      accepted ? [descriptorOf(root, file)] : [],
     );
   }),
 };
