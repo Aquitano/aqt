@@ -1,5 +1,5 @@
 import { type Normalizer, type ProviderId, providerIds, StreamId } from "@aqt/turnstash-core";
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { Db, inTransaction } from "./db/client.ts";
@@ -8,7 +8,21 @@ import { Normalizers, storedPayloadOf } from "./registry.ts";
 import { scrubText } from "./scrub.ts";
 import { ensureBundledCatalog, recalculateCatalogs } from "./valuation.ts";
 
-const trimPageSize = 500;
+const trimPageRows = 500;
+const trimPageBytes = 32 * 1024 * 1024;
+
+// A page holds at least one record and stops at whichever limit it reaches first, so records full of
+// images are rewritten a few at a time.
+const pageIdsOf = (rows: ReadonlyArray<{ readonly id: number; readonly bytes: number }>) => {
+  const ids: Array<number> = [];
+  let bytes = 0;
+  for (const row of rows) {
+    bytes += row.bytes;
+    if (ids.length > 0 && bytes > trimPageBytes) break;
+    ids.push(row.id);
+  }
+  return ids;
+};
 
 // Records stored in an older form are rewritten in pages, each in its own transaction. A record replaced
 // after it was read keeps the new version, because the update matches the hash that was read.
@@ -20,6 +34,16 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
   let trimmed = 0;
   let after = 0;
   while (true) {
+    const sizes = yield* db
+      .select({ id: sourceRecords.id, bytes: sql<number>`octet_length(${sourceRecords.payload})` })
+      .from(sourceRecords)
+      .where(and(eq(sourceRecords.provider, provider), gt(sourceRecords.id, after)))
+      .orderBy(asc(sourceRecords.id))
+      .limit(trimPageRows);
+    const ids = pageIdsOf(sizes);
+    const last = ids.at(-1);
+    if (last === undefined) return trimmed;
+    after = last;
     const page = yield* db
       .select({
         id: sourceRecords.id,
@@ -29,12 +53,7 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
       })
       .from(sourceRecords)
       .innerJoin(sourceStreams, eq(sourceStreams.id, sourceRecords.streamRef))
-      .where(and(eq(sourceRecords.provider, provider), gt(sourceRecords.id, after)))
-      .orderBy(asc(sourceRecords.id))
-      .limit(trimPageSize);
-    const last = page.at(-1);
-    if (last === undefined) return trimmed;
-    after = last.id;
+      .where(inArray(sourceRecords.id, ids));
     const changed = page.flatMap(({ id, contentHash, payload, streamId }) => {
       const kept = scrubText(storedPayloadOf(normalizer, StreamId.make(streamId), payload));
       return kept === payload ? [] : [{ id, contentHash, payload: kept }];
