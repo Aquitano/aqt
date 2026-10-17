@@ -3,11 +3,14 @@ import { createHash } from "node:crypto";
 import type { AuthSession } from "@aqt/gallery-auth";
 import { db } from "@aqt/gallery-db";
 import { apiToken } from "@aqt/gallery-db/schema/tokens";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 
 /** Every personal access token starts with this so we can cheaply tell a PAT
  * apart from a Clerk bearer/session token before touching the database. */
 export const API_TOKEN_PREFIX = "aqtg_";
+
+/** The UI shows only the date of `lastUsedAt`, so refreshing it hourly is enough. */
+const USED_AT_RESOLUTION = 60 * 60 * 1000;
 
 /** A non-secret slice of the token (prefix + first chars) shown in the UI so a
  * user can recognise a token without it ever revealing the secret. */
@@ -50,14 +53,25 @@ export async function sessionFromApiToken(headers: Headers): Promise<AuthSession
     return null;
   }
 
-  // Best-effort "last used" stamp; a write failure must never block the call.
-  void (async () => {
-    try {
-      await db.update(apiToken).set({ lastUsedAt: new Date() }).where(eq(apiToken.id, row.id));
-    } catch {
-      /* ignore — telemetry only */
-    }
-  })();
+  const staleBefore = new Date(Date.now() - USED_AT_RESOLUTION);
+  if (!row.lastUsedAt || row.lastUsedAt < staleBefore) {
+    // Best-effort "last used" stamp; a write failure must never block the call.
+    void (async () => {
+      try {
+        await db
+          .update(apiToken)
+          .set({ lastUsedAt: new Date() })
+          .where(
+            and(
+              eq(apiToken.id, row.id),
+              or(isNull(apiToken.lastUsedAt), lt(apiToken.lastUsedAt, staleBefore)),
+            ),
+          );
+      } catch {
+        /* ignore — telemetry only */
+      }
+    })();
+  }
 
   return {
     user: { id: row.userId },

@@ -19,7 +19,6 @@ coverage/
 .build/
 .swiftpm/
 .next/
-.turbo/
 .wrangler/
 *.tsbuildinfo
 *.p12

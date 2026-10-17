@@ -13,7 +13,7 @@ Scaffolded with [Better-T-Stack](https://github.com/AmanVarshney01/create-better
 
 ## Stack
 
-- **TypeScript** end to end, **Bun** runtime, **Turborepo** monorepo
+- **TypeScript** end to end, **Bun** runtime and workspaces
 - **TanStack Start** (SSR + TanStack Router) for the web app
 - **Hono** + **tRPC** for the API server
 - **Drizzle** ORM on **PostgreSQL**
@@ -62,8 +62,8 @@ With no S3 variables set it writes to `UPLOAD_DIR` on local disk, which is what
 development and tests use. Production runs on Cloudflare R2 over the S3 API.
 
 The bucket is `aqt-gallery-media` (location hint `weur`, next to the Neon
-database in `eu-central-1`). Wrangler is a dev dependency, so managing it needs
-no global install:
+database in `eu-central-1`). `bunx` fetches Wrangler on demand, so managing it
+needs no global install:
 
 ```bash
 bunx wrangler r2 bucket info aqt-gallery-media
@@ -116,11 +116,10 @@ mise run gallery:deploy                 # pulls, builds and restarts it there
 
 The container listens on 3000, published on loopback (`AQT_GALLERY_LISTEN`
 overrides); the reverse proxy on the box terminates TLS for `SERVER_URL`.
-Schema changes are applied from a checkout, not by the container: `bun run
-db:migrate` inside `packages/db` with `DATABASE_URL` set to the production
-database. Run it there and not through the root script, which goes through
-turbo; its strict env mode drops the variable and drizzle falls back to the
-dev `.env`.
+Schema changes are applied from a checkout, not by the container: run
+`bun run db:migrate` with `DATABASE_URL` set to the production database. The
+drizzle config also loads the dev `apps/server/.env`, but a variable that is
+already set wins.
 
 To build and smoke-test the image locally:
 
@@ -137,8 +136,8 @@ anywhere else (`bun run build` writes `.output/`; `bun .output/server/index.mjs`
 runs it). `apps/web/vercel.json` sets the framework preset, `bunVersion` (Vercel's own
 switch for the Bun line used to install, build and run; its default Bun 1.3
 cannot read this lockfile), the function region (`fra1`, next to the API and
-Neon), a filtered workspace install from the repository root, a plain
-`vp build` so Vercel's Turbo detection stays out of the way, and an ignore
+Neon), a filtered workspace install from the repository root, `vp build`
+instead of the preset's `vite build` (the `vite` alias has no binary), and an ignore
 command so only changes under `apps/gallery` or `packages/ts/ui`, or to the
 lockfile, trigger a build. It compares against the branch's last successful
 deployment, not the previous commit, so a push whose last commit misses those
@@ -215,7 +214,7 @@ Shared shadcn/ui components and styles come from `@aqt/ui` in the workspace's `p
 
 ## Available Scripts
 
-- `bun run dev`: Start all applications in development mode
+- `bun run dev`: Start the web app and the API server together
 - `bun run build`: Build all applications
 - `bun run dev:web`: Start only the web application
 - `bun run dev:server`: Start only the server

@@ -23,7 +23,7 @@ const BUDGET_RELEASE = 0.9;
 
 export type StreamLevel = "thumb" | "mid" | "full";
 const LEVELS: readonly StreamLevel[] = ["thumb", "mid", "full"];
-const RANK: Record<StreamLevel, number> = { thumb: 0, mid: 1, full: 2 };
+const RANK = { thumb: 0, mid: 1, full: 2 } satisfies Record<StreamLevel, number>;
 
 export type PlanPainting = {
   roomIndex: number;
@@ -53,82 +53,85 @@ function present(p: PlanPainting, level: StreamLevel): boolean {
   return p.resident[level] !== undefined || p.loading.includes(level);
 }
 
+type Ranked = { index: number; dist2: number };
+type RankedRequest = Ranked & { level: StreamLevel };
+
 /** Decide which texture levels to fetch and which to drop this tick. Pure so
  * the hysteresis, protection and budget rules can be tested without three. */
 export function planTextureStreaming(input: PlanInput): StreamPlan {
   const { paintings, player, nearRooms, protectedIndices, byteBudget } = input;
-  const load: StreamRequest[] = [];
-  const evict: StreamRequest[] = [];
-  const dist2 = paintings.map((p) => {
+  const ranked = paintings.map((p, index) => {
     const dx = player.x - p.x;
     const dz = player.z - p.z;
-    return dx * dx + dz * dz;
+    return { p, index, dist2: dx * dx + dz * dz };
   });
-  const wantFull: number[] = [];
-  const unprotectedFulls: number[] = [];
+  const load: RankedRequest[] = [];
+  const evict: StreamRequest[] = [];
+  const wantFull: Ranked[] = [];
+  const unprotectedFulls: Ranked[] = [];
   let fullCount = 0;
 
-  paintings.forEach((p, index) => {
+  for (const { p, index, dist2 } of ranked) {
     const base = p.available[0];
-    if (!base) return;
+    if (!base) continue;
     const isProtected = protectedIndices.has(index);
     if (!isProtected && !nearRooms.has(p.roomIndex)) {
       for (const level of LEVELS) {
         if (present(p, level)) evict.push({ index, level });
       }
-      return;
+      continue;
     }
     // Counted after the far-room drop above, so the budget reflects the fulls
     // this plan keeps rather than ones it is already evicting.
     if (present(p, "full")) {
       fullCount++;
-      if (!isProtected) unprotectedFulls.push(index);
+      if (!isProtected) unprotectedFulls.push({ index, dist2 });
     }
-    if (!present(p, base)) load.push({ index, level: base });
+    if (!present(p, base)) load.push({ index, dist2, level: base });
 
     if (p.available.includes("mid") && base !== "mid") {
       const radius = present(p, "mid") ? FULL_LOAD_OFF : FULL_LOAD_ON;
-      if (isProtected || dist2[index] <= radius * radius) {
-        if (!present(p, "mid")) load.push({ index, level: "mid" });
+      if (isProtected || dist2 <= radius * radius) {
+        if (!present(p, "mid")) load.push({ index, dist2, level: "mid" });
       } else if (present(p, "mid")) {
         evict.push({ index, level: "mid" });
       }
     }
     if (isProtected && p.available.includes("full") && !present(p, "full")) {
-      wantFull.push(index);
+      wantFull.push({ index, dist2 });
     }
-  });
+  }
 
-  unprotectedFulls.sort((a, b) => dist2[b] - dist2[a]);
-  for (const index of wantFull) {
+  unprotectedFulls.sort((a, b) => b.dist2 - a.dist2);
+  for (const wanted of wantFull) {
     while (fullCount >= MAX_RESIDENT_FULL && unprotectedFulls.length > 0) {
       const victim = unprotectedFulls.shift();
-      if (victim !== undefined) evict.push({ index: victim, level: "full" });
+      if (victim !== undefined) evict.push({ index: victim.index, level: "full" });
       fullCount--;
     }
     if (fullCount >= MAX_RESIDENT_FULL) break;
-    load.push({ index, level: "full" });
+    load.push({ ...wanted, level: "full" });
     fullCount++;
   }
   while (fullCount > MAX_RESIDENT_FULL && unprotectedFulls.length > 0) {
     const victim = unprotectedFulls.shift();
-    if (victim !== undefined) evict.push({ index: victim, level: "full" });
+    if (victim !== undefined) evict.push({ index: victim.index, level: "full" });
     fullCount--;
   }
 
   const evicted = new Set(evict.map((r) => `${r.index}:${r.level}`));
   let bytes = 0;
-  const evictable: { index: number; level: StreamLevel; bytes: number }[] = [];
-  paintings.forEach((p, index) => {
+  const evictable: (RankedRequest & { bytes: number })[] = [];
+  for (const { p, index, dist2 } of ranked) {
     for (const level of LEVELS) {
       const size = p.resident[level];
       if (size === undefined || evicted.has(`${index}:${level}`)) continue;
       bytes += size;
-      if (!protectedIndices.has(index)) evictable.push({ index, level, bytes: size });
+      if (!protectedIndices.has(index)) evictable.push({ index, dist2, level, bytes: size });
     }
-  });
+  }
   if (bytes > byteBudget) {
-    evictable.sort((a, b) => dist2[b.index] - dist2[a.index] || RANK[b.level] - RANK[a.level]);
+    evictable.sort((a, b) => b.dist2 - a.dist2 || RANK[b.level] - RANK[a.level]);
     const target = byteBudget * BUDGET_RELEASE;
     for (const entry of evictable) {
       if (bytes <= target) break;
@@ -141,9 +144,9 @@ export function planTextureStreaming(input: PlanInput): StreamPlan {
   gated.sort((a, b) => {
     const pa = protectedIndices.has(a.index) ? 0 : 1;
     const pb = protectedIndices.has(b.index) ? 0 : 1;
-    return pa - pb || dist2[a.index] - dist2[b.index];
+    return pa - pb || a.dist2 - b.dist2;
   });
-  return { load: gated, evict };
+  return { load: gated.map(({ index, level }) => ({ index, level })), evict };
 }
 
 export function estimateTextureBytes(width: number, height: number): number {
@@ -152,13 +155,15 @@ export function estimateTextureBytes(width: number, height: number): number {
 
 type Resident = { texture: THREE.Texture; bytes: number };
 
+type LevelUrls = Partial<Record<StreamLevel, string>>;
+
 /** One GPU texture per URL, shared by every painting that shows the same
  * image (a work hung twice) and released when the last one lets go. */
 type SharedTexture = Resident & { refs: number };
 
 type Entry = {
   index: number;
-  urls: Partial<Record<StreamLevel, string>>;
+  urls: LevelUrls;
   failed: Set<StreamLevel>;
   resident: Map<StreamLevel, Resident>;
   /** Token per in-flight request so a late result for an evicted or
@@ -218,10 +223,10 @@ function missingPlateTexture(): THREE.DataTexture {
 
 /** Distinct URLs per level, collapsing a level onto the lower one when they
  * share a URL (e.g. no mid variant yet, so mid === full). */
-function distinctLadder(artwork: ArtworkData | undefined): Partial<Record<StreamLevel, string>> {
-  if (!artwork) return {};
+function distinctLadder(artwork: ArtworkData | undefined) {
+  const urls: LevelUrls = {};
+  if (!artwork) return urls;
   const ladder = imageLadder(artwork);
-  const urls: Partial<Record<StreamLevel, string>> = {};
   if (ladder.thumb) urls.thumb = ladder.thumb;
   if (ladder.mid && ladder.mid !== ladder.thumb) urls.mid = ladder.mid;
   if (ladder.full && ladder.full !== ladder.mid && ladder.full !== ladder.thumb)
@@ -339,16 +344,16 @@ export class TextureStreamer {
       (bitmap) => {
         if (this.disposed || entry.loading.get(level) !== token) return;
         entry.loading.delete(level);
-        let shared = this.shared.get(url);
-        if (!shared) {
-          shared = {
+        let decoded = this.shared.get(url);
+        if (!decoded) {
+          decoded = {
             texture: this.createTexture(bitmap),
             bytes: estimateTextureBytes(bitmap.width, bitmap.height),
             refs: 0,
           };
-          this.shared.set(url, shared);
+          this.shared.set(url, decoded);
         }
-        this.retain(entry, level, shared);
+        this.retain(entry, level, decoded);
       },
       () => {
         if (this.disposed || entry.loading.get(level) !== token) return;
