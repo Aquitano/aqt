@@ -522,12 +522,10 @@ const normalize = (
           const part = attachmentPart(attachment);
           if (part !== null) parts.push(part);
         }
-        pushMessage(
-          `user:${stringAt(data, "interactionId") ?? event.id}`,
-          "user",
-          event.timestamp,
-          parts,
-        );
+        const interactionKey = `user:${stringAt(data, "interactionId") ?? event.id}`;
+        // Invoking a skill adds a second user message, carrying the skill's context, to the interaction.
+        const taken = messages.some((message) => message.messageKey === interactionKey);
+        pushMessage(taken ? `user:${event.id}` : interactionKey, "user", event.timestamp, parts);
         return;
       }
       case "assistant.message": {
@@ -719,7 +717,7 @@ const normalize = (
 
 export const copilotNormalizer: Normalizer = {
   id: "copilot",
-  parserVersion: 3,
+  parserVersion: 4,
   conversationKeyOf,
   normalize,
 };
