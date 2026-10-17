@@ -5,6 +5,7 @@ import { omitInlineBlobs } from "../src/blobs.ts";
 test("inline base64 images give way to their size while signatures and plain records stay as they were", () => {
   const image = "iVBOR".padEnd(2000, "A");
   const signature = "EqQB".padEnd(2000, "x");
+  const text = { mimeType: "text/plain", data: "plain words ".repeat(200) };
   const payload = JSON.stringify({
     message: {
       content: [
@@ -14,6 +15,7 @@ test("inline base64 images give way to their size while signatures and plain rec
     },
     toolUseResult: { file: { base64: image, type: "image/png" } },
     output: [{ image_url: `data:image/jpeg;base64,${image}` }],
+    result: { content: [{ type: "image", data: image, mimeType: "image/png" }, text] },
   });
   expect(omitInlineBlobs(payload)).toBe(
     JSON.stringify({
@@ -32,6 +34,12 @@ test("inline base64 images give way to their size while signatures and plain rec
       },
       toolUseResult: { file: { base64: { omitted: "base64", bytes: 1500 }, type: "image/png" } },
       output: [{ image_url: { omitted: "base64", bytes: 1500, mediaType: "image/jpeg" } }],
+      result: {
+        content: [
+          { type: "image", data: { omitted: "base64", bytes: 1500 }, mimeType: "image/png" },
+          text,
+        ],
+      },
     }),
   );
   const plain = '{ "type": "user",  "text": "spacing kept" }';
