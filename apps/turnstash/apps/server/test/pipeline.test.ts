@@ -270,6 +270,7 @@ test("message pages group multiple requests, and the conversation lists the requ
         "request-3",
         "request-4",
       ]);
+      expect(detail.requestsWithoutMessageTotal).toBe(2);
     }),
   );
 });

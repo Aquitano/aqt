@@ -104,6 +104,12 @@ const Summary = ({
             <dt>Requests without a message</dt>
             <dd>
               <Requests requests={detail.requestsWithoutMessage} onInspect={onInspect} />
+              {detail.requestsWithoutMessageTotal > detail.requestsWithoutMessage.length && (
+                <p className="text-xs text-muted-foreground">
+                  First {int(detail.requestsWithoutMessage.length)} of{" "}
+                  {int(detail.requestsWithoutMessageTotal)}
+                </p>
+              )}
             </dd>
           </>
         )}

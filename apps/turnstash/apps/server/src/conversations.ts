@@ -152,6 +152,9 @@ export const listConversations = Effect.fn("Conversations.list")(function* (
   } satisfies ConversationPage;
 });
 
+// Copilot's session store can leave a long session's every request without a message.
+const requestsWithoutMessageShown = 100;
+
 export const getConversation = Effect.fn("Conversations.get")(function* (id: string) {
   const db = yield* Db;
   const [summary] = yield* conversationSummaries([id]);
@@ -199,6 +202,7 @@ export const getConversation = Effect.fn("Conversations.get")(function* (id: str
     .select({
       request: modelRequests,
       valuation: { costUsd: valuations.costUsd, unpricedReason: valuations.unpricedReason },
+      total: sql<number>`count(*) over ()`,
     })
     .from(modelRequests)
     .leftJoin(valuations, activeValuation)
@@ -210,7 +214,8 @@ export const getConversation = Effect.fn("Conversations.get")(function* (id: str
       ),
     )
     .where(and(eq(modelRequests.conversationId, id), isNull(messages.id)))
-    .orderBy(asc(modelRequests.requestedAt), asc(modelRequests.requestKey));
+    .orderBy(asc(modelRequests.requestedAt), asc(modelRequests.requestKey))
+    .limit(requestsWithoutMessageShown);
   return {
     conversation: summary,
     children: childSummaries,
@@ -231,6 +236,7 @@ export const getConversation = Effect.fn("Conversations.get")(function* (id: str
     requestsWithoutMessage: withoutMessage.map((entry) =>
       requestSummary(entry.request, entry.valuation ?? undefined),
     ),
+    requestsWithoutMessageTotal: number(withoutMessage[0]?.total),
   } satisfies ConversationDetail;
 });
 
