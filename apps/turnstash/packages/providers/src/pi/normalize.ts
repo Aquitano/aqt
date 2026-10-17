@@ -157,14 +157,19 @@ const partsOfCustom = (entry: Entry): ReadonlyArray<MessagePart> => {
   return parts;
 };
 
-const usageOf = (usage: Schema.JsonObject): Usage => ({
-  inputTokens: jsonCount(usage["input"]),
-  cacheReadTokens: jsonCount(usage["cacheRead"]),
-  cacheWriteTokens: jsonCount(usage["cacheWrite"]),
-  cacheWrite1hTokens: jsonCount(usage["cacheWrite1h"]),
-  outputTokens: jsonCount(usage["output"]),
-  reasoningTokens: jsonCount(usage["reasoning"]),
-});
+// Pi copies Anthropic's cache_creation_input_tokens into cacheWrite, so it already holds the
+// one-hour writes that cacheWrite1h repeats.
+const usageOf = (usage: Schema.JsonObject): Usage => {
+  const oneHourWrites = jsonCount(usage["cacheWrite1h"]);
+  return {
+    inputTokens: jsonCount(usage["input"]),
+    cacheReadTokens: jsonCount(usage["cacheRead"]),
+    cacheWriteTokens: Math.max(0, jsonCount(usage["cacheWrite"]) - oneHourWrites),
+    cacheWrite1hTokens: oneHourWrites,
+    outputTokens: jsonCount(usage["output"]),
+    reasoningTokens: jsonCount(usage["reasoning"]),
+  };
+};
 
 // Aborted and errored turns still carry a usage block, all zeros; that is not a billable request.
 const isBillable = (usage: Usage): boolean =>
@@ -327,7 +332,7 @@ const normalize = (
 
 export const piNormalizer: Normalizer = {
   id: "pi",
-  parserVersion: 1,
+  parserVersion: 2,
   conversationKeyOf,
   normalize,
 };
