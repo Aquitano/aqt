@@ -58,7 +58,8 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
 
 // OpenCode left its JSON file store behind when it moved to SQLite. A file whose row the same machine's
 // database sent is dropped, since normalize prefers the database row. Trimming runs first and turns every
-// readable data column into an object, so a row whose data stayed text keeps its file as the fallback.
+// readable data column into an object, so a row whose data stayed text, or that jsonb cannot hold (an escaped
+// NUL), keeps its file as the fallback.
 const removeOpencodeFileTwins = Effect.fn("Archive.removeOpencodeFileTwins")(function* () {
   const db = yield* Db;
   const removed = yield* db.execute<{ count: number }>(
@@ -76,7 +77,7 @@ const removeOpencodeFileTwins = Effect.fn("Archive.removeOpencodeFileTwins")(fun
               AND database.provider = 'opencode'
               AND database.stream_id ~ '/sqlite/'
               AND twin.record_key = substring(file.stream_id from '([^/]+)\\.json$')
-              AND CASE WHEN twin.payload IS JSON OBJECT
+              AND CASE WHEN twin.payload IS JSON OBJECT AND pg_input_is_valid(twin.payload, 'jsonb')
                 THEN coalesce(jsonb_typeof(twin.payload::jsonb -> 'data'), 'object') = 'object'
                 ELSE false END
           )
