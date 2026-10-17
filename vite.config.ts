@@ -12,7 +12,6 @@ const ignorePatterns = [
   "tools/oxlint/anti-slop/**",
   "**/generated/**",
   "**/.next/**",
-  "**/.turbo/**",
   "**/.wrangler/**",
   "**/.output/**",
   "apps/gallery/packages/db/src/migrations/**",

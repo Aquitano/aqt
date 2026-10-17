@@ -14,7 +14,6 @@
 !apps/gallery
 apps/gallery/**/node_modules
 apps/gallery/**/dist
-apps/gallery/**/.turbo
 apps/gallery/**/.tanstack
 apps/gallery/**/uploads
 apps/gallery/**/.env
