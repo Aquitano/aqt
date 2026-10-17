@@ -250,7 +250,6 @@ func Stat(path string) (Entry, error) {
 		basic.CreationTime, basic.LastWriteTime, basic.LastAccessTime, basic.ChangeTime)
 	e.Name = filepath.Base(path)
 	e.FileID = uint64(bh.FileIndexHigh)<<32 | uint64(bh.FileIndexLow)
-	e.LinkCount = uint64(bh.NumberOfLinks)
 	return e, nil
 }
 

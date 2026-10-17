@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,8 +25,6 @@ type Scan struct {
 	Counts ScanCounts
 	// Phases is how long each phase took, written when the scan finishes.
 	Phases PhaseTimes
-
-	IsHardLink func(string, int64) (bool, error)
 
 	store       *Store
 	lock        *pgxpool.Conn
@@ -266,17 +265,21 @@ func collectEntryRows(rows pgx.Rows) ([]entryRow, error) {
 // the subfolders to descend into, in listing order.
 //
 // A listed entry is matched to an existing row by, in order: its file id among
-// the folder's rows; its file id elsewhere on the volume, after ruling out a
-// hard link; its name among rows nothing else claimed. On NTFS a name match with a
-// new file id is a file replaced in place by a save-via-rename, and keeps its
-// row. A matched row is only written when something about it changed, so
-// rescanning an unchanged disk writes almost nothing.
+// the folder's rows; its file id elsewhere on the volume, unless that row's
+// path still holds the file, which makes the entry another hard link; its name
+// among rows nothing else claimed. On NTFS a name match with a new file id is
+// a file replaced in place by a save-via-rename, and keeps its row. A matched
+// row is only written when something about it changed, so rescanning an
+// unchanged disk writes almost nothing.
 //
 // parent is nil for the volume root. complete says the listing is the whole
 // folder: only then are rows it no longer contains marked missing, never
 // after a partial read. keep names entries that exist but were excluded,
-// which are neither indexed nor marked missing.
-func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, keep map[string]bool, complete bool) ([]Dir, error) {
+// which are neither indexed nor marked missing. holds reports whether a
+// catalogued path still holds a file id, and says yes when it cannot tell: a
+// wrong yes costs a hash, a wrong no moves a row away from a path that exists.
+func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, keep map[string]bool, complete bool,
+	holds func(entryPath string, fileID int64) bool) ([]Dir, error) {
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return nil, err
@@ -293,10 +296,6 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 	existing, err := collectEntryRows(rows)
 	if err != nil {
 		return nil, err
-	}
-	parentPath, parentID := "", (*int64)(nil)
-	if parent != nil {
-		parentPath, parentID = parent.Path, &parent.ID
 	}
 
 	// Rows hold cleaned names, so the excluded names are compared cleaned too.
@@ -333,6 +332,17 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		matched[i] = r
 		claimed[r.ID] = true
 	}
+	// A folder can hold several rows of one name: a missing one beside the
+	// live one, or a hard link kept by path.
+	byName := map[string][]*entryRow{}
+	for i := range existing {
+		byName[existing[i].Name] = append(byName[existing[i].Name], &existing[i])
+	}
+	// A path the catalogue keeps as a hard link stays one when its file id
+	// turns up on another row: that row's path holds the id or is gone.
+	keptAsLink := func(l Listed) bool {
+		return l.Kind == "file" && slices.ContainsFunc(byName[l.Name], func(r *entryRow) bool { return r.FileID == nil })
+	}
 
 	if sc.Volume.StableIDs {
 		byID := map[int64]*entryRow{}
@@ -343,10 +353,15 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		}
 		var elsewhere []int64
 		for i, l := range listed {
-			if r := byID[l.FileID]; l.FileID != 0 && r != nil && !claimed[r.ID] {
-				claim(i, r)
-			} else if l.FileID != 0 {
+			r := byID[l.FileID]
+			switch {
+			case l.FileID == 0:
+			case r == nil || claimed[r.ID]:
 				elsewhere = append(elsewhere, l.FileID)
+			case r.Name != l.Name && keptAsLink(l):
+				listed[i].FileID = 0
+			default:
+				claim(i, r)
 			}
 		}
 		if len(elsewhere) > 0 {
@@ -364,33 +379,20 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 				byMovedID[*moved[i].FileID] = &moved[i]
 			}
 			for i, l := range listed {
-				if r := byMovedID[l.FileID]; matched[i] == nil && r != nil && !claimed[r.ID] {
-					if l.Kind == "file" {
-						linked := true
-						if sc.IsHardLink != nil {
-							linked, err = sc.IsHardLink(parentPath+"/"+l.Name, l.FileID)
-							if err != nil {
-								return nil, err
-							}
-						}
-						if linked {
-							listed[i].FileID = 0
-							continue
-						}
-					}
-					claim(i, r)
+				r := byMovedID[l.FileID]
+				if matched[i] != nil || r == nil || claimed[r.ID] {
+					continue
 				}
+				if l.Kind == "file" && (keptAsLink(l) || r.MissingScan == nil && holds(r.Path, l.FileID)) {
+					listed[i].FileID = 0
+					continue
+				}
+				claim(i, r)
 			}
 		}
 	}
-	// A folder can hold several rows of one name: a missing one beside the
-	// live one, or a hard link kept by path. Prefer the row without a file id,
-	// so a listed entry that also has none never collides with it in the
-	// (parent, name) index.
-	byName := map[string][]*entryRow{}
-	for i := range existing {
-		byName[existing[i].Name] = append(byName[existing[i].Name], &existing[i])
-	}
+	// Prefer the row without a file id, so a listed entry that also has none
+	// never collides with it in the (parent, name) index.
 	for i, l := range listed {
 		if matched[i] != nil {
 			continue
@@ -406,6 +408,10 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		}
 	}
 
+	parentPath, parentID := "", (*int64)(nil)
+	if parent != nil {
+		parentPath, parentID = parent.Path, &parent.ID
+	}
 	var batch pgx.Batch
 	// One callback per queued statement, in queue order.
 	var reads []func(pgx.BatchResults) error

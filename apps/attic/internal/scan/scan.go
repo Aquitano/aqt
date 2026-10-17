@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"math"
 	"os"
@@ -145,16 +146,6 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp, Log: log},
 		textsRead: map[int64]bool{}, log: log}
 	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20}
-	sc.IsHardLink = func(entryPath string, fileID int64) (bool, error) {
-		e, err := disk.Stat(r.osPath(entryPath))
-		if err != nil {
-			return false, err
-		}
-		if int64(e.FileID) != fileID || e.Dir || e.Link {
-			return false, fmt.Errorf("%s changed since listing; scan it again", entryPath)
-		}
-		return e.LinkCount > 1, nil
-	}
 	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
 		"root", cmp.Or(root, "/"), "no_hash", o.NoHash, "archive_depth", a.Depth, "unpack_max_bytes", a.UnpackMaxBytes,
 		"text_max_bytes", o.Config.Text.MaxBytes, "hash_max_bytes", o.Config.HashMaxBytes)
@@ -205,6 +196,20 @@ type run struct {
 // osPath turns a volume-relative path back into one the OS opens.
 func (r *run) osPath(p string) string {
 	return filepath.Join(r.mountRoot, filepath.FromSlash(strings.TrimPrefix(p, "/")))
+}
+
+// holds answers store.Scan.ApplyListing. Only a path that is gone or holds
+// another file is a no. A catalogued name that was not valid Unicode cannot
+// be reopened, so its absence proves nothing.
+func (r *run) holds(entryPath string, fileID int64) bool {
+	if strings.ContainsRune(entryPath, utf8.RuneError) {
+		return true
+	}
+	e, err := disk.Stat(r.osPath(entryPath))
+	if err != nil {
+		return !errors.Is(err, fs.ErrNotExist)
+	}
+	return int64(e.FileID) == fileID
 }
 
 func (r *run) progress(force bool) {
@@ -328,7 +333,7 @@ func (r *run) ancestors(ctx context.Context, rel []string) (folderJob, error) {
 			return folderJob{}, fmt.Errorf("%s is not a folder", p)
 		}
 		e.Name = name
-		dirs, err := r.sc.ApplyListing(ctx, parent, []store.Listed{listed(e)}, nil, false)
+		dirs, err := r.sc.ApplyListing(ctx, parent, []store.Listed{listed(e)}, nil, false, r.holds)
 		if err != nil {
 			return folderJob{}, err
 		}
@@ -445,7 +450,7 @@ func (r *run) folder(ctx context.Context, job folderJob) ([]folderJob, error) {
 		}
 		items = append(items, l)
 	}
-	children, err := r.sc.ApplyListing(ctx, &dir, items, keep, true)
+	children, err := r.sc.ApplyListing(ctx, &dir, items, keep, true, r.holds)
 	if err != nil {
 		return nil, err
 	}

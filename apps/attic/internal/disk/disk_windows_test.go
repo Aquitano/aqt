@@ -55,28 +55,6 @@ func TestLongPath(t *testing.T) {
 	}
 }
 
-func TestStatCountsHardLinks(t *testing.T) {
-	dir := t.TempDir()
-	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
-	if err := os.WriteFile(a, []byte("linked"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(a, b); err != nil {
-		t.Skipf("no hard links here: %v", err)
-	}
-	first, err := Stat(a)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := Stat(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first.FileID != second.FileID || first.LinkCount != 2 || second.LinkCount != 2 {
-		t.Fatalf("hard link stats: %+v, %+v", first, second)
-	}
-}
-
 func TestHashKeepsLastAccess(t *testing.T) {
 	dir := t.TempDir()
 	body := []byte("backup bytes")
