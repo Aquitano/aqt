@@ -50,7 +50,7 @@ Migrations run on startup. The bundled pricing catalog is inserted on first star
 
 After a parser or model-alias correction, stop the server and run `bun run --cwd apps/server reprocess` with the server's database and authentication environment; on the Compose deployment, follow [Reprocess the archive](deploy/README.md#reprocess-the-archive). Restart the server to let its worker rebuild conversations from retained raw records and recalculate the active catalog's costs. This includes records that previously produced no conversation and excludes deleted conversations. It preserves valuations for other catalog versions when the normalized request is unchanged. Totals are incomplete until the worker finishes.
 
-The server stores each raw record without the fields its normalizer never reads: Codex event mirrors and encrypted reasoning are dropped, and OpenCode and Cursor JSON columns are kept as parsed values rather than escaped text. Tool output is stored once, on its tool execution. `bun run --cwd apps/server trim` applies this to records stored earlier; on the Compose deployment, follow [Shrink the archive](deploy/README.md#shrink-the-archive).
+The server stores each raw record without copies of what other records hold: Codex keeps only the kind of an agent message or reasoning event, which repeat a response item, and drops encrypted reasoning, which only the Codex API can read. OpenCode and Cursor JSON columns are kept as parsed values rather than escaped text. Tool output is stored once, on its tool execution. `bun run --cwd apps/server trim` applies this to records stored earlier; on the Compose deployment, follow [Shrink the archive](deploy/README.md#shrink-the-archive).
 
 ## Agent
 

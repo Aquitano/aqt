@@ -400,16 +400,32 @@ test("forks keep their own usage and ignore replayed usage owned by the parent t
   expect(withLegacy.requests.map((request) => request.requestKey)).toEqual(["ordinal:3"]);
 });
 
-test("trimming drops event mirrors and encrypted reasoning and leaves the conversation unchanged", async () => {
-  const rows = await rowsOf(guardian);
+const codexEvent = (ordinal: number, payload: Schema.JsonObject) =>
+  JSON.stringify({ timestamp: "2026-09-20T10:58:31.000Z", ordinal, type: "event_msg", payload });
+
+test("trimming drops encrypted reasoning and events that repeat a response item, and keeps every other event", async () => {
+  const fixture = await Bun.file(join(import.meta.dir, "fixtures", "codex", guardian)).text();
+  const repeated = codexEvent(17, { type: "agent_message", message: "Tests pass.", phase: null });
+  const rows = jsonlRows(
+    StreamId.make(`machine-a/jsonl/${guardian}`),
+    [
+      fixture.trimEnd(),
+      repeated,
+      codexEvent(18, { type: "thread_rolled_back", num_turns: 1 }),
+      codexEvent(19, { type: "added_by_a_later_codex", detail: { kept: true } }),
+    ].join("\n"),
+    "2026-09-21T00:00:00.000Z",
+  );
   const trimmed = rows.map((row) => ({
     ...row,
     payload: codexNormalizer.trim?.(row.streamId, row.payload) ?? row.payload,
   }));
   expect(normalized(trimmed)).toEqual(normalized(rows));
-  const kept = trimmed.map((row) => row.payload).join("\n");
-  expect(kept).not.toContain("encrypted_content");
-  expect(kept).toContain('"payload":{"type":"item_completed"}');
-  for (const row of rows.filter((candidate) => candidate.payload.includes('"token_count"')))
-    expect(codexNormalizer.trim?.(row.streamId, row.payload)).toBe(row.payload);
+  const kept = trimmed.map((row) => row.payload);
+  expect(kept.join("\n")).not.toContain("encrypted_content");
+  expect(kept).toContain(codexEvent(17, { type: "agent_message" }));
+  const otherEvents = rows.filter(
+    ({ payload }) => payload.includes('"event_msg"') && payload !== repeated,
+  );
+  for (const row of otherEvents) expect(kept).toContain(row.payload);
 });
