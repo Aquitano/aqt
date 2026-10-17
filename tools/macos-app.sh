@@ -76,36 +76,13 @@ case "$mode" in
         mkdir -p "$install_dir"
         install_target="$install_dir/$app_name.app"
         staging=$(mktemp -d "$install_dir/.$app_name.XXXXXX")
-        cleanup_install() {
-            result=$?
-            trap - EXIT HUP INT TERM
-            # Restore the previous app when the replacement did not complete.
-            if [ "$result" -ne 0 ] && { [ -e "$staging/previous.app" ] || [ -L "$staging/previous.app" ]; }; then
-                if [ -e "$install_target" ] || [ -L "$install_target" ]; then
-                    if ! mv "$install_target" "$staging/failed.app"; then
-                        echo "error: rollback failed; previous app retained at $staging/previous.app" >&2
-                        exit 1
-                    fi
-                fi
-                if ! mv "$staging/previous.app" "$install_target"; then
-                    echo "error: restore failed; previous app retained at $staging/previous.app" >&2
-                    exit 1
-                fi
-            fi
-            rm -rf "$staging"
-            exit "$result"
-        }
-        trap cleanup_install EXIT
+        trap 'rm -rf "$staging"' EXIT
         trap 'exit 1' HUP INT TERM
         ditto "$app" "$staging/$app_name.app"
+        # The previous app stays until its replacement is copied and verified.
         codesign --verify --deep --strict "$staging/$app_name.app"
-        if [ -e "$install_target" ] || [ -L "$install_target" ]; then
-            mv "$install_target" "$staging/previous.app"
-        fi
+        rm -rf "$install_target"
         mv "$staging/$app_name.app" "$install_target"
-        # Rolling back after the launch would move the bundle out from under its running process.
-        trap - EXIT HUP INT TERM
-        rm -rf "$staging"
         app="$install_target"
         # The tracker LaunchAgent owns startup after installing this copy.
         if [ "$mode" = --copy-user ]; then exit 0; fi

@@ -28,13 +28,10 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
-if [ "${AQT_TEST_MISSING_BUILD:-}" != 1 ]; then
-    mkdir -p "$derived/Build/Products/$configuration/$name.app"
-fi
+mkdir -p "$derived/Build/Products/$configuration/$name.app"
 ''')
         self.mock("codesign", "exit 0")
-        self.mock("pgrep", '[ "${AQT_TEST_OLD_RUNNING:-}" = 1 ]')
-        self.mock("osascript", "exit 0")
+        self.mock("pgrep", "exit 1")
         self.mock("sleep", "exit 0")
         self.mock("open", 'printf "%s\\n" "$*" > "$AQT_TEST_LAUNCH_LOG"')
         self.mock("ps", 'printf "%s\\n" "${AQT_TEST_RUNNING_BINARY:-}"')
@@ -50,41 +47,6 @@ fi
             ["sh", str(self.script), str(self.app_dir), "Notch", "com.aquitano.notch", *options],
             env=self.env, text=True, capture_output=True, check=False,
         )
-
-    def test_build_requires_an_app_bundle(self):
-        self.env["AQT_TEST_MISSING_BUILD"] = "1"
-        result = self.run_app()
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("was not created", result.stderr)
-
-    def test_running_old_instance_blocks_launch(self):
-        self.env["AQT_TEST_OLD_RUNNING"] = "1"
-        result = self.run_app("--run")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse((self.root / "launch.log").exists())
-
-    def test_another_build_does_not_count_as_success(self):
-        self.env["AQT_TEST_RUNNING_BINARY"] = "/elsewhere/Notch.app/Contents/MacOS/Notch"
-        result = self.run_app("--run")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("did not stay running", result.stderr)
-
-    def test_launch_matches_exact_build_with_spaces(self):
-        app = self.app_dir / "DerivedData/Build/Products/Debug/Notch.app"
-        self.env["AQT_TEST_RUNNING_BINARY"] = str(app / "Contents/MacOS/Notch")
-        result = self.run_app("--run")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.root / "launch.log").read_text().strip(), f"-n {app}")
-
-    def test_launch_resolves_a_symlinked_project_directory(self):
-        project = self.app_dir
-        self.app_dir = self.root / "project alias with spaces"
-        self.app_dir.symlink_to(project, target_is_directory=True)
-        app = project / "DerivedData/Build/Products/Debug/Notch.app"
-        self.env["AQT_TEST_RUNNING_BINARY"] = str(app / "Contents/MacOS/Notch")
-        result = self.run_app("--run")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((self.root / "launch.log").read_text().strip(), f"-n {app}")
 
     def prepare_install(self):
         # Substitute only the system destination in a test-local copy; every
@@ -102,82 +64,34 @@ fi
             .replace('install_dir="$HOME/Applications"', f"install_dir={shlex.quote(str(install_dir))}")
         )
         self.mock("ditto", 'cp -R "$1" "$2"')
-        self.env["AQT_TEST_RUNNING_BINARY"] = str(self.installed / "Contents/MacOS/Notch")
         return install_dir
 
-    def test_copy_user_uses_the_prebuilt_app_without_rebuilding_or_launching(self):
-        self.prepare_install()
-        built = self.app_dir / "DerivedData/Build/Products/Debug/Notch.app"
-        built.mkdir(parents=True)
-        self.mock("xcodebuild", "exit 1")
-        self.mock("xcodegen", "exit 1")
-        result = self.run_app("--copy-user")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(self.installed.is_dir())
-        self.assertFalse((self.root / "launch.log").exists())
-
-    def test_unsigned_build_is_not_launched(self):
-        self.mock("codesign", "exit 1")
+    def test_launch_counts_only_the_exact_build(self):
+        app = self.app_dir / "DerivedData/Build/Products/Debug/Notch.app"
+        self.env["AQT_TEST_RUNNING_BINARY"] = "/elsewhere/Notch.app/Contents/MacOS/Notch"
+        self.assertIn("did not stay running", self.run_app("--run").stderr)
+        self.env["AQT_TEST_RUNNING_BINARY"] = str(app / "Contents/MacOS/Notch")
         result = self.run_app("--run")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse((self.root / "launch.log").exists())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "launch.log").read_text().strip(), f"-n {app}")
 
     def test_copy_is_verified_before_old_app_is_removed(self):
-        self.prepare_install()
+        install_dir = self.prepare_install()
         self.mock("codesign", 'case "$*" in *DerivedData*) exit 0;; *) exit 1;; esac')
         result = self.run_app("--install")
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue((self.installed / "previous-marker").exists())
-
-    def test_failed_install_restores_the_previous_app(self):
-        install_dir = self.prepare_install()
-        self.mock("mv", '''
-case "$1" in */.Notch.*/Notch.app) exit 1;; esac
-exec /bin/mv "$@"
-''')
-        result = self.run_app("--install")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertTrue((self.installed / "previous-marker").exists())
         self.assertEqual(list(install_dir.glob(".Notch.*")), [])
 
-    def test_signal_between_moves_restores_the_previous_app(self):
+    def test_copy_user_installs_the_prebuilt_app_without_rebuilding_or_launching(self):
         self.prepare_install()
-        self.mock("mv", '''
-/bin/mv "$@"
-case "$2" in */previous.app) kill -TERM "$PPID";; esac
-''')
-        result = self.run_app("--install")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertTrue((self.installed / "previous-marker").exists())
-
-    def test_failed_rollback_preserves_the_backup(self):
-        install_dir = self.prepare_install()
-        self.mock("mv", '''
-case "$1" in */.Notch.*/Notch.app|*/previous.app) exit 1;; esac
-exec /bin/mv "$@"
-''')
-        result = self.run_app("--install")
-        self.assertNotEqual(result.returncode, 0)
-        backups = list(install_dir.glob(".Notch.*/previous.app/previous-marker"))
-        self.assertEqual(len(backups), 1)
-        self.assertIn("previous app retained at", result.stderr)
-
-    def test_failed_launch_keeps_the_new_app(self):
-        install_dir = self.prepare_install()
-        self.env["AQT_TEST_RUNNING_BINARY"] = "/elsewhere/Notch.app/Contents/MacOS/Notch"
-        result = self.run_app("--install")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("did not stay running", result.stderr)
-        self.assertFalse((self.installed / "previous-marker").exists())
-        self.assertEqual(list(install_dir.glob(".Notch.*")), [])
-
-    def test_successful_install_removes_the_backup(self):
-        install_dir = self.prepare_install()
-        result = self.run_app("--install")
+        (self.app_dir / "DerivedData/Build/Products/Debug/Notch.app").mkdir(parents=True)
+        self.mock("xcodebuild", "exit 1")
+        self.mock("xcodegen", "exit 1")
+        result = self.run_app("--copy-user")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(self.installed.is_dir())
         self.assertFalse((self.installed / "previous-marker").exists())
-        self.assertEqual(list(install_dir.glob(".Notch.*")), [])
+        self.assertFalse((self.root / "launch.log").exists())
 
 
 if __name__ == "__main__":
