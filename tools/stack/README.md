@@ -16,8 +16,12 @@ Every app gets:
 
 - A private `@aqt/<name>` package using the root Bun workspace and lockfile.
 - TypeScript extending `@aqt/config/tsconfig.base.json`, with the root compiler version.
+- React from the root catalog, so the app and `@aqt/ui` share one copy.
 - Vite+ from the workspace, with Next.js lint rules enabled by the app lint script.
 - React Compiler, Tailwind CSS, and ArkType environment validation through T3 Env.
+- Components, tokens, fonts, theme provider and light/dark/system toggle from the shared
+  `@aqt/ui` package. Its `components.json` points the shadcn CLI at `@aqt/ui`, so
+  app-specific blocks reuse those components.
 - `dev`, `build`, `start`, `lint`, `fmt`, `fmt:check`, `typecheck`, and `check` scripts.
 - `mise run <name>:check` and `mise run <name>:dev` entry points, registered in
   `tools/tasks/<name>.toml`. App checks also run shared TypeScript checks.
@@ -25,11 +29,8 @@ Every app gets:
 
 Optional features:
 
-- shadcn components built on Base UI, with `cn` for class names. Components stay in
-  the app until another app needs them.
 - Hono routes with ArkType request validation and a typed RPC client. The sample
   users API uses an unauthenticated in-memory store; replace it before deployment.
-- A theme provider and dark-mode toggle.
 - Vitest through Vite+, configured in `vite.config.ts`, with Testing Library
   tests for a page and the example API.
 - `.github/workflows/<name>.yml` at the repository root. It runs app checks and a
@@ -55,11 +56,11 @@ bunx --no-install tsc --noEmit -p tools/stack
 bunx --no-install vp check tools/stack
 ```
 
-The CLI versions live in `src/pipeline.ts`. When updating them, generate an app in
-a temporary copy of the workspace with all options enabled, then check and build
-it. Also test the minimal app without optional features. The unit tests cover
-option combinations, destination protection, and workspace integration; they do
-not download the upstream generators. When mise is installed, an integration test
+The create-next-app version lives in `src/pipeline.ts`. When updating it, generate
+an app in a temporary copy of the workspace with all options enabled, then check
+and build it. Also test the minimal app without optional features. The unit tests
+cover option combinations, destination protection, and workspace integration; they
+do not download create-next-app. When mise is installed, an integration test
 executes the real task graph in a temporary workspace with marker commands. It
 checks app discovery, shared-task deduplication, app directories, and native checks
 without TypeScript dependencies.

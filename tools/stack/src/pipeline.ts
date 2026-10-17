@@ -1,14 +1,13 @@
 import { resolve } from "node:path";
 
 import type { Config } from "./config.ts";
-import { REQUIRED_LANDING_COMPONENTS, validateProjectName } from "./config.ts";
+import { validateProjectName } from "./config.ts";
 import { buildMiseTasks, validateMiseNamespace } from "./mise.ts";
 import type { ShellRunner } from "./shell.ts";
 import { buildCi, getTemplates } from "./templates.ts";
 
-// Bump these together with a real scaffold/build smoke test.
+// Bump together with a real scaffold/build smoke test.
 export const NEXT_GENERATOR = "create-next-app@16.3.8";
-export const SHADCN_CLI = "shadcn@4.21.1";
 export const WORKSPACE_ROOT = resolve(import.meta.dir, "../../..");
 
 export type StepRunner = (
@@ -96,6 +95,11 @@ export async function scaffold(
       pkg.scripts.test = "vp test run";
       pkg.scripts["test:watch"] = "vp test";
     }
+    pkg.dependencies ??= {};
+    // create-next-app pins its own React; @aqt/ui hooks fail against a second copy.
+    pkg.dependencies.react = "catalog:";
+    pkg.dependencies["react-dom"] = "catalog:";
+    pkg.dependencies["@aqt/ui"] = "workspace:*";
     pkg.devDependencies ??= {};
     pkg.devDependencies["@aqt/config"] = "workspace:*";
     pkg.devDependencies["vite-plus"] = "catalog:";
@@ -114,7 +118,6 @@ export async function scaffold(
     await shell.spawn("bun", ["install"], { cwd: workspaceRoot });
     const dependencies = ["arktype", "@t3-oss/env-nextjs"];
     if (config.hono) dependencies.push("hono", "@hono/standard-validator");
-    if (config.themes) dependencies.push("next-themes", "lucide-react");
     await shell.install(dependencies, { cwd: projectPath });
     if (config.testing) {
       await shell.install(
@@ -129,33 +132,6 @@ export async function scaffold(
       );
     }
   });
-
-  if (config.shadcn) {
-    await runStep("Adding Base UI components", async () => {
-      await shell.spawn(
-        "bunx",
-        [
-          "--bun",
-          SHADCN_CLI,
-          "init",
-          "--base",
-          "base",
-          "--preset",
-          "nova",
-          "--no-monorepo",
-          "--yes",
-        ],
-        { cwd: projectPath },
-      );
-      const components = [...new Set([...config.shadcnComponents, ...REQUIRED_LANDING_COMPONENTS])];
-      await shell.spawn("bunx", ["--bun", SHADCN_CLI, "add", ...components, "--yes"], {
-        cwd: projectPath,
-      });
-      await shell.spawn("bunx", ["--bun", SHADCN_CLI, "migrate", "cn", "--yes"], {
-        cwd: projectPath,
-      });
-    });
-  }
 
   if (config.ci) {
     await runStep("Adding app CI workflow", async () => {
