@@ -24,9 +24,8 @@ async function main(): Promise<void> {
   log.info(`  Tailwind:   yes`);
   log.info("  Tooling:    workspace Oxlint, Oxfmt, TypeScript");
   log.info("  Validation: ArkType");
-  log.info(`  @aqt/ui:    ${config.ui ? "yes" : "no"}`);
+  log.info("  UI:         @aqt/ui with its theme toggle");
   log.info(`  Hono.js:    ${config.hono ? "yes" : "no"}`);
-  log.info(`  Themes:     ${config.themes ? "yes" : "no"}`);
   log.info(`  Testing:    ${config.testing ? "yes" : "no"}`);
   log.info(`  CI:         ${config.ci ? "yes" : "no"}`);
 

@@ -13,17 +13,9 @@ export async function promptConfig(): Promise<Config> {
     }),
   );
 
-  const useUi = unwrap(
-    await confirm({ message: "Use the shared @aqt/ui components?", initialValue: true }),
-  );
-
   const useHono = unwrap(
     await confirm({ message: "Add Hono.js API backend?", initialValue: true }),
   );
-
-  const useThemes =
-    useUi &&
-    unwrap(await confirm({ message: "Add a light/dark theme toggle?", initialValue: true }));
 
   const useTesting = unwrap(
     await confirm({ message: "Add testing (Vitest + Testing Library)?", initialValue: true }),
@@ -35,9 +27,7 @@ export async function promptConfig(): Promise<Config> {
 
   return {
     projectName,
-    ui: useUi,
     hono: useHono,
-    themes: useThemes,
     testing: useTesting,
     ci: useCi,
   };

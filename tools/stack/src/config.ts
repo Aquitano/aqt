@@ -1,9 +1,6 @@
 export interface Config {
   projectName: string;
-  ui: boolean;
   hono: boolean;
-  /** `@aqt/ui`'s theme provider and toggle; only applies with `ui`. */
-  themes: boolean;
   /** Vitest + Testing Library setup with a sample test. */
   testing: boolean;
   /** GitHub Actions CI workflow. */

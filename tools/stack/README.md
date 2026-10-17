@@ -19,6 +19,9 @@ Every app gets:
 - React from the root catalog, so the app and `@aqt/ui` share one copy.
 - Vite+ from the workspace, with Next.js lint rules enabled by the app lint script.
 - React Compiler, Tailwind CSS, and ArkType environment validation through T3 Env.
+- Components, tokens, fonts, theme provider and light/dark/system toggle from the shared
+  `@aqt/ui` package. Its `components.json` points the shadcn CLI at `@aqt/ui`, so
+  app-specific blocks reuse those components.
 - `dev`, `build`, `start`, `lint`, `fmt`, `fmt:check`, `typecheck`, and `check` scripts.
 - `mise run <name>:check` and `mise run <name>:dev` entry points, registered in
   `tools/tasks/<name>.toml`. App checks also run shared TypeScript checks.
@@ -26,11 +29,8 @@ Every app gets:
 
 Optional features:
 
-- Components, tokens and fonts from the shared `@aqt/ui` package. Its `components.json`
-  points the shadcn CLI at `@aqt/ui`, so app-specific blocks reuse those components.
 - Hono routes with ArkType request validation and a typed RPC client. The sample
   users API uses an unauthenticated in-memory store; replace it before deployment.
-- With `@aqt/ui`, its theme provider and light/dark/system toggle.
 - Vitest through Vite+, configured in `vite.config.ts`, with Testing Library
   tests for a page and the example API.
 - `.github/workflows/<name>.yml` at the repository root. It runs app checks and a

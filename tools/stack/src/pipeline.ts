@@ -99,7 +99,7 @@ export async function scaffold(
     // create-next-app pins its own React; @aqt/ui hooks fail against a second copy.
     pkg.dependencies.react = "catalog:";
     pkg.dependencies["react-dom"] = "catalog:";
-    if (config.ui) pkg.dependencies["@aqt/ui"] = "workspace:*";
+    pkg.dependencies["@aqt/ui"] = "workspace:*";
     pkg.devDependencies ??= {};
     pkg.devDependencies["@aqt/config"] = "workspace:*";
     pkg.devDependencies["vite-plus"] = "catalog:";

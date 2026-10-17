@@ -180,8 +180,6 @@ describe("user validation", () => {
 export interface TemplateOptions {
   projectName: string;
   hono: boolean;
-  ui: boolean;
-  themes: boolean;
   testing: boolean;
 }
 
@@ -200,30 +198,20 @@ describe("Home", () => {
 }
 
 function buildLanding(opts: TemplateOptions): string {
-  const themes = opts.ui && opts.themes;
-  const imports = [];
-  if (themes) imports.push('import { ThemeToggle } from "@aqt/ui/components/theme-toggle";');
-  if (opts.ui)
-    imports.push(
-      'import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@aqt/ui/components/card";',
-    );
-  const content = opts.ui
-    ? `<Card>
+  return `import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@aqt/ui/components/card";
+import { ThemeToggle } from "@aqt/ui/components/theme-toggle";
+
+export default function Home() {
+  return (
+    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 p-6">
+      <ThemeToggle />
+      <Card>
         <CardHeader>
           <CardTitle>${opts.projectName}</CardTitle>
           <CardDescription>Your new app.</CardDescription>
         </CardHeader>
         <CardContent><p>Edit src/app/page.tsx to get started.</p></CardContent>
-      </Card>`
-    : `<h1 className="text-3xl font-semibold">${opts.projectName}</h1>
-      <p>Edit src/app/page.tsx to get started.</p>`;
-  return `${imports.join("\n")}
-
-export default function Home() {
-  return (
-    <main className="mx-auto flex min-h-screen max-w-xl flex-col justify-center gap-6 p-6">
-      ${themes ? "<ThemeToggle />" : ""}
-      ${content}
+      </Card>
       ${opts.hono ? "<p>API health: <code>/api/health</code></p>" : ""}
     </main>
   );
@@ -232,11 +220,10 @@ export default function Home() {
 }
 
 function buildLayout(opts: TemplateOptions): string {
-  const themes = opts.ui && opts.themes;
-  return `import type { Metadata } from "next";
+  return `import { ThemeProvider } from "@aqt/ui/components/theme-provider";
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
-${themes ? 'import { ThemeProvider } from "@aqt/ui/components/theme-provider";' : ""}
 
 export const metadata: Metadata = {
   title: "${opts.projectName}",
@@ -245,9 +232,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en"${themes ? " suppressHydrationWarning" : ""}>
+    <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen antialiased">
-        ${themes ? "<ThemeProvider>{children}</ThemeProvider>" : "{children}"}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );
@@ -262,7 +249,8 @@ on:
     branches: [main]
     paths: &paths
       - "apps/${opts.projectName}/**"
-      - "packages/ts/config/**"${opts.ui ? '\n      - "packages/ts/ui/**"' : ""}
+      - "packages/ts/config/**"
+      - "packages/ts/ui/**"
       - "tools/oxlint/**"
       - "package.json"
       - "bun.lock"
@@ -319,7 +307,8 @@ From \`apps/${opts.projectName}\`:
 - \`bun run fmt\`: format with Vite+ and the workspace configuration.
 ${opts.testing ? "- `bun run test:watch`: run Vitest interactively.\n" : ""}
 TypeScript extends \`@aqt/config\`. Validation uses ArkType. React Compiler is enabled.
-${opts.ui ? "Components, tokens and fonts come from `@aqt/ui` (`packages/ts/ui`); its README covers theming, `--brand` and adding components. App-specific shadcn blocks go in `src/components` with `bunx --bun shadcn add <block>` from this directory.\n" : ""}
+Components, tokens and fonts come from \`@aqt/ui\` (\`packages/ts/ui\`); its README covers theming, \`--brand\` and adding components. App-specific shadcn blocks go in \`src/components\` with \`bunx --bun shadcn add <block>\` from this directory.
+
 ${opts.hono ? "Hono exposes `/api/health` and example `/api/users` routes. The example user store is in memory and has no authentication; replace it before deploying.\n" : ""}
 Deployment is not configured. Add app-specific deployment instructions here.
 `;
@@ -363,9 +352,7 @@ export function getTemplates(opts: TemplateOptions): ProjectFiles {
   const files: ProjectFiles = {
     "src/app/page.tsx": buildLanding(opts),
     "src/app/layout.tsx": buildLayout(opts),
-    "src/app/globals.css": opts.ui
-      ? '@import "@aqt/ui/styles/globals.css";\n'
-      : '@import "tailwindcss";\n',
+    "src/app/globals.css": '@import "@aqt/ui/styles/globals.css";\n',
     "src/lib/env.ts": ENV_FILE,
     ".env.example": ENV_EXAMPLE,
     ".gitignore":
@@ -375,7 +362,8 @@ export function getTemplates(opts: TemplateOptions): ProjectFiles {
 import "./src/lib/env";
 
 const nextConfig: NextConfig = {
-  reactCompiler: true,${opts.ui ? '\n  transpilePackages: ["@aqt/ui"],' : ""}
+  reactCompiler: true,
+  transpilePackages: ["@aqt/ui"],
 };
 export default nextConfig;
 `,
@@ -404,6 +392,7 @@ export default nextConfig;
         2,
       ) + "\n",
     "src/styles.d.ts": 'declare module "*.css";\n',
+    "components.json": COMPONENTS_JSON,
   };
   if (opts.hono) {
     files["src/lib/hono/index.ts"] = HONO_INDEX;
@@ -412,7 +401,6 @@ export default nextConfig;
     files["src/lib/hono/client.ts"] = HONO_CLIENT;
     files["src/app/api/[[...route]]/route.ts"] = API_ROUTE;
   }
-  if (opts.ui) files["components.json"] = COMPONENTS_JSON;
   if (opts.testing) {
     files["vite.config.ts"] = VITEST_CONFIG;
     files["vitest.setup.ts"] = VITEST_SETUP;

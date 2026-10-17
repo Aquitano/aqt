@@ -9,9 +9,7 @@ const ROOT = "/workspace";
 const APP = `${ROOT}/apps/example`;
 const config: Config = {
   projectName: "example",
-  ui: true,
   hono: true,
-  themes: true,
   testing: true,
   ci: true,
 };
@@ -110,7 +108,6 @@ describe("workspace scaffold", () => {
     const commands = JSON.stringify(shell.calls);
     for (const obsolete of ["prettier", "valibot", "git", "--eslint"])
       expect(commands).not.toContain(`"${obsolete}"`);
-    expect(commands).not.toMatch(/shadcn|next-themes/);
   });
 
   test("minimal app skips optional tooling without leaving a test command", async () => {
@@ -118,16 +115,10 @@ describe("workspace scaffold", () => {
     const existingFragment = '["other:dev"]\nrun = "keep me"\n';
     shell.files.set(`${ROOT}/tools/tasks/other.toml`, existingFragment);
     shell.existingTasks.push("other:dev");
-    await scaffold(
-      { ...config, ui: false, hono: false, themes: false, testing: false, ci: false },
-      shell,
-      step,
-      ROOT,
-    );
+    await scaffold({ ...config, hono: false, testing: false, ci: false }, shell, step, ROOT);
     const pkg = await shell.readPackageJson(`${APP}/package.json`);
     expect(pkg.scripts?.test).toBeUndefined();
     expect(pkg.scripts?.check).not.toContain("bun run test");
-    expect(pkg.dependencies?.["@aqt/ui"]).toBeUndefined();
     expect(shell.files.has(`${ROOT}/.github/workflows/example.yml`)).toBe(false);
     expect(shell.files.has(`${APP}/src/lib/hono/index.ts`)).toBe(false);
     expect(shell.files.has(`${ROOT}/tools/tasks/example.toml`)).toBe(true);
