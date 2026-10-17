@@ -25,6 +25,6 @@
     "@types/bun": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:",
-    "wrangler": "^4.149.0"
+    "wrangler": "^4.151.0"
   }
 }
