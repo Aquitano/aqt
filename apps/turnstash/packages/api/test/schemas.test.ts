@@ -9,7 +9,6 @@ import {
   MessageQuery,
   SearchQuery,
   StatsFilter,
-  TimelineCursor,
 } from "../src/schemas.ts";
 
 test("query schemas coerce strings and keep date bounds inside the PostgreSQL range", () => {
@@ -21,7 +20,6 @@ test("query schemas coerce strings and keep date bounds inside the PostgreSQL ra
   expect(Schema.is(StatsFilter)({ to: "9998-12-31" })).toBe(true);
   expect(Schema.is(StatsFilter)({ to: "9999-12-31" })).toBe(false);
   expect(Schema.is(StatsFilter)({ projectKey: "a\u0000b" })).toBe(false);
-  expect(Schema.is(TimelineCursor)("request:a\u0000b")).toBe(false);
   expect(Schema.is(ExportSelection)({ kind: "messages", messageKeys: ["a\u0000b"] })).toBe(false);
   expect(Schema.is(StatsFilter)({ timeZone: "Europe/Berlin" })).toBe(true);
   expect(Schema.is(StatsFilter)({ timeZone: "UTC" })).toBe(true);

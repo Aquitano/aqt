@@ -12,7 +12,21 @@ import {
   type ToolExecutionView,
 } from "@aqt/turnstash-api";
 import { findPrice } from "@aqt/turnstash-pricing";
-import { and, asc, count, desc, eq, gt, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { Effect } from "effect";
 
 import { conversationTurnViews } from "./analysis.ts";
@@ -138,6 +152,9 @@ export const listConversations = Effect.fn("Conversations.list")(function* (
   } satisfies ConversationPage;
 });
 
+// Copilot's session store can leave a long session's every request without a message.
+const requestsWithoutMessageShown = 100;
+
 export const getConversation = Effect.fn("Conversations.get")(function* (id: string) {
   const db = yield* Db;
   const [summary] = yield* conversationSummaries([id]);
@@ -181,6 +198,24 @@ export const getConversation = Effect.fn("Conversations.get")(function* (id: str
     );
   const commits = yield* commitsForConversation(id);
   const turns = yield* conversationTurnViews(id);
+  const withoutMessage = yield* db
+    .select({
+      request: modelRequests,
+      valuation: { costUsd: valuations.costUsd, unpricedReason: valuations.unpricedReason },
+      total: sql<number>`count(*) over ()`,
+    })
+    .from(modelRequests)
+    .leftJoin(valuations, activeValuation)
+    .leftJoin(
+      messages,
+      and(
+        eq(messages.conversationId, modelRequests.conversationId),
+        eq(messages.messageKey, modelRequests.messageKey),
+      ),
+    )
+    .where(and(eq(modelRequests.conversationId, id), isNull(messages.id)))
+    .orderBy(asc(modelRequests.requestedAt), asc(modelRequests.requestKey))
+    .limit(requestsWithoutMessageShown);
   return {
     conversation: summary,
     children: childSummaries,
@@ -198,6 +233,10 @@ export const getConversation = Effect.fn("Conversations.get")(function* (id: str
     redactions: number(redactions?.total),
     commits,
     turns,
+    requestsWithoutMessage: withoutMessage.map((entry) =>
+      requestSummary(entry.request, entry.valuation ?? undefined),
+    ),
+    requestsWithoutMessageTotal: number(withoutMessage[0]?.total),
   } satisfies ConversationDetail;
 });
 

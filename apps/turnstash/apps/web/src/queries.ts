@@ -7,7 +7,7 @@ import type {
 import { infiniteQueryOptions, queryOptions, skipToken } from "@tanstack/react-query";
 import { Effect, Schema } from "effect";
 
-import { api, isTimelineChanged } from "./api";
+import { api } from "./api";
 import { dateBounds, type DayRange } from "./period";
 
 export const rangeFilter = (range: DayRange | null): StatsFilter =>
@@ -22,7 +22,6 @@ export const queryKeys = {
   stats: ["stats"],
   conversationPages: ["conversation-pages"],
   messages: ["messages"],
-  timeline: ["timeline"],
   conversation: ["conversation"],
   request: ["request"],
   search: ["search"],
@@ -131,21 +130,6 @@ export const conversationQuery = (id: string) =>
   queryOptions({
     queryKey: [...queryKeys.conversation, id],
     queryFn: () => Effect.runPromise(api.read.getConversation({ params: { id } })),
-  });
-
-const firstTimelinePage: { readonly cursor?: string; readonly expectedVersion?: string } = {};
-
-export const timelinePagesQuery = (id: string) =>
-  infiniteQueryOptions({
-    queryKey: [...queryKeys.timeline, id],
-    queryFn: ({ pageParam }) =>
-      Effect.runPromise(api.read.getTimeline({ params: { id }, query: pageParam })),
-    initialPageParam: firstTimelinePage,
-    getNextPageParam: (page) =>
-      page.nextCursor === null
-        ? undefined
-        : { cursor: page.nextCursor, expectedVersion: page.version },
-    retry: (count, error) => !isTimelineChanged(error) && count < 3,
   });
 
 export const requestQuery = (id: string | null) =>
