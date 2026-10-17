@@ -9,6 +9,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 // seedPreMessageIDUnique brings a schema up to the state it had before the
@@ -60,16 +61,16 @@ func TestMigrationCollapsesDuplicateMessageIDs(t *testing.T) {
 	// aborts, and every command that opens the database fails at startup.
 	st := storetest.Open(t, dsn)
 
-	if n := storetest.QueryInt(t, dsn, `select count(*) from messages where source = 'gmail'`); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from messages where source = 'gmail'`); n != 1 {
 		t.Fatalf("%d gmail messages survived, want 1", n)
 	}
 	// The survivor is the lowest id, i.e. the copy ingested first.
-	if body := storetest.QueryInt(t, dsn,
+	if body := pgschematest.QueryInt(t, dsn,
 		`select count(*) from messages where source = 'gmail' and body = 'first copy'`); body != 1 {
 		t.Error("the survivor is not the first-ingested copy")
 	}
 	// A different source keeping the same Message-ID is not a duplicate.
-	if n := storetest.QueryInt(t, dsn, `select count(*) from messages where source = 'proton'`); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from messages where source = 'proton'`); n != 1 {
 		t.Error("a different source was collapsed")
 	}
 	// Attachments moved to the survivor: the shared file kept exactly once,
@@ -79,29 +80,29 @@ func TestMigrationCollapsesDuplicateMessageIDs(t *testing.T) {
 		filename string
 		count    int64
 	}{{"twice.pdf", 2}, {"shared.pdf", 1}, {"only-on-loser.pdf", 1}} {
-		if n := storetest.QueryInt(t, dsn, `
+		if n := pgschematest.QueryInt(t, dsn, `
 			select count(*) from attachments a join messages m on m.id = a.message_id
 			where m.source = 'gmail' and a.filename = $1`, want.filename); n != want.count {
 			t.Errorf("%s: %d rows on the survivor, want %d", want.filename, n, want.count)
 		}
 	}
-	if n := storetest.QueryInt(t, dsn, `
+	if n := pgschematest.QueryInt(t, dsn, `
 		select count(*) from attachments a left join messages m on m.id = a.message_id where m.id is null`); n != 0 {
 		t.Errorf("%d orphaned attachments", n)
 	}
 	// The deleted copy is auditable, named against the survivor that absorbed
 	// it, so its raw archive file stays reachable.
-	if n := storetest.QueryInt(t, dsn, `
+	if n := pgschematest.QueryInt(t, dsn, `
 		select count(*) from message_id_collapsed c join messages m on m.id = c.collapsed_into
 		where c.source = 'gmail' and c.external_id = 'dup@example.com'
 		  and c.raw_ref = 'gmail/takeout.mbox' and m.body = 'first copy'`); n != 1 {
 		t.Errorf("the collapsed message was deleted without an audit row naming its survivor (%d matched)", n)
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from message_id_collapsed`); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from message_id_collapsed`); n != 1 {
 		t.Errorf("%d audit rows, want only the one deleted copy", n)
 	}
 	// The unique index exists and rejects later duplicates.
-	if n := storetest.QueryInt(t, dsn,
+	if n := pgschematest.QueryInt(t, dsn,
 		`select count(*) from pg_indexes where schemaname = 'public' and indexname = 'messages_source_message_id_key'`); n != 1 {
 		t.Fatal("the unique partial index is missing after migration")
 	}
@@ -141,13 +142,13 @@ func TestAttachmentIngestionMigrationPreservesLegacyRows(t *testing.T) {
 	storetest.Exec(t, dsn, `insert into messages (source,external_id,sent_at,ingested_at) values ('proton','old',now(),'2000-01-01')`)
 	storetest.Exec(t, dsn, `insert into attachments (message_id,filename,size_bytes,sha256) select id,'old.pdf',1,$1 from messages`, digestA)
 	st := storetest.Open(t, dsn)
-	if n := storetest.QueryInt(t, dsn, `select count(*) from attachments where sha256=$1 and ingested_at is null`, digestA); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from attachments where sha256=$1 and ingested_at is null`, digestA); n != 1 {
 		t.Fatal("legacy attachment was assigned a new ingestion time")
 	}
 	if err := st.InsertAttachment(context.Background(), store.Attachment{MessageID: 1, Filename: "new.pdf", SizeBytes: 1, SHA256: digestB}); err != nil {
 		t.Fatal(err)
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from attachments where sha256=$1 and ingested_at > '2000-01-01'`, digestB); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from attachments where sha256=$1 and ingested_at > '2000-01-01'`, digestB); n != 1 {
 		t.Fatal("new attachment did not receive an ingestion time")
 	}
 }
@@ -162,10 +163,10 @@ func TestForwardSlashMigrationRewritesOnlyWindowsRefs(t *testing.T) {
 	storetest.Exec(t, dsn, `insert into library_item_evidence (item_id,raw_ref,locator) values ('item','a\b.json','row 1')`)
 	storetest.Open(t, dsn)
 
-	if n := storetest.QueryInt(t, dsn, `select count(*) from messages where raw_ref in ('mail/a.eml','mail/b\c.eml')`); n != 2 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from messages where raw_ref in ('mail/a.eml','mail/b\c.eml')`); n != 2 {
 		t.Errorf("%d message refs as expected, want 2", n)
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from library_items i join library_item_evidence e on e.item_id = i.id
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from library_items i join library_item_evidence e on e.item_id = i.id
 		where i.provenance->>'raw_ref' = 'a\b.json' and e.raw_ref = 'a\b.json'`); n != 1 {
 		t.Error("a bundle-supplied library ref was rewritten")
 	}
@@ -200,13 +201,13 @@ func TestConcurrentMigrationsSerialize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := storetest.QueryInt(t, dsn, `select version from public.schema_version`); n != int64(len(files)) {
+	if n := pgschematest.QueryInt(t, dsn, `select version from public.schema_version`); n != int64(len(files)) {
 		t.Errorf("schema version %d, want %d", n, len(files))
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from public.schema_version`); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from public.schema_version`); n != 1 {
 		t.Errorf("%d version rows, want 1", n)
 	}
-	if n := storetest.QueryInt(t, dsn,
+	if n := pgschematest.QueryInt(t, dsn,
 		`select count(*) from pg_indexes where schemaname = 'public' and indexname = 'messages_bm25_idx'`); n != 1 {
 		t.Errorf("%d bm25 indexes, want exactly 1", n)
 	}

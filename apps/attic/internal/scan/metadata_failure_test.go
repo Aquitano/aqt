@@ -12,6 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func TestMain(m *testing.M) {
@@ -51,7 +52,7 @@ func TestMetadataBadBatchDoesNotStarveLaterFiles(t *testing.T) {
 	if first.Counts.Metadata != 1 || first.Counts.Skipped != 1 {
 		t.Fatalf("first: %+v", first)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from metadata"); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from metadata"); n != 1 {
 		t.Fatalf("stored %d, want only good file", n)
 	}
 	second := scanAt(t, st, root, testVolume, func(o *Options) { o.Config = cfg })

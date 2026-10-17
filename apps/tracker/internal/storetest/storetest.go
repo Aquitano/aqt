@@ -39,7 +39,3 @@ func NewNamed(t *testing.T) (*store.Store, string) {
 	t.Cleanup(func() { st.Close() })
 	return st, dsn
 }
-
-// QueryInt runs a single-value query against the test's database, for
-// assertions past the Store API.
-var QueryInt = pgschematest.QueryInt

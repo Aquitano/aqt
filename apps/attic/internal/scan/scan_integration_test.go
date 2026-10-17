@@ -23,6 +23,7 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/extract"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func write(t *testing.T, root, rel, body string) {
@@ -415,10 +416,10 @@ func TestDocumentReadFailureTriesAnotherCopy(t *testing.T) {
 	if err := sc.Finish(ctx, "complete", nil); err != nil {
 		t.Fatal(err)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from texts where status = 'ok' and text = $1", "the same searchable contract"); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from texts where status = 'ok' and text = $1", "the same searchable contract"); n != 1 {
 		t.Errorf("successful copies stored %d texts, want one", n)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from texts where status = 'failed'"); n != 0 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from texts where status = 'failed'"); n != 0 {
 		t.Errorf("temporary read failure stored %d permanent failures", n)
 	}
 	if skips, err := st.Skips(ctx, sc.ID, "unreadable", "", 10); err != nil || len(skips) != 1 || skips[0].Path != "/a.txt" {
@@ -455,7 +456,7 @@ func TestCancelledDocumentReadRemainsPending(t *testing.T) {
 	if err := sc.Finish(context.WithoutCancel(ctx), "interrupted", nil); err != nil {
 		t.Fatal(err)
 	}
-	if n := storetest.QueryInt(t, dsn, "select count(*) from texts"); n != 0 {
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from texts"); n != 0 {
 		t.Fatalf("cancelled read stored %d terminal texts", n)
 	}
 	if again := scanAt(t, st, root, testVolume); again.Counts.Texts != 1 {

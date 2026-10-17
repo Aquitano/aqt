@@ -18,6 +18,7 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
 	"github.com/aquitano/aqt/apps/tracker/internal/storetest"
 	"github.com/aquitano/aqt/apps/tracker/internal/urlnorm"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 const fakeVersion = 1
@@ -127,10 +128,10 @@ func TestAPageKeepsOneRecordWithItsNewestContent(t *testing.T) {
 				ingestAt(t, st, "https://example.com/issues/1", strings.Replace(pageHTML, "Bun ORM", c.title, 1), c.at)
 				drain(t, p)
 			}
-			if n := storetest.QueryInt(t, dsn, `select count(*) from records`); n != 1 {
+			if n := pgschematest.QueryInt(t, dsn, `select count(*) from records`); n != 1 {
 				t.Fatalf("%d records for one page, want 1", n)
 			}
-			if n := storetest.QueryInt(t, dsn, `select count(*) from records
+			if n := pgschematest.QueryInt(t, dsn, `select count(*) from records
 				where title = $1 and first_seen_at = $2 and last_seen_at = $3`, closed.title, open.at, closed.at); n != 1 {
 				t.Error("the record does not hold the newest content over the whole seen window")
 			}
@@ -142,7 +143,7 @@ func TestQueueCapturesRefillsTheQueueFromCaptures(t *testing.T) {
 	p, st, dsn := newProcessor(t)
 	ingest(t, st, "https://example.com/bun", pageHTML)
 	ingest(t, st, "https://example.com/other", strings.Replace(pageHTML, "Bun ORM", "Other", 1))
-	storetest.QueryInt(t, dsn, `with gone as (delete from derivations returning 1) select count(*) from gone`)
+	pgschematest.QueryInt(t, dsn, `with gone as (delete from derivations returning 1) select count(*) from gone`)
 
 	ctx := context.Background()
 	targets := []store.ExtractorVersion{{Name: fake.Name, Version: fakeVersion}}
@@ -161,7 +162,7 @@ func TestNULInExtractedTextIsDroppedRatherThanFailingTheJob(t *testing.T) {
 	p, st, dsn := newProcessor(t)
 	ingest(t, st, "https://example.com/nul", `<html><head><title>Bun\0 ORM</title></head><body><p>SQL\0-first</p></body></html>`)
 	drain(t, p)
-	if n := storetest.QueryInt(t, dsn, `select count(*) from records
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from records
 		where title = 'Bun ORM' and search_text = 'SQL-first' and data->>'title' = 'Bun ORM'`); n != 1 {
 		t.Error("the record was not stored without its NULs")
 	}
@@ -172,7 +173,7 @@ func TestReprocessAllRebuildsDerivedTablesFromSource(t *testing.T) {
 	ingest(t, st, "https://example.com/bun", pageHTML)
 	ingest(t, st, "https://example.com/other", strings.Replace(pageHTML, "Bun ORM", "Other", 1))
 	drain(t, p)
-	before := storetest.QueryInt(t, dsn, `select min(id) from records where title = 'Bun ORM'`)
+	before := pgschematest.QueryInt(t, dsn, `select min(id) from records where title = 'Bun ORM'`)
 
 	ctx := context.Background()
 	queued, err := st.Reprocess(ctx, store.ReprocessOpts{All: true, Targets: []store.ExtractorVersion{{Name: fake.Name, Version: fakeVersion}}})
@@ -182,7 +183,7 @@ func TestReprocessAllRebuildsDerivedTablesFromSource(t *testing.T) {
 	if queued != 2 {
 		t.Errorf("queued %d, want 2", queued)
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from records`); n != 0 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from records`); n != 0 {
 		t.Fatalf("%d records survived the wipe", n)
 	}
 	if n := drain(t, p); n != 2 {
@@ -195,11 +196,11 @@ func TestReprocessAllRebuildsDerivedTablesFromSource(t *testing.T) {
 	if stats.Derivations[store.StatusDone] != 2 || stats.Records[fake.Name] != 2 {
 		t.Errorf("derivations=%v records=%v", stats.Derivations, stats.Records)
 	}
-	after := storetest.QueryInt(t, dsn, `select min(id) from records where title = 'Bun ORM'`)
+	after := pgschematest.QueryInt(t, dsn, `select min(id) from records where title = 'Bun ORM'`)
 	if after == before {
 		t.Error("the record was not rebuilt")
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from derivations d join records r on r.id = d.record_id
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from derivations d join records r on r.id = d.record_id
 		where r.record_hash = (select record_hash from records where title = 'Bun ORM')`); n != 1 {
 		t.Errorf("rebuilt derivation does not point at the rebuilt record (%d)", n)
 	}
@@ -210,7 +211,7 @@ func TestReprocessAfterAVersionBumpReplacesTheOldRecords(t *testing.T) {
 	ingest(t, st, "https://example.com/bun", pageHTML)
 	drain(t, p)
 	// Pretend the record came from an older version whose output differed.
-	storetest.QueryInt(t, dsn, `with old as (
+	pgschematest.QueryInt(t, dsn, `with old as (
 		update derivations set extractor_version = $1 returning 1),
 		changed as (update records set record_hash = '\x00', data = '{"old": true}' returning 1)
 		select (select count(*) from old) + (select count(*) from changed)`, fakeVersion-1)
@@ -221,10 +222,10 @@ func TestReprocessAfterAVersionBumpReplacesTheOldRecords(t *testing.T) {
 		t.Fatalf("reprocess queued %d (%v), want 1", queued, err)
 	}
 	drain(t, p)
-	if n := storetest.QueryInt(t, dsn, `select count(*) from records`); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from records`); n != 1 {
 		t.Errorf("%d records after the rollout, want the new one only", n)
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from derivations where extractor_version <> $1`, fakeVersion); n != 0 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from derivations where extractor_version <> $1`, fakeVersion); n != 0 {
 		t.Errorf("%d derivations of the old version survived", n)
 	}
 }
@@ -232,14 +233,14 @@ func TestReprocessAfterAVersionBumpReplacesTheOldRecords(t *testing.T) {
 func TestAJobWhoseWorkerKeepsDyingIsFailedNotReclaimed(t *testing.T) {
 	p, st, dsn := newProcessor(t)
 	ingest(t, st, "https://example.com/bun", pageHTML)
-	storetest.QueryInt(t, dsn, `with quiet as (
+	pgschematest.QueryInt(t, dsn, `with quiet as (
 		update derivations set status = 'running', claimed_at = now() - interval '1 hour', attempts = $1
 		returning 1) select count(*) from quiet`, store.MaxAttempts)
 
 	if n := drain(t, p); n != 0 {
 		t.Errorf("claimed %d jobs, want none", n)
 	}
-	if n := storetest.QueryInt(t, dsn,
+	if n := pgschematest.QueryInt(t, dsn,
 		`select count(*) from derivations where status = 'failed' and error_class = $1`, store.ClassAbandoned); n != 1 {
 		t.Errorf("the abandoned job was not failed (%d rows)", n)
 	}
@@ -254,15 +255,15 @@ func TestFailuresAreClassifiedAndRetriedByPolicy(t *testing.T) {
 		drain(t, p)
 		retryNow(t, dsn)
 	}
-	if n := storetest.QueryInt(t, dsn,
+	if n := pgschematest.QueryInt(t, dsn,
 		`select count(*) from derivations where status = 'failed' and error_class = 'no_match' and attempts = 1`); n != 1 {
 		t.Errorf("no_match should fail on the first attempt without retries (%d rows)", n)
 	}
-	if n := storetest.QueryInt(t, dsn,
+	if n := pgschematest.QueryInt(t, dsn,
 		`select count(*) from derivations where status = 'failed' and error_class = 'panic' and attempts = $1`, store.MaxAttempts); n != 1 {
 		t.Errorf("panic should be retried up to %d attempts and then fail (%d rows)", store.MaxAttempts, n)
 	}
-	storetest.QueryInt(t, dsn, `with delayed as (update derivations set retry_at = now() + interval '1 hour' returning 1) select count(*) from delayed`)
+	pgschematest.QueryInt(t, dsn, `with delayed as (update derivations set retry_at = now() + interval '1 hour' returning 1) select count(*) from delayed`)
 	queued, err := st.Reprocess(context.Background(), store.ReprocessOpts{Failed: true,
 		Targets: []store.ExtractorVersion{{Name: fake.Name, Version: fakeVersion}}})
 	if err != nil || queued != 2 {
@@ -285,7 +286,7 @@ func TestARetriedJobWaitsTwiceAsLongAfterEachFailure(t *testing.T) {
 		if n := drain(t, p); n != 0 {
 			t.Fatal("a failed job was claimed again before its backoff passed")
 		}
-		waits = append(waits, storetest.QueryInt(t, dsn,
+		waits = append(waits, pgschematest.QueryInt(t, dsn,
 			`select round(extract(epoch from retry_at - updated_at))::bigint from derivations where status = 'pending'`))
 		retryNow(t, dsn)
 	}
@@ -297,10 +298,10 @@ func TestARetriedJobWaitsTwiceAsLongAfterEachFailure(t *testing.T) {
 func TestAStoreErrorBeforeExtractionIsRetriedAsStore(t *testing.T) {
 	p, st, dsn := newProcessor(t)
 	ingest(t, st, "https://example.com/bun", pageHTML)
-	storetest.QueryInt(t, dsn, `with gone as (delete from captures returning 1) select count(*) from gone`)
+	pgschematest.QueryInt(t, dsn, `with gone as (delete from captures returning 1) select count(*) from gone`)
 
 	drain(t, p)
-	if n := storetest.QueryInt(t, dsn,
+	if n := pgschematest.QueryInt(t, dsn,
 		`select count(*) from derivations where status = 'pending' and error_class = 'store'`); n != 1 {
 		t.Error("a job whose captures could not be read was not retried as a store failure")
 	}
@@ -309,6 +310,6 @@ func TestAStoreErrorBeforeExtractionIsRetriedAsStore(t *testing.T) {
 // retryNow makes every backed-off job due, as if its wait had passed.
 func retryNow(t *testing.T, dsn string) {
 	t.Helper()
-	storetest.QueryInt(t, dsn, `with due as (update derivations set retry_at = now() where retry_at > now()
+	pgschematest.QueryInt(t, dsn, `with due as (update derivations set retry_at = now() where retry_at > now()
 		returning 1) select count(*) from due`)
 }

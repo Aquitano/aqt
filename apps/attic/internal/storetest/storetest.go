@@ -34,6 +34,3 @@ func New(t *testing.T) (*store.Store, string) {
 	t.Cleanup(st.Close)
 	return st, dsn
 }
-
-// QueryInt runs a single-value integer query against the test's database.
-var QueryInt = pgschematest.QueryInt

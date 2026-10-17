@@ -12,6 +12,7 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
 	"github.com/aquitano/aqt/apps/tracker/internal/storetest"
 	"github.com/aquitano/aqt/apps/tracker/internal/urlnorm"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func TestResentPageViewUpdatesTitleButNeverClearsIt(t *testing.T) {
@@ -32,7 +33,7 @@ func TestResentPageViewUpdatesTitleButNeverClearsIt(t *testing.T) {
 		}
 	}
 	titled := func() int64 {
-		return storetest.QueryInt(t, dsn,
+		return pgschematest.QueryInt(t, dsn,
 			"select count(*) from page_views where id = $1 and title = $2", id, "uptrace/bun: SQL-first Golang ORM")
 	}
 	send("")

@@ -15,6 +15,7 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/auth"
 	"github.com/aquitano/aqt/apps/tracker/internal/metrics"
 	"github.com/aquitano/aqt/apps/tracker/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 // Postgres rejects NUL in text. The store strips it so one title cannot fail
@@ -36,10 +37,10 @@ func TestEventsWithNULInATitleAreStoredWithoutIt(t *testing.T) {
 	if rec.Code != http.StatusOK || res.Accepted != 2 || res.Dropped != 0 {
 		t.Fatalf("status %d, accepted=%d dropped=%d, want 200 with both accepted", rec.Code, res.Accepted, res.Dropped)
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from page_views where title = 'Page'`); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from page_views where title = 'Page'`); n != 1 {
 		t.Error("page view title was not stored without its NUL")
 	}
-	if n := storetest.QueryInt(t, dsn, `select count(*) from activity_spans where window_title = 'main.go — aqt'`); n != 1 {
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from activity_spans where window_title = 'main.go — aqt'`); n != 1 {
 		t.Error("window title was not stored without its NUL")
 	}
 }

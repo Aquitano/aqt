@@ -10,6 +10,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func msg(source, externalID string, m store.Message) store.Message {
@@ -81,7 +82,7 @@ func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
 		t.Fatalf("ids have wrong shape or duplicate result: first=%d last-new=%d duplicate=%d len=%d",
 			ids[0], ids[n-1], ids[n], len(ids))
 	}
-	if rows := storetest.QueryInt(t, dsn, `select count(*) from messages where source = 'batch'`); rows != n {
+	if rows := pgschematest.QueryInt(t, dsn, `select count(*) from messages where source = 'batch'`); rows != n {
 		t.Fatalf("rows = %d, want %d", rows, n)
 	}
 

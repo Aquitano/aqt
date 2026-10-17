@@ -11,6 +11,7 @@ import (
 	"github.com/aquitano/aqt/apps/tracker/internal/store"
 	"github.com/aquitano/aqt/apps/tracker/internal/storetest"
 	"github.com/aquitano/aqt/apps/tracker/internal/urlnorm"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func urlKey(t *testing.T, raw string) store.URLKey {
@@ -42,7 +43,7 @@ func TestDesktopSpanRoundTrips(t *testing.T) {
 	apply(t, st, device, store.Events{SpanEnds: []store.SpanEndEvent{
 		{ID: id, EndedAt: start.Add(time.Minute), Reason: "app_switch"}}})
 
-	stored := storetest.QueryInt(t, dsn, `select count(*) from activity_spans
+	stored := pgschematest.QueryInt(t, dsn, `select count(*) from activity_spans
 		where id = $1 and page_view_id is null and app_name = 'Code' and bundle_id = 'com.microsoft.VSCode'
 		  and window_title = 'main.go — aqt' and end_reason = 'app_switch'
 		  and ended_at = started_at + interval '60 seconds'`, id)
@@ -66,7 +67,7 @@ func TestIdleEndRollsBackPastHeartbeatsButNotBeforeTheStart(t *testing.T) {
 	rolledBack := span(start.Add(5 * time.Second))
 	clamped := span(start.Add(-10 * time.Second))
 
-	matched := storetest.QueryInt(t, dsn, `select count(*) from activity_spans
+	matched := pgschematest.QueryInt(t, dsn, `select count(*) from activity_spans
 		where (id, ended_at) in (($1, $3::timestamptz + interval '5 seconds'), ($2, $3::timestamptz)) and end_reason = 'idle'`,
 		rolledBack, clamped, start)
 	if matched != 2 {
@@ -90,10 +91,10 @@ func TestWorkBlocksSplitOnGapsOverMaxGap(t *testing.T) {
 	span(260*time.Second, "idle")
 
 	from, to := base.Add(-time.Hour), base.Add(time.Hour)
-	if blocks := storetest.QueryInt(t, dsn, `select count(*) from work_blocks($1, $2)`, from, to); blocks != 2 {
+	if blocks := pgschematest.QueryInt(t, dsn, `select count(*) from work_blocks($1, $2)`, from, to); blocks != 2 {
 		t.Fatalf("work_blocks returned %d blocks, want 2", blocks)
 	}
-	shape := storetest.QueryInt(t, dsn, `select count(*) from work_blocks($1, $2)
+	shape := pgschematest.QueryInt(t, dsn, `select count(*) from work_blocks($1, $2)
 		where (span_count, switches, dominant_category) in ((2, 2, 'Focus/Code'), (1, 0, 'Focus/Code'))`, from, to)
 	if shape != 2 {
 		t.Fatalf("blocks with the expected span_count and switches: %d, want 2", shape)
@@ -112,7 +113,7 @@ func TestIdleBatchReplayPreservesEndedAt(t *testing.T) {
 	apply(t, st, device, events)
 	apply(t, st, device, events)
 	apply(t, st, device, store.Events{Heartbeats: []store.SpanHeartbeatEvent{{ID: id, At: start.Add(time.Minute)}}})
-	seconds := storetest.QueryInt(t, dsn, `select extract(epoch from ended_at - started_at)::bigint
+	seconds := pgschematest.QueryInt(t, dsn, `select extract(epoch from ended_at - started_at)::bigint
 		from activity_spans where id = $1`, id)
 	if seconds != 5 {
 		t.Fatalf("active seconds after replay and late heartbeat: %d, want 5", seconds)
@@ -132,7 +133,7 @@ func TestCategorizedSpansMatchAppsAndHosts(t *testing.T) {
 			{ID: browser, PageViewID: pv, StartedAt: start},
 			{ID: desktop, AppName: "Code", StartedAt: start}}})
 
-	matched := storetest.QueryInt(t, dsn, `select count(*) from categorized_spans
+	matched := pgschematest.QueryInt(t, dsn, `select count(*) from categorized_spans
 		where (id, source, category) in (($1, 'page', 'Distraction'), ($2, 'desktop', 'Focus/Code'))
 		  and (host = 'www.youtube.com' or app_name = 'Code')`, browser, desktop)
 	if matched != 2 {
@@ -175,7 +176,7 @@ func TestCategoryCoverageSeeds(t *testing.T) {
 			}
 			events.SpanStarts = []store.SpanStartEvent{event}
 			apply(t, st, device, events)
-			if got := storetest.QueryInt(t, dsn, `select count(*) from categorized_spans where id = $1 and category = $2`, id, tc.category); got != 1 {
+			if got := pgschematest.QueryInt(t, dsn, `select count(*) from categorized_spans where id = $1 and category = $2`, id, tc.category); got != 1 {
 				t.Fatalf("expected category %q", tc.category)
 			}
 		})

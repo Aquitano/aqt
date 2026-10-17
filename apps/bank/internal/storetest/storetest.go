@@ -68,10 +68,6 @@ func Exec(t *testing.T, dsn, sql string, args ...any) {
 	}
 }
 
-// QueryInt runs a single-value integer query, for assertions about rows the
-// Store API does not expose.
-var QueryInt = pgschematest.QueryInt
-
 // Open migrates and returns a Store for an existing test database.
 func Open(t *testing.T, dsn string) *store.Store {
 	t.Helper()
@@ -92,7 +88,7 @@ func Open(t *testing.T, dsn string) *store.Store {
 // the absence of rows.
 func CountAttachments(t *testing.T, dsn string) int64 {
 	t.Helper()
-	return QueryInt(t, dsn, `select count(*) from attachments`)
+	return pgschematest.QueryInt(t, dsn, `select count(*) from attachments`)
 }
 
 // QueryDSN authenticates as a real restricted login, never SET ROLE on the
