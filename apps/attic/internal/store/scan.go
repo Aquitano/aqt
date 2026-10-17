@@ -749,14 +749,6 @@ func (sc *Scan) SetContent(ctx context.Context, p Pending, digest [32]byte) erro
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	for _, h := range sc.hashes {
-		if h.file.ID == p.ID {
-			if err := sc.flushContents(ctx); err != nil {
-				return err
-			}
-			break
-		}
-	}
 	sc.hashes = append(sc.hashes, completedHash{file: p, digest: digest})
 	if len(sc.hashes) >= hashBatch {
 		return sc.flushContents(ctx)
@@ -790,6 +782,8 @@ func (sc *Scan) flushContents(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Kept on the scan: Finish retries a failed flush after these inserts
+	// committed, and they must not count as duplicates then.
 	if sc.hashInserts == nil {
 		sc.hashInserts = make(map[int64]bool, len(insertedIDs))
 	}
@@ -863,9 +857,6 @@ func (sc *Scan) flushContents(ctx context.Context) error {
 // HashFailed marks a file whose bytes could not be read; the next scan tries
 // it again.
 func (sc *Scan) HashFailed(ctx context.Context, p Pending, failure error) error {
-	if err := sc.flushContents(ctx); err != nil {
-		return err
-	}
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return err
@@ -881,9 +872,6 @@ func (sc *Scan) HashFailed(ctx context.Context, p Pending, failure error) error 
 // force now say its bytes must not be read: an exclusion or a size cap added
 // after the scan that listed it.
 func (sc *Scan) SkipHash(ctx context.Context, p Pending, reason, rule, detail string) error {
-	if err := sc.flushContents(ctx); err != nil {
-		return err
-	}
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return err
