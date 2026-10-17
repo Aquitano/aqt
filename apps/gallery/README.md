@@ -141,7 +141,10 @@ instead of the preset's `vite build` (the `vite` alias has no binary), and an ig
 command so only changes under `apps/gallery` or `packages/ts/ui`, or to the
 lockfile, trigger a build. It compares against the branch's last successful
 deployment, not the previous commit, so a push whose last commit misses those
-paths still builds, and a branch's first push always builds. The vite config
+paths still builds, and a branch's first push always builds. Vercel clones only
+the last few commits, so when that deployment's commit is older, the comparison
+fails and the command builds rather than exiting with git's error, which Vercel
+counts as a failed deployment. The vite config
 names the matching `bun1.4.x` function runtime, since
 nitro would otherwise emit `bun1.x`. When the Bun line moves in `mise.toml`,
 move it in those two places as well.

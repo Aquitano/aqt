@@ -14,7 +14,6 @@ final class HUDManager {
     private(set) var isVisible = false
     private(set) var kind: HUDKind = .volume
     private(set) var value: Double = 0
-    private(set) var muted = false
     /// True while the consuming tap is active (we own the keys and the HUD).
     private(set) var replacingSystemHUD = false
 
@@ -145,7 +144,6 @@ final class HUDManager {
     }
 
     private func present(volume: Double, muted: Bool) {
-        self.muted = muted
         value = volume
         kind = muted ? .mute : .volume
         show()

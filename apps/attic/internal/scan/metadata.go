@@ -31,7 +31,7 @@ func (r *run) readMetadata(ctx context.Context) error {
 	r.progress(true)
 	var after store.ContentFile
 	for {
-		batch, err := r.sc.NextMetadata(ctx, after, 16)
+		batch, err := r.sc.NextMetadata(ctx, after, 64)
 		if err != nil || len(batch) == 0 {
 			return err
 		}

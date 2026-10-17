@@ -202,9 +202,10 @@ func TestExclusionAddedAfterListingStopsHashing(t *testing.T) {
 }
 
 // The second of two hard links in a folder keeps its path as identity. Once
-// the first is gone and created again, the scan must still match both.
+// the first is gone, the second keeps its own row; created again, the first
+// gets its row back.
 func TestReappearingHardLinkScans(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, dsn := storetest.New(t)
 	root := t.TempDir()
 	a, b := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")
 	write(t, root, "a.txt", "linked")
@@ -216,11 +217,168 @@ func TestReappearingHardLinkScans(t *testing.T) {
 		t.Fatal(err)
 	}
 	scanAt(t, st, root, testVolume)
+	if n := storetest.QueryInt(t, dsn, "select count(*) from entries where name = 'b.txt'"); n != 1 {
+		t.Fatalf("b.txt has %d rows, want one", n)
+	}
 	if err := os.Link(b, a); err != nil {
 		t.Fatal(err)
 	}
 	scanAt(t, st, root, testVolume)
 	scanAt(t, st, root, testVolume)
+}
+
+// livePaths fails unless the present hits for query are exactly want, and
+// when one path has two rows.
+func livePaths(t *testing.T, st *store.Store, query string, want ...string) map[string]store.Hit {
+	t.Helper()
+	hits, err := st.Search(context.Background(), store.SearchOptions{Query: query, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	live := map[string]store.Hit{}
+	for _, h := range hits {
+		if seen[h.Path] {
+			t.Fatalf("two rows for %s: %+v", h.Path, hits)
+		}
+		seen[h.Path] = true
+		if !h.Missing {
+			live[h.Path] = h
+		}
+	}
+	if len(live) != len(want) {
+		t.Fatalf("live paths %+v, want %v", live, want)
+	}
+	for _, p := range want {
+		if _, ok := live[p]; !ok {
+			t.Fatalf("missing live path %s: %+v", p, hits)
+		}
+	}
+	return live
+}
+
+// scanUnder scans only the folder rel below the volume root.
+func scanUnder(t *testing.T, st *store.Store, root string, rel ...string) Result {
+	t.Helper()
+	return scanAt(t, st, root, testVolume, func(o *Options) {
+		o.Path = filepath.Join(append([]string{root}, rel...)...)
+		o.locate = func(string) (disk.Volume, []string, error) {
+			return disk.Volume{Fingerprint: testVolume, Root: root}, rel, nil
+		}
+	})
+}
+
+func TestCrossDirectoryHardLinksKeepTheirPaths(t *testing.T) {
+	st, _ := storetest.New(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	write(t, root, "a/nested/linked.txt", "shared bytes")
+	if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(filepath.Join(root, "a", "nested", "linked.txt"), filepath.Join(root, "b", "linked.txt")); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	a, b := "/a/nested/linked.txt", "/b/linked.txt"
+	scanAt(t, st, root, testVolume)
+	first := livePaths(t, st, "linked", a, b)
+	if first[a].Ref == "" || first[a].Ref != first[b].Ref {
+		t.Fatalf("hard links have different content: %+v", first)
+	}
+	for _, rel := range [][]string{{"b"}, {"a", "nested"}, {"a"}, nil, {"b"}, nil} {
+		scanUnder(t, st, root, rel...)
+		for p, h := range livePaths(t, st, "linked", a, b) {
+			if h.ID != first[p].ID || h.Ref != first[p].Ref {
+				t.Fatalf("scan of %v changed %s from %+v to %+v", rel, p, first[p], h)
+			}
+		}
+	}
+	owner, err := st.Entry(ctx, first[a].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owner.FileID == nil {
+		a, b = b, a
+	}
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(a, "/")))); err != nil {
+		t.Fatal(err)
+	}
+	scanAt(t, st, root, testVolume)
+	remaining := livePaths(t, st, "linked", b)[b]
+	if err := os.Rename(filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(b, "/"))), filepath.Join(root, "linked-renamed.txt")); err != nil {
+		t.Fatal(err)
+	}
+	res := scanAt(t, st, root, testVolume)
+	if renamed := livePaths(t, st, "linked", "/linked-renamed.txt")["/linked-renamed.txt"]; renamed.Ref != remaining.Ref || res.Counts.Hashed != 0 {
+		t.Fatalf("renamed remaining link %+v after hashing %d files, want ref %s unhashed", renamed, res.Counts.Hashed, remaining.Ref)
+	}
+}
+
+// Only the destination is scanned and another link still holds the file. The
+// owner's path is gone, so its row moves without a hash.
+func TestMovedHardLinkKeepsItsRow(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "old/moving.bin", "linked bytes")
+	for _, dir := range []string{"new", "other"} {
+		if err := os.Mkdir(filepath.Join(root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Link(filepath.Join(root, "old", "moving.bin"), filepath.Join(root, "other", "keep.bin")); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	scanAt(t, st, root, testVolume)
+	before := livePaths(t, st, "moving", "/old/moving.bin")["/old/moving.bin"]
+	if err := os.Rename(filepath.Join(root, "old", "moving.bin"), filepath.Join(root, "new", "moving.bin")); err != nil {
+		t.Fatal(err)
+	}
+	res := scanUnder(t, st, root, "new")
+	if after := livePaths(t, st, "moving", "/new/moving.bin")["/new/moving.bin"]; after.ID != before.ID || res.Counts.Hashed != 0 {
+		t.Fatalf("moved link %+v after hashing %d files, want row %d unhashed", after, res.Counts.Hashed, before.ID)
+	}
+}
+
+// A path kept as a link that went missing and then received the file by a
+// rename keeps its row, and the file's old path stops counting as present.
+func TestRenameOntoAMissingLinkVacatesTheOldPath(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "a/vacate.bin", "linked bytes")
+	if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(filepath.Join(root, "a", "vacate.bin"), filepath.Join(root, "b", "vacate.bin")); err != nil {
+		t.Skipf("no hard links here: %v", err)
+	}
+	scanAt(t, st, root, testVolume)
+	if err := os.Remove(filepath.Join(root, "b", "vacate.bin")); err != nil {
+		t.Fatal(err)
+	}
+	scanUnder(t, st, root, "b")
+	if err := os.Rename(filepath.Join(root, "a", "vacate.bin"), filepath.Join(root, "b", "vacate.bin")); err != nil {
+		t.Fatal(err)
+	}
+	scanUnder(t, st, root, "b")
+	livePaths(t, st, "vacate", "/b/vacate.bin")
+}
+
+// A path that cannot be reopened, here a folder name that is not valid
+// UTF-8, neither fails the scan nor gives up its row to another link.
+func TestHardLinksUnderInvalidNamesKeepTheirPaths(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "b/linked.bin", "linked bytes")
+	for _, dir := range []string{"a\xff", "c\xff"} {
+		if err := os.Mkdir(filepath.Join(root, dir), 0o755); err != nil {
+			t.Skipf("no invalid UTF-8 names here: %v", err)
+		}
+		if err := os.Link(filepath.Join(root, "b", "linked.bin"), filepath.Join(root, dir, "linked.bin")); err != nil {
+			t.Skipf("no hard links here: %v", err)
+		}
+	}
+	scanAt(t, st, root, testVolume)
+	livePaths(t, st, "linked", "/a\uFFFD/linked.bin", "/b/linked.bin", "/c\uFFFD/linked.bin")
 }
 
 func zipOf(t *testing.T, files map[string]string) string {

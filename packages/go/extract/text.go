@@ -205,7 +205,11 @@ func normalize(s string, maxChars int) (string, bool) {
 		s = strings.ToValidUTF8(s, " ")
 	}
 	var sb strings.Builder
-	sb.Grow(len(s))
+	capacity := len(s)
+	if maxChars < capacity-utf8.UTFMax {
+		capacity = maxChars + utf8.UTFMax
+	}
+	sb.Grow(capacity)
 	space := true // leading whitespace is dropped
 	cut := false
 	for i, r := range s {

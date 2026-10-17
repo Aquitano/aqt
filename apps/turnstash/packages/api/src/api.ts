@@ -59,9 +59,6 @@ import {
   SubscriptionPlanInput,
   SubscriptionPlanPatch,
   TokenScope,
-  TimelineCursor,
-  TimelineVersion,
-  TimelinePage,
   UnpricedModelRow,
   Uuid,
 } from "./schemas.ts";
@@ -82,12 +79,6 @@ export class BadRequest extends Schema.TaggedError<BadRequest>()(
   "BadRequest",
   { message: Schema.String },
   { httpApiStatus: 400 },
-) {}
-
-export class TimelineChanged extends Schema.TaggedError<TimelineChanged>()(
-  "TimelineChanged",
-  { expectedVersion: TimelineVersion, actualVersion: TimelineVersion, message: Schema.String },
-  { httpApiStatus: 409 },
 ) {}
 
 // Two periods of one provider on the same day would count that day's plan cost twice.
@@ -225,18 +216,6 @@ export const readGroup = HttpApiGroup.make("read")
       query: MessageQuery,
       success: MessagePage,
       error: NotFound,
-    }),
-  )
-  .add(
-    HttpApiEndpoint.get("getTimeline", "/conversations/:id/timeline", {
-      params: { id: Uuid },
-      query: {
-        cursor: Schema.optionalKey(TimelineCursor),
-        limit: Schema.optionalKey(PageLimit),
-        expectedVersion: Schema.optionalKey(TimelineVersion),
-      },
-      success: TimelinePage,
-      error: [NotFound, BadRequest, TimelineChanged],
     }),
   )
   .add(

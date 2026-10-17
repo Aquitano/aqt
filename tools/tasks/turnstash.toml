@@ -10,12 +10,12 @@ run = [
 ]
 
 ["turnstash:db"]
-description = "Start the dev database on 5433 and the disposable test database on 5434"
+description = "Start the dev database on 5437 and the disposable test database on 5434"
 dir = "apps/turnstash"
 run = "docker compose -p turnstash-dev -f deploy/docker-compose.dev.yml --profile test up -d --wait db db-test"
 
 ["turnstash:dev"]
 description = "Run the server on 4320 and the web UI with hot reload against the dev database"
 dir = "apps/turnstash"
-env = { DATABASE_URL = "postgres://turnstash:turnstash@localhost:5433/turnstash", ADMIN_TOKEN = "dev" }
+env = { DATABASE_URL = "postgres://turnstash:turnstash@localhost:5437/turnstash", ADMIN_TOKEN = "dev" }
 run = "bun run --filter @aqt/turnstash-server --filter @aqt/turnstash-web dev"

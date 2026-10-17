@@ -8,9 +8,9 @@ require (
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/gofrs/flock v0.13.1
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/klauspost/compress v1.20.1
+	github.com/klauspost/compress v1.20.3
 	github.com/mholt/archives v0.1.5
-	github.com/nwaples/rardecode/v2 v2.4.3
+	github.com/nwaples/rardecode/v2 v2.4.5
 	github.com/pelletier/go-toml/v2 v2.4.3
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0

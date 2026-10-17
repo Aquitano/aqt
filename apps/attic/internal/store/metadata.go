@@ -45,7 +45,7 @@ func (sc *Scan) NextMetadata(ctx context.Context, after ContentFile, limit int) 
 		lower = after.Path
 	}
 	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, c.id, c.size_bytes, c.blake3 `+pendingMetadata+`
- and (e.path collate "C" > $4 or (e.path = $4 and e.id > $5)) order by e.path collate "C", e.id limit $6`, sc.Volume.ID, metadata.Extensions, upper, lower, after.ID, limit)
+ and (e.path collate "C", e.id) > ($4, $5) order by e.path collate "C", e.id limit $6`, sc.Volume.ID, metadata.Extensions, upper, lower, after.ID, limit)
 	if err != nil {
 		return nil, err
 	}
