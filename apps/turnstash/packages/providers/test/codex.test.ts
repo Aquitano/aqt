@@ -65,22 +65,18 @@ test("roots put CODEX_HOME ahead of the home directory and collapse a duplicate"
   ]);
 });
 
+const rolloutHead = (payload: string) =>
+  `{"timestamp":"2026-09-20T10:58:18.048Z","ordinal":0,"type":"session_meta","payload":${payload}}\n{"timestamp":"2026-09-20T10:58:19.000Z","ordinal":1,"type":"event_msg","payload":{}}\n`;
+
 test("discovery keeps rollouts with a session_meta head and prefers the live copy of a basename", async () => {
   const root = await mkdtemp(join(tmpdir(), "turnstash-codex-"));
   try {
-    for (const directory of [
-      "sessions",
-      "sessions/2026",
-      "sessions/2026/09",
-      "sessions/2026/09/20",
-      "archived_sessions",
-      "sessions/2026/09/notaday",
-    ]) {
-      await mkdir(join(root, directory));
-    }
-    const head = (payload: string) =>
-      `{"timestamp":"2026-09-20T10:58:18.048Z","ordinal":0,"type":"session_meta","payload":${payload}}\n{"timestamp":"2026-09-20T10:58:19.000Z","ordinal":1,"type":"event_msg","payload":{}}\n`;
-    const valid = head(`{"id":"00000000-0000-7000-0000-00000000bbbb"}`);
+    await Promise.all(
+      ["sessions/2026/09/20", "sessions/2026/09/notaday", "archived_sessions"].map((directory) =>
+        mkdir(join(root, directory), { recursive: true }),
+      ),
+    );
+    const valid = rolloutHead(`{"id":"00000000-0000-7000-0000-00000000bbbb"}`);
     await Bun.write(
       join(
         root,
@@ -107,7 +103,7 @@ test("discovery keeps rollouts with a session_meta head and prefers the live cop
         root,
         "sessions/2026/09/20/rollout-2026-09-20T11-00-00-00000000-0000-7000-0000-00000000dddd.jsonl",
       ),
-      head(`"scalar"`),
+      rolloutHead(`"scalar"`),
     );
     await Bun.write(
       join(
@@ -147,12 +143,13 @@ test("discovery keeps rollouts with a session_meta head and prefers the live cop
   }
 });
 
+const rollout = (id: string) =>
+  `sessions/2026/09/20/rollout-2026-09-20T10-58-17-00000000-0000-7000-0000-0000000${id}.jsonl`;
+
 test("discovery reads compressed rollouts under their uncompressed name, preferring an uncompressed copy", async () => {
   const root = await mkdtemp(join(tmpdir(), "turnstash-codex-"));
   try {
     await mkdir(join(root, "sessions/2026/09/20"), { recursive: true });
-    const rollout = (id: string) =>
-      `sessions/2026/09/20/rollout-2026-09-20T10-58-17-00000000-0000-7000-0000-0000000${id}.jsonl`;
     const head = '{"type":"session_meta","payload":{}}\n';
     const compressed = Bun.zstdCompressSync(Buffer.from(head));
     await Bun.write(join(root, `${rollout("0aaaa")}.zst`), compressed);
@@ -315,7 +312,7 @@ test("the same rollout from two machines, in any order, normalizes once", async 
   const single = normalized(await rowsOf(guardian));
   const first = await rowsOf(guardian, "machine-a");
   const second = await rowsOf(guardian, "machine-b", "2026-09-21T06:00:00.000Z");
-  const shuffled = [...second, ...first].reverse();
+  const shuffled = [...second, ...first].toReversed();
   expect(normalized(shuffled)).toEqual(single);
 });
 
@@ -359,7 +356,7 @@ test("rollouts without ordinals preserve usage and deduplicate copies across mac
     ...row,
     streamId: StreamId.make(row.streamId.replace("machine-a", "machine-b")),
   }));
-  expect(normalized([...otherMachine, ...withoutOrdinals].reverse())).toEqual(single);
+  expect(normalized([...otherMachine, ...withoutOrdinals].toReversed())).toEqual(single);
 });
 
 test("forks keep their own usage and ignore replayed usage owned by the parent thread", () => {
@@ -391,11 +388,14 @@ test("forks keep their own usage and ignore replayed usage owned by the parent t
   expect(
     normalized([header, inherited, own]).requests.map((request) => request.requestKey),
   ).toEqual(["child-response"]);
-  const legacy = row(3, "event_msg", { type: "token_count", info: { last_token_usage: usage } });
+  const tokenCount = row(3, "event_msg", {
+    type: "token_count",
+    info: { last_token_usage: usage },
+  });
   const withLegacy = normalized([
     header,
     inherited,
-    { ...legacy, payload: legacy.payload.replace("10:58:30", "10:58:40") },
+    { ...tokenCount, payload: tokenCount.payload.replace("10:58:30", "10:58:40") },
   ]);
   expect(withLegacy.requests.map((request) => request.requestKey)).toEqual(["ordinal:3"]);
 });
