@@ -1,7 +1,13 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { RecordKey, streamIdOf, type SourceRecordRow, type SourceRoot } from "@aqt/turnstash-core";
+import {
+  omitInlineBlobs,
+  RecordKey,
+  streamIdOf,
+  type SourceRecordRow,
+  type SourceRoot,
+} from "@aqt/turnstash-core";
 import * as BunServices from "@effect/platform-bun/BunServices";
 import { Effect, Option } from "effect";
 
@@ -142,6 +148,33 @@ test("messages keep record order and content order, tool results are not message
       data: { id: "run-0001", status: "completed", title: "reviewer" },
     },
   ]);
+});
+
+test("an image keeps its type and size once its inline data is omitted", async () => {
+  const rows = await rowsOf(mainTranscript);
+  const prompt = nth(rows, 3);
+  const line = JSON.stringify({
+    type: "message",
+    id: "a845e857",
+    parentId: "e33d30e4",
+    timestamp: "2026-09-04T22:50:10.126Z",
+    message: {
+      role: "user",
+      content: [
+        { type: "text", text: "list the demo files" },
+        { type: "image", data: "iVBOR".padEnd(2000, "A"), mimeType: "image/png" },
+      ],
+    },
+  });
+  const withPrompt = (payload: string) =>
+    piNormalizer.normalize(mainKey, rows.with(3, { ...prompt, payload }));
+  const inline = withPrompt(line);
+  expect(nth(inline?.messages ?? [], 0).parts).toContainEqual({
+    type: "image",
+    mediaType: "image/png",
+    bytes: 1500,
+  });
+  expect(withPrompt(omitInlineBlobs(line))).toEqual(inline);
 });
 
 test("tool executions pair a call with its result and keep an unanswered call open", async () => {

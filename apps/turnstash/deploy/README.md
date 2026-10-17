@@ -164,7 +164,7 @@ Check the dashboard and run an agent sync. Migrations can change the database ir
 
 ## Reprocess the archive
 
-After a parser or model-alias correction, or an upgrade that stores records in a smaller form, rebuild conversations and costs from the retained raw records with the server image's `reprocess` script. It also rewrites records stored before their provider's trim and removes OpenCode file store records whose rows the same machine's OpenCode database sent. Back up first. A run that trims many records needs free disk space for them: Postgres writes each trimmed row before the old one can be reclaimed, so compare the free space with the size of `source_records`.
+After a parser or model-alias correction, or an upgrade that stores records in a smaller form, rebuild conversations and costs from the retained raw records with the server image's `reprocess` script. It also rewrites records stored before their provider's trim or with inline images and documents, and removes OpenCode file store records whose rows the same machine's OpenCode database sent. Back up first. A run that trims many records needs free disk space for them: Postgres writes each trimmed row before the old one can be reclaimed, so compare the free space with the size of `source_records`.
 
 ```sh
 turnstash_compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "\dt+ source_records"'
