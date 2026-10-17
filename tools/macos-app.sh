@@ -81,8 +81,14 @@ case "$mode" in
         ditto "$app" "$staging/$app_name.app"
         # The previous app stays until its replacement is copied and verified.
         codesign --verify --deep --strict "$staging/$app_name.app"
-        rm -rf "$install_target"
+        # Two renames swap the apps without touching the old bundle's contents, and a signal
+        # cannot land between them. The EXIT trap then deletes the previous app with the staging.
+        trap '' HUP INT TERM
+        if [ -e "$install_target" ] || [ -L "$install_target" ]; then
+            mv "$install_target" "$staging/previous.app"
+        fi
         mv "$staging/$app_name.app" "$install_target"
+        trap 'exit 1' HUP INT TERM
         app="$install_target"
         # The tracker LaunchAgent owns startup after installing this copy.
         if [ "$mode" = --copy-user ]; then exit 0; fi
