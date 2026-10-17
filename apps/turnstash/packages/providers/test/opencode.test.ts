@@ -1,4 +1,3 @@
-import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -208,24 +207,6 @@ test("discovery lists the five tables per database and the file store documents"
         "storage/session/prj_3333/ses_IIII9999.json",
         "storage/message/ses_IIII9999/msg_JJJJ0000.json",
         "storage/part/msg_JJJJ0000/prt_KKKK1111.json",
-      ]);
-    }),
-  );
-});
-
-test("discovery leaves out file store documents whose rows the database already holds", async () => {
-  await withDbPrefix(undefined, () =>
-    withDataDirectory(async (root) => {
-      await rm(join(root, "opencode.db"));
-      const db = new Database(join(root, "opencode.db"));
-      db.run("CREATE TABLE message (id TEXT PRIMARY KEY)");
-      db.run("CREATE TABLE part (id TEXT PRIMARY KEY)");
-      db.run("INSERT INTO message VALUES ('msg_JJJJ0000')");
-      db.run("INSERT INTO part VALUES ('prt_KKKK1111')");
-      db.close();
-      const documents = (await discoverIn(root)).filter((descriptor) => descriptor.kind === "json");
-      expect(documents.map((document) => document.relativePath)).toEqual([
-        "storage/session/prj_3333/ses_IIII9999.json",
       ]);
     }),
   );

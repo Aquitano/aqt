@@ -1,5 +1,3 @@
-import { Database } from "bun:sqlite";
-
 import {
   hostEnvFromProcess,
   isExcludedPath,
@@ -16,47 +14,6 @@ import { walkFiles } from "../walk.ts";
 const scannedTables = ["session_v2", "session_message", "session", "message", "part"] as const;
 
 const fileStoreDirectories = ["session", "message", "part"] as const;
-
-interface LegacyFile {
-  readonly directory: (typeof fileStoreDirectories)[number];
-  readonly id: string;
-  readonly relativePath: string;
-}
-
-// OpenCode moved from JSON files to SQLite and left the files behind. Normalize prefers the SQLite row,
-// so a file whose id the database also holds is not collected. Each file is looked up in the table its
-// directory names. A database that cannot be read holds nothing.
-const heldInDatabase = (
-  absolutePath: string,
-  files: ReadonlyArray<LegacyFile>,
-): ReadonlyArray<string> => {
-  let db: Database | undefined;
-  try {
-    const opened = new Database(absolutePath, { readonly: true });
-    db = opened;
-    const tables = new Set(
-      opened
-        .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table'")
-        .all()
-        .map((row) => row.name),
-    );
-    const lookups = new Map(
-      fileStoreDirectories
-        .filter((table) => tables.has(table))
-        .map((table) => [
-          table,
-          opened.query<{ id: string }, [string]>(`SELECT id FROM ${table} WHERE id = ?`),
-        ]),
-    );
-    return files
-      .filter((file) => lookups.get(file.directory)?.get(file.id) != null)
-      .map((file) => file.relativePath);
-  } catch {
-    return [];
-  } finally {
-    db?.close();
-  }
-};
 
 const defaultDbPrefix = "opencode";
 
@@ -109,29 +66,19 @@ export const opencodeSource: SourceProvider = {
         keyColumn: "id",
       })),
     );
-    const files: Array<LegacyFile> = [];
     for (const directory of fileStoreDirectories) {
       const store = { path: path.join(root.path, "storage", directory), label: root.label };
-      const found = yield* walkFiles(store, (relativePath) => relativePath.endsWith(".json"), {
+      const files = yield* walkFiles(store, (relativePath) => relativePath.endsWith(".json"), {
         maxDepth: 3,
       });
-      files.push(
-        ...found.map((file) => ({
-          directory,
-          id: path.basename(file.relativePath, ".json"),
+      for (const file of files) {
+        descriptors.push({
+          kind: "json",
+          root,
           relativePath: `storage/${directory}/${file.relativePath}`,
-        })),
-      );
+        });
+      }
     }
-    const held = new Set(
-      files.length === 0
-        ? []
-        : databases.flatMap((relativePath) =>
-            heldInDatabase(path.join(root.path, relativePath), files),
-          ),
-    );
-    for (const { relativePath } of files)
-      if (!held.has(relativePath)) descriptors.push({ kind: "json", root, relativePath });
     return descriptors;
   }),
 };
