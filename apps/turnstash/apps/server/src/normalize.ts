@@ -4,6 +4,7 @@ import {
   type ConversationAnalysis,
 } from "@aqt/turnstash-analysis";
 import {
+  type MessagePart,
   type NormalizedConversation,
   type ProviderId,
   RecordKey,
@@ -182,12 +183,31 @@ const upsertConversationRow = Effect.fn("Normalize.upsertConversationRow")(funct
   return row.id;
 });
 
+// Tool output is stored on its execution. A result part keeps its copy only when no execution holds the
+// same text, and readers fall back to the execution.
+const withoutRepeatedOutput = (normalized: NormalizedConversation) => {
+  const outputs = new Map(
+    normalized.toolExecutions.flatMap((tool) =>
+      tool.output === null ? [] : [[tool.toolKey, tool.output] as const],
+    ),
+  );
+  return (parts: ReadonlyArray<MessagePart>): ReadonlyArray<MessagePart> =>
+    parts.map((part) =>
+      part.type === "tool_result" &&
+      part.output !== null &&
+      outputs.get(part.toolKey) === part.output
+        ? { ...part, output: null }
+        : part,
+    );
+};
+
 const replaceMessages = Effect.fn("Normalize.replaceMessages")(function* (
   conversationId: string,
   normalized: NormalizedConversation,
   analysis: ConversationAnalysis,
 ) {
   const db = yield* Db;
+  const storedParts = withoutRepeatedOutput(normalized);
   const keys = normalized.messages.map((message) => message.messageKey);
   yield* db
     .delete(bookmarks)
@@ -218,7 +238,7 @@ const replaceMessages = Effect.fn("Normalize.replaceMessages")(function* (
           role: message.role,
           parentMessageKey: message.parentMessageKey ?? null,
           createdAt: new Date(message.createdAt),
-          parts: scrubJson(message.parts),
+          parts: scrubJson(storedParts(message.parts)),
           text: scrubText(message.text),
         })),
       )

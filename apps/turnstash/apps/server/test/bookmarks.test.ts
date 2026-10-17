@@ -245,8 +245,10 @@ test("Markdown exports selected turns and messages with safe source links, prese
       expect(selected.markdown).not.toContain("First question");
       expect(selected.markdown).not.toContain("private thinking");
       expect(selected.markdown).toContain('"command": "echo ok"');
-      expect(selected.markdown).toContain("````\ntool output\n```\ninside fence\n````");
-      expect(selected.markdown).toContain("Tool output: shell \\[output\\]");
+      expect(selected.markdown).toContain(
+        '"command": "echo ok"\n}\n```\n\n````\ntool output\n```\ninside fence\n````',
+      );
+      expect(selected.markdown).not.toContain("Tool output: shell");
       const missing = yield* exportMarkdown(id, {
         selection: { kind: "messages", messageKeys: ["missing"] },
       }).pipe(Effect.flip);
