@@ -151,6 +151,35 @@ test("JSONL prefix hashes migrate with old state and survive reopening", () =>
     ).toEqual(checkpoint);
   }));
 
+test("lines an earlier agent skipped as too large are read again exactly once", () =>
+  withDirectory(async (directory) => {
+    const path = join(directory, "state.db");
+    const checkpoint = { byteOffset: 20, prefixHash: sha256Hex("consumed bytes") };
+    const skipped = [{ recordKey: RecordKey.make("0"), bytes: 9_000_000 }];
+    const scanPastSkippedLine = Effect.flatMap(AgentState.Service, (state) =>
+      state.commitScan("claude", streamId, checkpoint, [], now, skipped),
+    );
+    await runState(path, scanPastSkippedLine);
+    const earlierAgent = new Database(path);
+    earlierAgent.run("DELETE FROM meta WHERE key = 'reread_skipped_records'");
+    earlierAgent.close();
+    await runState(
+      path,
+      Effect.gen(function* () {
+        const state = yield* AgentState.Service;
+        expect(yield* state.streamCheckpoint("claude", streamId)).toEqual({ byteOffset: 0 });
+        expect(yield* state.rejectedRecords()).toEqual([]);
+        yield* scanPastSkippedLine;
+      }),
+    );
+    expect(
+      await runState(
+        path,
+        Effect.flatMap(AgentState.Service, (state) => state.streamCheckpoint("claude", streamId)),
+      ),
+    ).toEqual(checkpoint);
+  }));
+
 test("an existing state file switches to incremental vacuum and delivered batches free their space", () =>
   withDirectory(async (directory) => {
     const path = join(directory, "state.db");

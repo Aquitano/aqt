@@ -1,7 +1,13 @@
 import { createHash, type Hash } from "node:crypto";
 import { zstdDecompressSync } from "node:zlib";
 
-import { type JsonlSource, RecordKey, type RawRecord, type StreamId } from "@aqt/turnstash-core";
+import {
+  type JsonlSource,
+  omitInlineBlobs,
+  RecordKey,
+  type RawRecord,
+  type StreamId,
+} from "@aqt/turnstash-core";
 import { Effect, FileSystem, Schema } from "effect";
 import type { PlatformError } from "effect/PlatformError";
 
@@ -116,6 +122,26 @@ const readBytes = Effect.fn("Extract.readBytes")(function* (
   return buffer.subarray(0, length);
 });
 
+// Bounds the memory one oversized line may take while its inline blobs are omitted.
+const maxLineBytes = 64 * 1024 * 1024;
+
+// A line over the send limit is almost always inline images. Without them it usually fits, so it is
+// sent with each image replaced by its size; undefined means it still does not fit.
+const fittedLine = Effect.fn("Extract.fittedLine")(function* (
+  file: ByteSource,
+  from: number,
+  to: number,
+  maxBytes: number,
+) {
+  const length = to - from;
+  if (length > maxLineBytes) return undefined;
+  yield* file.seek(from);
+  const line = yield* readBytes(file, length, length);
+  const contentEnd = line[length - 2] === 0x0d ? length - 2 : length - 1;
+  const payload = omitInlineBlobs(new TextDecoder().decode(line.subarray(0, contentEnd)));
+  return Buffer.byteLength(payload) <= maxBytes ? payload : undefined;
+});
+
 // A reader keeps the rolling hash and file open across pages. Checking a saved prefix costs one
 // sequential read per scan, rather than rereading every previous page as the checkpoint advances.
 export const openJsonl = Effect.fn("Extract.openJsonl")(function* (
@@ -171,23 +197,29 @@ export const openJsonl = Effect.fn("Extract.openJsonl")(function* (
       lineStart = i + 1;
       if (records.length === limits.maxRecords) break;
     }
-    // A line longer than the limit can never be sent. Skipping it once it is complete keeps the lines
-    // after it flowing instead of failing on it every pass.
+    // A line that does not fit even without its inline blobs can never be sent. Skipping it once it is
+    // complete keeps the lines after it flowing instead of failing on it every pass.
     if (lineStart === 0 && bytes.length > limits.maxBytes) {
       // An incomplete oversized line leaves both the checkpoint and its digest unchanged.
       const extended = hash.copy().update(bytes.subarray(0, limits.maxBytes));
       const end = yield* endOfLine(file, start + limits.maxBytes, extended);
-      const skipped =
-        end === null ? [] : [{ recordKey: RecordKey.make(String(start)), bytes: end - start }];
-      if (end !== null) {
-        start = end;
-        hash = extended;
-      }
+      if (end === null)
+        return {
+          records: [],
+          skipped: [],
+          checkpoint: currentCheckpoint(),
+          hasMore: false,
+        } satisfies JsonlExtraction;
+      const recordKey = RecordKey.make(String(start));
+      const payload = yield* fittedLine(file, start, end, limits.maxBytes);
+      const bytesRead = end - start;
+      start = end;
+      hash = extended;
       return {
-        records: [],
-        skipped,
+        records: payload === undefined ? [] : [{ streamId, recordKey, payload }],
+        skipped: payload === undefined ? [{ recordKey, bytes: bytesRead }] : [],
         checkpoint: currentCheckpoint(),
-        hasMore: end !== null && BigInt(end) < file.size,
+        hasMore: BigInt(end) < file.size,
       } satisfies JsonlExtraction;
     }
     hash.update(bytes.subarray(0, lineStart));

@@ -67,6 +67,26 @@ test("file extraction bounds each read and skips a line too large to send once i
     expect(Result.isFailure(missing) && missing.failure._tag).toBe("PlatformError");
   }));
 
+test("a line over the send limit is sent without its inline images when that makes it fit", () =>
+  withDirectory(async (directory) => {
+    const path = join(directory, "session.jsonl");
+    const image = (data: unknown) => ({ type: "image", source: { type: "base64", data } });
+    const line = JSON.stringify(image("A".repeat(4000)));
+    await Bun.write(
+      path,
+      `${line}
+{}
+`,
+    );
+    const page = await run(extractJsonl(streamId, path, { byteOffset: 0 }, { maxBytes: 1000 }));
+    expect(page.skipped).toEqual([]);
+    expect(page.records.map((record) => record.payload)).toEqual([
+      JSON.stringify(image({ omitted: "base64", bytes: 3000 })),
+    ]);
+    expect(page.checkpoint.byteOffset).toBe(Buffer.byteLength(line) + 1);
+    expect(page.hasMore).toBe(true);
+  }));
+
 test("JSONL checkpoints detect larger rewrites anywhere in the consumed prefix", () =>
   withDirectory(async (directory) => {
     const path = join(directory, "session.jsonl");
