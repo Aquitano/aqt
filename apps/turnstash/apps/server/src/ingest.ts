@@ -24,7 +24,7 @@ import {
   tombstones,
 } from "./db/schema.ts";
 import { excluded } from "./db/sql.ts";
-import { Normalizers } from "./registry.ts";
+import { Normalizers, storedPayloadOf } from "./registry.ts";
 import { scrubText } from "./scrub.ts";
 import { batchesIngested, recordsIngested } from "./telemetry.ts";
 
@@ -75,10 +75,6 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
     Option.getOrNull(
       normalizers[record.provider].conversationKeyOf(record.streamId, record.payload),
     );
-  // The stored payload drops what the provider's normalizer never reads; the agent's hash stays, so a
-  // resent record is still recognised as a duplicate.
-  const storedPayloadOf = (record: WireRecord): string =>
-    normalizers[record.provider].trim?.(record.streamId, record.payload) ?? record.payload;
   const providers = [...new Set(batch.records.map((record) => record.provider))];
   const conversationKeys = batch.records.flatMap((record) => {
     const conversationKey = conversationKeyOf(record);
@@ -213,8 +209,11 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
           streamRef,
           provider: record.provider,
           recordKey: record.recordKey,
+          // The agent's hash stays, so a resent record is still recognised as a duplicate.
           contentHash: record.contentHash,
-          payload: scrubText(storedPayloadOf(record)),
+          payload: scrubText(
+            storedPayloadOf(normalizers[record.provider], record.streamId, record.payload),
+          ),
           observedAt,
           redactions: record.redactions,
           conversationKey,

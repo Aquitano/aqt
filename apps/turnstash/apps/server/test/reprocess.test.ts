@@ -128,6 +128,50 @@ test("reprocessing trims records stored before their provider's trim and rebuild
   );
 });
 
+test("inline images are stored as their type and size, on ingest and when reprocessing older records", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const session = "22222222-2222-4222-8222-222222222222";
+      const prompt = JSON.stringify({
+        type: "user",
+        uuid: "00000000-0000-4000-8000-000000000001",
+        sessionId: session,
+        timestamp: "2026-10-17T09:00:00.000Z",
+        message: {
+          role: "user",
+          content: [
+            { type: "text", text: "what is this" },
+            {
+              type: "image",
+              source: { type: "base64", media_type: "image/png", data: "iVBOR".padEnd(2000, "A") },
+            },
+          ],
+        },
+      });
+      const streamId = StreamId.make(`fixture/jsonl/projects/example-slug/${session}.jsonl`);
+      yield* ingest("11111111-0000-4000-8000-000000000003", [
+        wire("claude", streamId, "0", prompt),
+      ]);
+      const ingested = yield* stored;
+      expect(ingested.map((row) => row.hash)).toEqual([sha256Hex(prompt)]);
+      expect(ingested.map((row) => row.payload.includes("iVBOR"))).toEqual([false]);
+
+      // An archive written before images were omitted.
+      yield* Effect.flatMap(Db, (db) => db.update(sourceRecords).set({ payload: prompt }));
+      expect((yield* reprocessArchive()).trimmed).toBe(1);
+      expect(yield* stored).toEqual(ingested);
+      yield* workOnce();
+      const { messages: built } = yield* conversation;
+      expect(built.flatMap((message) => message.parts)).toContainEqual({
+        type: "image",
+        mediaType: "image/png",
+        bytes: 1500,
+      });
+    }),
+  );
+});
+
 const opencodePart = (id: string) =>
   JSON.stringify({ id, messageID: "msg_1", sessionID: "ses_1", type: "text", text: id });
 

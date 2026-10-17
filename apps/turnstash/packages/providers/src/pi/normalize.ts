@@ -1,5 +1,6 @@
 import {
   isJsonObject as isObject,
+  isOmittedBlob,
   isoTimestampOf,
   jsonCount,
   parseJsonObject,
@@ -106,6 +107,12 @@ const base64Bytes = (data: string): number => {
   return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
 };
 
+const imageBytes = (data: Schema.Json | undefined): number | null => {
+  if (isOmittedBlob(data)) return data.bytes;
+  const encoded = asString(data);
+  return encoded === null ? null : base64Bytes(encoded);
+};
+
 const partsOfItem = (value: Schema.Json): ReadonlyArray<MessagePart> => {
   if (!isObject(value)) return [];
   const kind = asString(value["type"]);
@@ -127,12 +134,12 @@ const partsOfItem = (value: Schema.Json): ReadonlyArray<MessagePart> => {
     }
     case "image": {
       const mediaType = asString(value["mimeType"]);
-      const data = asString(value["data"]);
+      const bytes = imageBytes(value["data"]);
       return [
         {
           type: "image",
           ...(mediaType === null ? {} : { mediaType }),
-          ...(data === null ? {} : { bytes: base64Bytes(data) }),
+          ...(bytes === null ? {} : { bytes }),
         },
       ];
     }
