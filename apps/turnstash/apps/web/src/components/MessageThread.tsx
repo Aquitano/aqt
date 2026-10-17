@@ -17,6 +17,7 @@ import {
   type Block,
   blockMessageKeys,
   injectedLabel,
+  type MessageKeys,
   type ToolOutcome,
   toolOutcomes,
   transcriptBlocks,
@@ -103,26 +104,30 @@ const Actions = ({
   </div>
 );
 
+// The first key is the message a bookmark points at; a tool call also selects the message holding its result.
 const MessageActions = ({
   group,
   label,
-  messageKey,
+  messageKeys,
   conversationId,
   selection,
 }: {
   readonly group: keyof typeof reveal;
   readonly label: string;
-  readonly messageKey: string;
+  readonly messageKeys: MessageKeys;
   readonly conversationId: string;
   readonly selection: Selection;
 }) => (
   <Actions group={group}>
     <SelectForExport
       label={`Select ${label} for export`}
-      messageKey={messageKey}
+      messageKeys={messageKeys}
       selection={selection}
     />
-    <BookmarkButton conversationId={conversationId} target={{ kind: "message", messageKey }} />
+    <BookmarkButton
+      conversationId={conversationId}
+      target={{ kind: "message", messageKey: messageKeys[0] }}
+    />
   </Actions>
 );
 
@@ -173,7 +178,7 @@ const TurnHeader = ({
         <Actions group="block">
           <SelectForExport
             label={`Select turn ${turn.turnIndex + 1} for export`}
-            messageKey={turn.messageKey}
+            messageKeys={[turn.messageKey]}
             selection={selection}
           />
           <BookmarkButton
@@ -227,7 +232,7 @@ const MessageBlock = ({
     <MessageActions
       group="block"
       label={`${message.role} message ${message.seq + 1}`}
-      messageKey={message.messageKey}
+      messageKeys={[message.messageKey]}
       conversationId={conversationId}
       selection={selection}
     />
@@ -340,11 +345,11 @@ const BlockContent = ({
             outcomes={outcomes}
             query={query}
             targetedKey={messageKey}
-            renderActions={(key, label) => (
+            renderActions={(keys, label) => (
               <MessageActions
                 group="row"
                 label={label}
-                messageKey={key}
+                messageKeys={keys}
                 conversationId={conversationId}
                 selection={selection.messages}
               />

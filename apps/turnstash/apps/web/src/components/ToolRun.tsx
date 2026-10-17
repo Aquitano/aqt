@@ -8,7 +8,15 @@ import { ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { int, json } from "../format";
-import { isLinked, type Step, type ToolOutcome, type ToolStep, toolSummary } from "../transcript";
+import {
+  isLinked,
+  type MessageKeys,
+  type Step,
+  type ToolCall,
+  type ToolOutcome,
+  type ToolStep,
+  toolSummary,
+} from "../transcript";
 import { HighlightedText } from "./HighlightedText";
 import { codeBlock, MessagePartView } from "./MessagePartView";
 
@@ -24,6 +32,31 @@ const status = (outcome: ToolOutcome | undefined) => {
 };
 
 const toolName = (step: ToolStep) => step.call?.name ?? "Tool result";
+
+const ToolDetails = ({
+  input,
+  outcome,
+  query,
+}: {
+  readonly input: ToolCall["input"] | undefined;
+  readonly outcome: ToolOutcome | undefined;
+  readonly query: string | undefined;
+}) => (
+  <>
+    {input !== undefined && (
+      <>
+        Input
+        <pre className={codeBlock}>
+          <HighlightedText text={Predicate.isString(input) ? input : json(input)} query={query} />
+        </pre>
+      </>
+    )}
+    Output
+    <pre className={codeBlock}>
+      <HighlightedText text={outcome?.output ?? "(no output recorded)"} query={query} />
+    </pre>
+  </>
+);
 
 const ToolRow = ({
   step,
@@ -52,21 +85,7 @@ const ToolRow = ({
         )}
       </CollapsibleTrigger>
       <CollapsibleContent className="flex min-w-0 flex-col gap-1.5 pt-1 pb-3 pl-7 text-xs text-muted-foreground">
-        {input !== undefined && (
-          <>
-            Input
-            <pre className={codeBlock}>
-              <HighlightedText
-                text={Predicate.isString(input) ? input : json(input)}
-                query={query}
-              />
-            </pre>
-          </>
-        )}
-        Output
-        <pre className={codeBlock}>
-          <HighlightedText text={outcome?.output ?? "(no output recorded)"} query={query} />
-        </pre>
+        <ToolDetails input={input} outcome={outcome} query={query} />
       </CollapsibleContent>
     </Collapsible>
   );
@@ -118,7 +137,7 @@ export const ToolRun = ({
   readonly outcomes: ReadonlyMap<string, ToolOutcome>;
   readonly query: string | undefined;
   readonly targetedKey: string | undefined;
-  readonly renderActions: (messageKey: string, label: string) => ReactNode;
+  readonly renderActions: (messageKeys: MessageKeys, label: string) => ReactNode;
 }) => {
   const rows = steps.map((step) => {
     const targeted = isLinked(step, targetedKey);
@@ -126,7 +145,10 @@ export const ToolRun = ({
       <StepRow
         key={step.toolKey}
         targeted={targeted}
-        actions={renderActions(step.messageKey, `${toolName(step)} call`)}
+        actions={renderActions(
+          step.resultKey === undefined ? [step.messageKey] : [step.messageKey, step.resultKey],
+          `${toolName(step)} call`,
+        )}
       >
         <ToolRow
           step={step}
@@ -139,7 +161,7 @@ export const ToolRun = ({
       <StepRow
         key={step.key}
         targeted={targeted}
-        actions={renderActions(step.messageKey, step.part.type)}
+        actions={renderActions([step.messageKey], step.part.type)}
       >
         <div className="px-2 py-1">
           <MessagePartView part={step.part} markdown={false} query={query} targeted={targeted} />

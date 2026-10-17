@@ -45,6 +45,8 @@ export type Block =
       readonly requests: ReadonlyArray<RequestSummary>;
     };
 
+export type MessageKeys = readonly [string, ...ReadonlyArray<string>];
+
 export const blockMessageKeys = Match.type<Block>().pipe(
   Match.discriminatorsExhaustive("kind")({
     turn: ({ turn }): ReadonlyArray<string> => (turn.messageKey === null ? [] : [turn.messageKey]),
