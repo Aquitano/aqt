@@ -1,3 +1,4 @@
+import { ThemeProvider } from "@aqt/ui/components/theme-provider";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -8,6 +9,8 @@ if (container === null) throw new Error("index.html is missing the #root element
 
 createRoot(container).render(
   <StrictMode>
-    <App />
+    <ThemeProvider forcedTheme="dark">
+      <App />
+    </ThemeProvider>
   </StrictMode>,
 );

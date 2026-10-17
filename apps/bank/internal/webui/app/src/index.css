@@ -4,10 +4,6 @@
 
 /* own-message bubble accent (iMessage-style), distinct from the neutral primary */
 :root {
-  --bubble-me: oklch(0.55 0.15 252);
-  --bubble-me-foreground: oklch(0.99 0.005 252);
-}
-.dark {
   --bubble-me: oklch(0.45 0.12 254);
   --bubble-me-foreground: oklch(0.96 0.008 252);
 }
