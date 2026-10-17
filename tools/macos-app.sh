@@ -79,7 +79,7 @@ case "$mode" in
         cleanup_install() {
             result=$?
             trap - EXIT HUP INT TERM
-            # Keep the previous app until replacement and launch both succeed.
+            # Restore the previous app when the replacement did not complete.
             if [ "$result" -ne 0 ] && { [ -e "$staging/previous.app" ] || [ -L "$staging/previous.app" ]; }; then
                 if [ -e "$install_target" ] || [ -L "$install_target" ]; then
                     if ! mv "$install_target" "$staging/failed.app"; then
@@ -103,6 +103,9 @@ case "$mode" in
             mv "$install_target" "$staging/previous.app"
         fi
         mv "$staging/$app_name.app" "$install_target"
+        # Rolling back after the launch would move the bundle out from under its running process.
+        trap - EXIT HUP INT TERM
+        rm -rf "$staging"
         app="$install_target"
         # The tracker LaunchAgent owns startup after installing this copy.
         if [ "$mode" = --copy-user ]; then exit 0; fi

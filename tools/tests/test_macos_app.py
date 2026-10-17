@@ -162,35 +162,14 @@ exec /bin/mv "$@"
         self.assertEqual(len(backups), 1)
         self.assertIn("previous app retained at", result.stderr)
 
-    def test_failed_open_restores_the_previous_app(self):
-        install_dir = self.prepare_install()
-        self.mock("open", "exit 1")
-        result = self.run_app("--install")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertTrue((self.installed / "previous-marker").exists())
-        self.assertEqual(list(install_dir.glob(".Notch.*")), [])
-
-    def test_failed_launch_verification_restores_the_previous_app(self):
+    def test_failed_launch_keeps_the_new_app(self):
         install_dir = self.prepare_install()
         self.env["AQT_TEST_RUNNING_BINARY"] = "/elsewhere/Notch.app/Contents/MacOS/Notch"
         result = self.run_app("--install")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("did not stay running", result.stderr)
-        self.assertTrue((self.installed / "previous-marker").exists())
+        self.assertFalse((self.installed / "previous-marker").exists())
         self.assertEqual(list(install_dir.glob(".Notch.*")), [])
-
-    def test_failed_launch_rollback_preserves_the_backup(self):
-        install_dir = self.prepare_install()
-        self.mock("open", "exit 1")
-        self.mock("mv", '''
-case "$2" in */failed.app) exit 1;; esac
-exec /bin/mv "$@"
-''')
-        result = self.run_app("--install")
-        self.assertNotEqual(result.returncode, 0)
-        backups = list(install_dir.glob(".Notch.*/previous.app/previous-marker"))
-        self.assertEqual(len(backups), 1)
-        self.assertIn("previous app retained at", result.stderr)
 
     def test_successful_install_removes_the_backup(self):
         install_dir = self.prepare_install()
