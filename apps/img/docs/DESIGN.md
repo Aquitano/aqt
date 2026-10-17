@@ -27,7 +27,7 @@ Decisions below were settled in the initial interview. Anything not listed here 
 | ------------------------- | ------------------------------------------------------------------------------- |
 | Runtime / package manager | bun                                                                             |
 | Framework                 | TanStack Start (React 19, Vite), deployed as one Cloudflare Worker              |
-| Styling                   | Tailwind v4 + shadcn/ui (radix, `new-york`, neutral base)                       |
+| Styling                   | Tailwind v4 + shadcn/ui from `@aqt/ui` (Base UI, `base-maia`)                   |
 | Auth                      | Clerk (`@clerk/tanstack-react-start`)                                           |
 | Database                  | Cloudflare D1 + Drizzle ORM, migrations via drizzle-kit + wrangler              |
 | Photo storage             | Cloudflare R2, accessed through the Worker binding behind a `Storage` interface |
@@ -286,9 +286,9 @@ A filmstrip `Sheet` on the left shows all spreads as thumbnails (rendered at sma
 
 ## Visual system
 
-shadcn defaults carry the chrome. The book is the only place with material rendering. Both light and dark chrome are supported; paper stays paper in dark mode (the desk gets darker, the page does not).
+`@aqt/ui` carries the chrome. The book is the only place with material rendering. Both light and dark chrome are supported; paper stays paper in dark mode (the desk gets darker, the page does not).
 
-**Chrome**: neutral base, `--radius: 0.625rem`, no custom colors beyond shadcn tokens. Keep the chrome quiet: one accent, thin borders, generous whitespace. The shelf uses `Card`s that contain the real `Cover` component, hover lifts it 4px with a longer shadow.
+**Chrome**: the shared `@aqt/ui` tokens, with `--brand` set to a neutral near-black (light) and near-white (dark) primary in `src/styles.css`. Keep the chrome quiet: one accent, thin borders, generous whitespace. The shelf uses `Card`s that contain the real `Cover` component, hover lifts it 4px with a longer shadow.
 
 **Desk**: `bg-background` with a large, faint radial gradient behind the book (`from-foreground/[0.04]` at the center to transparent) so the book sits in a pool of light.
 
@@ -304,7 +304,7 @@ shadcn defaults carry the chrome. The book is the only place with material rende
 **Shadows**, layered, never a single box-shadow:
 `0 1px 2px rgb(0 0 0 / .08), 0 8px 24px rgb(0 0 0 / .12), 0 32px 64px -16px rgb(0 0 0 / .28)`.
 
-**Typography**: UI uses the shadcn default stack. Captions: `Caveat` (hand) and `Inter` (clean), loaded from Google Fonts, `font-display: swap`.
+**Typography**: UI uses `Inter`. Captions: `Caveat` (hand) and `Inter` (clean), loaded from Google Fonts, `font-display: swap`.
 
 **Motion**: springs everywhere, no eased durations except the reduced-motion fallback. Turn spring as above. Shelf hover: `stiffness 300, damping 24`. Selection handles appear with a 120ms fade, no scale.
 
@@ -334,7 +334,6 @@ src/
     autosave.ts
     TransformBox.tsx     handles
     Toolbar.tsx, PhotoLibrary.tsx, Filmstrip.tsx
-  components/ui/         shadcn
   lib/
     image.ts             client-side resize
     utils.ts             cn

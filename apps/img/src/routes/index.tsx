@@ -1,7 +1,6 @@
+import { Skeleton } from "@aqt/ui/components/skeleton";
 import { SignIn, useAuth } from "@clerk/tanstack-react-start";
 import { Navigate, createFileRoute } from "@tanstack/react-router";
-
-import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/")({ component: Landing });
 
