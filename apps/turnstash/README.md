@@ -42,7 +42,7 @@ The deployment Compose file publishes the server on `127.0.0.1:4320`. Put a TLS 
 | `OTEL_EXPORTER_OTLP_ENDPOINT`                                         | OTLP/HTTP collector URL, such as `http://otel-collector:4318`. Unset disables telemetry export.                                                      |
 | `OTEL_TRACES_EXPORTER`, `OTEL_LOGS_EXPORTER`, `OTEL_METRICS_EXPORTER` | Set each to `otlp` to export that signal. Standard `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_RESOURCE_ATTRIBUTES` also apply.                           |
 
-Database statement timeouts return HTTP 503 for API requests. API and worker database failure logs include the error category and SQLSTATE, without SQL text, parameter values, or raw error messages.
+Database statement timeouts return HTTP 503 for API requests. API and worker database failure logs include the error category, the failed operation (connect, query or commit) and SQLSTATE, without SQL text, parameter values, or raw error messages.
 
 With the OTLP variables set, the server exports traces, logs, and metrics as `turnstash-server`. Each HTTP request is traced; worker passes are traced only when they normalize or price something. SQL spans carry the query text with placeholders, never parameter values, and `authorization` and `cookie` headers are redacted. The OIDC callback is not traced because its URL holds the authorization code. Metrics are named `turnstash.*`: ingested records by machine, provider and outcome, batches, normalization failures, worker pass duration and items, queue depth, unpriced requests, archive rows, time since each machine last synced, and today's and month-to-date cost by provider.
 
