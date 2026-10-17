@@ -15,16 +15,10 @@
     "typecheck": "bun run --filter '@aqt/gallery-*' typecheck",
     "test": "bun test && vp test run"
   },
-  "dependencies": {
-    "@aqt/gallery-env": "workspace:*",
-    "dotenv": "catalog:",
-    "zod": "catalog:"
-  },
   "devDependencies": {
     "@aqt/config": "workspace:*",
     "@types/bun": "catalog:",
     "typescript": "catalog:",
-    "vite-plus": "catalog:",
-    "wrangler": "^4.149.0"
+    "vite-plus": "catalog:"
   }
 }

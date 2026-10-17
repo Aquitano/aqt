@@ -62,8 +62,8 @@ With no S3 variables set it writes to `UPLOAD_DIR` on local disk, which is what
 development and tests use. Production runs on Cloudflare R2 over the S3 API.
 
 The bucket is `aqt-gallery-media` (location hint `weur`, next to the Neon
-database in `eu-central-1`). Wrangler is a dev dependency, so managing it needs
-no global install:
+database in `eu-central-1`). `bunx` fetches Wrangler on demand, so managing it
+needs no global install:
 
 ```bash
 bunx wrangler r2 bucket info aqt-gallery-media
