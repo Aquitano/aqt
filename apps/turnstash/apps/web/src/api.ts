@@ -1,11 +1,4 @@
-import {
-  Api,
-  NotFound,
-  PlanEndsBeforeStart,
-  PlanOverlap,
-  TimelineChanged,
-  Unauthorized,
-} from "@aqt/turnstash-api";
+import { Api, NotFound, PlanEndsBeforeStart, PlanOverlap, Unauthorized } from "@aqt/turnstash-api";
 import { Effect, Match } from "effect";
 import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from "effect/http";
 import { HttpApiClient } from "effect/http-api";
@@ -44,8 +37,6 @@ const responseStatus = (error: Error): number | undefined =>
 
 export const isUnauthorized = (error: Error): boolean =>
   error instanceof Unauthorized || responseStatus(error) === 401;
-
-export const isTimelineChanged = (error: Error): boolean => error instanceof TimelineChanged;
 
 export const failureMessage = (error: Error): string =>
   Match.value(error).pipe(

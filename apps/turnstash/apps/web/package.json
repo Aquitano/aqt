@@ -20,11 +20,14 @@
     "next-themes": "catalog:",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "recharts": "3.10.1"
+    "react-markdown": "^10.1.0",
+    "recharts": "3.10.1",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
     "@rolldown/plugin-babel": "^0.2.4",
+    "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "catalog:",
