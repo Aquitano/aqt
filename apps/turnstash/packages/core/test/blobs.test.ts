@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
-import { omitInlineBlobs } from "../src/blobs.ts";
+import { extractInlineBlobs, omitInlineBlobs } from "../src/blobs.ts";
+import { sha256Hex } from "../src/hash.ts";
 
 test("inline base64 images give way to their size while signatures and plain records stay as they were", () => {
   const image = "iVBOR".padEnd(2000, "A");
@@ -44,4 +45,21 @@ test("inline base64 images give way to their size while signatures and plain rec
   );
   const plain = '{ "type": "user",  "text": "spacing kept" }';
   expect(omitInlineBlobs(plain)).toBe(plain);
+});
+
+test("extracting names each inline file by its sha256 in the marker and returns it once", () => {
+  const image = "iVBOR".padEnd(2000, "A");
+  const data = Buffer.from(image, "base64");
+  const marker = { omitted: "base64", bytes: 1500, sha256: sha256Hex(data) };
+  const extracted = extractInlineBlobs(
+    JSON.stringify({
+      message: { content: [{ type: "image", source: { type: "base64", data: image } }] },
+      toolUseResult: { file: { base64: image, type: "image/png" } },
+    }),
+  );
+  expect(JSON.parse(extracted.payload)).toEqual({
+    message: { content: [{ type: "image", source: { type: "base64", data: marker } }] },
+    toolUseResult: { file: { base64: marker, type: "image/png" } },
+  });
+  expect([...extracted.blobs]).toEqual([[marker.sha256, data]]);
 });

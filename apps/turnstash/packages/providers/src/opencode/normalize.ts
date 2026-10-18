@@ -7,6 +7,7 @@ import {
   jsonStringAt as stringAt,
   parseJsonObject,
   sqliteTableOf,
+  storedBlobOf,
   streamPartsOf,
   emptyUsage,
   textOfParts,
@@ -432,7 +433,8 @@ const buildLegacyMessage = (
     else if (type === "file") {
       const mediaType = stringAt(part.data, "mime");
       const filename = stringAt(part.data, "filename");
-      if (mediaType?.startsWith("image/") === true) built.parts.push({ type: "image", mediaType });
+      if (mediaType?.startsWith("image/") === true)
+        built.parts.push({ type: "image", mediaType, ...storedBlobOf(part.data["url"]) });
       else {
         built.parts.push({
           type: "opaque",

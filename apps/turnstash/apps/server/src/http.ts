@@ -15,6 +15,7 @@ import {
   updatePlan,
 } from "./admin.ts";
 import { computeAnalysis } from "./analysis.ts";
+import { getBlob } from "./blobs.ts";
 import { createBookmark, deleteBookmark, listBookmarks, updateBookmark } from "./bookmarks.ts";
 import { serverVersion } from "./config.ts";
 import {
@@ -126,6 +127,7 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
     .handle("getMessages", ({ params, query }) =>
       getMessages(params.id, query.cursor, query.limit ?? 200, query).pipe(databaseFailure),
     )
+    .handle("getBlob", ({ params }) => getBlob(params.sha256).pipe(databaseFailure))
     .handle("getRequest", ({ params }) => getRequest(params.id).pipe(databaseFailure))
     .handle("search", ({ query }) => search(query).pipe(databaseFailure))
     .handle("listMachines", () => machineSummaries({}).pipe(databaseFailure))

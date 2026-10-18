@@ -7,6 +7,7 @@ import {
   jsonNumber as numberOf,
   jsonString as stringOf,
   parseJsonObject,
+  storedBlobOf,
   textOfParts,
   type MessagePart,
   type NormalizedConversation,
@@ -124,6 +125,7 @@ const imagePartOf = (item: Schema.JsonObject): MessagePart => {
       type: "image",
       ...(url.mediaType === undefined ? {} : { mediaType: url.mediaType }),
       bytes: url.bytes,
+      ...storedBlobOf(url),
     };
   const match = dataUri.exec(stringOf(url) ?? "");
   const mediaType = match?.[1];

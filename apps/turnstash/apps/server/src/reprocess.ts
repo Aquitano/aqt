@@ -2,9 +2,10 @@ import { type Normalizer, type ProviderId, providerIds, StreamId } from "@aqt/tu
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
+import { deleteUnlinkedBlobs, setRecordBlobs } from "./blobs.ts";
 import { Db, inTransaction } from "./db/client.ts";
 import { dirtyConversations, sourceRecords, sourceStreams, tombstones } from "./db/schema.ts";
-import { Normalizers, storedPayloadOf } from "./registry.ts";
+import { Normalizers, storedRecordOf } from "./registry.ts";
 import { scrubText } from "./scrub.ts";
 import { ensureBundledCatalog, recalculateCatalogs } from "./valuation.ts";
 
@@ -55,19 +56,26 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
       .innerJoin(sourceStreams, eq(sourceStreams.id, sourceRecords.streamRef))
       .where(inArray(sourceRecords.id, ids));
     const changed = page.flatMap(({ id, contentHash, payload, streamId }) => {
-      const kept = scrubText(storedPayloadOf(normalizer, StreamId.make(streamId), payload));
-      return kept === payload ? [] : [{ id, contentHash, payload: kept }];
+      const kept = storedRecordOf(normalizer, StreamId.make(streamId), payload);
+      const keptPayload = scrubText(kept.payload);
+      return keptPayload === payload
+        ? []
+        : [{ id, contentHash, payload: keptPayload, blobs: kept.blobs }];
     });
     yield* inTransaction(
       Effect.gen(function* () {
         const tx = yield* Db;
-        for (const row of changed)
-          yield* tx
+        const rewritten = yield* Effect.filter(changed, (row) =>
+          tx
             .update(sourceRecords)
             .set({ payload: row.payload })
             .where(
               and(eq(sourceRecords.id, row.id), eq(sourceRecords.contentHash, row.contentHash)),
-            );
+            )
+            .returning({ id: sourceRecords.id })
+            .pipe(Effect.map((updated) => updated.length > 0)),
+        );
+        yield* setRecordBlobs(rewritten);
       }),
     );
     trimmed += changed.length;
@@ -149,6 +157,7 @@ export const reprocessArchive = Effect.fn("Archive.reprocess")(function* () {
       yield* ensureBundledCatalog();
       const catalogVersion = yield* recalculateCatalogs();
       const opencodeFileTwins = yield* removeOpencodeFileTwins();
+      yield* deleteUnlinkedBlobs();
       const queued = yield* queueArchive();
       return { trimmed, opencodeFileTwins, queued, catalogVersion };
     }),

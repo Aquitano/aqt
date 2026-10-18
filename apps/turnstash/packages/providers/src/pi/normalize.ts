@@ -4,6 +4,7 @@ import {
   isoTimestampOf,
   jsonCount,
   parseJsonObject,
+  storedBlobOf,
   streamPartsOf,
   textOfParts,
   type MessagePart,
@@ -140,6 +141,7 @@ const partsOfItem = (value: Schema.Json): ReadonlyArray<MessagePart> => {
           type: "image",
           ...(mediaType === null ? {} : { mediaType }),
           ...(bytes === null ? {} : { bytes }),
+          ...storedBlobOf(value["data"]),
         },
       ];
     }

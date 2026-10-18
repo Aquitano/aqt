@@ -7,6 +7,7 @@ import {
   jsonObject as asObject,
   jsonString as asString,
   parseJsonObject,
+  storedBlobOf,
   streamPartsOf,
   type MessagePart,
   type NormalizedConversation,
@@ -183,6 +184,7 @@ const imagePartOf = (block: Schema.JsonObject): MessagePart => {
     type: "image",
     ...(mediaType === undefined ? {} : { mediaType }),
     ...(bytes === undefined ? {} : { bytes }),
+    ...storedBlobOf(source?.["data"]),
   };
 };
 

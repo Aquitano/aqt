@@ -15,6 +15,7 @@ import {
   bigint,
   bigserial,
   boolean,
+  bytea,
   date,
   foreignKey,
   index,
@@ -99,6 +100,28 @@ export const sourceRecords = pgTable(
   (table) => [
     uniqueIndex("source_records_identity").on(table.streamRef, table.recordKey),
     index("source_records_conversation").on(table.provider, table.conversationKey),
+  ],
+);
+
+// Inline images and documents, each stored once under the sha256 that its markers in source_records name.
+export const blobs = pgTable("blobs", {
+  sha256: text("sha256").primaryKey(),
+  data: bytea("data").notNull(),
+});
+
+export const recordBlobs = pgTable(
+  "record_blobs",
+  {
+    recordId: bigint("record_id", { mode: "number" })
+      .notNull()
+      .references(() => sourceRecords.id, { onDelete: "cascade" }),
+    sha256: text("sha256")
+      .notNull()
+      .references(() => blobs.sha256),
+  },
+  (table) => [
+    primaryKey({ columns: [table.recordId, table.sha256] }),
+    index("record_blobs_sha256").on(table.sha256),
   ],
 );
 

@@ -14,8 +14,18 @@ import {
 import { asc } from "drizzle-orm";
 import { Effect } from "effect";
 
+import { getBlob } from "../src/blobs.ts";
+import { deleteConversation } from "../src/conversations.ts";
 import { Db } from "../src/db/client.ts";
-import { machines, messages, modelRequests, sourceRecords } from "../src/db/schema.ts";
+import {
+  blobs,
+  conversations,
+  machines,
+  messages,
+  modelRequests,
+  recordBlobs,
+  sourceRecords,
+} from "../src/db/schema.ts";
 import { applyBatch } from "../src/ingest.ts";
 import { Normalizers } from "../src/registry.ts";
 import { reprocessArchive } from "../src/reprocess.ts";
@@ -128,46 +138,79 @@ test("reprocessing trims records stored before their provider's trim and rebuild
   );
 });
 
-test("inline images are stored as their type and size, on ingest and when reprocessing older records", async () => {
+const image = "iVBOR".padEnd(2000, "A");
+const imageData = Buffer.from(image, "base64");
+const imageSha256 = sha256Hex(imageData);
+
+const claudePrompt = (session: string) =>
+  wire(
+    "claude",
+    StreamId.make(`fixture/jsonl/projects/example-slug/${session}.jsonl`),
+    "0",
+    JSON.stringify({
+      type: "user",
+      uuid: "00000000-0000-4000-8000-000000000001",
+      sessionId: session,
+      timestamp: "2026-10-17T09:00:00.000Z",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "what is this" },
+          { type: "image", source: { type: "base64", media_type: "image/png", data: image } },
+        ],
+      },
+    }),
+  );
+
+test("inline images move into blobs under their sha256, on ingest and when reprocessing older records", async () => {
   await runTest(
     Effect.gen(function* () {
       yield* insertMachine;
-      const session = "22222222-2222-4222-8222-222222222222";
-      const prompt = JSON.stringify({
-        type: "user",
-        uuid: "00000000-0000-4000-8000-000000000001",
-        sessionId: session,
-        timestamp: "2026-10-17T09:00:00.000Z",
-        message: {
-          role: "user",
-          content: [
-            { type: "text", text: "what is this" },
-            {
-              type: "image",
-              source: { type: "base64", media_type: "image/png", data: "iVBOR".padEnd(2000, "A") },
-            },
-          ],
-        },
-      });
-      const streamId = StreamId.make(`fixture/jsonl/projects/example-slug/${session}.jsonl`);
-      yield* ingest("11111111-0000-4000-8000-000000000003", [
-        wire("claude", streamId, "0", prompt),
-      ]);
+      const db = yield* Db;
+      const prompt = claudePrompt("22222222-2222-4222-8222-222222222222");
+      yield* ingest("11111111-0000-4000-8000-000000000003", [prompt]);
       const ingested = yield* stored;
-      expect(ingested.map((row) => row.hash)).toEqual([sha256Hex(prompt)]);
+      expect(ingested.map((row) => row.hash)).toEqual([prompt.contentHash]);
       expect(ingested.map((row) => row.payload.includes("iVBOR"))).toEqual([false]);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
 
-      // An archive written before images were omitted.
-      yield* Effect.flatMap(Db, (db) => db.update(sourceRecords).set({ payload: prompt }));
+      // An archive written before images moved out of their records.
+      yield* db.update(sourceRecords).set({ payload: prompt.payload });
+      yield* db.delete(recordBlobs);
+      yield* db.delete(blobs);
       expect((yield* reprocessArchive()).trimmed).toBe(1);
       expect(yield* stored).toEqual(ingested);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
       yield* workOnce();
       const { messages: built } = yield* conversation;
       expect(built.flatMap((message) => message.parts)).toContainEqual({
         type: "image",
         mediaType: "image/png",
         bytes: 1500,
+        sha256: imageSha256,
       });
+    }),
+  );
+});
+
+test("an image in two conversations is stored once and deleted with the last of them", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      yield* ingest("11111111-0000-4000-8000-000000000004", [
+        claudePrompt("33333333-3333-4333-8333-333333333333"),
+        claudePrompt("44444444-4444-4444-8444-444444444444"),
+      ]);
+      yield* workOnce();
+      const storedHashes = db.select({ sha256: blobs.sha256 }).from(blobs);
+      expect(yield* storedHashes).toEqual([{ sha256: imageSha256 }]);
+
+      const [first, second] = yield* db.select({ id: conversations.id }).from(conversations);
+      yield* deleteConversation(first!.id);
+      expect(yield* storedHashes).toEqual([{ sha256: imageSha256 }]);
+      yield* deleteConversation(second!.id);
+      expect(yield* storedHashes).toEqual([]);
     }),
   );
 });
