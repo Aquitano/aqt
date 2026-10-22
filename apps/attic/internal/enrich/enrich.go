@@ -3,7 +3,6 @@
 package enrich
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -53,8 +52,11 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 	if summary.Provider == "codex" && o.Limit > 20 {
 		return summary, errors.New("Codex enrichment is limited to 20 contents per run")
 	}
-	if o.Config.AI.TimeoutSeconds <= 0 || o.Config.AI.MaxBytes < 0 {
-		return summary, errors.New("invalid enrichment limits")
+	if err := o.Config.AI.Validate(); err != nil {
+		return summary, err
+	}
+	if err := o.Config.NormalizeTemp(); err != nil {
+		return summary, err
 	}
 	if len(o.Mounts) == 0 {
 		return summary, errors.New("no selected catalogue volumes are online")
@@ -63,7 +65,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	temp := cmp.Or(o.Config.AI.Temp, o.Config.Archives.Temp, os.TempDir())
+	temp := o.Config.Temp
 	selection := o.Selection
 	selection.Key, selection.Extensions = o.Provider.Key(), o.Provider.Extensions()
 	selection.Volumes = nil

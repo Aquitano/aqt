@@ -25,6 +25,10 @@ func New(base string, log *slog.Logger) (*Workspace, error) {
 	if base == "" {
 		base = os.TempDir()
 	}
+	base, err := filepath.Abs(base)
+	if err != nil {
+		return nil, err
+	}
 	root := filepath.Join(base, "aqt-attic")
 	// The base must already exist so the scanner can check its volume before
 	// writing. Creating missing parents could bypass that check on Windows.

@@ -11,6 +11,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
 
 // PendingText is a hashed document below the scan root whose content has no
@@ -20,12 +22,14 @@ type PendingText struct {
 	Path      string
 	Name      string
 	ContentID int64
+	Size      int64
+	Digest    disk.Digest
 }
 
 // pendingTextWhere selects documents by extension below an upper path bound;
 // the callers add the lower one as $4.
 const pendingTextWhere = `
-	from entries e
+	from entries e join contents c on c.id = e.content_id
 	where e.volume_id = $1 and e.kind = 'file' and e.hash_state = 'done' and e.missing_scan is null
 	  and e.ext = any($2) and not exists (select 1 from texts t where t.content_id = e.content_id)
 	  and ($3 = '' or e.path collate "C" < $3)`
@@ -46,7 +50,7 @@ func (sc *Scan) NextTexts(ctx context.Context, after PendingText, exts []string,
 	if after.ID != 0 {
 		lower = after.Path
 	}
-	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, e.name, e.content_id`+pendingTextWhere+`
+	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, e.name, e.content_id, c.size_bytes, c.blake3`+pendingTextWhere+`
 		  and (e.path collate "C", e.id) > ($4, $5)
 		order by e.path collate "C", e.id limit $6`,
 		sc.Volume.ID, exts, upper, lower, after.ID, limit)
@@ -55,7 +59,9 @@ func (sc *Scan) NextTexts(ctx context.Context, after PendingText, exts []string,
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PendingText, error) {
 		var p PendingText
-		err := r.Scan(&p.ID, &p.Path, &p.Name, &p.ContentID)
+		var digest []byte
+		err := r.Scan(&p.ID, &p.Path, &p.Name, &p.ContentID, &p.Size, &digest)
+		copy(p.Digest[:], digest)
 		return p, err
 	})
 }
@@ -75,9 +81,20 @@ type DocumentText struct {
 // transaction while the next document is read, it would block a scan of
 // another disk meeting the same content, and two such scans could deadlock.
 func (sc *Scan) SetText(ctx context.Context, contentID int64, t DocumentText) error {
-	tag, err := sc.store.pool.Exec(ctx, `insert into texts (content_id, status, extractor, detail, text) values ($1, $2, $3, $4, $5)
+	tx, err := sc.store.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+	if err := lockContentCache(ctx, tx, true); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `insert into texts (content_id, status, extractor, detail, text) values ($1, $2, $3, $4, $5)
 		on conflict do nothing`, contentID, t.Status, t.Extractor, cleanText(t.Detail), cleanText(t.Text))
 	if err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 	if tag.RowsAffected() > 0 {

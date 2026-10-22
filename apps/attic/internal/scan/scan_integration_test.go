@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -577,12 +576,10 @@ func TestDocumentReadFailureTriesAnotherCopy(t *testing.T) {
 		}
 	})
 	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root, rules: config.Default().Rules(first.Volume.ID, first.Volume.Label), textsRead: map[int64]bool{}, seen: map[int64]bool{}}
-	r.text = extract.Options{Open: func(p string) (extract.Handle, error) {
-		if filepath.Base(p) == "a.txt" {
-			return nil, &os.PathError{Op: "open", Path: p, Err: syscall.EIO}
-		}
-		return r.openDocument(p)
-	}}
+	if err := os.Remove(filepath.Join(root, "a.txt")); err != nil {
+		t.Fatal(err)
+	}
+	r.text = extract.Options{Open: r.openDocument}
 	if err := r.readTexts(ctx); err != nil {
 		t.Fatal(err)
 	}
