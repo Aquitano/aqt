@@ -2,6 +2,7 @@ package scan
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -146,17 +147,26 @@ func TestRebuildContentWaitsForListingsAndCancelsAtomically(t *testing.T) {
 	}
 }
 
+func rarFixture(t *testing.T, name string) string {
+	t.Helper()
+	encoded, err := os.ReadFile(filepath.Join("testdata", "rar", name+".base64"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := base64.StdEncoding.DecodeString(string(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 func TestMultipartArchivesVerifySiblingsAndPreserveNames(t *testing.T) {
 	for _, changed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("changed=%t", changed), func(t *testing.T) {
 			st, dsn := storetest.New(t)
 			root := t.TempDir()
 			for _, name := range []string{"test.part01.rar", "test.part02.rar"} {
-				data, err := os.ReadFile(filepath.Join("testdata", "rar", name))
-				if err != nil {
-					t.Fatal(err)
-				}
-				write(t, root, name, string(data))
+				write(t, root, name, rarFixture(t, name))
 			}
 			cfg := config.Config{Temp: t.TempDir(), Archives: config.Archives{Depth: 1}}
 			first := scanAt(t, st, root, testVolume, func(o *Options) {
@@ -184,11 +194,7 @@ func TestMultipartArchivesVerifySiblingsAndPreserveNames(t *testing.T) {
 					t.Fatal("multipart archive has no members")
 				}
 			} else {
-				data, err := os.ReadFile(filepath.Join("testdata", "rar", "test.part02.rar"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				write(t, root, "test.part02.rar", string(data))
+				write(t, root, "test.part02.rar", rarFixture(t, "test.part02.rar"))
 				if again := scanAt(t, st, root, testVolume, func(o *Options) { o.Config = cfg }); again.Counts.Archives != 2 {
 					t.Fatalf("restored parts did not retry: %+v", again.Counts)
 				}
