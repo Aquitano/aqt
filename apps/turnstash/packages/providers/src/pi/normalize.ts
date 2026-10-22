@@ -341,7 +341,7 @@ const normalize = (
 
 export const piNormalizer: Normalizer = {
   id: "pi",
-  parserVersion: 2,
+  parserVersion: 3,
   conversationKeyOf,
   normalize,
 };

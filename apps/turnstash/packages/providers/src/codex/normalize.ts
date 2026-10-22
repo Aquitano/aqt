@@ -543,7 +543,7 @@ const trim = (_streamId: StreamId, payload: string): string => {
 
 export const codexNormalizer: Normalizer = {
   id: "codex",
-  parserVersion: 3,
+  parserVersion: 4,
   conversationKeyOf: (streamId) => {
     const uuid = rolloutUuid.exec(streamId)?.[1];
     return uuid === undefined ? Option.none() : Option.some(uuid.toLowerCase());

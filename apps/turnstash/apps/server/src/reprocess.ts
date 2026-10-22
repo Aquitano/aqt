@@ -60,7 +60,7 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
       const keptPayload = scrubText(kept.payload);
       return keptPayload === payload
         ? []
-        : [{ id, contentHash, payload: keptPayload, blobs: kept.blobs }];
+        : [{ id, contentHash, payload: keptPayload, blobs: kept.blobs, sha256s: kept.sha256s }];
     });
     yield* inTransaction(
       Effect.gen(function* () {

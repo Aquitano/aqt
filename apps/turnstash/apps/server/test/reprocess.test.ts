@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   MachineId,
+  parseJsonObject,
   RecordKey,
   sha256Hex,
   type SourceDescriptor,
@@ -189,6 +190,59 @@ test("inline images move into blobs under their sha256, on ingest and when repro
         bytes: 1500,
         sha256: imageSha256,
       });
+    }),
+  );
+});
+
+test("reprocessing retains old blob references when a record also gains an attachment", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      const prompt = claudePrompt("22222222-2222-4222-8222-222222222222");
+      yield* ingest("11111111-0000-4000-8000-000000000005", [prompt]);
+      const [archived] = yield* stored;
+      const document = Buffer.alloc(1200, 42);
+      yield* db.update(sourceRecords).set({
+        payload: JSON.stringify(
+          Object.assign({}, parseJsonObject(archived!.payload), {
+            document: { type: "base64", data: document.toString("base64") },
+          }),
+        ),
+      });
+      expect((yield* reprocessArchive()).trimmed).toBe(1);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
+      expect(yield* getBlob(sha256Hex(document))).toEqual(document);
+      expect((yield* db.select().from(recordBlobs)).length).toBe(2);
+      expect((yield* reprocessArchive()).trimmed).toBe(0);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
+    }),
+  );
+});
+
+test("replacing a record cleans up only its removed blob references", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      const prompt = claudePrompt("22222222-2222-4222-8222-222222222222");
+      yield* ingest("11111111-0000-4000-8000-000000000006", [prompt]);
+      const unrelated = Buffer.from("unrelated");
+      yield* db.insert(blobs).values({ sha256: sha256Hex(unrelated), data: unrelated });
+      const payload = prompt.payload.replace(image, "AA==");
+      yield* ingest("11111111-0000-4000-8000-000000000007", [
+        {
+          ...prompt,
+          payload,
+          contentHash: sha256Hex(payload),
+        },
+      ]);
+      expect(
+        (yield* db.select({ sha256: blobs.sha256 }).from(blobs))
+          .map((row) => row.sha256)
+          .toSorted(),
+      ).toEqual([sha256Hex(unrelated), sha256Hex(Buffer.from([0]))].toSorted());
+      expect(yield* getBlob(sha256Hex(Buffer.from([0])))).toEqual(Buffer.from([0]));
     }),
   );
 });

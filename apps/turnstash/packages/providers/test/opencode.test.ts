@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  extractInlineBlobs,
+  sha256Hex,
   RecordKey,
   streamIdOf,
   type NormalizedConversation,
@@ -562,4 +564,43 @@ test("a tie between two versions of a part picks the same one before and after t
   expect(normalized(legacy.session.id, records.map(trim))).toEqual(
     normalized(legacy.session.id, records),
   );
+});
+
+test("V2 attachments archive from text and BLOB columns and normalize images alongside other files", () => {
+  const image = Buffer.alloc(1100, 255);
+  for (const blob of [false, true]) {
+    const user = sqliteRow(
+      "session_message",
+      {
+        ...v2.user,
+        data: {
+          ...v2.user.data,
+          files: [
+            { mime: "image/png", data: image.toString("base64") },
+            { mime: "text/plain", data: "plain words" },
+            "unknown",
+          ],
+        },
+      },
+      { blob },
+    );
+    const archived = extractInlineBlobs(
+      opencodeNormalizer.trim?.(user.streamId, user.payload) ?? user.payload,
+    );
+    expect([...archived.blobs]).toEqual([[sha256Hex(image), image]]);
+    const conversation = normalized(v2.session_v2.id, [
+      v2Records[0]!,
+      { ...user, payload: archived.payload },
+    ]);
+    expect(conversation.messages[0]?.parts).toContainEqual({
+      type: "image",
+      mediaType: "image/png",
+      sha256: sha256Hex(image),
+    });
+    expect(conversation.messages[0]?.parts).toContainEqual({
+      type: "opaque",
+      kind: "files",
+      data: [{ mime: "text/plain", data: "plain words" }, "unknown"],
+    });
+  }
 });

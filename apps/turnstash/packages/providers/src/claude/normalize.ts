@@ -463,7 +463,7 @@ const normalize = (
 
 export const claudeNormalizer: Normalizer = {
   id: "claude",
-  parserVersion: 2,
+  parserVersion: 3,
   conversationKeyOf,
   normalize,
 };

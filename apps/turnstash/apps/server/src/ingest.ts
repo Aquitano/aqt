@@ -187,7 +187,7 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
       const known = new Map(existing.map((row) => [recordRef(row.streamRef, row.recordKey), row]));
 
       const pending = new Map<string, typeof sourceRecords.$inferInsert>();
-      const pendingBlobs = new Map<string, ReadonlyMap<string, Buffer>>();
+      const pendingBlobs = new Map<string, ReturnType<typeof storedRecordOf>>();
       for (const record of batch.records) {
         const streamRef = streamRefs.get(streamKey(record.provider, record.streamId));
         if (streamRef === undefined) continue;
@@ -231,7 +231,7 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
         }
         known.set(ref, row);
         pending.set(ref, row);
-        pendingBlobs.set(ref, stored.blobs);
+        pendingBlobs.set(ref, stored);
         touch(record.provider, conversationKey);
       }
       if (pending.size > 0) {
@@ -259,8 +259,8 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
           });
         yield* setRecordBlobs(
           written.flatMap((row) => {
-            const blobs = pendingBlobs.get(recordRef(row.streamRef, row.recordKey));
-            return blobs === undefined ? [] : [{ id: row.id, blobs }];
+            const stored = pendingBlobs.get(recordRef(row.streamRef, row.recordKey));
+            return stored === undefined ? [] : [{ id: row.id, ...stored }];
           }),
         );
       }

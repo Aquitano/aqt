@@ -63,3 +63,30 @@ test("extracting names each inline file by its sha256 in the marker and returns 
   });
   expect([...extracted.blobs]).toEqual([[marker.sha256, data]]);
 });
+
+test("data URI extraction preserves escaped bytes and leaves malformed encodings intact", () => {
+  const data = Buffer.alloc(1100, 251);
+  const uri = `data:image/png;base64,${encodeURIComponent(data.toString("base64"))}`;
+  const extracted = extractInlineBlobs(JSON.stringify({ image: uri }));
+  expect([...extracted.blobs]).toEqual([[sha256Hex(data), data]]);
+  expect(JSON.parse(extracted.payload)).toEqual({
+    image: {
+      omitted: "base64",
+      bytes: data.length,
+      mediaType: "image/png",
+      sha256: sha256Hex(data),
+    },
+  });
+  for (const suffix of ["%XX", "!", "A"]) {
+    const payload = JSON.stringify({ image: `data:image/png;base64,${"A".repeat(1100)}${suffix}` });
+    expect(extractInlineBlobs(payload).payload).toBe(payload);
+    expect(extractInlineBlobs(payload).blobs.size).toBe(0);
+  }
+});
+
+test("small attachments are archived while oversized-line omission keeps its threshold", () => {
+  const data = Buffer.from([0, 255, 1, 254]);
+  const payload = JSON.stringify({ mime: "image/png", data: data.toString("base64") });
+  expect([...extractInlineBlobs(payload).blobs]).toEqual([[sha256Hex(data), data]]);
+  expect(omitInlineBlobs(payload)).toBe(payload);
+});
