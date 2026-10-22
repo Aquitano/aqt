@@ -2,11 +2,9 @@ package store
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
-	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -121,35 +119,10 @@ func (s *Store) SearchTexts(ctx context.Context, o SearchOptions) ([]TextHit, er
 
 // table is a package-owned literal; never a query parameter.
 func (s *Store) searchTextTable(ctx context.Context, o SearchOptions, table string) ([]TextHit, error) {
-	words := strings.Fields(o.Query)
-	if len(words) == 0 || (o.Kind != "" && o.Kind != "file") {
-		return nil, nil
+	q, err := s.newTextSearch(ctx, o, "t.content_id", "t.content_id")
+	if err != nil || q == nil {
+		return nil, err
 	}
-	q := &search{}
-	clauses := make([]string, len(words))
-	for i, w := range words {
-		clauses[i] = "paradedb.match('text', " + q.next(w) + ")"
-	}
-	mode := "must"
-	if o.Any {
-		mode = "should"
-	}
-	q.where = append(q.where, "t.content_id @@@ paradedb.boolean("+mode+" => array["+strings.Join(clauses, ", ")+"])")
-	// Text outlives a file that was rewritten; only contents some entry still
-	// has are found.
-	place := []string{"e.content_id = t.content_id"}
-	if o.VolumeID != "" {
-		place = append(place, "e.volume_id = "+q.next(o.VolumeID))
-	}
-	if o.Under != "" {
-		under := strings.TrimSuffix(o.Under, "/")
-		place = append(place, `e.path collate "C" > `+q.next(under+"/")+` and e.path collate "C" < `+q.next(under+"0"))
-	}
-	if o.Ext != "" {
-		place = append(place, "e.ext = "+q.next(strings.ToLower(strings.TrimPrefix(o.Ext, "."))))
-	}
-	q.where = append(q.where, `exists (select 1 from entries e where `+strings.Join(place, " and ")+`)`)
-	q.order = "paradedb.score(t.content_id) desc, t.content_id"
 	rows, err := s.pool.Query(ctx, `select t.content_id, `+refSQL+`, paradedb.score(t.content_id),
 		paradedb.snippet(t.text, start_tag => '', end_tag => '', max_num_chars => 200)
 		from `+table+` t join contents c on c.id = t.content_id`+q.tail(o), q.args...)
@@ -212,19 +185,13 @@ type TextDetail struct {
 // Text returns the text read from an entry's content, or from a ref's.
 func (s *Store) Text(ctx context.Context, entryID int64, ref string) (TextDetail, error) {
 	var d TextDetail
-	var prefix []byte
-	if entryID == 0 {
-		r, ok := ParseRef(ref)
-		if !ok {
-			return d, fmt.Errorf("not a ref: %q", ref)
-		}
-		prefix, _ = hex.DecodeString(r)
+	lookup, err := newContentLookup(entryID, ref)
+	if err != nil {
+		return d, err
 	}
-	err := s.pool.QueryRow(ctx, `select `+refSQL+`, t.status, t.extractor, t.detail, t.chars, t.extracted_at, t.text
+	err = s.pool.QueryRow(ctx, `select `+refSQL+`, t.status, t.extractor, t.detail, t.chars, t.extracted_at, t.text
 		from texts t join contents c on c.id = t.content_id
-		where ($1::bigint <> 0 and c.id = (select content_id from entries where id = $1))
-		   or ($1::bigint = 0 and substr(c.blake3, 1, 8) = $2)
-		order by c.id limit 1`, entryID, prefix).
+		where `+contentLookupWhere+` order by c.id limit 1`, lookup.entryID, lookup.prefix).
 		Scan(&d.Ref, &d.Status, &d.Extractor, &d.Detail, &d.Chars, &d.Extracted, &d.Text)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, fmt.Errorf("no text read for that file: %w", ErrNotFound)
