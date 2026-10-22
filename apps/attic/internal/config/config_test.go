@@ -88,7 +88,7 @@ func TestSharedTempMigratesAliasesAndRejectsConflicts(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || filepath.Clean(c.Temp) != tc.want || c.Archives.Temp != "" || c.Metadata.Temp != "" || c.AI.Temp != "" {
+			if err != nil || filepath.Clean(c.Temp) != filepath.Clean(tc.want) || c.Archives.Temp != "" || c.Metadata.Temp != "" || c.AI.Temp != "" {
 				t.Fatalf("shared temp: %+v, %v", c, err)
 			}
 			encoded, err := toml.Marshal(c)
