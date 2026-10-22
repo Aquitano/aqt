@@ -40,17 +40,24 @@ type Summary struct {
 	Skipped   int `json:"skipped"`
 }
 
+func ValidateLimit(provider string, limit int) error {
+	if limit < 1 || limit > 1000 {
+		return errors.New("limit must be between 1 and 1000")
+	}
+	if provider == "codex" && limit > 20 {
+		return errors.New("Codex enrichment is limited to 20 contents per run")
+	}
+	return nil
+}
+
 func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 	var summary Summary
 	if o.Provider == nil {
 		return summary, errors.New("enrichment needs a provider")
 	}
 	summary.Key = o.Provider.Key()
-	if o.Limit < 1 || o.Limit > 1000 {
-		return summary, errors.New("limit must be between 1 and 1000")
-	}
-	if summary.Provider == "codex" && o.Limit > 20 {
-		return summary, errors.New("Codex enrichment is limited to 20 contents per run")
+	if err := ValidateLimit(summary.Provider, o.Limit); err != nil {
+		return summary, err
 	}
 	if err := o.Config.AI.Validate(); err != nil {
 		return summary, err

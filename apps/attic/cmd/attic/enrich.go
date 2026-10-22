@@ -31,9 +31,6 @@ func (cmd *enrichCmd) Run(ctx context.Context) error {
 	if len(cmd.Targets) == 0 && cmd.Under == "" {
 		return errors.New("enrich needs entry ids, refs, or --under; first select files with attic search")
 	}
-	if cmd.Limit < 1 || cmd.Limit > 1000 {
-		return errors.New("limit must be between 1 and 1000")
-	}
 	selection := store.AISelection{Force: cmd.Force}
 	for _, arg := range cmd.Targets {
 		id, ref, err := parseTarget(arg)
@@ -59,12 +56,12 @@ func (cmd *enrichCmd) Run(ctx context.Context) error {
 	if cmd.Endpoint != "" {
 		cfg.AI.Endpoint = cmd.Endpoint
 	}
+	if err := enrich.ValidateLimit(cfg.AI.Provider, cmd.Limit); err != nil {
+		return err
+	}
 	p, err := ai.New(ctx, cfg.AI, cmd.Task)
 	if err != nil {
 		return err
-	}
-	if p.Key().Provider == "codex" && cmd.Limit > 20 {
-		return errors.New("Codex enrichment is limited to 20 contents per run")
 	}
 	st, err := openStore(ctx)
 	if err != nil {

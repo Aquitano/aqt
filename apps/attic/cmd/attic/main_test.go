@@ -23,6 +23,9 @@ func TestCLIParsesArguments(t *testing.T) {
 		{[]string{"scan", `E:\Files`, "--no-hash"}, func(c cli) bool {
 			return c.Scan.Folder == `E:\Files` && c.Scan.NoHash && c.Scan.LogLevel == "info"
 		}},
+		{[]string{"scan", `E:\Files`, "--rebuild-content"}, func(c cli) bool {
+			return c.Scan.Folder == `E:\Files` && c.Scan.RebuildContent && !c.Scan.NoHash
+		}},
 		{[]string{"enrich", "123", "attic:0123456789abcdef", "--task", "ocr", "--force"}, func(c cli) bool {
 			return reflect.DeepEqual(c.Enrich.Targets, []string{"123", "attic:0123456789abcdef"}) && c.Enrich.Task == "ocr" && c.Enrich.Provider == "" && c.Enrich.Force && c.Enrich.Limit == 20
 		}},
@@ -54,6 +57,7 @@ func TestCLIRejectsInvalidSelections(t *testing.T) {
 		{"enrich", "123", "--task", "caption"},
 		{"enrich", "123"},
 		{"scan", `E:\`, "--volume", "known", "--new-volume"},
+		{"scan", `E:\`, "--no-hash", "--rebuild-content"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			if _, err := parseCLI(&cli{}, args); err == nil {

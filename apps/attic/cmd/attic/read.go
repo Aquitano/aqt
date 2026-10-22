@@ -653,6 +653,7 @@ func (cmd *configCmd) Run(ctx context.Context) error {
 		state = "not created; defaults apply"
 	}
 	fmt.Printf("config    %s (%s)\n", path, state)
+	fmt.Printf("temp      %s\n", cmp.Or(cfg.Temp, os.TempDir()))
 	if cfg.HashMaxBytes > 0 {
 		fmt.Printf("hash      files up to %s\n", humanBytes(cfg.HashMaxBytes))
 	} else {
@@ -661,22 +662,19 @@ func (cmd *configCmd) Run(ctx context.Context) error {
 	if a := cfg.Archives; a.Depth == 0 {
 		fmt.Println("archives  not read")
 	} else {
-		limit, temp := "any size", a.Temp
+		limit := "any size"
 		if a.UnpackMaxBytes > 0 {
 			limit = "up to " + humanBytes(a.UnpackMaxBytes)
 		}
-		if temp == "" {
-			temp = os.TempDir()
-		}
-		fmt.Printf("archives  %d levels deep; nested archives %s, unpacked in %s\n", a.Depth, limit, temp)
+		fmt.Printf("archives  %d levels deep; nested archives %s\n", a.Depth, limit)
 	}
 	if t := cfg.Text; t.MaxBytes > 0 {
 		fmt.Printf("text      documents up to %s, the first 1 MB of text each\n", humanBytes(t.MaxBytes))
 	} else {
 		fmt.Println("text      documents of any size, the first 1 MB of text each")
 	}
-	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d, temp=%s\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes, cmp.Or(cfg.Metadata.Temp, cfg.Archives.Temp, os.TempDir()))
-	fmt.Printf("enrich    explicit command only; provider=%s, model=%s, endpoint=%s, api_key_env=%s, max_bytes=%d, timeout=%ds, temp=%s\n", cfg.AI.Provider, cfg.AI.Model, cfg.AI.Endpoint, cfg.AI.APIKeyEnv, cfg.AI.MaxBytes, cfg.AI.TimeoutSeconds, cmp.Or(cfg.AI.Temp, cfg.Archives.Temp, os.TempDir()))
+	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes)
+	fmt.Printf("enrich    explicit command only; provider=%s, model=%s, endpoint=%s, api_key_env=%s, max_bytes=%d, timeout=%ds\n", cfg.AI.Provider, cfg.AI.Model, cfg.AI.Endpoint, cfg.AI.APIKeyEnv, cfg.AI.MaxBytes, cfg.AI.TimeoutSeconds)
 	exclude, nameOnly := cfg.Rules(cmd.Volume, cmd.Volume).Describe()
 	fmt.Println("exclude")
 	for _, r := range exclude {

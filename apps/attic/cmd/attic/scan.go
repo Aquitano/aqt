@@ -16,13 +16,14 @@ import (
 )
 
 type scanCmd struct {
-	Folder    string `arg:"" help:"Folder to scan."`
-	Config    string `help:"Configuration file."`
-	NoHash    bool   `help:"List only; hash on a later scan."`
-	Volume    string `xor:"volume" help:"Use this known volume ID after an identity question."`
-	NewVolume bool   `xor:"volume" help:"Record a separate volume even if its fingerprint resembles one."`
-	LogLevel  string `default:"info" help:"Log level: debug, info, warn or error."`
-	JSON      bool   `help:"Print JSON."`
+	Folder         string `arg:"" help:"Folder to scan."`
+	Config         string `help:"Configuration file."`
+	NoHash         bool   `xor:"content" help:"List only; hash on a later scan."`
+	RebuildContent bool   `xor:"content" help:"Rebuild archive listings and document text for selected content."`
+	Volume         string `xor:"volume" help:"Use this known volume ID after an identity question."`
+	NewVolume      bool   `xor:"volume" help:"Record a separate volume even if its fingerprint resembles one."`
+	LogLevel       string `default:"info" help:"Log level: debug, info, warn or error."`
+	JSON           bool   `help:"Print JSON."`
 }
 
 func (cmd *scanCmd) Run(ctx context.Context) error {
@@ -46,6 +47,7 @@ func (cmd *scanCmd) Run(ctx context.Context) error {
 	p := &progressLine{tty: stderrIsTerminal(), started: time.Now()}
 	res, err := scan.Run(ctx, st, scan.Options{
 		Path: cmd.Folder, Config: cfg, NoHash: cmd.NoHash, VolumeID: cmd.Volume, NewVolume: cmd.NewVolume, Progress: p.update, Log: log,
+		RebuildContent: cmd.RebuildContent,
 	})
 	p.clear()
 	if res.ScanID == 0 {
