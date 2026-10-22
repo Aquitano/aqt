@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/alecthomas/kong"
@@ -113,6 +114,11 @@ func parseCLI(root *cli, args []string) (*kong.Context, error) {
 				}
 				arg = "--" + flag.Name
 				if inline {
+					if flag.IsBool() {
+						if boolean, err := strconv.ParseBool(value); err == nil {
+							value = strconv.FormatBool(boolean)
+						}
+					}
 					arg += "=" + value
 				}
 				args[i] = arg
