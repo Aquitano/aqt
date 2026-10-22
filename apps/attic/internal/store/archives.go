@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/aquitano/aqt/apps/attic/internal/archive"
+	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
 
 // PendingArchive is a hashed archive below the scan root whose content has
@@ -15,12 +16,13 @@ type PendingArchive struct {
 	Path      string
 	Size      int64
 	ContentID int64
+	Digest    disk.Digest
 }
 
 // pendingArchiveWhere matches the names archive.IsArchive accepts, below an
 // upper path bound; the callers add the lower one as $5.
 const pendingArchiveWhere = `
-	from entries e
+	from entries e join contents c on c.id = e.content_id
 	where e.volume_id = $1 and e.kind = 'file' and e.hash_state = 'done' and e.missing_scan is null
 	  and (e.ext = any($2) or (e.ext = any($3) and lower(e.name) like ('%.tar.' || e.ext)))
 	  and not exists (select 1 from archives a where a.content_id = e.content_id)
@@ -43,7 +45,7 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 	if after.ID != 0 {
 		lower = after.Path
 	}
-	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, e.size_bytes, e.content_id`+pendingArchiveWhere+`
+	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, c.size_bytes, e.content_id, c.blake3`+pendingArchiveWhere+`
 		  and (e.path collate "C", e.id) > ($5, $6)
 		order by e.path collate "C", e.id limit $7`,
 		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lower, after.ID, limit)
@@ -52,7 +54,9 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PendingArchive, error) {
 		var p PendingArchive
-		err := r.Scan(&p.ID, &p.Path, &p.Size, &p.ContentID)
+		var digest []byte
+		err := r.Scan(&p.ID, &p.Path, &p.Size, &p.ContentID, &digest)
+		copy(p.Digest[:], digest)
 		return p, err
 	})
 }
@@ -76,6 +80,10 @@ const listingBatch = 5000
 func (sc *Scan) StartListing(ctx context.Context, contentID int64) (*Listing, error) {
 	tx, err := sc.store.pool.Begin(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := lockContentCache(ctx, tx, true); err != nil {
+		_ = tx.Rollback(context.WithoutCancel(ctx))
 		return nil, err
 	}
 	tag, err := tx.Exec(ctx, `insert into archives (content_id, status) values ($1, 'listing') on conflict do nothing`, contentID)

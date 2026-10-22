@@ -18,7 +18,7 @@ func (r *run) readMetadata(ctx context.Context) error {
 	if err != nil || r.total == 0 {
 		return err
 	}
-	w, err := scratch.New(r.o.Config.Metadata.Temp, r.log)
+	w, err := scratch.New(r.o.Config.Temp, r.log)
 	if err != nil {
 		return err
 	}

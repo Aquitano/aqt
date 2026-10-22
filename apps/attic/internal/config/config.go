@@ -20,6 +20,7 @@ type Config struct {
 	NameOnly []string `toml:"name_only"`
 	// HashMaxBytes leaves larger files unhashed; 0 hashes every file.
 	HashMaxBytes int64    `toml:"hash_max_bytes"`
+	Temp         string   `toml:"temp,omitempty"`
 	Archives     Archives `toml:"archives"`
 	Text         Text     `toml:"text"`
 	Metadata     Metadata `toml:"metadata"`
@@ -32,13 +33,11 @@ type Archives struct {
 	// Depth counts the archive levels opened, the one on disk included; 0
 	// leaves archives unread.
 	Depth int `toml:"depth"`
-	// UnpackMaxBytes caps a nested archive copied to Temp to be listed; 0
+	// UnpackMaxBytes caps a nested archive copied to the shared temp directory; 0
 	// copies any size.
 	UnpackMaxBytes int64 `toml:"unpack_max_bytes"`
-	// Temp holds nested archives while they are listed; empty means the
-	// system's temporary folder. A scan refuses to start when it is on the
-	// disk being scanned.
-	Temp string `toml:"temp"`
+	// Temp accepts the legacy archives.temp alias for Config.Temp.
+	Temp string `toml:"temp,omitempty"`
 }
 
 // Text says which documents a scan reads for their words.
@@ -52,7 +51,7 @@ type Metadata struct {
 	Enabled  bool   `toml:"enabled"`
 	ExifTool string `toml:"exiftool"`
 	MaxBytes int64  `toml:"max_bytes"`
-	Temp     string `toml:"temp"`
+	Temp     string `toml:"temp,omitempty"`
 }
 
 // AI is used only by the explicit enrich command, never by scan.
@@ -62,7 +61,7 @@ type AI struct {
 	Model          string `toml:"model"`
 	APIKeyEnv      string `toml:"api_key_env"`
 	MaxBytes       int64  `toml:"max_bytes"`
-	Temp           string `toml:"temp"`
+	Temp           string `toml:"temp,omitempty"`
 	TimeoutSeconds int    `toml:"timeout_seconds"`
 	MaxTokens      int    `toml:"max_tokens"`
 	TokenParameter string `toml:"token_parameter"`
@@ -133,13 +132,82 @@ func Load(path string, explicit bool) (Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
-	if c.HashMaxBytes < 0 || c.Archives.Depth < 0 || c.Archives.UnpackMaxBytes < 0 || c.Text.MaxBytes < 0 || c.Metadata.MaxBytes < 0 {
-		return c, fmt.Errorf("%s: hash_max_bytes, archives.depth, archives.unpack_max_bytes, text.max_bytes and metadata.max_bytes must not be negative", path)
+	var paths struct {
+		Temp     *string `toml:"temp"`
+		Archives struct {
+			Temp *string `toml:"temp"`
+		} `toml:"archives"`
+		Metadata struct {
+			Temp *string `toml:"temp"`
+		} `toml:"metadata"`
+		AI struct {
+			Temp *string `toml:"temp"`
+		} `toml:"ai"`
 	}
-	if c.AI.MaxBytes < 0 || c.AI.TimeoutSeconds <= 0 || c.AI.MaxTokens <= 0 || c.AI.OCRMaxPages <= 0 {
-		return c, fmt.Errorf("%s: ai limits must be positive; max_bytes may be zero", path)
+	if err := toml.Unmarshal(data, &paths); err != nil {
+		return c, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := c.resolveTemp(paths.Temp, paths.Archives.Temp, paths.Metadata.Temp, paths.AI.Temp); err != nil {
+		return c, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := c.Validate(); err != nil {
+		return c, fmt.Errorf("%s: %w", path, err)
 	}
 	return c, nil
+}
+
+func (c Config) Validate() error {
+	return errors.Join(c.ValidateScan(), c.AI.Validate())
+}
+
+func (c Config) ValidateScan() error {
+	if c.HashMaxBytes < 0 || c.Archives.Depth < 0 || c.Archives.UnpackMaxBytes < 0 || c.Text.MaxBytes < 0 || c.Metadata.MaxBytes < 0 {
+		return errors.New("hash_max_bytes, archives.depth, archives.unpack_max_bytes, text.max_bytes and metadata.max_bytes must not be negative")
+	}
+	return nil
+}
+
+func (a AI) Validate() error {
+	if a.MaxBytes < 0 || a.TimeoutSeconds <= 0 || a.MaxTokens <= 0 || a.OCRMaxPages <= 0 {
+		return errors.New("ai limits must be positive; max_bytes may be zero")
+	}
+	return nil
+}
+
+func (c *Config) NormalizeTemp() error {
+	nonempty := func(s string) *string {
+		if s == "" {
+			return nil
+		}
+		return &s
+	}
+	return c.resolveTemp(nonempty(c.Temp), nonempty(c.Archives.Temp), nonempty(c.Metadata.Temp), nonempty(c.AI.Temp))
+}
+
+func (c *Config) resolveTemp(paths ...*string) error {
+	names := []string{"temp", "archives.temp", "metadata.temp", "ai.temp"}
+	clean := func(s string) string {
+		if s == "" {
+			s = os.TempDir()
+		}
+		return filepath.Clean(s)
+	}
+	var selected *string
+	var source string
+	for i, p := range paths {
+		if p == nil {
+			continue
+		}
+		if selected != nil && clean(*p) != clean(*selected) {
+			return fmt.Errorf("conflicting temporary directories in %s and %s; use one shared temp setting", source, names[i])
+		}
+		selected, source = p, names[i]
+	}
+	if selected != nil {
+		c.Temp = *selected
+	}
+	c.Archives.Temp, c.Metadata.Temp, c.AI.Temp = "", "", ""
+	return nil
 }
 
 // Rules are the patterns that apply to one volume, compiled once per scan.
