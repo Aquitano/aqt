@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { absurd } from "effect/Function";
 import { ImageIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -5,7 +6,9 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { compact, json } from "../format";
+import { blobQuery } from "../queries";
 import type { ContentPart } from "../transcript";
+import { Async } from "./Async";
 import { Disclosure } from "./Disclosure";
 import { HighlightedText } from "./HighlightedText";
 
@@ -52,6 +55,23 @@ export const Markdown = ({ text }: { readonly text: string }) => (
   </div>
 );
 
+const StoredImage = ({
+  sha256,
+  mediaType,
+}: {
+  readonly sha256: string;
+  readonly mediaType: string | undefined;
+}) => {
+  const image = useQuery(blobQuery(sha256, mediaType));
+  return (
+    <Async query={image}>
+      {(src) => (
+        <img src={src} alt="Archived image" className="max-h-160 max-w-full rounded-md border" />
+      )}
+    </Async>
+  );
+};
+
 // Search highlights only exist on plain text, so a transcript opened from a search stays plain.
 export const MessagePartView = ({
   part,
@@ -82,14 +102,22 @@ export const MessagePartView = ({
         </Disclosure>
       );
 
-    case "image":
-      return (
+    case "image": {
+      const label = (
         <span className={partLabel}>
           <ImageIcon className="size-3.5" />
           Image {part.mediaType ?? "of unknown type"}
           {part.bytes !== undefined && ` · ${compact(part.bytes)} bytes`}
         </span>
       );
+      return part.sha256 === undefined ? (
+        label
+      ) : (
+        <Disclosure summary={label} defaultOpen={targeted}>
+          <StoredImage sha256={part.sha256} mediaType={part.mediaType} />
+        </Disclosure>
+      );
+    }
 
     case "opaque":
       return (

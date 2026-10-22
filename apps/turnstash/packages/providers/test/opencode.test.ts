@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  extractInlineBlobs,
+  sha256Hex,
   RecordKey,
   streamIdOf,
   type NormalizedConversation,
@@ -410,6 +412,51 @@ test("legacy messages join their part rows and price every step-finish", () => {
   ]);
 });
 
+test("a tool call id repeated across or within messages gets a key of its own", () => {
+  const later = {
+    ...legacy.assistantMessage,
+    id: "msg_DDDD5555",
+    time_created: 1788554995000,
+    data: { ...legacy.assistantMessage.data, time: { created: 1788554995000 } },
+  };
+  const read = (id: string, messageId: string) =>
+    sqliteRow("part", {
+      id,
+      message_id: messageId,
+      session_id: "ses_EEEE5555",
+      data: {
+        type: "tool",
+        tool: "read",
+        callID: "functions.read:0",
+        state: { status: "completed", input: { filePath: "a.ts" }, output: "a" },
+      },
+    });
+  const conversation = normalized("ses_EEEE5555", [
+    sqliteRow("session", legacy.session),
+    sqliteRow("message", legacy.userMessage),
+    sqliteRow("message", legacy.assistantMessage),
+    sqliteRow("message", later),
+    read("prt_1000", "msg_DDDD4444"),
+    read("prt_1001", "msg_DDDD5555"),
+    read("prt_1002", "msg_DDDD5555"),
+  ]);
+  expect(conversation.toolExecutions.map((tool) => [tool.toolKey, tool.messageKey])).toEqual([
+    ["functions.read:0", "msg_DDDD4444"],
+    ["functions.read:0@msg_DDDD5555", "msg_DDDD5555"],
+    ["functions.read:0@msg_DDDD5555#2", "msg_DDDD5555"],
+  ]);
+  expect(
+    conversation.messages
+      .find((message) => message.messageKey === "msg_DDDD5555")
+      ?.parts.map((part) => ("toolKey" in part ? part.toolKey : part.type)),
+  ).toEqual([
+    "functions.read:0@msg_DDDD5555",
+    "functions.read:0@msg_DDDD5555",
+    "functions.read:0@msg_DDDD5555#2",
+    "functions.read:0@msg_DDDD5555#2",
+  ]);
+});
+
 test("file store documents normalize on their own", () => {
   const conversation = normalized("ses_IIII9999", [
     jsonDocument("storage/session/prj_3333/ses_IIII9999.json", store.session),
@@ -562,4 +609,43 @@ test("a tie between two versions of a part picks the same one before and after t
   expect(normalized(legacy.session.id, records.map(trim))).toEqual(
     normalized(legacy.session.id, records),
   );
+});
+
+test("V2 attachments archive from text and BLOB columns and normalize images alongside other files", () => {
+  const image = Buffer.alloc(1100, 255);
+  for (const blob of [false, true]) {
+    const user = sqliteRow(
+      "session_message",
+      {
+        ...v2.user,
+        data: {
+          ...v2.user.data,
+          files: [
+            { mime: "image/png", data: image.toString("base64") },
+            { mime: "text/plain", data: "plain words" },
+            "unknown",
+          ],
+        },
+      },
+      { blob },
+    );
+    const archived = extractInlineBlobs(
+      opencodeNormalizer.trim?.(user.streamId, user.payload) ?? user.payload,
+    );
+    expect([...archived.blobs]).toEqual([[sha256Hex(image), image]]);
+    const conversation = normalized(v2.session_v2.id, [
+      v2Records[0]!,
+      { ...user, payload: archived.payload },
+    ]);
+    expect(conversation.messages[0]?.parts).toContainEqual({
+      type: "image",
+      mediaType: "image/png",
+      sha256: sha256Hex(image),
+    });
+    expect(conversation.messages[0]?.parts).toContainEqual({
+      type: "opaque",
+      kind: "files",
+      data: [{ mime: "text/plain", data: "plain words" }, "unknown"],
+    });
+  }
 });

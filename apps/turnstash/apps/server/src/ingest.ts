@@ -12,6 +12,7 @@ import { ConversationKey } from "@aqt/turnstash-core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { Effect, Metric, Option } from "effect";
 
+import { setRecordBlobs } from "./blobs.ts";
 import { ServerConfig } from "./config.ts";
 import { lockConversations } from "./conversation-locks.ts";
 import { Db, inTransaction } from "./db/client.ts";
@@ -24,7 +25,7 @@ import {
   tombstones,
 } from "./db/schema.ts";
 import { excluded } from "./db/sql.ts";
-import { Normalizers } from "./registry.ts";
+import { Normalizers, storedRecordOf } from "./registry.ts";
 import { scrubText } from "./scrub.ts";
 import { batchesIngested, recordsIngested } from "./telemetry.ts";
 
@@ -75,10 +76,6 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
     Option.getOrNull(
       normalizers[record.provider].conversationKeyOf(record.streamId, record.payload),
     );
-  // The stored payload drops what the provider's normalizer never reads; the agent's hash stays, so a
-  // resent record is still recognised as a duplicate.
-  const storedPayloadOf = (record: WireRecord): string =>
-    normalizers[record.provider].trim?.(record.streamId, record.payload) ?? record.payload;
   const providers = [...new Set(batch.records.map((record) => record.provider))];
   const conversationKeys = batch.records.flatMap((record) => {
     const conversationKey = conversationKeyOf(record);
@@ -190,6 +187,7 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
       const known = new Map(existing.map((row) => [recordRef(row.streamRef, row.recordKey), row]));
 
       const pending = new Map<string, typeof sourceRecords.$inferInsert>();
+      const pendingBlobs = new Map<string, ReturnType<typeof storedRecordOf>>();
       for (const record of batch.records) {
         const streamRef = streamRefs.get(streamKey(record.provider, record.streamId));
         if (streamRef === undefined) continue;
@@ -209,12 +207,18 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
           note(record.provider, "duplicate");
           continue;
         }
+        const stored = storedRecordOf(
+          normalizers[record.provider],
+          record.streamId,
+          record.payload,
+        );
         const row = {
           streamRef,
           provider: record.provider,
           recordKey: record.recordKey,
+          // The agent's hash stays, so a resent record is still recognised as a duplicate.
           contentHash: record.contentHash,
-          payload: scrubText(storedPayloadOf(record)),
+          payload: scrubText(stored.payload),
           observedAt,
           redactions: record.redactions,
           conversationKey,
@@ -227,10 +231,11 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
         }
         known.set(ref, row);
         pending.set(ref, row);
+        pendingBlobs.set(ref, stored);
         touch(record.provider, conversationKey);
       }
       if (pending.size > 0) {
-        yield* tx
+        const written = yield* tx
           .insert(sourceRecords)
           .values([...pending.values()])
           .onConflictDoUpdate({
@@ -246,7 +251,18 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
               ingestedAt: sql`now()`,
             },
             setWhere: sql`${sourceRecords.observedAt} <= excluded.observed_at`,
+          })
+          .returning({
+            id: sourceRecords.id,
+            streamRef: sourceRecords.streamRef,
+            recordKey: sourceRecords.recordKey,
           });
+        yield* setRecordBlobs(
+          written.flatMap((row) => {
+            const stored = pendingBlobs.get(recordRef(row.streamRef, row.recordKey));
+            return stored === undefined ? [] : [{ id: row.id, ...stored }];
+          }),
+        );
       }
 
       yield* markDirty([...dirty.values()]);

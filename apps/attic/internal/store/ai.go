@@ -175,18 +175,13 @@ func (c *AIClaim) Save(ctx context.Context, result ai.Result, failure error, ela
 }
 
 func (s *Store) Analyses(ctx context.Context, entryID int64, ref string) ([]Analysis, error) {
-	var prefix []byte
-	if entryID == 0 {
-		r, ok := ParseRef(ref)
-		if !ok {
-			return nil, fmt.Errorf("not a ref: %q", ref)
-		}
-		prefix, _ = hex.DecodeString(r)
+	lookup, err := newContentLookup(entryID, ref)
+	if err != nil {
+		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `select a.id,`+refSQL+`,a.task,a.provider,a.model,a.prompt_version,a.status,a.text,a.detail,a.reported_model,a.elapsed_ms,a.attempts,a.updated_at
  from ai_results a join contents c on c.id=a.content_id
- where ($1::bigint<>0 and c.id=(select content_id from entries where id=$1)) or ($1::bigint=0 and substr(c.blake3,1,8)=$2)
- order by a.updated_at desc,a.id desc`, entryID, prefix)
+ where `+contentLookupWhere+` order by a.updated_at desc,a.id desc`, lookup.entryID, lookup.prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -199,33 +194,11 @@ func (s *Store) Analyses(ctx context.Context, entryID int64, ref string) ([]Anal
 }
 
 func (s *Store) SearchAI(ctx context.Context, o SearchOptions) ([]AIHit, error) {
-	words := strings.Fields(o.Query)
-	if len(words) == 0 || (o.Kind != "" && o.Kind != "file") {
-		return nil, nil
+	q, err := s.newTextSearch(ctx, o, "a.id", "a.content_id")
+	if err != nil || q == nil {
+		return nil, err
 	}
-	q := &search{}
-	clauses := make([]string, len(words))
-	for i, w := range words {
-		clauses[i] = "paradedb.match('text', " + q.next(w) + ")"
-	}
-	mode := "must"
-	if o.Any {
-		mode = "should"
-	}
-	q.where = append(q.where, "a.id @@@ paradedb.boolean("+mode+" => array["+strings.Join(clauses, ", ")+"])", "a.status in ('ok','truncated')")
-	place := []string{"e.content_id=a.content_id"}
-	if o.VolumeID != "" {
-		place = append(place, "e.volume_id="+q.next(o.VolumeID))
-	}
-	if o.Under != "" {
-		under := strings.TrimSuffix(o.Under, "/")
-		place = append(place, `e.path collate "C" > `+q.next(under+"/")+` and e.path collate "C" < `+q.next(under+"0"))
-	}
-	if o.Ext != "" {
-		place = append(place, "e.ext="+q.next(strings.ToLower(strings.TrimPrefix(o.Ext, "."))))
-	}
-	q.where = append(q.where, "exists(select 1 from entries e where "+strings.Join(place, " and ")+")")
-	q.order = "paradedb.score(a.id) desc, a.id"
+	q.where = append(q.where, "a.status in ('ok','truncated')")
 	rows, err := s.pool.Query(ctx, `select a.content_id,`+refSQL+`,a.task,a.provider,a.model,a.prompt_version,paradedb.score(a.id),
  paradedb.snippet(a.text,start_tag => '',end_tag => '',max_num_chars => 200)
  from ai_results a join contents c on c.id=a.content_id`+q.tail(o), q.args...)

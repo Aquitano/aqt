@@ -57,8 +57,8 @@ func New(ctx context.Context, cfg config.AI, task string) (Provider, error) {
 	if task != OCR && task != Describe {
 		return nil, errors.New("task must be ocr or describe")
 	}
-	if cfg.TimeoutSeconds <= 0 || cfg.MaxTokens <= 0 || cfg.OCRMaxPages <= 0 {
-		return nil, errors.New("AI limits must be positive")
+	if err := cfg.Validate(); err != nil {
+		return nil, err
 	}
 	if cfg.Provider == "" {
 		if task == OCR {

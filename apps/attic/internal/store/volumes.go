@@ -69,7 +69,7 @@ func (v Volume) Holds(fp disk.Fingerprint) bool {
 func chooseVolume(fp disk.Fingerprint, candidates []Volume) (*Volume, bool) {
 	var fits []int
 	for i, c := range candidates {
-		if c.Holds(fp) {
+		if fp.DeviceSerial != "" && c.DeviceSerial == fp.DeviceSerial && c.Holds(fp) {
 			fits = append(fits, i)
 		}
 	}

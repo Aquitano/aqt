@@ -286,6 +286,26 @@ test("the journal becomes messages, parts and paired tool executions", () => {
   ]);
 });
 
+test("a skill's context message keeps a key apart from the prompt that invoked it", () => {
+  const skill = JSON.stringify({
+    type: "user.message",
+    id: "e-0100",
+    parentId: "e-0004",
+    timestamp: "2026-05-21T11:21:27.000Z",
+    data: { content: '<skill-context name="demo">', source: "skill-demo", interactionId: "i-0001" },
+  });
+  const conversation = normalized(
+    jsonlRows(
+      streamIdOf({ kind: "jsonl", root: journalRoot, relativePath: `${sessionId}/events.jsonl` }),
+      `${events.trimEnd()}\n${skill}\n`,
+      observedAt,
+    ),
+  );
+  const keys = conversation.messages.map((message) => message.messageKey);
+  expect(keys.slice(0, 3)).toEqual(["user:i-0001", "user:e-0100", "assistant:m-0001"]);
+  expect(new Set(keys).size).toBe(keys.length);
+});
+
 test("without a store the journal outputs stand and the rollup legs add only what they still claim", () => {
   const conversation = normalized(journalRecords(journalRoot));
   expect(conversation.requests.map((request) => request.requestKey)).toEqual([

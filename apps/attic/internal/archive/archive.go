@@ -94,9 +94,14 @@ type Result struct {
 	Detail string
 }
 
-// Opener opens the archive on disk. The scanner passes one that keeps the
-// last-access time.
-type Opener func(string) (*os.File, error)
+type Handle interface {
+	io.ReadSeekCloser
+	io.ReaderAt
+	Stat() (fs.FileInfo, error)
+}
+
+// Opener opens an archive or one of its sibling volumes.
+type Opener func(string) (Handle, error)
 
 // IsArchive reports whether a file name looks like an archive.
 func IsArchive(name string) bool {
@@ -114,7 +119,7 @@ func IsArchive(name string) bool {
 // Cleanup can fail after all members have been emitted; its error is joined
 // with any listing error. A damaged, encrypted or unknown archive is reported
 // in Result.
-func List(ctx context.Context, p string, open Opener, o Options, emit func(Member) error, skip func(Skip)) (res Result, err error) {
+func List[F Handle](ctx context.Context, p string, open func(string) (F, error), o Options, emit func(Member) error, skip func(Skip)) (res Result, err error) {
 	if laterVolume.MatchString(filepath.Base(p)) {
 		return Result{Format: "rar", Status: Split}, nil
 	}
@@ -127,7 +132,7 @@ func List(ctx context.Context, p string, open Opener, o Options, emit func(Membe
 		o.Temp = workspace.Path
 	}
 	l := lister{o: o, emit: emit, skip: skip, watch: &watch{ctx: ctx}, log: cmp.Or(o.Log, slog.New(slog.DiscardHandler))}
-	res, err = l.list(ctx, p, open, "", 1)
+	res, err = l.list(ctx, p, func(p string) (Handle, error) { return open(p) }, "", 1)
 	// A read that failed anywhere, a nested archive's included, says the disk
 	// faltered; the listing is dropped and the next scan tries again.
 	if readErr := l.watch.failure(); err == nil && readErr != nil {
@@ -193,7 +198,7 @@ func (w *watch) failure() error {
 }
 
 type watchedFile struct {
-	*os.File
+	Handle
 	w *watch
 }
 
@@ -201,7 +206,7 @@ func (f watchedFile) Read(p []byte) (int, error) {
 	if err := f.w.ctx.Err(); err != nil {
 		return 0, err
 	}
-	n, err := f.File.Read(p)
+	n, err := f.Handle.Read(p)
 	f.w.note(err)
 	return n, err
 }
@@ -210,13 +215,13 @@ func (f watchedFile) ReadAt(p []byte, off int64) (int, error) {
 	if err := f.w.ctx.Err(); err != nil {
 		return 0, err
 	}
-	n, err := f.File.ReadAt(p, off)
+	n, err := f.Handle.ReadAt(p, off)
 	f.w.note(err)
 	return n, err
 }
 
 func (f watchedFile) Seek(offset int64, whence int) (int64, error) {
-	n, err := f.File.Seek(offset, whence)
+	n, err := f.Handle.Seek(offset, whence)
 	f.w.note(err)
 	return n, err
 }
@@ -226,7 +231,7 @@ func (l *lister) open(open Opener, p string) (watchedFile, error) {
 	if err != nil {
 		return watchedFile{}, err
 	}
-	return watchedFile{File: f, w: l.watch}, nil
+	return watchedFile{Handle: f, w: l.watch}, nil
 }
 
 // openMember hands out a member's bytes. Some readers allow it only while
@@ -453,7 +458,7 @@ func (l *lister) nested(ctx context.Context, m Member, level int, open openMembe
 		l.skip(Skip{Path: m.Path, Reason: reason, Detail: detail})
 		return nil
 	}
-	res, err := l.list(ctx, tmp.Name(), os.Open, m.Path+Separator, level+1)
+	res, err := l.list(ctx, tmp.Name(), func(p string) (Handle, error) { return os.Open(p) }, m.Path+Separator, level+1)
 	if err != nil {
 		return fatal{err}
 	}

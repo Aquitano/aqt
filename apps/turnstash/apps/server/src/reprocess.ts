@@ -1,26 +1,50 @@
-import { type ProviderId, providerIds, StreamId } from "@aqt/turnstash-core";
-import { and, asc, eq, gt, sql } from "drizzle-orm";
+import { type Normalizer, type ProviderId, providerIds, StreamId } from "@aqt/turnstash-core";
+import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
+import { deleteUnlinkedBlobs, setRecordBlobs } from "./blobs.ts";
 import { Db, inTransaction } from "./db/client.ts";
 import { dirtyConversations, sourceRecords, sourceStreams, tombstones } from "./db/schema.ts";
-import { Normalizers } from "./registry.ts";
+import { Normalizers, storedRecordOf } from "./registry.ts";
 import { scrubText } from "./scrub.ts";
 import { ensureBundledCatalog, recalculateCatalogs } from "./valuation.ts";
 
-const trimPageSize = 500;
+const trimPageRows = 500;
+const trimPageBytes = 32 * 1024 * 1024;
 
-// Records stored before their provider's trim existed are rewritten in pages, each in its own transaction.
-// A record replaced after it was read keeps the new version, because the update matches the hash that was
-// read.
+// A page holds at least one record and stops at whichever limit it reaches first, so records full of
+// images are rewritten a few at a time.
+const pageIdsOf = (rows: ReadonlyArray<{ readonly id: number; readonly bytes: number }>) => {
+  const ids: Array<number> = [];
+  let bytes = 0;
+  for (const row of rows) {
+    bytes += row.bytes;
+    if (ids.length > 0 && bytes > trimPageBytes) break;
+    ids.push(row.id);
+  }
+  return ids;
+};
+
+// Records stored in an older form are rewritten in pages, each in its own transaction. A record replaced
+// after it was read keeps the new version, because the update matches the hash that was read.
 const trimRecords = Effect.fn("Archive.trimRecords")(function* (
   provider: ProviderId,
-  trim: (streamId: StreamId, payload: string) => string,
+  normalizer: Normalizer,
 ) {
   const db = yield* Db;
   let trimmed = 0;
   let after = 0;
   while (true) {
+    const sizes = yield* db
+      .select({ id: sourceRecords.id, bytes: sql<number>`octet_length(${sourceRecords.payload})` })
+      .from(sourceRecords)
+      .where(and(eq(sourceRecords.provider, provider), gt(sourceRecords.id, after)))
+      .orderBy(asc(sourceRecords.id))
+      .limit(trimPageRows);
+    const ids = pageIdsOf(sizes);
+    const last = ids.at(-1);
+    if (last === undefined) return trimmed;
+    after = last;
     const page = yield* db
       .select({
         id: sourceRecords.id,
@@ -30,26 +54,28 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
       })
       .from(sourceRecords)
       .innerJoin(sourceStreams, eq(sourceStreams.id, sourceRecords.streamRef))
-      .where(and(eq(sourceRecords.provider, provider), gt(sourceRecords.id, after)))
-      .orderBy(asc(sourceRecords.id))
-      .limit(trimPageSize);
-    const last = page.at(-1);
-    if (last === undefined) return trimmed;
-    after = last.id;
+      .where(inArray(sourceRecords.id, ids));
     const changed = page.flatMap(({ id, contentHash, payload, streamId }) => {
-      const kept = scrubText(trim(StreamId.make(streamId), payload));
-      return kept === payload ? [] : [{ id, contentHash, payload: kept }];
+      const kept = storedRecordOf(normalizer, StreamId.make(streamId), payload);
+      const keptPayload = scrubText(kept.payload);
+      return keptPayload === payload
+        ? []
+        : [{ id, contentHash, payload: keptPayload, blobs: kept.blobs, sha256s: kept.sha256s }];
     });
     yield* inTransaction(
       Effect.gen(function* () {
         const tx = yield* Db;
-        for (const row of changed)
-          yield* tx
+        const rewritten = yield* Effect.filter(changed, (row) =>
+          tx
             .update(sourceRecords)
             .set({ payload: row.payload })
             .where(
               and(eq(sourceRecords.id, row.id), eq(sourceRecords.contentHash, row.contentHash)),
-            );
+            )
+            .returning({ id: sourceRecords.id })
+            .pipe(Effect.map((updated) => updated.length > 0)),
+        );
+        yield* setRecordBlobs(rewritten);
       }),
     );
     trimmed += changed.length;
@@ -121,10 +147,8 @@ const queueArchive = Effect.fn("Archive.queue")(function* () {
 export const reprocessArchive = Effect.fn("Archive.reprocess")(function* () {
   const normalizers = yield* Normalizers;
   let trimmed = 0;
-  for (const provider of providerIds) {
-    const trim = normalizers[provider].trim;
-    if (trim !== undefined) trimmed += yield* trimRecords(provider, trim);
-  }
+  for (const provider of providerIds)
+    trimmed += yield* trimRecords(provider, normalizers[provider]);
   return yield* inTransaction(
     Effect.gen(function* () {
       const db = yield* Db;
@@ -133,6 +157,7 @@ export const reprocessArchive = Effect.fn("Archive.reprocess")(function* () {
       yield* ensureBundledCatalog();
       const catalogVersion = yield* recalculateCatalogs();
       const opencodeFileTwins = yield* removeOpencodeFileTwins();
+      yield* deleteUnlinkedBlobs();
       const queued = yield* queueArchive();
       return { trimmed, opencodeFileTwins, queued, catalogVersion };
     }),

@@ -1,6 +1,7 @@
 import {
   CommitBatch,
   CommitBatchResult,
+  ContentHash,
   EnrollRequest,
   EnrollResponse,
   IngestBatch,
@@ -215,6 +216,13 @@ export const readGroup = HttpApiGroup.make("read")
       params: { id: Uuid },
       query: MessageQuery,
       success: MessagePage,
+      error: NotFound,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.get("getBlob", "/blobs/:sha256", {
+      params: { sha256: ContentHash },
+      success: Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array()),
       error: NotFound,
     }),
   )

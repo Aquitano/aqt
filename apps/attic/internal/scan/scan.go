@@ -33,9 +33,10 @@ import (
 
 type Options struct {
 	// Path is the folder to scan, as the OS spells it.
-	Path   string
-	Config config.Config
-	NoHash bool
+	Path           string
+	Config         config.Config
+	NoHash         bool
+	RebuildContent bool
 	// VolumeID or NewVolume settle a fingerprint that resembles a known
 	// volume without matching it (store.AmbiguousVolumeError).
 	VolumeID  string
@@ -88,6 +89,15 @@ type Slow struct {
 const progressEvery = 500 * time.Millisecond
 
 func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
+	if err := o.Config.ValidateScan(); err != nil {
+		return Result{}, err
+	}
+	if err := o.Config.NormalizeTemp(); err != nil {
+		return Result{}, err
+	}
+	if o.NoHash && o.RebuildContent {
+		return Result{}, errors.New("rebuild content requires hashing")
+	}
 	started := time.Now()
 	log := o.Log
 	if log == nil {
@@ -109,12 +119,11 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	for _, part := range rel {
 		root += "/" + part
 	}
-	if a := o.Config.Archives; a.Depth > 1 && !o.NoHash {
-		if err := scratch.CheckVolume(mounted.Fingerprint, a.Temp); err != nil {
+	if !o.NoHash {
+		if err := scratch.CheckVolume(mounted.Fingerprint, o.Config.Temp); err != nil {
 			return Result{}, err
 		}
 	}
-	o.Config.Metadata.Temp = cmp.Or(o.Config.Metadata.Temp, o.Config.Archives.Temp)
 	metadataUnavailable := ""
 	if o.Config.Metadata.Enabled && !o.NoHash {
 		binary, err := exec.LookPath(cmp.Or(o.Config.Metadata.ExifTool, "exiftool"))
@@ -124,9 +133,6 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 			log.Warn("metadata waits for ExifTool", "err", err)
 		} else {
 			o.Config.Metadata.ExifTool = binary
-			if err := scratch.CheckVolume(mounted.Fingerprint, o.Config.Metadata.Temp); err != nil {
-				return Result{}, err
-			}
 		}
 	}
 	sc, err := st.StartScan(ctx, vol, root)
@@ -143,7 +149,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 		textMax = math.MaxInt64
 	}
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
-		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: a.Temp, Log: log},
+		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
 		textsRead: map[int64]bool{}, log: log}
 	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20}
 	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
@@ -232,6 +238,9 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 		if err := r.walk(ctx, start); err != nil {
 			return err
 		}
+		if err := r.sc.QueueHardLinkHashes(ctx); err != nil {
+			return err
+		}
 		return r.sc.Commit(ctx)
 	}
 	if err := r.step(ctx, "walk", "", &r.sc.Phases.Walk, walk); err != nil {
@@ -248,6 +257,11 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 	}
 	if err := r.step(ctx, "hash", "hashing", &r.sc.Phases.Hash, hash); err != nil {
 		return "failed", err
+	}
+	if r.o.RebuildContent {
+		if err := r.sc.RebuildContent(ctx); err != nil {
+			return "failed", err
+		}
 	}
 	if r.archives.Depth > 0 {
 		if err := r.step(ctx, "archives", "listing", &r.sc.Phases.Archives, r.listArchives); err != nil {
@@ -500,26 +514,9 @@ func (r *run) hash(ctx context.Context) error {
 		return err
 	}
 	r.progress(true)
-	var after store.Pending
-	for {
-		batch, err := r.sc.NextPending(ctx, after, 256)
-		if err != nil {
-			return err
-		}
-		if len(batch) == 0 {
-			return nil
-		}
-		for _, p := range batch {
-			after = p
-			if err := r.hashOne(ctx, p); err != nil {
-				return err
-			}
-			if err := r.sc.MaybeCommit(ctx); err != nil {
-				return err
-			}
-			r.progress(false)
-		}
-	}
+	return eachPage(ctx, func(ctx context.Context, after store.Pending) ([]store.Pending, error) {
+		return r.sc.NextPending(ctx, after, 256)
+	}, r.hashOne, r.afterItem)
 }
 
 func (r *run) hashOne(ctx context.Context, p store.Pending) error {
@@ -534,6 +531,15 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 	}
 	if r.rules.HashMaxBytes > 0 && p.Size > r.rules.HashMaxBytes {
 		return r.sc.SkipHash(ctx, p, "too_big", "", fmt.Sprintf("%d bytes", p.Size))
+	}
+	if p.Linked {
+		e, err := disk.Stat(r.osPath(p.Path))
+		if err == nil {
+			reused, err := r.sc.ReuseContent(ctx, p, e)
+			if err != nil || reused {
+				return err
+			}
+		}
 	}
 	started := time.Now()
 	digest, n, err := disk.Hash(ctx, r.osPath(p.Path))
@@ -565,30 +571,15 @@ func (r *run) listArchives(ctx context.Context) error {
 	}
 	r.done, r.seen = 0, map[int64]bool{}
 	r.progress(true)
-	var after store.PendingArchive
-	for {
-		batch, err := r.sc.NextArchives(ctx, after, 64)
-		if err != nil {
-			return err
-		}
-		if len(batch) == 0 {
-			return nil
-		}
-		for _, a := range batch {
-			after = a
-			r.count(a.ContentID)
-			if err := r.listArchive(ctx, a); err != nil {
-				return err
-			}
-			if err := r.sc.MaybeCommit(ctx); err != nil {
-				return err
-			}
-			r.progress(false)
-		}
-	}
+	return eachPage(ctx, func(ctx context.Context, after store.PendingArchive) ([]store.PendingArchive, error) {
+		return r.sc.NextArchives(ctx, after, 64)
+	}, func(ctx context.Context, a store.PendingArchive) error {
+		r.count(a.ContentID)
+		return r.listArchive(ctx, a)
+	}, r.afterItem)
 }
 
-func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
+func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err error) {
 	// Hashed under older rules; the ones in force now may forbid reading it.
 	if r.rules.SkipContent(a.Path) {
 		r.log.Debug("archive left unread by the rules", "path", a.Path)
@@ -603,14 +594,29 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	}
 	r.current = a.Path
 	r.progress(false)
+	w, err := scratch.New(r.o.Config.Temp, r.log)
+	if err != nil {
+		l.Abort(ctx)
+		return err
+	}
+	defer func() { err = errors.Join(err, w.Close()) }()
 	started, members := time.Now(), r.sc.Counts.Members
 	var skips []archive.Skip
-	res, err := archive.List(ctx, r.osPath(a.Path), disk.Open, r.archives,
+	opener := archiveCopies{r: r, w: w, ctx: ctx, source: r.osPath(a.Path), digest: a.Digest, size: a.Size}
+	res, err := archive.List(ctx, opener.source, opener.open, r.archives,
 		func(m archive.Member) error {
 			r.progress(false)
 			return l.Add(ctx, m)
 		},
 		func(s archive.Skip) { skips = append(skips, s) })
+	if opener.fatal != nil {
+		l.Abort(ctx)
+		return opener.fatal
+	}
+	if opener.failure != nil {
+		l.Abort(ctx)
+		return r.copyFailure(ctx, a.Path, opener.failure)
+	}
 	if err == nil && res.Status != archive.Listed {
 		// A disk unplugged mid-read looks like a damaged archive.
 		err = r.volumeGone()
@@ -667,30 +673,15 @@ func (r *run) readTexts(ctx context.Context) error {
 	}
 	r.done, r.seen = 0, map[int64]bool{}
 	r.progress(true)
-	var after store.PendingText
-	for {
-		batch, err := r.sc.NextTexts(ctx, after, documents, 64)
-		if err != nil {
-			return err
-		}
-		if len(batch) == 0 {
-			return nil
-		}
-		for _, p := range batch {
-			after = p
-			r.count(p.ContentID)
-			if err := r.readText(ctx, p); err != nil {
-				return err
-			}
-			if err := r.sc.MaybeCommit(ctx); err != nil {
-				return err
-			}
-			r.progress(false)
-		}
-	}
+	return eachPage(ctx, func(ctx context.Context, after store.PendingText) ([]store.PendingText, error) {
+		return r.sc.NextTexts(ctx, after, documents, 64)
+	}, func(ctx context.Context, p store.PendingText) error {
+		r.count(p.ContentID)
+		return r.readText(ctx, p)
+	}, r.afterItem)
 }
 
-func (r *run) readText(ctx context.Context, p store.PendingText) error {
+func (r *run) readText(ctx context.Context, p store.PendingText) (err error) {
 	// Hashed under older rules; the ones in force now may forbid reading it.
 	if r.rules.SkipContent(p.Path) {
 		r.log.Debug("document left unread by the rules", "path", p.Path)
@@ -702,9 +693,22 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	}
 	r.current = p.Path
 	r.progress(false)
-	r.readErr = nil
+	if max := r.o.Config.Text.MaxBytes; max > 0 && p.Size > max {
+		r.sc.Skip(p.Path, "too_big", "", "over text.max_bytes")
+		return nil
+	}
+	w, err := scratch.New(r.o.Config.Temp, r.log)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, w.Close()) }()
 	started := time.Now()
-	res := extract.File(ctx, r.osPath(p.Path), p.Name, "", r.text)
+	copied, err := w.Copy(ctx, r.osPath(p.Path), p.Digest, max(1, p.Size))
+	if err != nil {
+		return r.copyFailure(ctx, p.Path, err)
+	}
+	r.readErr = nil
+	res := extract.File(ctx, copied, p.Name, "", r.text)
 	took := time.Since(started)
 	if err := ctx.Err(); err != nil {
 		return err

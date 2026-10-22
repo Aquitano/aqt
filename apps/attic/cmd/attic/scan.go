@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"flag"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,24 +16,33 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 )
 
-func cmdScan(ctx context.Context, args []string) error {
-	flagArgs, pos := interspersed(args, map[string]bool{"no-hash": true, "new-volume": true, "json": true})
-	fs := flag.NewFlagSet("scan", flag.ExitOnError)
-	configPath := fs.String("config", "", "")
-	noHash := fs.Bool("no-hash", false, "")
-	volume := fs.String("volume", "", "")
-	newVolume := fs.Bool("new-volume", false, "")
-	logLevel := fs.String("log-level", "info", "")
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(flagArgs)
-	if len(pos) != 1 {
-		return fmt.Errorf("scan needs one folder: %w", errUsage)
+type scanCmd struct {
+	Folder         string `arg:"" help:"Folder to scan."`
+	Config         string `help:"Configuration file."`
+	NoHash         bool   `help:"List only; hash on a later scan."`
+	RebuildContent bool   `help:"Rebuild archive listings and document text for selected content."`
+	Volume         string `help:"Use this known volume ID after an identity question."`
+	NewVolume      bool   `help:"Record a separate volume even if its fingerprint resembles one."`
+	LogLevel       string `default:"info" help:"Log level: debug, info, warn or error."`
+	JSON           bool   `help:"Print JSON."`
+}
+
+func (cmd *scanCmd) Validate() error {
+	if cmd.NoHash && cmd.RebuildContent {
+		return errors.New("--no-hash and --rebuild-content cannot be combined")
 	}
+	if cmd.Volume != "" && cmd.NewVolume {
+		return errors.New("--volume and --new-volume cannot be combined")
+	}
+	return nil
+}
+
+func (cmd *scanCmd) Run(ctx context.Context) error {
 	var level slog.Level
-	if err := level.UnmarshalText([]byte(*logLevel)); err != nil {
+	if err := level.UnmarshalText([]byte(cmd.LogLevel)); err != nil {
 		return fmt.Errorf("--log-level: %w", err)
 	}
-	cfg, _, err := loadConfig(*configPath)
+	cfg, _, err := loadConfig(cmd.Config)
 	if err != nil {
 		return err
 	}
@@ -48,7 +57,8 @@ func cmdScan(ctx context.Context, args []string) error {
 	log.Info("attic started", "build", buildRevision(), "args", os.Args[1:], "pid", os.Getpid())
 	p := &progressLine{tty: stderrIsTerminal(), started: time.Now()}
 	res, err := scan.Run(ctx, st, scan.Options{
-		Path: pos[0], Config: cfg, NoHash: *noHash, VolumeID: *volume, NewVolume: *newVolume, Progress: p.update, Log: log,
+		Path: cmd.Folder, Config: cfg, NoHash: cmd.NoHash, VolumeID: cmd.Volume, NewVolume: cmd.NewVolume, Progress: p.update, Log: log,
+		RebuildContent: cmd.RebuildContent,
 	})
 	p.clear()
 	if res.ScanID == 0 {
@@ -57,7 +67,7 @@ func cmdScan(ctx context.Context, args []string) error {
 		}
 		return err
 	}
-	if *asJSON {
+	if cmd.JSON {
 		if jerr := printJSON(struct {
 			scan.Result
 			Log string `json:"log,omitempty"`

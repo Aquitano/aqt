@@ -2,15 +2,15 @@ package store
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
-	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
 
 // PendingText is a hashed document below the scan root whose content has no
@@ -20,12 +20,14 @@ type PendingText struct {
 	Path      string
 	Name      string
 	ContentID int64
+	Size      int64
+	Digest    disk.Digest
 }
 
 // pendingTextWhere selects documents by extension below an upper path bound;
 // the callers add the lower one as $4.
 const pendingTextWhere = `
-	from entries e
+	from entries e join contents c on c.id = e.content_id
 	where e.volume_id = $1 and e.kind = 'file' and e.hash_state = 'done' and e.missing_scan is null
 	  and e.ext = any($2) and not exists (select 1 from texts t where t.content_id = e.content_id)
 	  and ($3 = '' or e.path collate "C" < $3)`
@@ -46,7 +48,7 @@ func (sc *Scan) NextTexts(ctx context.Context, after PendingText, exts []string,
 	if after.ID != 0 {
 		lower = after.Path
 	}
-	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, e.name, e.content_id`+pendingTextWhere+`
+	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, e.name, e.content_id, c.size_bytes, c.blake3`+pendingTextWhere+`
 		  and (e.path collate "C", e.id) > ($4, $5)
 		order by e.path collate "C", e.id limit $6`,
 		sc.Volume.ID, exts, upper, lower, after.ID, limit)
@@ -55,7 +57,9 @@ func (sc *Scan) NextTexts(ctx context.Context, after PendingText, exts []string,
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PendingText, error) {
 		var p PendingText
-		err := r.Scan(&p.ID, &p.Path, &p.Name, &p.ContentID)
+		var digest []byte
+		err := r.Scan(&p.ID, &p.Path, &p.Name, &p.ContentID, &p.Size, &digest)
+		copy(p.Digest[:], digest)
 		return p, err
 	})
 }
@@ -75,9 +79,20 @@ type DocumentText struct {
 // transaction while the next document is read, it would block a scan of
 // another disk meeting the same content, and two such scans could deadlock.
 func (sc *Scan) SetText(ctx context.Context, contentID int64, t DocumentText) error {
-	tag, err := sc.store.pool.Exec(ctx, `insert into texts (content_id, status, extractor, detail, text) values ($1, $2, $3, $4, $5)
+	tx, err := sc.store.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+	if err := lockContentCache(ctx, tx, true); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `insert into texts (content_id, status, extractor, detail, text) values ($1, $2, $3, $4, $5)
 		on conflict do nothing`, contentID, t.Status, t.Extractor, cleanText(t.Detail), cleanText(t.Text))
 	if err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 	if tag.RowsAffected() > 0 {
@@ -104,35 +119,10 @@ func (s *Store) SearchTexts(ctx context.Context, o SearchOptions) ([]TextHit, er
 
 // table is a package-owned literal; never a query parameter.
 func (s *Store) searchTextTable(ctx context.Context, o SearchOptions, table string) ([]TextHit, error) {
-	words := strings.Fields(o.Query)
-	if len(words) == 0 || (o.Kind != "" && o.Kind != "file") {
-		return nil, nil
+	q, err := s.newTextSearch(ctx, o, "t.content_id", "t.content_id")
+	if err != nil || q == nil {
+		return nil, err
 	}
-	q := &search{}
-	clauses := make([]string, len(words))
-	for i, w := range words {
-		clauses[i] = "paradedb.match('text', " + q.next(w) + ")"
-	}
-	mode := "must"
-	if o.Any {
-		mode = "should"
-	}
-	q.where = append(q.where, "t.content_id @@@ paradedb.boolean("+mode+" => array["+strings.Join(clauses, ", ")+"])")
-	// Text outlives a file that was rewritten; only contents some entry still
-	// has are found.
-	place := []string{"e.content_id = t.content_id"}
-	if o.VolumeID != "" {
-		place = append(place, "e.volume_id = "+q.next(o.VolumeID))
-	}
-	if o.Under != "" {
-		under := strings.TrimSuffix(o.Under, "/")
-		place = append(place, `e.path collate "C" > `+q.next(under+"/")+` and e.path collate "C" < `+q.next(under+"0"))
-	}
-	if o.Ext != "" {
-		place = append(place, "e.ext = "+q.next(strings.ToLower(strings.TrimPrefix(o.Ext, "."))))
-	}
-	q.where = append(q.where, `exists (select 1 from entries e where `+strings.Join(place, " and ")+`)`)
-	q.order = "paradedb.score(t.content_id) desc, t.content_id"
 	rows, err := s.pool.Query(ctx, `select t.content_id, `+refSQL+`, paradedb.score(t.content_id),
 		paradedb.snippet(t.text, start_tag => '', end_tag => '', max_num_chars => 200)
 		from `+table+` t join contents c on c.id = t.content_id`+q.tail(o), q.args...)
@@ -195,19 +185,13 @@ type TextDetail struct {
 // Text returns the text read from an entry's content, or from a ref's.
 func (s *Store) Text(ctx context.Context, entryID int64, ref string) (TextDetail, error) {
 	var d TextDetail
-	var prefix []byte
-	if entryID == 0 {
-		r, ok := ParseRef(ref)
-		if !ok {
-			return d, fmt.Errorf("not a ref: %q", ref)
-		}
-		prefix, _ = hex.DecodeString(r)
+	lookup, err := newContentLookup(entryID, ref)
+	if err != nil {
+		return d, err
 	}
-	err := s.pool.QueryRow(ctx, `select `+refSQL+`, t.status, t.extractor, t.detail, t.chars, t.extracted_at, t.text
+	err = s.pool.QueryRow(ctx, `select `+refSQL+`, t.status, t.extractor, t.detail, t.chars, t.extracted_at, t.text
 		from texts t join contents c on c.id = t.content_id
-		where ($1::bigint <> 0 and c.id = (select content_id from entries where id = $1))
-		   or ($1::bigint = 0 and substr(c.blake3, 1, 8) = $2)
-		order by c.id limit 1`, entryID, prefix).
+		where `+contentLookupWhere+` order by c.id limit 1`, lookup.entryID, lookup.prefix).
 		Scan(&d.Ref, &d.Status, &d.Extractor, &d.Detail, &d.Chars, &d.Extracted, &d.Text)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, fmt.Errorf("no text read for that file: %w", ErrNotFound)

@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -110,18 +109,13 @@ func cleanJSON(v any) any {
 
 func (s *Store) Metadata(ctx context.Context, entryID int64, ref string) (MetadataDetail, error) {
 	var d MetadataDetail
-	var prefix []byte
-	if entryID == 0 {
-		r, ok := ParseRef(ref)
-		if !ok {
-			return d, fmt.Errorf("not a ref: %q", ref)
-		}
-		prefix, _ = hex.DecodeString(r)
+	lookup, err := newContentLookup(entryID, ref)
+	if err != nil {
+		return d, err
 	}
-	err := s.pool.QueryRow(ctx, `select `+refSQL+`, m.status, m.detail, m.tags, m.extracted_at
+	err = s.pool.QueryRow(ctx, `select `+refSQL+`, m.status, m.detail, m.tags, m.extracted_at
  from metadata m join contents c on c.id = m.content_id
- where ($1::bigint <> 0 and c.id = (select content_id from entries where id = $1))
- or ($1::bigint = 0 and substr(c.blake3, 1, 8) = $2) order by c.id limit 1`, entryID, prefix).
+ where `+contentLookupWhere+` order by c.id limit 1`, lookup.entryID, lookup.prefix).
 		Scan(&d.Ref, &d.Status, &d.Detail, &d.Tags, &d.Extracted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, fmt.Errorf("no metadata read for that file: %w", ErrNotFound)

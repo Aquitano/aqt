@@ -6,6 +6,7 @@ import type {
 } from "@aqt/turnstash-api";
 import { infiniteQueryOptions, queryOptions, skipToken } from "@tanstack/react-query";
 import { Effect, Schema } from "effect";
+import { Base64 } from "effect/encoding";
 
 import { api } from "./api";
 import { dateBounds, type DayRange } from "./period";
@@ -24,6 +25,7 @@ export const queryKeys = {
   messages: ["messages"],
   conversation: ["conversation"],
   request: ["request"],
+  blob: ["blob"],
   search: ["search"],
   machines: ["machines"],
   projects: ["projects"],
@@ -137,6 +139,20 @@ export const requestQuery = (id: string | null) =>
     queryKey: [...queryKeys.request, id],
     queryFn:
       id === null ? skipToken : () => Effect.runPromise(api.read.getRequest({ params: { id } })),
+  });
+
+// The media type comes from the transcript, so one that could end the data URI's type early is left out.
+const imageType = /^image\/[\w.+-]+$/;
+
+export const blobQuery = (sha256: string, mediaType: string | undefined) =>
+  queryOptions({
+    queryKey: [...queryKeys.blob, sha256, mediaType],
+    queryFn: async () => {
+      const data = await Effect.runPromise(api.read.getBlob({ params: { sha256 } }));
+      const type = mediaType !== undefined && imageType.test(mediaType) ? mediaType : "";
+      return `data:${type};base64,${Base64.encode(data)}`;
+    },
+    staleTime: Infinity,
   });
 
 export const searchQuery = (query: SearchQuery) =>
