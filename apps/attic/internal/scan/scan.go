@@ -232,6 +232,9 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 		if err := r.walk(ctx, start); err != nil {
 			return err
 		}
+		if err := r.sc.QueueHardLinkHashes(ctx); err != nil {
+			return err
+		}
 		return r.sc.Commit(ctx)
 	}
 	if err := r.step(ctx, "walk", "", &r.sc.Phases.Walk, walk); err != nil {

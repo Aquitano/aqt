@@ -2,6 +2,7 @@ package scan
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
+	"lukechampine.com/blake3"
 )
 
 func TestDirectoryReplacementMarksDescendantsMissing(t *testing.T) {
@@ -139,6 +141,59 @@ func TestHardLinksReuseContentAcrossInitialNewAndChangedLinks(t *testing.T) {
 		}
 		if again := scanAt(t, st, root, testVolume); again.Counts.Hashed != 0 {
 			t.Fatalf("%s rescan hashed %d", phase, again.Counts.Hashed)
+		}
+	}
+}
+
+func TestChangedHardLinkOwnerRenameRefreshesBothLinks(t *testing.T) {
+	st, _ := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "a/linked.bin", "original")
+	if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ownerPath := filepath.Join(root, "a/linked.bin")
+	if err := os.Link(ownerPath, filepath.Join(root, "b/linked.bin")); err != nil {
+		t.Skipf("no hardlinks: %v", err)
+	}
+	observed, err := disk.Stat(ownerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observed.Changed.IsZero() {
+		t.Skip("this platform does not report change time")
+	}
+	scanAt(t, st, root, testVolume)
+	before := livePaths(t, st, "linked", "/a/linked.bin", "/b/linked.bin")
+	owner, err := st.Entry(t.Context(), before["/a/linked.bin"].ID)
+	if err != nil || owner.FileID == nil {
+		t.Fatalf("expected owning link in a: %+v, %v", owner, err)
+	}
+	write(t, root, "a/linked.bin", "modified")
+	if err := os.Chtimes(ownerPath, observed.Modified, observed.Modified); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(ownerPath, filepath.Join(root, "a/linked-renamed.bin")); err != nil {
+		t.Fatal(err)
+	}
+	digest := blake3.Sum256([]byte("modified"))
+	wantRef := fmt.Sprintf("%x", digest[:8])
+	for i, wantHashes := range []int64{1, 0} {
+		result := scanAt(t, st, root, testVolume)
+		if result.Counts.Hashed != wantHashes || result.Counts.HashedBytes != wantHashes*int64(len("modified")) {
+			t.Fatalf("rescan %d: want %d physical hashes, got %+v", i+1, wantHashes, result.Counts)
+		}
+		after := livePaths(t, st, "linked", "/a/linked-renamed.bin", "/b/linked.bin")
+		if after["/a/linked-renamed.bin"].ID != owner.ID {
+			t.Fatalf("renamed link lost row %d: %+v", owner.ID, after)
+		}
+		for _, hit := range after {
+			if hit.Ref != wantRef || hit.Ref == before["/a/linked.bin"].Ref {
+				t.Fatalf("rescan %d: inconsistent new content: %+v", i+1, after)
+			}
+		}
+		if i > 0 && result.Counts.Written != 0 {
+			t.Fatalf("unchanged rescan wrote %d rows", result.Counts.Written)
 		}
 	}
 }

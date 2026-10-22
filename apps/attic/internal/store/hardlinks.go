@@ -6,6 +6,37 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
 
+// A move can retain a digest while acknowledging a new change time. When
+// another link needs hashing, that retained digest must be verified first.
+func (sc *Scan) QueueHardLinkHashes(ctx context.Context) error {
+	if !sc.Volume.StableIDs {
+		return nil
+	}
+	tx, err := sc.begin(ctx)
+	if err != nil {
+		return err
+	}
+	lower, upper := sc.subtree()
+	result, err := tx.Exec(ctx, `
+		update entries e set hash_state = 'pending'
+		where e.volume_id = $1 and e.kind = 'file' and e.missing_scan is null
+		  and e.hash_state = 'done' and e.physical_file_id is not null
+		  and e.path collate "C" > $2 and ($3 = '' or e.path collate "C" < $3)
+		  and exists(select 1 from entries pending
+		             where pending.volume_id = e.volume_id and pending.physical_file_id = e.physical_file_id
+		               and pending.id <> e.id and pending.kind = 'file' and pending.missing_scan is null
+		               and pending.hash_state in ('pending', 'failed')
+		               and pending.size_bytes = e.size_bytes and pending.modified_at = e.modified_at
+		               and pending.changed_at = e.changed_at
+		               and pending.path collate "C" > $2 and ($3 = '' or pending.path collate "C" < $3))`,
+		sc.Volume.ID, lower, upper)
+	if err != nil {
+		return err
+	}
+	sc.dirty += int(result.RowsAffected())
+	return nil
+}
+
 func (sc *Scan) ReuseContent(ctx context.Context, p Pending, observed disk.Entry) (bool, error) {
 	if !sc.Volume.StableIDs || p.PhysicalFileID == nil || int64(observed.FileID) != *p.PhysicalFileID ||
 		observed.Dir || observed.Link || observed.Remote || observed.Size != p.Size ||
@@ -20,6 +51,7 @@ func (sc *Scan) ReuseContent(ctx context.Context, p Pending, observed disk.Entry
 		return false, err
 	}
 	l := normalize(Listed{Modified: observed.Modified, Changed: observed.Changed}, true)
+	lower, upper := sc.subtree()
 	result, err := tx.Exec(ctx, `
 		update entries e set content_id = known.content_id, hash_state = 'done', updated_scan = $6
 		from entries known
@@ -29,8 +61,9 @@ func (sc *Scan) ReuseContent(ctx context.Context, p Pending, observed disk.Entry
 		  and known.volume_id = e.volume_id and known.physical_file_id = e.physical_file_id
 		  and known.id <> e.id and known.kind = 'file' and known.missing_scan is null
 		  and known.hash_state = 'done' and known.content_id is not null
+		  and known.path collate "C" > $8 and ($9 = '' or known.path collate "C" < $9)
 		  and known.size_bytes = e.size_bytes and known.modified_at = e.modified_at and known.changed_at = e.changed_at`,
-		p.ID, sc.Volume.ID, p.PhysicalFileID, p.Size, l.Modified, sc.ID, l.Changed)
+		p.ID, sc.Volume.ID, p.PhysicalFileID, p.Size, l.Modified, sc.ID, l.Changed, lower, upper)
 	if err != nil {
 		return false, err
 	}
