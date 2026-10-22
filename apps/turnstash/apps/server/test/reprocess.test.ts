@@ -12,12 +12,12 @@ import {
   streamIdOf,
   type WireRecord,
 } from "@aqt/turnstash-core";
-import { asc } from "drizzle-orm";
-import { Effect } from "effect";
+import { asc, eq, sql } from "drizzle-orm";
+import { Deferred, Effect, Fiber } from "effect";
 
-import { getBlob } from "../src/blobs.ts";
+import { getBlob, setRecordBlobs } from "../src/blobs.ts";
 import { deleteConversation } from "../src/conversations.ts";
-import { Db } from "../src/db/client.ts";
+import { Db, inTransaction } from "../src/db/client.ts";
 import {
   blobs,
   conversations,
@@ -244,6 +244,72 @@ test("replacing a record cleans up only its removed blob references", async () =
       ).toEqual([sha256Hex(unrelated), sha256Hex(Buffer.from([0]))].toSorted());
       expect(yield* getBlob(sha256Hex(Buffer.from([0])))).toEqual(Buffer.from([0]));
     }),
+  );
+});
+
+test("removing the last blob reference waits for a concurrent upload of the same bytes", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      yield* ingest("11111111-0000-4000-8000-000000000008", [
+        claudePrompt("33333333-3333-4333-8333-333333333333"),
+        claudePrompt("44444444-4444-4444-8444-444444444444"),
+      ]);
+      const [first, second] = yield* db.select({ id: sourceRecords.id }).from(sourceRecords);
+      const empty = { blobs: new Map<string, Buffer>(), sha256s: new Set<string>() };
+      yield* inTransaction(setRecordBlobs([{ id: second!.id, ...empty }]));
+      const uploaded = yield* Deferred.make<number>();
+      const removing = yield* Deferred.make<number>();
+      const release = yield* Deferred.make<void>();
+      const uploading = yield* inTransaction(
+        Effect.gen(function* () {
+          const tx = yield* Db;
+          const [backend] = yield* tx.execute<{ pid: number }>(
+            sql`SELECT pg_backend_pid() AS pid`,
+            "objects",
+          );
+          yield* setRecordBlobs([
+            {
+              id: second!.id,
+              blobs: new Map([[imageSha256, imageData]]),
+              sha256s: new Set([imageSha256]),
+            },
+          ]);
+          yield* Deferred.succeed(uploaded, backend!.pid);
+          yield* Deferred.await(release);
+        }),
+      ).pipe(Effect.forkScoped);
+      const uploaderPid = yield* Deferred.await(uploaded);
+      const removal = yield* inTransaction(
+        Effect.gen(function* () {
+          const tx = yield* Db;
+          const [backend] = yield* tx.execute<{ pid: number }>(
+            sql`SELECT pg_backend_pid() AS pid`,
+            "objects",
+          );
+          yield* Deferred.succeed(removing, backend!.pid);
+          yield* setRecordBlobs([{ id: first!.id, ...empty }]);
+        }),
+      ).pipe(Effect.forkScoped);
+      const removerPid = yield* Deferred.await(removing);
+      yield* Effect.gen(function* () {
+        while (true) {
+          const [state] = yield* db.execute<{ blocked: boolean }>(
+            sql`SELECT ${uploaderPid} = ANY(pg_blocking_pids(${removerPid})) AS blocked`,
+            "objects",
+          );
+          if (state?.blocked) return;
+        }
+      }).pipe(Effect.timeout("5 seconds"));
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(uploading);
+      yield* Fiber.join(removal);
+      expect(
+        yield* db.select().from(recordBlobs).where(eq(recordBlobs.recordId, second!.id)),
+      ).toEqual([{ recordId: second!.id, sha256: imageSha256 }]);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
+    }).pipe(Effect.scoped),
   );
 });
 
