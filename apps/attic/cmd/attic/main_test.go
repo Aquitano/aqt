@@ -1,0 +1,64 @@
+package main
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestCLIParsesArguments(t *testing.T) {
+	for _, tt := range []struct {
+		args  []string
+		check func(cli) bool
+	}{
+		{[]string{"search", "minecraft", "--ext", "rar", "server", "--json"}, func(c cli) bool {
+			return reflect.DeepEqual(c.Search.Words, []string{"minecraft", "server"}) && c.Search.Ext == "rar" && c.Search.JSON && c.Search.Limit == 20
+		}},
+		{[]string{"search", "--json", "--", "-foo", "--ext"}, func(c cli) bool {
+			return reflect.DeepEqual(c.Search.Words, []string{"-foo", "--ext"}) && c.Search.JSON && c.Search.Ext == ""
+		}},
+		{[]string{"search", "--volume", "-json", "notes"}, func(c cli) bool {
+			return c.Search.Volume == "-json" && !c.Search.JSON && reflect.DeepEqual(c.Search.Words, []string{"notes"})
+		}},
+		{[]string{"scan", `E:\Files`, "--no-hash"}, func(c cli) bool {
+			return c.Scan.Folder == `E:\Files` && c.Scan.NoHash && c.Scan.LogLevel == "info"
+		}},
+		{[]string{"enrich", "123", "attic:0123456789abcdef", "--task", "ocr", "--force"}, func(c cli) bool {
+			return reflect.DeepEqual(c.Enrich.Targets, []string{"123", "attic:0123456789abcdef"}) && c.Enrich.Task == "ocr" && c.Enrich.Provider == "" && c.Enrich.Force && c.Enrich.Limit == 20
+		}},
+		{[]string{"metadata", "123", "--json"}, func(c cli) bool {
+			return c.Metadata.Target == "123" && c.Metadata.JSON
+		}},
+		{[]string{"dupes"}, func(c cli) bool {
+			return c.Dupes.MinSize == "1M" && c.Dupes.Limit == 20
+		}},
+		{[]string{"skips", "--reason", "bad_name"}, func(c cli) bool {
+			return c.Skips.Reason == "bad_name" && c.Skips.Limit == 100
+		}},
+	} {
+		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
+			var root cli
+			if _, err := parseCLI(&root, tt.args); err != nil {
+				t.Fatal(err)
+			}
+			if !tt.check(root) {
+				t.Fatalf("parsed %+v", root)
+			}
+		})
+	}
+}
+
+func TestCLIRejectsInvalidSelections(t *testing.T) {
+	for _, args := range [][]string{
+		{"search", "words", "--kind", "folder"},
+		{"enrich", "123", "--task", "caption"},
+		{"enrich", "123"},
+		{"scan", `E:\`, "--volume", "known", "--new-volume"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			if _, err := parseCLI(&cli{}, args); err == nil {
+				t.Fatal("invalid selection accepted")
+			}
+		})
+	}
+}

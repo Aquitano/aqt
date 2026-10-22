@@ -9,135 +9,136 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
+
+	"github.com/alecthomas/kong"
 
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 )
 
-const usage = `attic — search the files on disks that come and go
+type cli struct {
+	Scan     scanCmd     `cmd:"" help:"Index a folder and its descendants."`
+	Search   searchCmd   `cmd:"" help:"Find files, archive members and document text."`
+	Show     showCmd     `cmd:"" help:"Show an entry or every place a content lives."`
+	Text     textCmd     `cmd:"" help:"Print a document's extracted text."`
+	Metadata metadataCmd `cmd:"" help:"Print embedded image, document, audio and video tags."`
+	Enrich   enrichCmd   `cmd:"" help:"Explicitly run OCR or image descriptions."`
+	Analysis analysisCmd `cmd:"" help:"Compare stored OCR and descriptions by model."`
+	Volumes  volumesCmd  `cmd:"" help:"List known volumes and their last scans."`
+	Scans    scansCmd    `cmd:"" help:"List scan history, phase times and counts."`
+	Dupes    dupesCmd    `cmd:"" help:"Find contents stored more than once."`
+	Skips    skipsCmd    `cmd:"" help:"Show what a scan left out and why."`
+	Stats    statsCmd    `cmd:"" help:"Show catalogue totals."`
+	Config   configCmd   `cmd:"" help:"Show the configuration and effective rules."`
+	Help     helpCmd     `cmd:"" help:"Show help for a command."`
+}
 
-Usage:
-  attic scan <folder> [flags]         index a folder and everything below it
-  attic search [words...] [flags]     find files and folders, mounted or not, inside archives and in documents
-  attic show <id|ref> [--json]        one entry, or every place a content lives
-  attic text <id|ref> [--json]        the words read from a document
-  attic enrich [ids|refs] [flags]    explicitly run OCR or image descriptions
-  attic analysis <id|ref> [--json]    compare stored OCR and descriptions by model
-  attic metadata <id|ref> [--json]    embedded image, document, audio and video tags
-  attic volumes [--json]              known volumes, what they hold, last scan
-  attic scans [flags]                 scan history: how long each phase took, what it found
-  attic dupes [flags]                 contents stored more than once
-  attic skips [flags]                 what a scan left out, and why
-  attic stats [--json]                the whole catalogue in numbers
-  attic config [--volume v]           the configuration file and effective rules
+func main() { os.Exit(run(os.Args[1:])) }
 
-Scan flags:
-  --config f     configuration file (default: <UserConfigDir>/attic/config.toml)
-  --no-hash      list only; hash on a later scan
-  --volume id    the disk is this known volume (after a fingerprint question)
-  --new-volume   the disk is a new volume, even if it resembles a known one
-  --log-level l  debug, info (default), warn or error; the log is a JSON-lines file under
-                 %LOCALAPPDATA%\attic\logs, named in the summary
-  --json         print the result as JSON
-
-Enrich flags:
-  --task t       ocr or describe (required)
-  --under p      select a folder; or supply entry ids / content refs
-  --volume v     volume label or id
-  --provider p   tesseract (default for OCR), openai (default for descriptions), codex
-  --model m      vision model (required for openai/codex)
-  --endpoint u   OpenAI-compatible base URL (default http://localhost:11434/v1)
-  --limit n      at most n provider calls (default 20, max 1000; Codex max 20)
-  --force        repeat successful work for this model and prompt
-  --config f     configuration file
-  --json         JSON summary; per-file progress goes to stderr
-
-Search flags:
-  --any          match entries with any word (default: every word)
-  --volume v     a volume label or id
-  --ext e        file extension, such as pdf
-  --kind k       file, dir or link
-  --under p      a folder or an archive: E:\Files when mounted, or /Files with --volume
-  --limit n      default 20
-  --offset n     skip this many ranked results
-  --json         JSON output
-
-Dupes flags:
-  --min-size s   ignore smaller contents, such as 10M (default 1M)
-  --same-volume  only copies that share a volume
-  --limit n      default 20
-
-Scans flags:
-  --volume v     only this volume
-  --limit n      default 20
-
-Skips flags:
-  --scan n       a scan id (default: the newest scan, of --volume if given)
-  --volume v     the newest scan of this volume
-  --reason r     list paths: excluded, name_only, too_big, link, remote, unreadable, changed,
-                 too_deep, encrypted, damaged, not_archive, split, text_failed, metadata_failed, metadata_unavailable
-  --rule r       list paths skipped by this rule, as the summary prints it
-  --limit n      default 100
-
-Environment:
-  DATABASE_URL   default postgres://attic:attic@localhost:5436/attic?sslmode=disable
-`
-
-func main() { os.Exit(run()) }
-
-func run() int {
-	if len(os.Args) < 2 {
-		fmt.Fprint(os.Stderr, usage)
+func run(args []string) int {
+	if len(args) == 0 {
+		parser := newParser(&cli{})
+		parser.Stdout = os.Stderr
+		if err := printHelp(parser, nil); err != nil {
+			fmt.Fprintln(os.Stderr, "attic:", err)
+		}
 		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	// The first Ctrl+C asks for a clean stop; restoring the default lets a
-	// second one end the process at once.
 	go func() {
 		<-ctx.Done()
 		stop()
 	}()
-	var err error
-	switch os.Args[1] {
-	case "scan":
-		err = cmdScan(ctx, os.Args[2:])
-	case "search":
-		err = cmdSearch(ctx, os.Args[2:])
-	case "show":
-		err = cmdShow(ctx, os.Args[2:])
-	case "scans":
-		err = cmdScans(ctx, os.Args[2:])
-	case "volumes":
-		err = cmdVolumes(ctx, os.Args[2:])
-	case "dupes":
-		err = cmdDupes(ctx, os.Args[2:])
-	case "skips":
-		err = cmdSkips(ctx, os.Args[2:])
-	case "enrich":
-		err = cmdEnrich(ctx, os.Args[2:])
-	case "analysis":
-		err = cmdAnalysis(ctx, os.Args[2:])
-	case "metadata":
-		err = cmdMetadata(ctx, os.Args[2:])
-	case "text":
-		err = cmdText(ctx, os.Args[2:])
-	case "stats":
-		err = cmdStats(ctx, os.Args[2:])
-	case "config":
-		err = cmdConfig(ctx, os.Args[2:])
-	case "help", "--help", "-h":
-		fmt.Print(usage)
-	default:
-		fmt.Fprintf(os.Stderr, "unknown command %q\n\n%s", os.Args[1], usage)
-		return 2
-	}
-	if err != nil {
+	if err := execute(ctx, args); err != nil {
 		fmt.Fprintln(os.Stderr, "attic:", err)
+		if _, ok := errors.AsType[*kong.ParseError](err); ok {
+			return 2
+		}
 		return 1
 	}
 	return 0
+}
+
+func newParser(root *cli) *kong.Kong {
+	return kong.Must(root,
+		kong.Name("attic"),
+		kong.Description("Search files on disks that come and go."),
+		kong.WithHyphenPrefixedParameters(true),
+	)
+}
+
+func execute(ctx context.Context, args []string) error {
+	parsed, err := parseCLI(&cli{}, args)
+	if err != nil {
+		return err
+	}
+	parsed.BindTo(ctx, (*context.Context)(nil))
+	return parsed.Run()
+}
+
+func parseCLI(root *cli, args []string) (*kong.Context, error) {
+	parser := newParser(root)
+	for _, command := range parser.Model.Children {
+		if len(args) == 0 || command.Name != args[0] || len(command.Positional) != 1 || !command.Positional[0].IsSlice() {
+			continue
+		}
+		// Kong consumes a positional slice once; keep words separated by flags together.
+		flags := map[string]*kong.Flag{}
+		for _, group := range command.AllFlags(false) {
+			for _, flag := range group {
+				flags["--"+flag.Name] = flag
+				if flag.Short != 0 {
+					flags["-"+string(flag.Short)] = flag
+				}
+			}
+		}
+		options, words := []string{args[0]}, []string{}
+		for i := 1; i < len(args); i++ {
+			arg := args[i]
+			if arg == "--" {
+				words = append(words, args[i+1:]...)
+				break
+			}
+			if len(arg) > 1 && strings.HasPrefix(arg, "-") {
+				name, _, inline := strings.Cut(arg, "=")
+				flag, ok := flags[name]
+				if !ok {
+					return parser.Parse(args)
+				}
+				options = append(options, arg)
+				if !flag.IsBool() && !inline && i+1 < len(args) {
+					i++
+					options = append(options, args[i])
+				}
+			} else {
+				words = append(words, arg)
+			}
+		}
+		return parser.Parse(slices.Concat(options, []string{"--"}, words))
+	}
+	return parser.Parse(args)
+}
+
+type helpCmd struct {
+	Command []string `arg:"" optional:"" help:"Command to describe."`
+}
+
+func (cmd *helpCmd) Run(parsed *kong.Context) error {
+	return printHelp(parsed.Kong, cmd.Command)
+}
+
+func printHelp(parser *kong.Kong, path []string) error {
+	target, err := kong.Trace(parser, path)
+	if err != nil {
+		return err
+	}
+	if target.Error != nil {
+		return target.Error
+	}
+	return target.PrintUsage(false)
 }
 
 func openStore(ctx context.Context) (*store.Store, error) {
@@ -168,26 +169,3 @@ func printJSON(v any) error {
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
 }
-
-// interspersed lets flags follow positional arguments, as in
-// `attic search minecraft --ext rar`, which the flag package alone stops at.
-func interspersed(args []string, boolFlags map[string]bool) (flags, positional []string) {
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--":
-			return flags, append(positional, args[i+1:]...)
-		case len(a) > 1 && a[0] == '-':
-			flags = append(flags, a)
-			if !boolFlags[strings.TrimLeft(a, "-")] && !strings.Contains(a, "=") && i+1 < len(args) {
-				i++
-				flags = append(flags, args[i])
-			}
-		default:
-			positional = append(positional, a)
-		}
-	}
-	return flags, positional
-}
-
-var errUsage = errors.New("see 'attic help'")
