@@ -48,6 +48,11 @@ func (w *Workspace) Copy(ctx context.Context, source string, digest disk.Digest,
 		return "", err
 	}
 	defer f.Close()
+	return w.CopyOpen(ctx, f, digest, maxBytes)
+}
+
+// CopyOpen verifies an already-open source. The caller retains its handle.
+func (w *Workspace) CopyOpen(ctx context.Context, f *os.File, digest disk.Digest, maxBytes int64) (path string, err error) {
 	info, err := f.Stat()
 	if err != nil {
 		return "", err
@@ -55,7 +60,7 @@ func (w *Workspace) Copy(ctx context.Context, source string, digest disk.Digest,
 	if maxBytes > 0 && info.Size() > maxBytes {
 		return "", ErrTooBig
 	}
-	out, err := os.CreateTemp(w.Path, "file-*"+filepath.Ext(source))
+	out, err := os.CreateTemp(w.Path, "file-*"+filepath.Ext(f.Name()))
 	if err != nil {
 		return "", WriteError{err}
 	}

@@ -25,6 +25,7 @@ attic search werkstudent --ext pdf
 attic search notes --under E:\Files --json
 attic search --under E:\Backups\Minecraft.7z
 attic show 36331
+attic get 36331 --to C:\Recovered\document.pdf --json
 attic text 36331
 attic metadata 36331
 attic volumes
@@ -40,6 +41,10 @@ Search requires every searchable word by default; `--any` accepts any word. Word
 Argument parsing errors exit with code 2. Command failures, including `enrich --task ocr` without targets or `--under`, exit with code 1.
 
 An entry ID identifies a file at a place. A content ref such as `attic:3f9a1c2b4d5e6f70` identifies its bytes across disks. `show <ref>` lists the copies. Missing files remain searchable and are marked missing. `dupes --same-volume` counts copies that share a disk.
+
+`get <id-or-ref> --to <new-file>` retrieves one hashed ordinary file from an online copy. It verifies the full stored BLAKE3 digest before publishing the destination and tries another copy after a source read failure or digest mismatch. Existing destinations are never overwritten, including files created concurrently. If no copy is usable, the error names known offline volumes to connect. Directories, archive members, links, cloud placeholders and files excluded by current content rules cannot be retrieved. A hashed archive can be retrieved as a whole file.
+
+The destination directory must already exist. Retrieval stages a private copy beside the destination for atomic publication, independently of the configured `temp` directory. On Windows the destination must be on a different volume from the online source copies. Only Windows currently discovers mounted catalogue volumes. `--json` returns the full verified digest, destination and selected source. Cancellation or verification failure removes the temporary copy without publishing a partial destination.
 
 A scan lists directories, hashes unknown files, lists archives, extracts document text and reads embedded metadata. It skips links, cloud placeholders, excluded paths and name-only files. ZIP, 7z, RAR and tar listings can include nested archives. Documents include plain text, Markdown, CSV, HTML, Office, OpenDocument and PDFs with a text layer. Source code and configuration files keep their names only. Extracted document text is capped at 1 MB.
 

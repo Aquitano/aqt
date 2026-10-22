@@ -25,6 +25,7 @@ type cli struct {
 	Scan     scanCmd     `cmd:"" help:"Index a folder and its descendants."`
 	Search   searchCmd   `cmd:"" help:"Find files, archive members and document text."`
 	Show     showCmd     `cmd:"" help:"Show an entry or every place a content lives."`
+	Get      getCmd      `cmd:"" help:"Retrieve one verified file to a new destination."`
 	Text     textCmd     `cmd:"" help:"Print a document's extracted text."`
 	Metadata metadataCmd `cmd:"" help:"Print embedded image, document, audio and video tags."`
 	Enrich   enrichCmd   `cmd:"" help:"Explicitly run OCR or image descriptions."`
