@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -19,6 +20,24 @@ func TestCLIParsesArguments(t *testing.T) {
 		}},
 		{[]string{"search", "--volume", "-json", "notes"}, func(c cli) bool {
 			return c.Search.Volume == "-json" && !c.Search.JSON && reflect.DeepEqual(c.Search.Words, []string{"notes"})
+		}},
+		{[]string{"search", "notes", "--limit", "-1", "more", "--ext", "-pdf"}, func(c cli) bool {
+			return c.Search.Limit == -1 && c.Search.Ext == "-pdf" && reflect.DeepEqual(c.Search.Words, []string{"notes", "more"})
+		}},
+		{[]string{"search", "notes", "--ext="}, func(c cli) bool {
+			return c.Search.Ext == "" && reflect.DeepEqual(c.Search.Words, []string{"notes"})
+		}},
+		{[]string{"search", "notes", "--ext", "--"}, func(c cli) bool {
+			return c.Search.Ext == "--" && reflect.DeepEqual(c.Search.Words, []string{"notes"})
+		}},
+		{[]string{"config", "--config", "-settings.toml"}, func(c cli) bool {
+			return c.Config.Config == "-settings.toml"
+		}},
+		{[]string{"config", "--config", "--volume"}, func(c cli) bool {
+			return c.Config.Config == "--volume" && c.Config.Volume == ""
+		}},
+		{[]string{"config", "--config="}, func(c cli) bool {
+			return c.Config.Config == ""
 		}},
 		{[]string{"scan", `E:\Files`, "--no-hash"}, func(c cli) bool {
 			return c.Scan.Folder == `E:\Files` && c.Scan.NoHash && c.Scan.LogLevel == "info"
@@ -46,6 +65,24 @@ func TestCLIParsesArguments(t *testing.T) {
 			}
 			if !tt.check(root) {
 				t.Fatalf("parsed %+v", root)
+			}
+		})
+	}
+}
+
+func TestCLIRejectsMissingFlagValues(t *testing.T) {
+	for _, args := range [][]string{
+		{"config", "--config"},
+		{"config", "--config=settings.toml", "--volume"},
+		{"search", "notes", "--ext"},
+		{"search", "notes", "--json", "--ext"},
+		{"scan", `E:\Files`, "--config"},
+		{"enrich", "123", "--task", "ocr", "--model"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			_, err := parseCLI(&cli{}, args)
+			if !errors.Is(err, errMissingFlagValue) || !strings.Contains(err.Error(), args[len(args)-1]) {
+				t.Fatalf("expected missing value error for %s, got %v", args[len(args)-1], err)
 			}
 		})
 	}

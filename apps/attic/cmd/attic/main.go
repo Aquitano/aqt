@@ -18,6 +18,8 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 )
 
+var errMissingFlagValue = errors.New("expected a value")
+
 type cli struct {
 	Scan     scanCmd     `cmd:"" help:"Index a folder and its descendants."`
 	Search   searchCmd   `cmd:"" help:"Find files, archive members and document text."`
@@ -54,7 +56,7 @@ func run(args []string) int {
 	}()
 	if err := execute(ctx, args); err != nil {
 		fmt.Fprintln(os.Stderr, "attic:", err)
-		if _, ok := errors.AsType[*kong.ParseError](err); ok {
+		if _, ok := errors.AsType[*kong.ParseError](err); ok || errors.Is(err, errMissingFlagValue) {
 			return 2
 		}
 		return 1
@@ -82,10 +84,9 @@ func execute(ctx context.Context, args []string) error {
 func parseCLI(root *cli, args []string) (*kong.Context, error) {
 	parser := newParser(root)
 	for _, command := range parser.Model.Children {
-		if len(args) == 0 || command.Name != args[0] || len(command.Positional) != 1 || !command.Positional[0].IsSlice() {
+		if len(args) == 0 || command.Name != args[0] {
 			continue
 		}
-		// Kong consumes a positional slice once; keep words separated by flags together.
 		flags := map[string]*kong.Flag{}
 		for _, group := range command.AllFlags(false) {
 			for _, flag := range group {
@@ -109,7 +110,10 @@ func parseCLI(root *cli, args []string) (*kong.Context, error) {
 					return parser.Parse(args)
 				}
 				options = append(options, arg)
-				if !flag.IsBool() && !inline && i+1 < len(args) {
+				if !flag.IsBool() && !inline {
+					if i+1 == len(args) {
+						return nil, fmt.Errorf("%s: %w", name, errMissingFlagValue)
+					}
 					i++
 					options = append(options, args[i])
 				}
@@ -117,7 +121,11 @@ func parseCLI(root *cli, args []string) (*kong.Context, error) {
 				words = append(words, arg)
 			}
 		}
-		return parser.Parse(slices.Concat(options, []string{"--"}, words))
+		// Kong consumes a positional slice once; keep words separated by flags together.
+		if len(command.Positional) == 1 && command.Positional[0].IsSlice() {
+			return parser.Parse(slices.Concat(options, []string{"--"}, words))
+		}
+		break
 	}
 	return parser.Parse(args)
 }
