@@ -535,6 +535,15 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 	if r.rules.HashMaxBytes > 0 && p.Size > r.rules.HashMaxBytes {
 		return r.sc.SkipHash(ctx, p, "too_big", "", fmt.Sprintf("%d bytes", p.Size))
 	}
+	if p.Linked {
+		e, err := disk.Stat(r.osPath(p.Path))
+		if err == nil {
+			reused, err := r.sc.ReuseContent(ctx, p, e)
+			if err != nil || reused {
+				return err
+			}
+		}
+	}
 	started := time.Now()
 	digest, n, err := disk.Hash(ctx, r.osPath(p.Path))
 	took := time.Since(started)

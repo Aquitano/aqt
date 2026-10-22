@@ -38,7 +38,7 @@ func write(t *testing.T, root, rel, body string) {
 }
 
 // testVolume stands in for a disk; every test has a schema of its own.
-var testVolume = disk.Fingerprint{FS: "TEST", Serial: "7E57", Label: "Test", StableIDs: true}
+var testVolume = disk.Fingerprint{FS: "TEST", Serial: "7E57", Label: "Test", DeviceSerial: "test-device", StableIDs: true}
 
 // scanAt runs a scan with the temporary folder standing in for a volume root,
 // so the test needs neither a spare disk nor Windows.
@@ -82,7 +82,7 @@ func TestScanKeepsIdentityAcrossMoves(t *testing.T) {
 	write(t, root, "photos/MinecraftServer.rar", "world")
 	write(t, root, "projects/web/node_modules/x.js", "dependency")
 	write(t, root, "notes.txt", "hello")
-	fp := disk.Fingerprint{FS: "TEST", Serial: fmt.Sprintf("%X", time.Now().UnixNano()), Label: "Test", StableIDs: true}
+	fp := disk.Fingerprint{FS: "TEST", Serial: fmt.Sprintf("%X", time.Now().UnixNano()), Label: "Test", DeviceSerial: "test-device", StableIDs: true}
 
 	first := scanAt(t, st, root, fp)
 	if first.Counts.Hashed != 4 || first.Counts.Duplicates != 1 {

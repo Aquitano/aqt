@@ -88,6 +88,9 @@ type Listed struct {
 	// HashState is what the scan wants for a file: pending, or skipped when
 	// its contents must not be read. Folders and links use none.
 	HashState string
+
+	rawName        string
+	physicalFileID int64
 }
 
 func (s *Store) StartScan(ctx context.Context, v Volume, root string) (*Scan, error) {
@@ -247,16 +250,19 @@ type entryRow struct {
 	Attributes  int32
 	HashState   string
 	MissingScan *int64
+
+	RawName        []byte
+	PhysicalFileID *int64
 }
 
 const entryRowColumns = `id, parent_id, kind, name, path, file_id, size_bytes, created_at, modified_at, accessed_at,
-	changed_at, attributes, hash_state, missing_scan`
+	changed_at, attributes, hash_state, missing_scan, raw_name, physical_file_id`
 
 func collectEntryRows(rows pgx.Rows) ([]entryRow, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (entryRow, error) {
 		var e entryRow
 		err := r.Scan(&e.ID, &e.ParentID, &e.Kind, &e.Name, &e.Path, &e.FileID, &e.Size, &e.Created, &e.Modified,
-			&e.Accessed, &e.Changed, &e.Attributes, &e.HashState, &e.MissingScan)
+			&e.Accessed, &e.Changed, &e.Attributes, &e.HashState, &e.MissingScan, &e.RawName, &e.PhysicalFileID)
 		return e, err
 	})
 }
@@ -298,22 +304,17 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		return nil, err
 	}
 
-	// Rows hold cleaned names, so the excluded names are compared cleaned too.
-	kept := make(map[string]bool, len(keep))
-	for name := range keep {
-		kept[cleanText(name)] = true
-	}
 	listedNames := make(map[string]int, len(listed))
 	for i := range listed {
 		listed[i] = normalize(listed[i], sc.Volume.StableIDs)
-		listedNames[listed[i].Name] = i
+		listedNames[listed[i].rawName] = i
 	}
 	owners := map[int64]int{}
 	for _, r := range existing {
 		if r.FileID == nil {
 			continue
 		}
-		if i, ok := listedNames[r.Name]; ok && listed[i].FileID == *r.FileID {
+		if i, ok := listedNames[string(r.RawName)]; ok && listed[i].FileID == *r.FileID {
 			owners[*r.FileID] = i
 		}
 	}
@@ -337,14 +338,14 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 	// live one, or a hard link kept by path.
 	byName := map[string][]*entryRow{}
 	for i := range existing {
-		byName[existing[i].Name] = append(byName[existing[i].Name], &existing[i])
+		byName[string(existing[i].RawName)] = append(byName[string(existing[i].RawName)], &existing[i])
 	}
 	// A path the catalogue keeps as a hard link stays one when its file id
 	// turns up on another row: that row's path holds the id or is gone. A row
 	// whose path is gone is vacated, marked missing now rather than whenever
 	// its own folder is next scanned.
 	keptAsLink := func(l Listed) bool {
-		return l.Kind == "file" && slices.ContainsFunc(byName[l.Name], func(r *entryRow) bool { return r.FileID == nil })
+		return l.Kind == "file" && slices.ContainsFunc(byName[l.rawName], func(r *entryRow) bool { return r.FileID == nil })
 	}
 
 	if sc.Volume.StableIDs {
@@ -361,7 +362,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			case l.FileID == 0:
 			case r == nil || claimed[r.ID]:
 				elsewhere = append(elsewhere, l.FileID)
-			case r.Name != l.Name && keptAsLink(l):
+			case string(r.RawName) != l.rawName && keptAsLink(l):
 				listed[i].FileID = 0
 			default:
 				claim(i, r)
@@ -402,13 +403,13 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		}
 	}
 	// Prefer the row without a file id, so a listed entry that also has none
-	// never collides with it in the (parent, name) index.
+	// never collides with it in the (parent, raw_name) index.
 	for i, l := range listed {
 		if matched[i] != nil {
 			continue
 		}
 		var best *entryRow
-		for _, r := range byName[l.Name] {
+		for _, r := range byName[l.rawName] {
 			if !claimed[r.ID] && (best == nil || (r.FileID == nil && best.FileID != nil)) {
 				best = r
 			}
@@ -456,6 +457,17 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 				r.ID, r.Path, entryPath)
 			reads = append(reads, execResult)
 		}
+		if r.Kind == "dir" && l.Kind != "dir" {
+			batch.Queue(`
+				with recursive below as (
+					select id from entries where parent_id = $1
+					union all
+					select e.id from entries e join below b on e.parent_id = b.id
+				)
+				update entries set missing_scan = $2
+				where id in (select id from below) and missing_scan is null`, r.ID, sc.ID)
+			reads = append(reads, execResult)
+		}
 		if !moved && unchanged(r, l, parentID) {
 			continue
 		}
@@ -464,10 +476,10 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			update entries set parent_id = $2, kind = $3, name = $4, path = $5, ext = $6, file_id = $7, size_bytes = $8,
 			       created_at = $9, modified_at = $10, accessed_at = $11, changed_at = $12, attributes = $13,
 			       content_id = case when $14 then null else content_id end, hash_state = $15,
-			       missing_scan = null, updated_scan = $16
+			       missing_scan = null, updated_scan = $16, raw_name = $17, physical_file_id = $18
 			where id = $1`,
 			r.ID, parentID, l.Kind, l.Name, entryPath, ext(l.Kind, l.Name), nullID(l.FileID), l.Size, nullTime(l.Created),
-			nullTime(l.Modified), nullTime(l.Accessed), nullTime(l.Changed), l.Attributes, reset, state, sc.ID)
+			nullTime(l.Modified), nullTime(l.Accessed), nullTime(l.Changed), l.Attributes, reset, state, sc.ID, []byte(l.rawName), nullIDPtr(l.physicalFileID))
 		reads = append(reads, execResult)
 		sc.Counts.Written++
 		sc.dirty++
@@ -476,7 +488,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		var gone []int64
 		for i := range existing {
 			r := &existing[i]
-			if !claimed[r.ID] && !kept[r.Name] && r.MissingScan == nil {
+			if !claimed[r.ID] && !keep[string(r.RawName)] && r.MissingScan == nil {
 				gone = append(gone, r.ID)
 			}
 		}
@@ -510,15 +522,15 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		// mostly inserts, and the BM25 index takes rows far faster in bulk.
 		batch.Queue(`
 			insert into entries (volume_id, parent_id, kind, name, path, ext, file_id, size_bytes, created_at,
-			                     modified_at, accessed_at, changed_at, attributes, hash_state, first_scan, updated_scan)
+			                     modified_at, accessed_at, changed_at, attributes, hash_state, first_scan, updated_scan, raw_name, physical_file_id)
 			select $1, $2, u.kind, u.name, u.path, u.ext, u.file_id, u.size, u.created, u.modified, u.accessed,
-			       u.changed, u.attributes, u.state, $3, $3
+			       u.changed, u.attributes, u.state, $3, $3, u.raw_name, u.physical_file_id
 			from unnest($4::text[], $5::text[], $6::text[], $7::text[], $8::bigint[], $9::bigint[], $10::timestamptz[],
-			            $11::timestamptz[], $12::timestamptz[], $13::timestamptz[], $14::int[], $15::text[])
-			     as u(kind, name, path, ext, file_id, size, created, modified, accessed, changed, attributes, state)
-			returning id, name`,
+			            $11::timestamptz[], $12::timestamptz[], $13::timestamptz[], $14::int[], $15::text[], $16::bytea[], $17::bigint[])
+			     as u(kind, name, path, ext, file_id, size, created, modified, accessed, changed, attributes, state, raw_name, physical_file_id)
+			returning id, raw_name`,
 			sc.Volume.ID, parentID, sc.ID, fresh.kind, fresh.name, fresh.path, fresh.ext, fresh.fileID, fresh.size,
-			fresh.created, fresh.modified, fresh.accessed, fresh.changed, fresh.attributes, fresh.state)
+			fresh.created, fresh.modified, fresh.accessed, fresh.changed, fresh.attributes, fresh.state, fresh.rawName, fresh.physicalFileID)
 		reads = append(reads, func(br pgx.BatchResults) error {
 			rows, err := br.Query()
 			if err != nil {
@@ -527,11 +539,11 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			defer rows.Close()
 			for rows.Next() {
 				var id int64
-				var name string
+				var name []byte
 				if err := rows.Scan(&id, &name); err != nil {
 					return err
 				}
-				inserted[name] = id
+				inserted[string(name)] = id
 			}
 			return rows.Err()
 		})
@@ -558,7 +570,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		}
 		id := ids[i]
 		if id == 0 {
-			if id = inserted[l.Name]; id == 0 {
+			if id = inserted[l.rawName]; id == 0 {
 				return nil, fmt.Errorf("insert %s returned no id", paths[i])
 			}
 		}
@@ -570,6 +582,8 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 // newRows collects a folder's new entries column by column for one unnest
 // insert. Pointers carry NULLs.
 type newRows struct {
+	rawName                              [][]byte
+	physicalFileID                       []*int64
 	kind, name, path, ext, state         []string
 	fileID                               []*int64
 	size                                 []int64
@@ -580,6 +594,8 @@ type newRows struct {
 func (n *newRows) add(l Listed, entryPath string) {
 	n.kind = append(n.kind, l.Kind)
 	n.name = append(n.name, l.Name)
+	n.rawName = append(n.rawName, []byte(l.rawName))
+	n.physicalFileID = append(n.physicalFileID, nullIDPtr(l.physicalFileID))
 	n.path = append(n.path, entryPath)
 	n.ext = append(n.ext, ext(l.Kind, l.Name))
 	n.state = append(n.state, l.HashState)
@@ -608,7 +624,11 @@ func execResult(br pgx.BatchResults) error {
 // with a stored row compares like with like: Postgres keeps microseconds,
 // Windows reports 100-nanosecond ticks.
 func normalize(l Listed, stableIDs bool) Listed {
+	l.rawName = l.Name
 	l.Name = cleanText(l.Name)
+	if stableIDs {
+		l.physicalFileID = l.FileID
+	}
 	for _, t := range []*time.Time{&l.Created, &l.Modified, &l.Accessed, &l.Changed} {
 		if !t.IsZero() {
 			*t = t.UTC().Truncate(time.Microsecond)
@@ -624,8 +644,8 @@ func normalize(l Listed, stableIDs bool) Listed {
 }
 
 func unchanged(r *entryRow, l Listed, parentID *int64) bool {
-	return r.MissingScan == nil && r.Kind == l.Kind && r.Name == l.Name && samePtr(r.ParentID, parentID) &&
-		samePtr(r.FileID, nullIDPtr(l.FileID)) && r.Size == l.Size && r.Attributes == l.Attributes &&
+	return r.MissingScan == nil && r.Kind == l.Kind && string(r.RawName) == l.rawName && samePtr(r.ParentID, parentID) &&
+		samePtr(r.FileID, nullIDPtr(l.FileID)) && samePtr(r.PhysicalFileID, nullIDPtr(l.physicalFileID)) && r.Size == l.Size && r.Attributes == l.Attributes &&
 		sameTime(r.Created, l.Created) && sameTime(r.Modified, l.Modified) && sameTime(r.Accessed, l.Accessed) &&
 		sameTime(r.Changed, l.Changed) && hashStateAfter(r.HashState, l.HashState) == r.HashState
 }
@@ -638,7 +658,7 @@ func contentAfter(r *entryRow, l Listed, moved bool) (bool, string) {
 	if l.Kind != "file" {
 		return true, "none"
 	}
-	if r.Kind != "file" || r.Size != l.Size || !sameTime(r.Modified, l.Modified) || (!moved && !sameTime(r.Changed, l.Changed)) {
+	if r.Kind != "file" || !samePtr(r.PhysicalFileID, nullIDPtr(l.physicalFileID)) || r.Size != l.Size || !sameTime(r.Modified, l.Modified) || (!moved && !sameTime(r.Changed, l.Changed)) {
 		return true, l.HashState
 	}
 	return false, hashStateAfter(r.HashState, l.HashState)
@@ -704,6 +724,9 @@ type Pending struct {
 	ID   int64
 	Path string
 	Size int64
+
+	PhysicalFileID *int64
+	Linked         bool
 }
 
 type completedHash struct {
@@ -739,7 +762,11 @@ func (sc *Scan) NextPending(ctx context.Context, after Pending, limit int) ([]Pe
 		lower = after.Path
 	}
 	rows, err := sc.store.pool.Query(ctx, `
-		select id, path, size_bytes from entries
+		select id, path, size_bytes, physical_file_id,
+		       exists(select 1 from entries link where link.volume_id = entries.volume_id
+		              and link.physical_file_id = entries.physical_file_id and link.id <> entries.id
+		              and link.kind = 'file' and link.missing_scan is null)
+		from entries
 		where volume_id = $1 and hash_state in ('pending', 'failed') and kind = 'file' and missing_scan is null
 		  and (path collate "C", id) > ($2, $5) and ($3 = '' or path collate "C" < $3)
 		order by path collate "C", id limit $4`,
@@ -749,7 +776,7 @@ func (sc *Scan) NextPending(ctx context.Context, after Pending, limit int) ([]Pe
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Pending, error) {
 		var p Pending
-		err := r.Scan(&p.ID, &p.Path, &p.Size)
+		err := r.Scan(&p.ID, &p.Path, &p.Size, &p.PhysicalFileID, &p.Linked)
 		return p, err
 	})
 }
