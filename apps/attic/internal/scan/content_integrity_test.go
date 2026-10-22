@@ -174,14 +174,16 @@ func TestMultipartArchivesVerifySiblingsAndPreserveNames(t *testing.T) {
 				if changed {
 					o.Progress = func(p Progress) {
 						if p.Phase == "hash" && p.Hashed == 2 {
-							write(t, root, "test.part02.rar", "changed")
+							part := []byte(rarFixture(t, "test.part02.rar"))
+							part[len(part)/2] ^= 1
+							write(t, root, "test.part02.rar", string(part))
 						}
 					}
 				}
 			})
 			want := int64(2)
 			if changed {
-				want = 0
+				want = 1
 			}
 			if first.Counts.Archives != want {
 				t.Fatalf("listed %d archives, want %d", first.Counts.Archives, want)
@@ -195,7 +197,7 @@ func TestMultipartArchivesVerifySiblingsAndPreserveNames(t *testing.T) {
 				}
 			} else {
 				write(t, root, "test.part02.rar", rarFixture(t, "test.part02.rar"))
-				if again := scanAt(t, st, root, testVolume, func(o *Options) { o.Config = cfg }); again.Counts.Archives != 2 {
+				if again := scanAt(t, st, root, testVolume, func(o *Options) { o.Config = cfg }); again.Counts.Archives != 1 {
 					t.Fatalf("restored parts did not retry: %+v", again.Counts)
 				}
 			}

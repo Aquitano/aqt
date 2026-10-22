@@ -37,6 +37,8 @@ type archiveCopies struct {
 	w       *scratch.Workspace
 	ctx     context.Context
 	source  string
+	digest  disk.Digest
+	size    int64
 	copied  string
 	failure error
 	fatal   error
@@ -44,7 +46,20 @@ type archiveCopies struct {
 
 func (c *archiveCopies) open(path string) (archive.Handle, error) {
 	if path == c.source {
-		return os.Open(c.copied)
+		if c.copied == "" {
+			copied, err := c.w.Copy(c.ctx, path, c.digest, max(1, c.size))
+			if err != nil {
+				c.failure = err
+				return nil, err
+			}
+			c.copied = copied
+		}
+		f, err := os.Open(c.copied)
+		if err != nil {
+			c.failure = scratch.WriteError{Err: err}
+			return nil, c.failure
+		}
+		return f, nil
 	}
 	if filepath.Dir(path) != filepath.Dir(c.source) {
 		c.failure = fmt.Errorf("archive part is outside its source directory: %s", path)

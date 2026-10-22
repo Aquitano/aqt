@@ -600,14 +600,9 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 		return err
 	}
 	defer func() { err = errors.Join(err, w.Close()) }()
-	copied, err := w.Copy(ctx, r.osPath(a.Path), a.Digest, max(1, a.Size))
-	if err != nil {
-		l.Abort(ctx)
-		return r.copyFailure(ctx, a.Path, err)
-	}
 	started, members := time.Now(), r.sc.Counts.Members
 	var skips []archive.Skip
-	opener := archiveCopies{r: r, w: w, ctx: ctx, source: r.osPath(a.Path), copied: copied}
+	opener := archiveCopies{r: r, w: w, ctx: ctx, source: r.osPath(a.Path), digest: a.Digest, size: a.Size}
 	res, err := archive.List(ctx, opener.source, opener.open, r.archives,
 		func(m archive.Member) error {
 			r.progress(false)
