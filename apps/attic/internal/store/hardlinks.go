@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"slices"
 
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
@@ -44,15 +45,20 @@ func (sc *Scan) ReuseContent(ctx context.Context, p Pending, observed disk.Entry
 		observed.Modified.IsZero() || observed.Changed.IsZero() {
 		return false, nil
 	}
-	if err := sc.flushContents(ctx); err != nil {
-		return false, err
+	lower, upper := sc.subtree()
+	if slices.ContainsFunc(sc.hashes, func(h completedHash) bool {
+		return h.file.ID != p.ID && samePtr(h.file.PhysicalFileID, p.PhysicalFileID) && h.file.Size == p.Size &&
+			h.file.Path > lower && (upper == "" || h.file.Path < upper)
+	}) {
+		if err := sc.flushContents(ctx); err != nil {
+			return false, err
+		}
 	}
 	tx, err := sc.begin(ctx)
 	if err != nil {
 		return false, err
 	}
 	l := normalize(Listed{Modified: observed.Modified, Changed: observed.Changed}, true)
-	lower, upper := sc.subtree()
 	result, err := tx.Exec(ctx, `
 		update entries e set content_id = known.content_id, hash_state = 'done', updated_scan = $6
 		from entries known

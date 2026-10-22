@@ -245,7 +245,6 @@ type entryRow struct {
 	ID          int64
 	ParentID    *int64
 	Kind        string
-	Name        string
 	Path        string
 	FileID      *int64
 	Size        int64
@@ -261,13 +260,13 @@ type entryRow struct {
 	PhysicalFileID *int64
 }
 
-const entryRowColumns = `id, parent_id, kind, name, path, file_id, size_bytes, created_at, modified_at, accessed_at,
+const entryRowColumns = `id, parent_id, kind, path, file_id, size_bytes, created_at, modified_at, accessed_at,
 	changed_at, attributes, hash_state, missing_scan, raw_name, physical_file_id`
 
 func collectEntryRows(rows pgx.Rows) ([]entryRow, error) {
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (entryRow, error) {
 		var e entryRow
-		err := r.Scan(&e.ID, &e.ParentID, &e.Kind, &e.Name, &e.Path, &e.FileID, &e.Size, &e.Created, &e.Modified,
+		err := r.Scan(&e.ID, &e.ParentID, &e.Kind, &e.Path, &e.FileID, &e.Size, &e.Created, &e.Modified,
 			&e.Accessed, &e.Changed, &e.Attributes, &e.HashState, &e.MissingScan, &e.RawName, &e.PhysicalFileID)
 		return e, err
 	})
@@ -434,13 +433,39 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 	var reads []func(pgx.BatchResults) error
 	paths := make([]string, len(listed))
 	ids := make([]int64, len(listed))
+	var movedIDs, physicalIDs []int64
+	for i, l := range listed {
+		if parent != nil {
+			paths[i] = parentPath + "/" + l.Name
+		}
+		if r := matched[i]; r != nil && r.Path != paths[i] && l.Kind == "file" &&
+			l.physicalFileID != 0 && !sameTime(r.Changed, l.Changed) {
+			movedIDs = append(movedIDs, r.ID)
+			physicalIDs = append(physicalIDs, l.physicalFileID)
+		}
+	}
+	linked := map[int64]bool{}
+	if len(movedIDs) > 0 {
+		rows, err := tx.Query(ctx, `
+			select moved.id from unnest($2::bigint[], $3::bigint[]) as moved(id, physical_file_id)
+			where exists(select 1 from entries link
+			             where link.volume_id = $1 and link.physical_file_id = moved.physical_file_id
+			               and link.id <> moved.id and link.kind = 'file' and link.missing_scan is null)`,
+			sc.Volume.ID, movedIDs, physicalIDs)
+		if err != nil {
+			return nil, err
+		}
+		linkedIDs, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+		if err != nil {
+			return nil, err
+		}
+		for _, id := range linkedIDs {
+			linked[id] = true
+		}
+	}
 	var fresh newRows
 	for i, l := range listed {
-		entryPath := ""
-		if parent != nil {
-			entryPath = parentPath + "/" + l.Name
-		}
-		paths[i] = entryPath
+		entryPath := paths[i]
 		r := matched[i]
 		if r == nil {
 			fresh.add(l, entryPath)
@@ -477,16 +502,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		if !moved && unchanged(r, l, parentID) {
 			continue
 		}
-		var linked bool
-		if moved && l.Kind == "file" && !sameTime(r.Changed, l.Changed) {
-			if err := tx.QueryRow(ctx, `select exists(select 1 from entries
-				where volume_id = $1 and physical_file_id = $2 and id <> $3
-				  and kind = 'file' and missing_scan is null)`,
-				sc.Volume.ID, nullIDPtr(l.physicalFileID), r.ID).Scan(&linked); err != nil {
-				return nil, err
-			}
-		}
-		reset, state := contentAfter(r, l, moved, linked)
+		reset, state := contentAfter(r, l, moved, linked[r.ID])
 		batch.Queue(`
 			update entries set parent_id = $2, kind = $3, name = $4, path = $5, ext = $6, file_id = $7, size_bytes = $8,
 			       created_at = $9, modified_at = $10, accessed_at = $11, changed_at = $12, attributes = $13,
