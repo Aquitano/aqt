@@ -45,8 +45,8 @@ func (q *search) entryFilters(c copies) []string {
 		}
 		where = append(where, under)
 	}
-	if c.ext != "" {
-		where = append(where, "e.ext = "+q.next(c.ext))
+	if c.ext != nil {
+		where = append(where, "e.ext = "+q.next(*c.ext))
 	}
 	return where
 }

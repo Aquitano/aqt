@@ -355,7 +355,7 @@ type copies struct {
 	volumes []string
 	under   string
 	self    bool
-	ext     string
+	ext     *string
 }
 
 // copiesOf keeps the places a search shows inside its own filters, so a
@@ -366,7 +366,8 @@ func copiesOf(o SearchOptions, self bool) copies {
 		c.volumes = []string{o.VolumeID}
 	}
 	if !self && o.Ext != "" {
-		c.ext = searchExt(o.Ext)
+		ext := searchExt(o.Ext)
+		c.ext = &ext
 	}
 	return c
 }

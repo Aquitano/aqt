@@ -267,3 +267,63 @@ func TestSearchFiltersAndAIProvenance(t *testing.T) {
 		t.Errorf("volume root descendants: %+v, %v", entries, err)
 	}
 }
+
+func TestSearchExplicitNoExtension(t *testing.T) {
+	st, conn := searchFixture(t)
+	_, err := conn.Exec(t.Context(), `update entries set name='Tom',path='/else/Tom',ext='' where id=5;
+ insert into members(archive_id,kind,name,path,ext) values(2,'file','Tom','Tom','');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"", "Tom"} {
+		for _, ext := range []string{"", "."} {
+			t.Run("query="+query+"/ext="+ext, func(t *testing.T) {
+				o := store.SearchOptions{Query: query, Ext: ext, Kind: "file"}
+				wantEntries, wantMembers, wantPlaces := 1, 1, 1
+				if query == "" && ext == "." {
+					o.Kind = ""
+					wantEntries = 3
+				}
+				if ext == "" {
+					wantEntries, wantMembers, wantPlaces = 4, 2, 3
+					if query != "" {
+						wantEntries = 2
+					}
+				}
+				entries, err := st.Search(t.Context(), o)
+				if err != nil || len(entries) != wantEntries {
+					t.Errorf("entries: %+v, %v", entries, err)
+				}
+				members, err := st.SearchMembers(t.Context(), o)
+				if err != nil || len(members) != wantMembers {
+					t.Fatalf("members: %+v, %v", members, err)
+				}
+				for _, member := range members {
+					if len(member.Archive) != 1 || member.Archive[0].ID != 4 {
+						t.Errorf("archive sources: %+v", member.Archive)
+					}
+				}
+				if query == "" {
+					return
+				}
+				texts, err := st.SearchTexts(t.Context(), o)
+				if err != nil || len(texts) != 1 || len(texts[0].Places) != wantPlaces {
+					t.Errorf("texts: %+v, %v", texts, err)
+				}
+				meta, err := st.SearchMetadata(t.Context(), o)
+				if err != nil || len(meta) != 1 || len(meta[0].Places) != wantPlaces {
+					t.Errorf("metadata: %+v, %v", meta, err)
+				}
+				ai, err := st.SearchAI(t.Context(), o)
+				if err != nil || len(ai) != 2 {
+					t.Fatalf("AI: %+v, %v", ai, err)
+				}
+				for _, hit := range ai {
+					if len(hit.Places) != wantPlaces {
+						t.Errorf("AI places: %+v", hit.Places)
+					}
+				}
+			})
+		}
+	}
+}
