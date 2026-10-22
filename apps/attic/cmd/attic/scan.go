@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -18,12 +19,22 @@ import (
 type scanCmd struct {
 	Folder         string `arg:"" help:"Folder to scan."`
 	Config         string `help:"Configuration file."`
-	NoHash         bool   `xor:"content" help:"List only; hash on a later scan."`
-	RebuildContent bool   `xor:"content" help:"Rebuild archive listings and document text for selected content."`
-	Volume         string `xor:"volume" help:"Use this known volume ID after an identity question."`
-	NewVolume      bool   `xor:"volume" help:"Record a separate volume even if its fingerprint resembles one."`
+	NoHash         bool   `help:"List only; hash on a later scan."`
+	RebuildContent bool   `help:"Rebuild archive listings and document text for selected content."`
+	Volume         string `help:"Use this known volume ID after an identity question."`
+	NewVolume      bool   `help:"Record a separate volume even if its fingerprint resembles one."`
 	LogLevel       string `default:"info" help:"Log level: debug, info, warn or error."`
 	JSON           bool   `help:"Print JSON."`
+}
+
+func (cmd *scanCmd) Validate() error {
+	if cmd.NoHash && cmd.RebuildContent {
+		return errors.New("--no-hash and --rebuild-content cannot be combined")
+	}
+	if cmd.Volume != "" && cmd.NewVolume {
+		return errors.New("--volume and --new-volume cannot be combined")
+	}
+	return nil
 }
 
 func (cmd *scanCmd) Run(ctx context.Context) error {

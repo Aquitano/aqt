@@ -45,6 +45,12 @@ func TestCLIParsesArguments(t *testing.T) {
 		{[]string{"scan", `E:\Files`, "--rebuild-content"}, func(c cli) bool {
 			return c.Scan.Folder == `E:\Files` && c.Scan.RebuildContent && !c.Scan.NoHash
 		}},
+		{[]string{"scan", `E:\Files`, "--no-hash=false", "--rebuild-content"}, func(c cli) bool {
+			return c.Scan.RebuildContent && !c.Scan.NoHash
+		}},
+		{[]string{"scan", `E:\Files`, "--volume", "known", "--new-volume=false"}, func(c cli) bool {
+			return c.Scan.Volume == "known" && !c.Scan.NewVolume
+		}},
 		{[]string{"enrich", "123", "attic:0123456789abcdef", "--task", "ocr", "--force"}, func(c cli) bool {
 			return reflect.DeepEqual(c.Enrich.Targets, []string{"123", "attic:0123456789abcdef"}) && c.Enrich.Task == "ocr" && c.Enrich.Provider == "" && c.Enrich.Force && c.Enrich.Limit == 20
 		}},
