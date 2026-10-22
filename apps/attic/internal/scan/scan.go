@@ -232,6 +232,9 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 		if err := r.walk(ctx, start); err != nil {
 			return err
 		}
+		if err := r.sc.QueueHardLinkHashes(ctx); err != nil {
+			return err
+		}
 		return r.sc.Commit(ctx)
 	}
 	if err := r.step(ctx, "walk", "", &r.sc.Phases.Walk, walk); err != nil {
@@ -534,6 +537,15 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 	}
 	if r.rules.HashMaxBytes > 0 && p.Size > r.rules.HashMaxBytes {
 		return r.sc.SkipHash(ctx, p, "too_big", "", fmt.Sprintf("%d bytes", p.Size))
+	}
+	if p.Linked {
+		e, err := disk.Stat(r.osPath(p.Path))
+		if err == nil {
+			reused, err := r.sc.ReuseContent(ctx, p, e)
+			if err != nil || reused {
+				return err
+			}
+		}
 	}
 	started := time.Now()
 	digest, n, err := disk.Hash(ctx, r.osPath(p.Path))

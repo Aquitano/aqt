@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/aquitano/aqt/apps/attic/internal/config"
+	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
@@ -61,6 +64,58 @@ func TestHashBatchesKeepDuplicatesAndSizeGuards(t *testing.T) {
 	}
 	if again := scanAt(t, st, root, testVolume); again.Counts.Hashed != 1 || again.Counts.Duplicates != 1 {
 		t.Fatalf("resumed counts: %+v", again.Counts)
+	}
+}
+
+func TestPartialScanKeepsHashBatchesWithOutsideHardLinks(t *testing.T) {
+	st, _ := storetest.New(t)
+	ctx := t.Context()
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "outside"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 65 {
+		name := fmt.Sprintf("file-%03d.bin", i)
+		write(t, root, "inside/"+name, fmt.Sprintf("content-%03d", i))
+		if err := os.Link(filepath.Join(root, "inside", name), filepath.Join(root, "outside", name)); err != nil {
+			t.Skipf("no hardlinks: %v", err)
+		}
+	}
+	observed, err := disk.Stat(filepath.Join(root, "inside", "file-000.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observed.Changed.IsZero() {
+		t.Skip("this platform does not report change time")
+	}
+	first := scanAt(t, st, root, testVolume, func(o *Options) { o.NoHash = true })
+	sc, err := st.StartScan(ctx, first.Volume, "/inside")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sc.Finish(ctx, "interrupted", nil) })
+	pending, err := sc.NextPending(ctx, store.Pending{}, 256)
+	if err != nil || len(pending) != 65 {
+		t.Fatalf("pending: %d files, %v", len(pending), err)
+	}
+	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root,
+		rules: config.Default().Rules(first.Volume.ID, first.Volume.Label)}
+	for i, p := range pending {
+		if !p.Linked {
+			t.Fatalf("%s has no catalogued hardlink", p.Path)
+		}
+		if err := r.hashOne(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+		if want := int64((i + 1) / 64 * 64); sc.Counts.Hashed != want {
+			t.Fatalf("file %d: flushed %d hashes, want %d", i+1, sc.Counts.Hashed, want)
+		}
+	}
+	if err := sc.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if sc.Counts.Hashed != 65 || sc.Counts.Duplicates != 0 {
+		t.Fatalf("hash counts: %+v", sc.Counts)
 	}
 }
 

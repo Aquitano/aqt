@@ -38,7 +38,7 @@ func write(t *testing.T, root, rel, body string) {
 }
 
 // testVolume stands in for a disk; every test has a schema of its own.
-var testVolume = disk.Fingerprint{FS: "TEST", Serial: "7E57", Label: "Test", StableIDs: true}
+var testVolume = disk.Fingerprint{FS: "TEST", Serial: "7E57", Label: "Test", DeviceSerial: "test-device", StableIDs: true}
 
 // scanAt runs a scan with the temporary folder standing in for a volume root,
 // so the test needs neither a spare disk nor Windows.
@@ -82,7 +82,7 @@ func TestScanKeepsIdentityAcrossMoves(t *testing.T) {
 	write(t, root, "photos/MinecraftServer.rar", "world")
 	write(t, root, "projects/web/node_modules/x.js", "dependency")
 	write(t, root, "notes.txt", "hello")
-	fp := disk.Fingerprint{FS: "TEST", Serial: fmt.Sprintf("%X", time.Now().UnixNano()), Label: "Test", StableIDs: true}
+	fp := disk.Fingerprint{FS: "TEST", Serial: fmt.Sprintf("%X", time.Now().UnixNano()), Label: "Test", DeviceSerial: "test-device", StableIDs: true}
 
 	first := scanAt(t, st, root, fp)
 	if first.Counts.Hashed != 4 || first.Counts.Duplicates != 1 {
@@ -310,13 +310,21 @@ func TestCrossDirectoryHardLinksKeepTheirPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := scanAt(t, st, root, testVolume)
-	if renamed := livePaths(t, st, "linked", "/linked-renamed.txt")["/linked-renamed.txt"]; renamed.Ref != remaining.Ref || res.Counts.Hashed != 0 {
-		t.Fatalf("renamed remaining link %+v after hashing %d files, want ref %s unhashed", renamed, res.Counts.Hashed, remaining.Ref)
+	observed, err := disk.Stat(filepath.Join(root, "linked-renamed.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wantHashes int64
+	if !observed.Changed.IsZero() {
+		wantHashes = 1
+	}
+	if renamed := livePaths(t, st, "linked", "/linked-renamed.txt")["/linked-renamed.txt"]; renamed.Ref != remaining.Ref || res.Counts.Hashed != wantHashes {
+		t.Fatalf("renamed remaining link %+v after hashing %d files, want ref %s and %d hashes", renamed, res.Counts.Hashed, remaining.Ref, wantHashes)
 	}
 }
 
 // Only the destination is scanned and another link still holds the file. The
-// owner's path is gone, so its row moves without a hash.
+// owner's path is gone, so its row moves.
 func TestMovedHardLinkKeepsItsRow(t *testing.T) {
 	st, _ := storetest.New(t)
 	root := t.TempDir()
@@ -335,8 +343,16 @@ func TestMovedHardLinkKeepsItsRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := scanUnder(t, st, root, "new")
-	if after := livePaths(t, st, "moving", "/new/moving.bin")["/new/moving.bin"]; after.ID != before.ID || res.Counts.Hashed != 0 {
-		t.Fatalf("moved link %+v after hashing %d files, want row %d unhashed", after, res.Counts.Hashed, before.ID)
+	observed, err := disk.Stat(filepath.Join(root, "new", "moving.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wantHashes int64
+	if !observed.Changed.IsZero() {
+		wantHashes = 1
+	}
+	if after := livePaths(t, st, "moving", "/new/moving.bin")["/new/moving.bin"]; after.ID != before.ID || after.Ref != before.Ref || res.Counts.Hashed != wantHashes {
+		t.Fatalf("moved link %+v after hashing %d files, want row %d ref %s and %d hashes", after, res.Counts.Hashed, before.ID, before.Ref, wantHashes)
 	}
 }
 
