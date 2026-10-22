@@ -63,7 +63,7 @@ attic enrich 36331 36332 --task describe --provider openai --model YOUR_VISION_M
 attic analysis 36331 --json
 ```
 
-OCR defaults to local Tesseract. It reads images and PDFs marked `needs_ocr`, with the configured languages and page limit. Descriptions default to an OpenAI-compatible endpoint at `http://localhost:11434/v1`. Both vision tasks require an explicit model. Remote endpoints receive image bytes and the prompt, require HTTPS, and refuse redirects. Set `ai.api_key_env` to an environment variable's name when authentication is needed. HTTP is accepted for localhost and loopback addresses.
+OCR defaults to local Tesseract. It reads images and PDFs marked `needs_ocr`, with the configured languages and page limit. Descriptions default to an OpenAI-compatible endpoint at `http://localhost:11434/v1`. OpenAI-compatible and Codex tasks require an explicit vision model. Remote endpoints receive image bytes and the prompt, require HTTPS, and refuse redirects. Set `ai.api_key_env` to an environment variable's name when authentication is needed. HTTP is accepted for localhost and loopback addresses.
 
 An authenticated native Codex CLI is also available through `--provider codex --model MODEL`. It runs each image in an ephemeral session with tools disabled and a restricted permission profile. Strict configuration rejects unsupported settings; the profile was verified with Codex 0.162.1. On Windows, `ai.codex` must point to `codex.exe`, rather than a `.cmd` or `.bat` shim. Codex is limited to 20 contents per command.
 
@@ -73,9 +73,9 @@ Vision providers accept PNG, JPEG, GIF and WebP up to 20 MiB. Tesseract also acc
 
 Use `%APPDATA%\attic\config.toml`, or select another file with `--config`. `attic config` prints the effective settings and rules.
 
-`temp` selects one existing directory for verified copies and nested archives. It defaults to the system temporary directory and must be on another disk when scanning. Allow room for the files being processed. Private `aqt-attic/scan-*` workspaces are removed after use; abandoned workspaces are cleaned after a day when their locks are free.
+`temp` selects one existing directory for verified copies and nested archives. It defaults to the system temporary directory and must be on another disk when scanning. To scan C:, set `temp = 'D:\AtticTemp'` to an existing directory on another disk. Archive verification reads and copies each outer archive in full before listing it. Allow scratch space for that archive, open multipart volumes and nested archives. Private `aqt-attic/scan-*` workspaces are removed after use; abandoned workspaces are cleaned after a day when their locks are free.
 
-Legacy `archives.temp`, `metadata.temp` and `ai.temp` settings remain accepted for migration to the shared directory. Conflicting paths require an explicit choice.
+Legacy `archives.temp`, `metadata.temp` and `ai.temp` settings remain accepted when their explicit values agree. Remove the legacy settings when choosing a different top-level `temp`.
 
 Patterns use gitignore syntax and ignore case. Defaults exclude dependency and build output, game libraries and Windows system paths. BitLocker recovery-key files keep their names only. Configured patterns follow the defaults, so `!pattern` can re-include a path. A slash anchors a pattern at the volume root; use `**/name/` for any depth. On Windows, match a literal `[` with `[[]`.
 
