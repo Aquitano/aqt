@@ -12,7 +12,7 @@ Volume fingerprints combine the filesystem and volume serial with available part
 
 On NTFS and ReFS, stable file IDs let an entry retain its identity across moves. FAT and exFAT use the parent and lossless filename identity because their synthesized file IDs can change when directory entries move. Display and search names are valid Unicode; filename identity preserves bytes that Unicode cleaning would otherwise merge.
 
-Hard links identify one filesystem object through several paths. Entries retain their separate places, while stable object identity and matching size and timestamps allow hash reuse. Reuse stays within a volume. Size, modified time or change time changes invalidate known content. A pure rename can change NTFS change time without changing bytes, so move handling distinguishes that case.
+Hard links identify one filesystem object through several paths. Entries retain their separate places, while stable object identity and matching size and timestamps allow hash reuse within the scanned subtree. Size or timestamp changes invalidate known content. Single-file moves retain their hash because NTFS can change the change time on a rename. Moves involving hard links require verification because another path can already hold newer bytes. A scan covering conflicting hard links rechecks their bytes.
 
 ## Ancestry determines what moves or disappears
 
