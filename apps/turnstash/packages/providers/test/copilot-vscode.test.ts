@@ -131,6 +131,38 @@ test("extracts large saved snapshots into small turns and preserves the transcri
     },
   ));
 
+test("a tool call a response lists twice is kept once, with both summaries", () =>
+  withChat(
+    "session-1.json",
+    JSON.stringify({
+      ...session,
+      requests: [
+        {
+          ...request,
+          response: [
+            ...request.response.slice(0, 2),
+            {
+              kind: "toolInvocationSerialized",
+              toolCallId: "call-1",
+              toolId: "vscode_readFile_internal",
+              invocationMessage: { value: "Reading main.ts, lines 1 to 40" },
+            },
+            ...request.response.slice(2),
+          ],
+        },
+      ],
+    }),
+    async (source) => {
+      const conversation = copilotNormalizer.normalize("vscode:session-1", await read(source));
+      expect(conversation?.toolExecutions.map((tool) => [tool.toolKey, tool.name])).toEqual([
+        ["tool:request-1:call-1", "copilot_readFile"],
+      ]);
+      const parts = conversation?.messages[1]?.parts ?? [];
+      expect(parts.filter((part) => part.type === "tool_call")).toHaveLength(1);
+      expect(parts).toContainEqual({ type: "text", text: "Reading main.ts, lines 1 to 40" });
+    },
+  ));
+
 test("replays JSONL initial state, nested replacements and array appends", () => {
   const journal =
     [

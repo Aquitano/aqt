@@ -351,6 +351,40 @@ interface MessageBuild {
   readonly requests: ReadonlyArray<NormalizedRequest>;
 }
 
+const freeKey = (toolKey: string, messageKey: string, used: ReadonlySet<string>): string => {
+  const qualified = `${toolKey}@${messageKey}`;
+  let key = toolKey;
+  for (let count = 1; used.has(key); count += 1)
+    key = count === 1 ? qualified : `${qualified}#${count}`;
+  return key;
+};
+
+// Some models number tool calls per message (Kimi's `functions.read:6`), so a call id can repeat within a
+// message and across a session. A repeat is qualified by its message, then counted; a first use keeps its
+// key. Each tool's call part, and the result right after it, follow the tools in order.
+const withUniqueToolKeys = (build: MessageBuild, used: Set<string>): MessageBuild => {
+  const keys = build.tools.map((tool) => {
+    const key = freeKey(tool.toolKey, build.message.messageKey, used);
+    used.add(key);
+    return key;
+  });
+  if (keys.every((key, index) => key === build.tools[index]?.toolKey)) return build;
+  const parts: Array<MessagePart> = [];
+  let call = -1;
+  for (const part of build.message.parts) {
+    if (part.type === "tool_call") call += 1;
+    const toolKey = keys[call];
+    if (toolKey !== undefined && (part.type === "tool_call" || part.type === "tool_result"))
+      parts.push({ ...part, toolKey });
+    else parts.push(part);
+  }
+  return {
+    message: { ...build.message, parts },
+    tools: build.tools.map((tool, index) => ({ ...tool, toolKey: keys[index] ?? tool.toolKey })),
+    requests: build.requests,
+  };
+};
+
 const messageOf = (
   entry: Entry,
   seq: number,
@@ -519,10 +553,12 @@ const normalize = (
   const messages: Array<NormalizedMessage> = [];
   const toolExecutions: Array<NormalizedToolExecution> = [];
   const requests: Array<NormalizedRequest> = [];
+  const toolKeys = new Set<string>();
   const collect = (build: MessageBuild): void => {
-    messages.push(build.message);
-    toolExecutions.push(...build.tools);
-    requests.push(...build.requests);
+    const unique = withUniqueToolKeys(build, toolKeys);
+    messages.push(unique.message);
+    toolExecutions.push(...unique.tools);
+    requests.push(...unique.requests);
   };
 
   if (generation === "v2") {
@@ -604,7 +640,7 @@ const trim = (streamId: StreamId, payload: string): string => {
 
 export const opencodeNormalizer: Normalizer = {
   id: "opencode",
-  parserVersion: 3,
+  parserVersion: 4,
   conversationKeyOf,
   normalize,
   trim,
