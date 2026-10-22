@@ -6,8 +6,8 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
 
-// A move can retain a digest while acknowledging a new change time. When
-// another link needs hashing, that retained digest must be verified first.
+// Older scans could retain a moved link's digest while acknowledging a new
+// change time. Verify it when another link needs hashing or disagrees with it.
 func (sc *Scan) QueueHardLinkHashes(ctx context.Context) error {
 	if !sc.Volume.StableIDs {
 		return nil
@@ -22,13 +22,14 @@ func (sc *Scan) QueueHardLinkHashes(ctx context.Context) error {
 		where e.volume_id = $1 and e.kind = 'file' and e.missing_scan is null
 		  and e.hash_state = 'done' and e.physical_file_id is not null
 		  and e.path collate "C" > $2 and ($3 = '' or e.path collate "C" < $3)
-		  and exists(select 1 from entries pending
-		             where pending.volume_id = e.volume_id and pending.physical_file_id = e.physical_file_id
-		               and pending.id <> e.id and pending.kind = 'file' and pending.missing_scan is null
-		               and pending.hash_state in ('pending', 'failed')
-		               and pending.size_bytes = e.size_bytes and pending.modified_at = e.modified_at
-		               and pending.changed_at = e.changed_at
-		               and pending.path collate "C" > $2 and ($3 = '' or pending.path collate "C" < $3))`,
+		  and exists(select 1 from entries link
+		             where link.volume_id = e.volume_id and link.physical_file_id = e.physical_file_id
+		               and link.id <> e.id and link.kind = 'file' and link.missing_scan is null
+		               and (link.hash_state in ('pending', 'failed')
+		                    or (link.hash_state = 'done' and link.content_id is distinct from e.content_id))
+		               and link.size_bytes = e.size_bytes and link.modified_at = e.modified_at
+		               and link.changed_at = e.changed_at
+		               and link.path collate "C" > $2 and ($3 = '' or link.path collate "C" < $3))`,
 		sc.Volume.ID, lower, upper)
 	if err != nil {
 		return err

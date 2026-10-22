@@ -310,13 +310,13 @@ func TestCrossDirectoryHardLinksKeepTheirPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := scanAt(t, st, root, testVolume)
-	if renamed := livePaths(t, st, "linked", "/linked-renamed.txt")["/linked-renamed.txt"]; renamed.Ref != remaining.Ref || res.Counts.Hashed != 0 {
-		t.Fatalf("renamed remaining link %+v after hashing %d files, want ref %s unhashed", renamed, res.Counts.Hashed, remaining.Ref)
+	if renamed := livePaths(t, st, "linked", "/linked-renamed.txt")["/linked-renamed.txt"]; renamed.Ref != remaining.Ref || res.Counts.Hashed != 1 {
+		t.Fatalf("renamed remaining link %+v after hashing %d files, want ref %s verified once", renamed, res.Counts.Hashed, remaining.Ref)
 	}
 }
 
 // Only the destination is scanned and another link still holds the file. The
-// owner's path is gone, so its row moves without a hash.
+// owner's path is gone, so its row moves and its content is verified.
 func TestMovedHardLinkKeepsItsRow(t *testing.T) {
 	st, _ := storetest.New(t)
 	root := t.TempDir()
@@ -335,8 +335,8 @@ func TestMovedHardLinkKeepsItsRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := scanUnder(t, st, root, "new")
-	if after := livePaths(t, st, "moving", "/new/moving.bin")["/new/moving.bin"]; after.ID != before.ID || res.Counts.Hashed != 0 {
-		t.Fatalf("moved link %+v after hashing %d files, want row %d unhashed", after, res.Counts.Hashed, before.ID)
+	if after := livePaths(t, st, "moving", "/new/moving.bin")["/new/moving.bin"]; after.ID != before.ID || after.Ref != before.Ref || res.Counts.Hashed != 1 {
+		t.Fatalf("moved link %+v after hashing %d files, want row %d ref %s verified once", after, res.Counts.Hashed, before.ID, before.Ref)
 	}
 }
 

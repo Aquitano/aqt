@@ -34,6 +34,12 @@ type Scan struct {
 	skips       [][]any
 	hashes      []completedHash
 	hashInserts map[int64]bool
+	heldFiles   map[fileLocation]bool
+}
+
+type fileLocation struct {
+	path   string
+	fileID int64
 }
 
 type ScanCounts struct {
@@ -389,12 +395,12 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 				}
 				if l.Kind == "file" && keptAsLink(l) {
 					listed[i].FileID = 0
-					if r.MissingScan == nil && !holds(r.Path, l.FileID) {
+					if r.MissingScan == nil && !sc.holdsFile(r.Path, l.FileID, holds) {
 						vacated = append(vacated, r.ID)
 					}
 					continue
 				}
-				if l.Kind == "file" && r.MissingScan == nil && holds(r.Path, l.FileID) {
+				if l.Kind == "file" && r.MissingScan == nil && sc.holdsFile(r.Path, l.FileID, holds) {
 					listed[i].FileID = 0
 					continue
 				}
@@ -471,7 +477,16 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		if !moved && unchanged(r, l, parentID) {
 			continue
 		}
-		reset, state := contentAfter(r, l, moved)
+		var linked bool
+		if moved && l.Kind == "file" && !sameTime(r.Changed, l.Changed) {
+			if err := tx.QueryRow(ctx, `select exists(select 1 from entries
+				where volume_id = $1 and physical_file_id = $2 and id <> $3
+				  and kind = 'file' and missing_scan is null)`,
+				sc.Volume.ID, nullIDPtr(l.physicalFileID), r.ID).Scan(&linked); err != nil {
+				return nil, err
+			}
+		}
+		reset, state := contentAfter(r, l, moved, linked)
 		batch.Queue(`
 			update entries set parent_id = $2, kind = $3, name = $4, path = $5, ext = $6, file_id = $7, size_bytes = $8,
 			       created_at = $9, modified_at = $10, accessed_at = $11, changed_at = $12, attributes = $13,
@@ -579,6 +594,19 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 	return dirs, nil
 }
 
+func (sc *Scan) holdsFile(entryPath string, fileID int64, observe func(string, int64) bool) bool {
+	location := fileLocation{path: entryPath, fileID: fileID}
+	if held, ok := sc.heldFiles[location]; ok {
+		return held
+	}
+	if sc.heldFiles == nil {
+		sc.heldFiles = make(map[fileLocation]bool)
+	}
+	held := observe(entryPath, fileID)
+	sc.heldFiles[location] = held
+	return held
+}
+
 // newRows collects a folder's new entries column by column for one unnest
 // insert. Pointers carry NULLs.
 type newRows struct {
@@ -652,13 +680,14 @@ func unchanged(r *entryRow, l Listed, parentID *int64) bool {
 
 // contentAfter decides whether a changed entry keeps its content. Size or
 // modified time changing means new bytes. A change time that moved while the
-// entry stayed put does too: some writers restore the modified time. A rename
-// or move also moves the change time on NTFS, so it does not count there.
-func contentAfter(r *entryRow, l Listed, moved bool) (bool, string) {
+// entry stayed put does too: some writers restore the modified time. NTFS also
+// changes that time on a move, so single-file moves keep their content. Hard
+// links must be verified because another path may already know newer bytes.
+func contentAfter(r *entryRow, l Listed, moved, linked bool) (bool, string) {
 	if l.Kind != "file" {
 		return true, "none"
 	}
-	if r.Kind != "file" || !samePtr(r.PhysicalFileID, nullIDPtr(l.physicalFileID)) || r.Size != l.Size || !sameTime(r.Modified, l.Modified) || (!moved && !sameTime(r.Changed, l.Changed)) {
+	if r.Kind != "file" || !samePtr(r.PhysicalFileID, nullIDPtr(l.physicalFileID)) || r.Size != l.Size || !sameTime(r.Modified, l.Modified) || ((!moved || linked) && !sameTime(r.Changed, l.Changed)) {
 		return true, l.HashState
 	}
 	return false, hashStateAfter(r.HashState, l.HashState)

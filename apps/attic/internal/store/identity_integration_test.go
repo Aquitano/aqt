@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"slices"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -176,5 +177,79 @@ func TestHardLinkReuseRejectsUnverifiedIdentityAndMetadata(t *testing.T) {
 	pgschematest.QueryInt(t, dsn, "update entries set volume_id=$2 where id=$1 returning id", pending[0].ID, volume.ID)
 	if reused, err := sc.ReuseContent(ctx, pending[1], observed); err != nil || !reused {
 		t.Fatalf("verified hardlink reused=%v, %v", reused, err)
+	}
+}
+
+func TestHardLinkOwnerIsObservedOncePerScan(t *testing.T) {
+	st, dsn := storetest.New(t)
+	ctx := t.Context()
+	volume, err := st.ResolveVolume(ctx, disk.Volume{Fingerprint: disk.Fingerprint{
+		FS: "TEST", Serial: "links", StableIDs: true,
+	}}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc, err := st.StartScan(ctx, volume, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if sc != nil {
+			_ = sc.Finish(ctx, "interrupted", nil)
+		}
+	})
+	apply := func(parent *store.Dir, listed []store.Listed, holds func(string, int64) bool) []store.Dir {
+		t.Helper()
+		dirs, err := sc.ApplyListing(ctx, parent, slices.Clone(listed), nil, true, holds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return dirs
+	}
+	root := apply(nil, []store.Listed{{Kind: "dir", FileID: 1}}, nil)
+	dirs := apply(&root[0], []store.Listed{
+		{Name: "owner", Kind: "dir", FileID: 2},
+		{Name: "links", Kind: "dir", FileID: 3},
+	}, nil)
+	links := apply(&dirs[1], []store.Listed{
+		{Name: "a", Kind: "dir", FileID: 4},
+		{Name: "b", Kind: "dir", FileID: 5},
+	}, nil)
+	file := []store.Listed{{Name: "linked.bin", Kind: "file", FileID: 42, HashState: "pending"}}
+	for phase := range 3 {
+		probes := 0
+		holds := func(path string, id int64) bool {
+			if path != "/owner/linked.bin" || id != 42 {
+				t.Fatalf("unexpected owner observation: %s, %d", path, id)
+			}
+			probes++
+			return phase < 2
+		}
+		if phase == 0 {
+			apply(&dirs[0], file, holds)
+		} else {
+			sc, err = st.StartScan(ctx, volume, "/links")
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, link := range links {
+			apply(&link, file, holds)
+		}
+		if err := sc.Finish(ctx, "complete", nil); err != nil {
+			t.Fatal(err)
+		}
+		sc = nil
+		if probes != 1 {
+			t.Fatalf("phase %d: observed owner %d times, want one", phase, probes)
+		}
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from entries
+		where path='/owner/linked.bin' and missing_scan is not null`); n != 1 {
+		t.Fatal("partial scan did not vacate the disappeared owner")
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from entries
+		where kind='file' and missing_scan is null`); n != 2 {
+		t.Fatalf("kept %d links, want two", n)
 	}
 }
