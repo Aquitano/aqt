@@ -11,6 +11,8 @@ go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 
 `DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. Database migrations run on startup.
 
+The identity upgrade rewrites catalogue entries once and builds indexes. Startup waits for it to finish, and PostgreSQL needs additional database storage during the upgrade.
+
 Install ExifTool for embedded metadata. OCR also needs Tesseract and Poppler's `pdftoppm`. Missing ExifTool leaves metadata pending and records `metadata_unavailable`; the rest of the scan continues.
 
 ## Use
@@ -79,7 +81,7 @@ Use `%APPDATA%\attic\config.toml`, or select another file with `--config`. `atti
 
 `temp` selects one existing directory for verified copies and nested archives. It defaults to the system temporary directory and must be on another disk when scanning. To scan C:, set `temp = 'D:\AtticTemp'` to an existing directory on another disk. Archive verification reads and copies each outer archive in full before listing it. Allow scratch space for that archive, open multipart volumes and nested archives. Private `aqt-attic/scan-*` workspaces are removed after use; abandoned workspaces are cleaned after a day when their locks are free.
 
-Legacy `archives.temp`, `metadata.temp` and `ai.temp` settings remain accepted when their explicit values agree. Remove the legacy settings when choosing a different top-level `temp`.
+Legacy `archives.temp`, `metadata.temp` and `ai.temp` settings remain accepted. Empty `metadata.temp` and `ai.temp` values inherit the shared directory. Conflicting explicit directories are rejected. Remove the legacy settings when choosing a different top-level `temp`.
 
 Patterns use gitignore syntax and ignore case. Defaults exclude dependency and build output, game libraries and Windows system paths. BitLocker recovery-key files keep their names only. Configured patterns follow the defaults, so `!pattern` can re-include a path. A slash anchors a pattern at the volume root; use `**/name/` for any depth. On Windows, match a literal `[` with `[[]`.
 
