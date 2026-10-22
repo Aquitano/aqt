@@ -195,7 +195,7 @@ func (c *Config) resolveTemp(paths ...*string) error {
 	var selected *string
 	var source string
 	for i, p := range paths {
-		if p == nil {
+		if p == nil || i >= 2 && *p == "" {
 			continue
 		}
 		if selected != nil && clean(*p) != clean(*selected) {

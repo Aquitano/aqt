@@ -69,6 +69,8 @@ func TestSharedTempMigratesAliasesAndRejectsConflicts(t *testing.T) {
 		{"archives", "[archives]\ntemp = '/scratch'", "/scratch", false},
 		{"metadata", "[metadata]\ntemp = '/scratch'", "/scratch", false},
 		{"ai", "[ai]\ntemp = '/scratch'", "/scratch", false},
+		{"empty inherited aliases", "[archives]\ntemp = '/scratch'\n[metadata]\ntemp = ''\n[ai]\ntemp = ''", "/scratch", false},
+		{"shared with empty aliases", "temp = '/scratch'\n[metadata]\ntemp = ''\n[ai]\ntemp = ''", "/scratch", false},
 		{"matching", "temp = '/scratch'\n[archives]\ntemp = '/scratch/.'\n[ai]\ntemp = '/scratch'", "/scratch", false},
 		{"legacy conflict", "[archives]\ntemp = '/first'\n[metadata]\ntemp = '/second'", "", true},
 		{"shared conflict", "temp = '/first'\n[ai]\ntemp = '/second'", "", true},
