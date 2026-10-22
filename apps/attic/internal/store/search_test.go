@@ -26,13 +26,13 @@ func searchFixture(t *testing.T) (*store.Store, *pgx.Conn) {
  (1,'00000000-0000-0000-0000-000000000001','','complete');
  insert into contents (id,blake3,size_bytes) overriding system value values
  (1,decode(repeat('11',32),'hex'),10), (2,decode(repeat('22',32),'hex'),20);
- insert into entries (id,volume_id,parent_id,kind,name,path,ext,content_id,hash_state,first_scan,updated_scan) overriding system value values
- (1,'00000000-0000-0000-0000-000000000001',null,'dir','','', '',null,'none',1,1),
- (2,'00000000-0000-0000-0000-000000000002',null,'dir','','', '',null,'none',1,1),
- (3,'00000000-0000-0000-0000-000000000001',1,'file','Tom & Jerry.pdf','/docs/Tom & Jerry.pdf','pdf',1,'done',1,1),
- (4,'00000000-0000-0000-0000-000000000001',1,'file','bundle.zip','/docs/bundle.zip','zip',2,'done',1,1),
- (5,'00000000-0000-0000-0000-000000000001',1,'file','copy.jpg','/else/copy.jpg','jpg',1,'done',1,1),
- (6,'00000000-0000-0000-0000-000000000002',2,'file','copy.pdf','/docs/copy.pdf','pdf',1,'done',1,1);
+ insert into entries (id,volume_id,parent_id,kind,name,raw_name,path,ext,content_id,hash_state,first_scan,updated_scan) overriding system value values
+ (1,'00000000-0000-0000-0000-000000000001',null,'dir','',''::bytea,'', '',null,'none',1,1),
+ (2,'00000000-0000-0000-0000-000000000002',null,'dir','',''::bytea,'', '',null,'none',1,1),
+ (3,'00000000-0000-0000-0000-000000000001',1,'file','Tom & Jerry.pdf','Tom & Jerry.pdf'::bytea,'/docs/Tom & Jerry.pdf','pdf',1,'done',1,1),
+ (4,'00000000-0000-0000-0000-000000000001',1,'file','bundle.zip','bundle.zip'::bytea,'/docs/bundle.zip','zip',2,'done',1,1),
+ (5,'00000000-0000-0000-0000-000000000001',1,'file','copy.jpg','copy.jpg'::bytea,'/else/copy.jpg','jpg',1,'done',1,1),
+ (6,'00000000-0000-0000-0000-000000000002',2,'file','copy.pdf','copy.pdf'::bytea,'/docs/copy.pdf','pdf',1,'done',1,1);
  insert into archives(content_id,status) values(2,'listed');
  insert into members(archive_id,kind,name,path,ext) values(2,'file','Tom & Jerry.pdf','Tom & Jerry.pdf','pdf');
  insert into texts(content_id,status,text) values(1,'ok','Tom & Jerry');
@@ -219,8 +219,8 @@ func TestSearchUsesIndexedTerms(t *testing.T) {
 
 func TestSearchFiltersAndAIProvenance(t *testing.T) {
 	st, conn := searchFixture(t)
-	_, err := conn.Exec(t.Context(), `insert into entries(id,volume_id,parent_id,kind,name,path,ext,content_id,hash_state,first_scan,updated_scan) overriding system value values
- (7,'00000000-0000-0000-0000-000000000002',2,'file','copy.zip','/docs/copy.zip','zip',2,'done',1,1);`)
+	_, err := conn.Exec(t.Context(), `insert into entries(id,volume_id,parent_id,kind,name,raw_name,path,ext,content_id,hash_state,first_scan,updated_scan) overriding system value values
+ (7,'00000000-0000-0000-0000-000000000002',2,'file','copy.zip','copy.zip'::bytea,'/docs/copy.zip','zip',2,'done',1,1);`)
 	if err != nil {
 		t.Fatal(err)
 	}
