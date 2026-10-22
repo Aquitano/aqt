@@ -467,6 +467,7 @@ const normalize = (
   const stamped = stampedEvents(events);
 
   const messages: Array<NormalizedMessage> = [];
+  const messageKeys = new Set<string>();
   const tools = new Map<string, ToolDraft>();
   const drafts: Array<DraftRequest> = [];
   const legs: Array<Leg> = [];
@@ -491,6 +492,7 @@ const normalize = (
     messages.push(
       toMessage(messageKey, messages.length, role, previousMessageKey, createdAt, parts),
     );
+    messageKeys.add(messageKey);
     previousMessageKey = messageKey;
   };
 
@@ -524,7 +526,7 @@ const normalize = (
         }
         const interactionKey = `user:${stringAt(data, "interactionId") ?? event.id}`;
         // Invoking a skill adds a second user message, carrying the skill's context, to the interaction.
-        const taken = messages.some((message) => message.messageKey === interactionKey);
+        const taken = messageKeys.has(interactionKey);
         pushMessage(taken ? `user:${event.id}` : interactionKey, "user", event.timestamp, parts);
         return;
       }
