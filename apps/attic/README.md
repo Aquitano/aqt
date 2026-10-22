@@ -49,6 +49,21 @@ A changed or unavailable device serial requires an identity decision when the vo
 
 Ctrl+C keeps committed work. Run the same command again to continue. The summary includes phase times and the log path under `%LOCALAPPDATA%\attic\logs`. Use `--log-level debug` to log individual reads.
 
+## Verify stored file hashes
+
+```powershell
+attic verify --under E:\Files
+attic verify --volume Data --under /Files --json
+```
+
+Verification rereads each selected catalogue file and compares its full BLAKE3 digest, even when its size and timestamps have not changed. It checks that specific copy, including copies marked missing, without falling back to another disk. It leaves source bytes, catalogue hashes and extracted results unchanged. A mismatch means the bytes differ from the baseline; it does not establish corruption.
+
+`--under` is required. Mounted paths use the disk's current identity. `--volume` confirms an ambiguous identity and also accepts volume-relative paths, including missing folders or offline volumes. Links, junctions and cloud placeholders are not read. Like scanning, mounted volume identification currently requires Windows.
+
+Results distinguish matched, mismatched, unreadable, missing, unavailable and unknown files. Unknown means the catalogue has no full digest, or the scope contains no catalogue files. Verification does not discover files absent from the catalogue. Any result other than matched exits with code 1. The text output ends with counts; `--json` streams one JSON entry per line followed by a summary with `type: "summary"`. The summary's `complete` flag means selection finished, not that all files matched. Cancellation or a catalogue error leaves a partial report with `complete: false` and a nonzero exit.
+
+Ordinary scans can reuse a hash when file metadata is unchanged. `verify` checks those bytes explicitly. `scan --rebuild-content` rebuilds archive listings and document text; it does not replace verification of every selected file.
+
 ## Rebuild archive listings and document text
 
 Older scans could attach results to the wrong content if a file changed between hashing and extraction. Ordinary rescans reuse those results. To rebuild the archive listings and document text associated with present files below a selected folder, run:
