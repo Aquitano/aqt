@@ -8,7 +8,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.5
 	github.com/aquitano/aqt/packages/go/pgschema v0.0.0
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/go-jose/go-jose/v4 v4.1.5
+	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.20.3
 	github.com/natefinch/atomic v1.0.1
