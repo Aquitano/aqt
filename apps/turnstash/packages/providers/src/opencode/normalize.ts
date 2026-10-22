@@ -7,6 +7,7 @@ import {
   jsonStringAt as stringAt,
   parseJsonObject,
   sqliteTableOf,
+  storedBlobOf,
   streamPartsOf,
   emptyUsage,
   textOfParts,
@@ -411,7 +412,14 @@ const buildV2Message = (
   const text = stringAt(entry.data, "text");
   if (text !== undefined) built.parts.push({ type: "text", text });
   const files = arrayAt(entry.data, "files");
-  if (files.length > 0) built.parts.push({ type: "opaque", kind: "files", data: files });
+  const otherFiles: Array<Json> = [];
+  for (const file of files) {
+    const mediaType = isJsonObject(file) ? stringAt(file, "mime") : undefined;
+    if (isJsonObject(file) && mediaType?.startsWith("image/") === true)
+      built.parts.push({ type: "image", mediaType, ...storedBlobOf(file["data"]) });
+    else otherFiles.push(file);
+  }
+  if (otherFiles.length > 0) built.parts.push({ type: "opaque", kind: "files", data: otherFiles });
   if (type !== "user" && type !== "assistant") {
     built.parts.push({ type: "opaque", kind: type, data: entry.data });
   }
@@ -466,7 +474,8 @@ const buildLegacyMessage = (
     else if (type === "file") {
       const mediaType = stringAt(part.data, "mime");
       const filename = stringAt(part.data, "filename");
-      if (mediaType?.startsWith("image/") === true) built.parts.push({ type: "image", mediaType });
+      if (mediaType?.startsWith("image/") === true)
+        built.parts.push({ type: "image", mediaType, ...storedBlobOf(part.data["url"]) });
       else {
         built.parts.push({
           type: "opaque",
@@ -629,7 +638,7 @@ const trimmedPayload = (kind: SourceKind, payload: string): string => {
   const row = parseJsonObject(payload);
   const data = row?.["data"];
   if (row === undefined || !Predicate.isString(data)) return payload;
-  const parsed = parseJsonObject(data);
+  const parsed = dataOf(kind, row);
   return parsed === undefined ? payload : JSON.stringify(withJsonField(row, "data", parsed));
 };
 

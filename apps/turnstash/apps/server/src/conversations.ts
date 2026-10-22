@@ -30,6 +30,7 @@ import {
 import { Effect } from "effect";
 
 import { conversationTurnViews } from "./analysis.ts";
+import { deleteUnlinkedBlobs } from "./blobs.ts";
 import { lockConversations } from "./conversation-locks.ts";
 import { Db, inTransaction } from "./db/client.ts";
 import {
@@ -496,6 +497,7 @@ export const deleteConversation = Effect.fn("Conversations.delete")(function* (i
           ),
         );
       yield* tx.delete(conversations).where(eq(conversations.id, id));
+      yield* deleteUnlinkedBlobs();
     }),
   );
 });

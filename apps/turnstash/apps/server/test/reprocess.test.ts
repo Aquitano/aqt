@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   MachineId,
+  parseJsonObject,
   RecordKey,
   sha256Hex,
   type SourceDescriptor,
@@ -11,11 +12,21 @@ import {
   streamIdOf,
   type WireRecord,
 } from "@aqt/turnstash-core";
-import { asc } from "drizzle-orm";
-import { Effect } from "effect";
+import { asc, eq, sql } from "drizzle-orm";
+import { Deferred, Effect, Fiber } from "effect";
 
-import { Db } from "../src/db/client.ts";
-import { machines, messages, modelRequests, sourceRecords } from "../src/db/schema.ts";
+import { getBlob, setRecordBlobs } from "../src/blobs.ts";
+import { deleteConversation } from "../src/conversations.ts";
+import { Db, inTransaction } from "../src/db/client.ts";
+import {
+  blobs,
+  conversations,
+  machines,
+  messages,
+  modelRequests,
+  recordBlobs,
+  sourceRecords,
+} from "../src/db/schema.ts";
 import { applyBatch } from "../src/ingest.ts";
 import { Normalizers } from "../src/registry.ts";
 import { reprocessArchive } from "../src/reprocess.ts";
@@ -124,6 +135,202 @@ test("reprocessing trims records stored before their provider's trim and rebuild
       expect(after.map((row) => row.hash)).toEqual(before.map((row) => row.hash));
       expect(after.some((row) => row.payload.includes("encrypted_content"))).toBe(false);
       expect(yield* conversation).toEqual(built);
+    }),
+  );
+});
+
+const image = "iVBOR".padEnd(2000, "A");
+const imageData = Buffer.from(image, "base64");
+const imageSha256 = sha256Hex(imageData);
+
+const claudePrompt = (session: string) =>
+  wire(
+    "claude",
+    StreamId.make(`fixture/jsonl/projects/example-slug/${session}.jsonl`),
+    "0",
+    JSON.stringify({
+      type: "user",
+      uuid: "00000000-0000-4000-8000-000000000001",
+      sessionId: session,
+      timestamp: "2026-10-17T09:00:00.000Z",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "what is this" },
+          { type: "image", source: { type: "base64", media_type: "image/png", data: image } },
+        ],
+      },
+    }),
+  );
+
+test("inline images move into blobs under their sha256, on ingest and when reprocessing older records", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      const prompt = claudePrompt("22222222-2222-4222-8222-222222222222");
+      yield* ingest("11111111-0000-4000-8000-000000000003", [prompt]);
+      const ingested = yield* stored;
+      expect(ingested.map((row) => row.hash)).toEqual([prompt.contentHash]);
+      expect(ingested.map((row) => row.payload.includes("iVBOR"))).toEqual([false]);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
+
+      // An archive written before images moved out of their records.
+      yield* db.update(sourceRecords).set({ payload: prompt.payload });
+      yield* db.delete(recordBlobs);
+      yield* db.delete(blobs);
+      expect((yield* reprocessArchive()).trimmed).toBe(1);
+      expect(yield* stored).toEqual(ingested);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
+      yield* workOnce();
+      const { messages: built } = yield* conversation;
+      expect(built.flatMap((message) => message.parts)).toContainEqual({
+        type: "image",
+        mediaType: "image/png",
+        bytes: 1500,
+        sha256: imageSha256,
+      });
+    }),
+  );
+});
+
+test("reprocessing retains old blob references when a record also gains an attachment", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      const prompt = claudePrompt("22222222-2222-4222-8222-222222222222");
+      yield* ingest("11111111-0000-4000-8000-000000000005", [prompt]);
+      const [archived] = yield* stored;
+      const document = Buffer.alloc(1200, 42);
+      yield* db.update(sourceRecords).set({
+        payload: JSON.stringify(
+          Object.assign({}, parseJsonObject(archived!.payload), {
+            document: { type: "base64", data: document.toString("base64") },
+          }),
+        ),
+      });
+      expect((yield* reprocessArchive()).trimmed).toBe(1);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
+      expect(yield* getBlob(sha256Hex(document))).toEqual(document);
+      expect((yield* db.select().from(recordBlobs)).length).toBe(2);
+      expect((yield* reprocessArchive()).trimmed).toBe(0);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
+    }),
+  );
+});
+
+test("replacing a record cleans up only its removed blob references", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      const prompt = claudePrompt("22222222-2222-4222-8222-222222222222");
+      yield* ingest("11111111-0000-4000-8000-000000000006", [prompt]);
+      const unrelated = Buffer.from("unrelated");
+      yield* db.insert(blobs).values({ sha256: sha256Hex(unrelated), data: unrelated });
+      const payload = prompt.payload.replace(image, "AA==");
+      yield* ingest("11111111-0000-4000-8000-000000000007", [
+        {
+          ...prompt,
+          payload,
+          contentHash: sha256Hex(payload),
+        },
+      ]);
+      expect(
+        (yield* db.select({ sha256: blobs.sha256 }).from(blobs))
+          .map((row) => row.sha256)
+          .toSorted(),
+      ).toEqual([sha256Hex(unrelated), sha256Hex(Buffer.from([0]))].toSorted());
+      expect(yield* getBlob(sha256Hex(Buffer.from([0])))).toEqual(Buffer.from([0]));
+    }),
+  );
+});
+
+test("removing the last blob reference waits for a concurrent upload of the same bytes", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      yield* ingest("11111111-0000-4000-8000-000000000008", [
+        claudePrompt("33333333-3333-4333-8333-333333333333"),
+        claudePrompt("44444444-4444-4444-8444-444444444444"),
+      ]);
+      const [first, second] = yield* db.select({ id: sourceRecords.id }).from(sourceRecords);
+      const empty = { blobs: new Map<string, Buffer>(), sha256s: new Set<string>() };
+      yield* inTransaction(setRecordBlobs([{ id: second!.id, ...empty }]));
+      const uploaded = yield* Deferred.make<number>();
+      const removing = yield* Deferred.make<number>();
+      const release = yield* Deferred.make<void>();
+      const uploading = yield* inTransaction(
+        Effect.gen(function* () {
+          const tx = yield* Db;
+          const [backend] = yield* tx.execute<{ pid: number }>(
+            sql`SELECT pg_backend_pid() AS pid`,
+            "objects",
+          );
+          yield* setRecordBlobs([
+            {
+              id: second!.id,
+              blobs: new Map([[imageSha256, imageData]]),
+              sha256s: new Set([imageSha256]),
+            },
+          ]);
+          yield* Deferred.succeed(uploaded, backend!.pid);
+          yield* Deferred.await(release);
+        }),
+      ).pipe(Effect.forkScoped);
+      const uploaderPid = yield* Deferred.await(uploaded);
+      const removal = yield* inTransaction(
+        Effect.gen(function* () {
+          const tx = yield* Db;
+          const [backend] = yield* tx.execute<{ pid: number }>(
+            sql`SELECT pg_backend_pid() AS pid`,
+            "objects",
+          );
+          yield* Deferred.succeed(removing, backend!.pid);
+          yield* setRecordBlobs([{ id: first!.id, ...empty }]);
+        }),
+      ).pipe(Effect.forkScoped);
+      const removerPid = yield* Deferred.await(removing);
+      yield* Effect.gen(function* () {
+        while (true) {
+          const [state] = yield* db.execute<{ blocked: boolean }>(
+            sql`SELECT ${uploaderPid} = ANY(pg_blocking_pids(${removerPid})) AS blocked`,
+            "objects",
+          );
+          if (state?.blocked) return;
+        }
+      }).pipe(Effect.timeout("5 seconds"));
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(uploading);
+      yield* Fiber.join(removal);
+      expect(
+        yield* db.select().from(recordBlobs).where(eq(recordBlobs.recordId, second!.id)),
+      ).toEqual([{ recordId: second!.id, sha256: imageSha256 }]);
+      expect(yield* getBlob(imageSha256)).toEqual(imageData);
+    }).pipe(Effect.scoped),
+  );
+});
+
+test("an image in two conversations is stored once and deleted with the last of them", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      yield* ingest("11111111-0000-4000-8000-000000000004", [
+        claudePrompt("33333333-3333-4333-8333-333333333333"),
+        claudePrompt("44444444-4444-4444-8444-444444444444"),
+      ]);
+      yield* workOnce();
+      const storedHashes = db.select({ sha256: blobs.sha256 }).from(blobs);
+      expect(yield* storedHashes).toEqual([{ sha256: imageSha256 }]);
+
+      const [first, second] = yield* db.select({ id: conversations.id }).from(conversations);
+      yield* deleteConversation(first!.id);
+      expect(yield* storedHashes).toEqual([{ sha256: imageSha256 }]);
+      yield* deleteConversation(second!.id);
+      expect(yield* storedHashes).toEqual([]);
     }),
   );
 });

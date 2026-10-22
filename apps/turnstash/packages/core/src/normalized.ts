@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import { IsoTimestamp } from "./records.ts";
+import { ContentHash, IsoTimestamp } from "./records.ts";
 
 export const Role = Schema.Literals(["user", "assistant", "system", "tool"]);
 export type Role = typeof Role.Type;
@@ -27,6 +27,7 @@ export const ImagePart = Schema.Struct({
   type: Schema.Literal("image"),
   mediaType: Schema.optionalKey(Schema.String),
   bytes: Schema.optionalKey(Schema.Natural),
+  sha256: Schema.optionalKey(ContentHash),
 });
 export const OpaquePart = Schema.Struct({
   type: Schema.Literal("opaque"),
