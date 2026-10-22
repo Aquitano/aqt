@@ -3,6 +3,7 @@ module github.com/aquitano/aqt/apps/attic
 go 1.27.2
 
 require (
+	github.com/alecthomas/kong v1.16.1
 	github.com/aquitano/aqt/packages/go/extract v0.0.0
 	github.com/aquitano/aqt/packages/go/pgschema v0.0.0
 	github.com/bodgit/sevenzip v1.6.5

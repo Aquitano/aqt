@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"maps"
 	"os"
@@ -60,19 +59,19 @@ func printHits(hits []hitOut) error {
 	return tw.Flush()
 }
 
-func cmdSearch(ctx context.Context, args []string) error {
-	flagArgs, words := interspersed(args, map[string]bool{"any": true, "json": true})
-	fs := flag.NewFlagSet("search", flag.ExitOnError)
-	anyWord := fs.Bool("any", false, "")
-	volume := fs.String("volume", "", "")
-	ext := fs.String("ext", "", "")
-	kind := fs.String("kind", "", "")
-	under := fs.String("under", "", "")
-	limit := fs.Int("limit", 20, "")
-	offset := fs.Int("offset", 0, "")
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(flagArgs)
+type searchCmd struct {
+	Words  []string `arg:"" optional:"" help:"Words to find in names, paths and content."`
+	Any    bool     `help:"Match any word instead of every word."`
+	Volume string   `help:"Volume label or ID."`
+	Ext    string   `help:"File extension, such as pdf."`
+	Kind   string   `enum:"file,dir,link," default:"" help:"Entry kind: file, dir or link."`
+	Under  string   `help:"Mounted path, or volume-relative path with --volume."`
+	Limit  int      `default:"20" help:"Maximum results per result type."`
+	Offset int      `help:"Skip this many ranked results."`
+	JSON   bool     `help:"Print JSON."`
+}
 
+func (cmd *searchCmd) Run(ctx context.Context) error {
 	st, err := openStore(ctx)
 	if err != nil {
 		return err
@@ -82,16 +81,16 @@ func cmdSearch(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	o := store.SearchOptions{Query: strings.Join(words, " "), Any: *anyWord, Ext: *ext, Kind: *kind, Limit: *limit, Offset: *offset}
-	if *volume != "" {
-		v, err := st.FindVolume(ctx, *volume)
+	o := store.SearchOptions{Query: strings.Join(cmd.Words, " "), Any: cmd.Any, Ext: cmd.Ext, Kind: cmd.Kind, Limit: cmd.Limit, Offset: cmd.Offset}
+	if cmd.Volume != "" {
+		v, err := st.FindVolume(ctx, cmd.Volume)
 		if err != nil {
 			return err
 		}
 		o.VolumeID = v.ID
 	}
-	if *under != "" {
-		if o.Under, o.VolumeID, err = resolveUnder(*under, o.VolumeID, vols); err != nil {
+	if cmd.Under != "" {
+		if o.Under, o.VolumeID, err = resolveUnder(cmd.Under, o.VolumeID, vols); err != nil {
 			return err
 		}
 	}
@@ -117,7 +116,7 @@ func cmdSearch(ctx context.Context, args []string) error {
 	}
 	roots := onlineRoots(vols)
 	out, inside, docs := outHits(hits, roots), outMembers(members, roots), outTexts(texts, roots)
-	if *asJSON {
+	if cmd.JSON {
 		return printJSON(struct {
 			Entries  []hitOut      `json:"entries"`
 			Members  []memberOut   `json:"members"`
@@ -283,14 +282,12 @@ func resolveUnder(under, volumeID string, vols []store.Volume) (string, string, 
 	return "", "", fmt.Errorf("%s is on a volume attic has not scanned", under)
 }
 
-func cmdShow(ctx context.Context, args []string) error {
-	flagArgs, pos := interspersed(args, map[string]bool{"json": true})
-	fs := flag.NewFlagSet("show", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(flagArgs)
-	if len(pos) != 1 {
-		return fmt.Errorf("show needs an entry id or a ref: %w", errUsage)
-	}
+type showCmd struct {
+	Target string `arg:"" name:"id-or-ref" help:"Entry ID or content ref."`
+	JSON   bool   `help:"Print JSON."`
+}
+
+func (cmd *showCmd) Run(ctx context.Context) error {
 	st, err := openStore(ctx)
 	if err != nil {
 		return err
@@ -302,13 +299,13 @@ func cmdShow(ctx context.Context, args []string) error {
 	}
 	roots := onlineRoots(vols)
 
-	if ref, ok := store.ParseRef(pos[0]); ok {
+	if ref, ok := store.ParseRef(cmd.Target); ok {
 		c, err := st.Content(ctx, ref)
 		if err != nil {
 			return err
 		}
 		places := outHits(c.Occurrences, roots)
-		if *asJSON {
+		if cmd.JSON {
 			return printJSON(struct {
 				store.ContentDetail
 				Occurrences []hitOut `json:"occurrences"`
@@ -318,9 +315,9 @@ func cmdShow(ctx context.Context, args []string) error {
 		return printHits(places)
 	}
 
-	id, err := strconv.ParseInt(pos[0], 10, 64)
+	id, err := strconv.ParseInt(cmd.Target, 10, 64)
 	if err != nil {
-		return fmt.Errorf("not an entry id or a ref: %q", pos[0])
+		return fmt.Errorf("not an entry id or a ref: %q", cmd.Target)
 	}
 	d, err := st.Entry(ctx, id)
 	if err != nil {
@@ -328,7 +325,7 @@ func cmdShow(ctx context.Context, args []string) error {
 	}
 	root, online := roots[d.VolumeID]
 	copies := outHits(d.Copies, roots)
-	if *asJSON {
+	if cmd.JSON {
 		return printJSON(struct {
 			store.EntryDetail
 			Display string   `json:"display"`
@@ -395,10 +392,11 @@ func cmdShow(ctx context.Context, args []string) error {
 	return printHits(copies)
 }
 
-func cmdVolumes(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("volumes", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(args)
+type volumesCmd struct {
+	JSON bool `help:"Print JSON."`
+}
+
+func (cmd *volumesCmd) Run(ctx context.Context) error {
 	st, err := openStore(ctx)
 	if err != nil {
 		return err
@@ -413,7 +411,7 @@ func cmdVolumes(ctx context.Context, args []string) error {
 		known[i] = v.Volume
 	}
 	roots := onlineRoots(known)
-	if *asJSON {
+	if cmd.JSON {
 		type volumeOut struct {
 			store.VolumeSummary
 			MountedAt string `json:"mounted_at,omitempty"`
@@ -441,14 +439,15 @@ func cmdVolumes(ctx context.Context, args []string) error {
 	return tw.Flush()
 }
 
-func cmdDupes(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("dupes", flag.ExitOnError)
-	minSize := fs.String("min-size", "1M", "")
-	sameVolume := fs.Bool("same-volume", false, "")
-	limit := fs.Int("limit", 20, "")
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(args)
-	floor, err := parseSize(*minSize)
+type dupesCmd struct {
+	MinSize    string `default:"1M" help:"Ignore smaller contents, such as 10M."`
+	SameVolume bool   `help:"Count only copies that share a volume."`
+	Limit      int    `default:"20" help:"Maximum duplicate groups."`
+	JSON       bool   `help:"Print JSON."`
+}
+
+func (cmd *dupesCmd) Run(ctx context.Context) error {
+	floor, err := parseSize(cmd.MinSize)
 	if err != nil {
 		return err
 	}
@@ -457,7 +456,7 @@ func cmdDupes(ctx context.Context, args []string) error {
 		return err
 	}
 	defer st.Close()
-	dupes, wasted, err := st.Dupes(ctx, floor, *sameVolume, *limit)
+	dupes, wasted, err := st.Dupes(ctx, floor, cmd.SameVolume, cmd.Limit)
 	if err != nil {
 		return err
 	}
@@ -466,7 +465,7 @@ func cmdDupes(ctx context.Context, args []string) error {
 		return err
 	}
 	roots := onlineRoots(vols)
-	if *asJSON {
+	if cmd.JSON {
 		type dupeOut struct {
 			store.Dupe
 			Places []hitOut `json:"places"`
@@ -494,15 +493,16 @@ func cmdDupes(ctx context.Context, args []string) error {
 	return nil
 }
 
-func cmdSkips(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("skips", flag.ExitOnError)
-	scanID := fs.Int64("scan", 0, "")
-	volume := fs.String("volume", "", "")
-	reason := fs.String("reason", "", "")
-	rule := fs.String("rule", "", "")
-	limit := fs.Int("limit", 100, "")
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(args)
+type skipsCmd struct {
+	Scan   int64  `help:"Scan ID; defaults to the newest scan."`
+	Volume string `help:"Select the newest scan of this volume."`
+	Reason string `help:"Filter by reason: excluded, name_only, too_big, link, remote, bad_name, unreadable, changed, too_deep, encrypted, damaged, not_archive, split, text_failed, metadata_failed, metadata_unavailable."`
+	Rule   string `help:"Filter by the rule printed in the scan summary."`
+	Limit  int    `default:"100" help:"Maximum paths."`
+	JSON   bool   `help:"Print JSON."`
+}
+
+func (cmd *skipsCmd) Run(ctx context.Context) error {
 	st, err := openStore(ctx)
 	if err != nil {
 		return err
@@ -510,11 +510,11 @@ func cmdSkips(ctx context.Context, args []string) error {
 	defer st.Close()
 	var sc store.ScanInfo
 	switch {
-	case *scanID != 0:
-		sc, err = st.ScanByID(ctx, *scanID)
-	case *volume != "":
+	case cmd.Scan != 0:
+		sc, err = st.ScanByID(ctx, cmd.Scan)
+	case cmd.Volume != "":
 		var v store.Volume
-		if v, err = st.FindVolume(ctx, *volume); err == nil {
+		if v, err = st.FindVolume(ctx, cmd.Volume); err == nil {
 			sc, err = st.LatestScan(ctx, v.ID)
 		}
 	default:
@@ -523,12 +523,12 @@ func cmdSkips(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *reason != "" || *rule != "" {
-		skips, err := st.Skips(ctx, sc.ID, *reason, *rule, *limit)
+	if cmd.Reason != "" || cmd.Rule != "" {
+		skips, err := st.Skips(ctx, sc.ID, cmd.Reason, cmd.Rule, cmd.Limit)
 		if err != nil {
 			return err
 		}
-		if *asJSON {
+		if cmd.JSON {
 			return printJSON(skips)
 		}
 		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -541,7 +541,7 @@ func cmdSkips(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if cmd.JSON {
 		return printJSON(struct {
 			Scan   store.ScanInfo    `json:"scan"`
 			Groups []store.SkipGroup `json:"groups"`
@@ -559,10 +559,11 @@ func cmdSkips(ctx context.Context, args []string) error {
 	return tw.Flush()
 }
 
-func cmdStats(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("stats", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(args)
+type statsCmd struct {
+	JSON bool `help:"Print JSON."`
+}
+
+func (cmd *statsCmd) Run(ctx context.Context) error {
 	st, err := openStore(ctx)
 	if err != nil {
 		return err
@@ -576,7 +577,7 @@ func cmdStats(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if cmd.JSON {
 		return printJSON(struct {
 			store.Totals
 			Analyses map[string]int64 `json:"analyses"`
@@ -596,24 +597,26 @@ func cmdStats(ctx context.Context, args []string) error {
 		docs = append(docs, count(t.Texts[status])+" "+status)
 		read += t.Texts[status]
 	}
-	fmt.Printf("%s documents (%s), %s characters of text\n", count(read), strings.Join(docs, ", "), count(t.TextChars))
+	breakdown := ""
+	if len(docs) > 0 {
+		breakdown = " (" + strings.Join(docs, ", ") + ")"
+	}
+	fmt.Printf("%s documents%s, %s characters of text\n", count(read), breakdown, count(t.TextChars))
 	return nil
 }
 
-func cmdText(ctx context.Context, args []string) error {
-	flagArgs, pos := interspersed(args, map[string]bool{"json": true})
-	fs := flag.NewFlagSet("text", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(flagArgs)
-	if len(pos) != 1 {
-		return fmt.Errorf("text needs an entry id or a ref: %w", errUsage)
-	}
+type textCmd struct {
+	Target string `arg:"" name:"id-or-ref" help:"Entry ID or content ref."`
+	JSON   bool   `help:"Print JSON."`
+}
+
+func (cmd *textCmd) Run(ctx context.Context) error {
 	var id int64
-	ref, isRef := store.ParseRef(pos[0])
+	ref, isRef := store.ParseRef(cmd.Target)
 	if !isRef {
 		var err error
-		if id, err = strconv.ParseInt(pos[0], 10, 64); err != nil {
-			return fmt.Errorf("not an entry id or a ref: %q", pos[0])
+		if id, err = strconv.ParseInt(cmd.Target, 10, 64); err != nil {
+			return fmt.Errorf("not an entry id or a ref: %q", cmd.Target)
 		}
 	}
 	st, err := openStore(ctx)
@@ -625,7 +628,7 @@ func cmdText(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if cmd.JSON {
 		return printJSON(d)
 	}
 	if d.Text == "" {
@@ -635,12 +638,13 @@ func cmdText(ctx context.Context, args []string) error {
 	return nil
 }
 
-func cmdConfig(_ context.Context, args []string) error {
-	fs := flag.NewFlagSet("config", flag.ExitOnError)
-	configPath := fs.String("config", "", "")
-	volume := fs.String("volume", "", "")
-	_ = fs.Parse(args)
-	cfg, path, err := loadConfig(*configPath)
+type configCmd struct {
+	Config string `help:"Configuration file."`
+	Volume string `help:"Volume label or ID for effective rules."`
+}
+
+func (cmd *configCmd) Run(ctx context.Context) error {
+	cfg, path, err := loadConfig(cmd.Config)
 	if err != nil {
 		return err
 	}
@@ -649,6 +653,7 @@ func cmdConfig(_ context.Context, args []string) error {
 		state = "not created; defaults apply"
 	}
 	fmt.Printf("config    %s (%s)\n", path, state)
+	fmt.Printf("temp      %s\n", cmp.Or(cfg.Temp, os.TempDir()))
 	if cfg.HashMaxBytes > 0 {
 		fmt.Printf("hash      files up to %s\n", humanBytes(cfg.HashMaxBytes))
 	} else {
@@ -657,23 +662,20 @@ func cmdConfig(_ context.Context, args []string) error {
 	if a := cfg.Archives; a.Depth == 0 {
 		fmt.Println("archives  not read")
 	} else {
-		limit, temp := "any size", a.Temp
+		limit := "any size"
 		if a.UnpackMaxBytes > 0 {
 			limit = "up to " + humanBytes(a.UnpackMaxBytes)
 		}
-		if temp == "" {
-			temp = os.TempDir()
-		}
-		fmt.Printf("archives  %d levels deep; nested archives %s, unpacked in %s\n", a.Depth, limit, temp)
+		fmt.Printf("archives  %d levels deep; nested archives %s\n", a.Depth, limit)
 	}
 	if t := cfg.Text; t.MaxBytes > 0 {
 		fmt.Printf("text      documents up to %s, the first 1 MB of text each\n", humanBytes(t.MaxBytes))
 	} else {
 		fmt.Println("text      documents of any size, the first 1 MB of text each")
 	}
-	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d, temp=%s\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes, cmp.Or(cfg.Metadata.Temp, cfg.Archives.Temp, os.TempDir()))
-	fmt.Printf("enrich    explicit command only; provider=%s, model=%s, endpoint=%s, api_key_env=%s, max_bytes=%d, timeout=%ds, temp=%s\n", cfg.AI.Provider, cfg.AI.Model, cfg.AI.Endpoint, cfg.AI.APIKeyEnv, cfg.AI.MaxBytes, cfg.AI.TimeoutSeconds, cmp.Or(cfg.AI.Temp, cfg.Archives.Temp, os.TempDir()))
-	exclude, nameOnly := cfg.Rules(*volume, *volume).Describe()
+	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes)
+	fmt.Printf("enrich    explicit command only; provider=%s, model=%s, endpoint=%s, api_key_env=%s, max_bytes=%d, timeout=%ds\n", cfg.AI.Provider, cfg.AI.Model, cfg.AI.Endpoint, cfg.AI.APIKeyEnv, cfg.AI.MaxBytes, cfg.AI.TimeoutSeconds)
+	exclude, nameOnly := cfg.Rules(cmd.Volume, cmd.Volume).Describe()
 	fmt.Println("exclude")
 	for _, r := range exclude {
 		fmt.Println("  " + r)
@@ -685,30 +687,31 @@ func cmdConfig(_ context.Context, args []string) error {
 	return nil
 }
 
-func cmdScans(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("scans", flag.ExitOnError)
-	volume := fs.String("volume", "", "")
-	limit := fs.Int("limit", 20, "")
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(args)
+type scansCmd struct {
+	Volume string `help:"Volume label or ID."`
+	Limit  int    `default:"20" help:"Maximum scans."`
+	JSON   bool   `help:"Print JSON."`
+}
+
+func (cmd *scansCmd) Run(ctx context.Context) error {
 	st, err := openStore(ctx)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
 	volumeID := ""
-	if *volume != "" {
-		v, err := st.FindVolume(ctx, *volume)
+	if cmd.Volume != "" {
+		v, err := st.FindVolume(ctx, cmd.Volume)
 		if err != nil {
 			return err
 		}
 		volumeID = v.ID
 	}
-	scans, err := st.Scans(ctx, volumeID, *limit)
+	scans, err := st.Scans(ctx, volumeID, cmd.Limit)
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if cmd.JSON {
 		return printJSON(scans)
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -725,20 +728,18 @@ func cmdScans(ctx context.Context, args []string) error {
 	return tw.Flush()
 }
 
-func cmdMetadata(ctx context.Context, args []string) error {
-	flags, pos := interspersed(args, map[string]bool{"json": true})
-	fs := flag.NewFlagSet("metadata", flag.ExitOnError)
-	asJSON := fs.Bool("json", false, "")
-	_ = fs.Parse(flags)
-	if len(pos) != 1 {
-		return fmt.Errorf("metadata needs an entry id or a ref: %w", errUsage)
-	}
+type metadataCmd struct {
+	Target string `arg:"" name:"id-or-ref" help:"Entry ID or content ref."`
+	JSON   bool   `help:"Print JSON."`
+}
+
+func (cmd *metadataCmd) Run(ctx context.Context) error {
 	var id int64
-	ref, isRef := store.ParseRef(pos[0])
+	ref, isRef := store.ParseRef(cmd.Target)
 	if !isRef {
 		var err error
-		if id, err = strconv.ParseInt(pos[0], 10, 64); err != nil {
-			return fmt.Errorf("not an entry id or a ref: %q", pos[0])
+		if id, err = strconv.ParseInt(cmd.Target, 10, 64); err != nil {
+			return fmt.Errorf("not an entry id or a ref: %q", cmd.Target)
 		}
 	}
 	st, err := openStore(ctx)
@@ -750,7 +751,7 @@ func cmdMetadata(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *asJSON {
+	if cmd.JSON {
 		return printJSON(d)
 	}
 	fmt.Printf("attic:%s: %s\n", d.Ref, d.Status)
