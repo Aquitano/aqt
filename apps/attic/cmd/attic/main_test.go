@@ -39,6 +39,12 @@ func TestCLIParsesArguments(t *testing.T) {
 		{[]string{"config", "--config="}, func(c cli) bool {
 			return c.Config.Config == ""
 		}},
+		{[]string{"config", "-volume", "Data"}, func(c cli) bool {
+			return c.Config.Volume == "Data"
+		}},
+		{[]string{"search", "minecraft", "-ext=rar", "server", "-json"}, func(c cli) bool {
+			return reflect.DeepEqual(c.Search.Words, []string{"minecraft", "server"}) && c.Search.Ext == "rar" && c.Search.JSON
+		}},
 		{[]string{"scan", `E:\Files`, "--no-hash"}, func(c cli) bool {
 			return c.Scan.Folder == `E:\Files` && c.Scan.NoHash && c.Scan.LogLevel == "info"
 		}},

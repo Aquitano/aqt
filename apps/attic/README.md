@@ -35,6 +35,8 @@ attic help scan
 
 Search requires every searchable word by default; `--any` accepts any word. Words can match names, paths or name fragments. Archive members, document text, metadata and enrichment results appear in separate ranked groups. `--volume` accepts a label or ID. `--under` accepts a mounted path, or a volume-relative path with `--volume`. All read commands support `--json`.
 
+Invalid command lines exit with code 2. Command failures exit with code 1.
+
 An entry ID identifies a file at a place. A content ref such as `attic:3f9a1c2b4d5e6f70` identifies its bytes across disks. `show <ref>` lists the copies. Missing files remain searchable and are marked missing. `dupes --same-volume` counts copies that share a disk.
 
 A scan lists directories, hashes unknown files, lists archives, extracts document text and reads embedded metadata. It skips links, cloud placeholders, excluded paths and name-only files. ZIP, 7z, RAR and tar listings can include nested archives. Documents include plain text, Markdown, CSV, HTML, Office, OpenDocument and PDFs with a text layer. Source code and configuration files keep their names only. Extracted document text is capped at 1 MB.

@@ -87,10 +87,12 @@ func parseCLI(root *cli, args []string) (*kong.Context, error) {
 		if len(args) == 0 || command.Name != args[0] {
 			continue
 		}
+		args = slices.Clone(args)
 		flags := map[string]*kong.Flag{}
 		for _, group := range command.AllFlags(false) {
 			for _, flag := range group {
 				flags["--"+flag.Name] = flag
+				flags["-"+flag.Name] = flag
 				if flag.Short != 0 {
 					flags["-"+string(flag.Short)] = flag
 				}
@@ -104,11 +106,16 @@ func parseCLI(root *cli, args []string) (*kong.Context, error) {
 				break
 			}
 			if len(arg) > 1 && strings.HasPrefix(arg, "-") {
-				name, _, inline := strings.Cut(arg, "=")
+				name, value, inline := strings.Cut(arg, "=")
 				flag, ok := flags[name]
 				if !ok {
 					return parser.Parse(args)
 				}
+				arg = "--" + flag.Name
+				if inline {
+					arg += "=" + value
+				}
+				args[i] = arg
 				options = append(options, arg)
 				if !flag.IsBool() && !inline {
 					if i+1 == len(args) {
