@@ -47,6 +47,12 @@ func (cmd *verifyCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if !strings.HasPrefix(cmd.Under, "/") {
+		under, err = st.ResolveVerificationPath(ctx, volumeID, under)
+		if err != nil {
+			return err
+		}
+	}
 	return writeVerification(ctx, st, volumeID, under, mount, cmd.JSON, os.Stdout)
 }
 

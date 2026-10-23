@@ -3,6 +3,10 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type VerifyFile struct {
@@ -12,6 +16,39 @@ type VerifyFile struct {
 	HashState string
 	Missing   bool
 	Digest    []byte
+}
+
+func (s *Store) ResolveVerificationPath(ctx context.Context, volumeID, under string) (string, error) {
+	if volumeID == "" {
+		return "", errors.New("verification needs a selected volume")
+	}
+	parent := ""
+	for _, name := range strings.Split(strings.TrimPrefix(under, "/"), "/") {
+		if name == "" {
+			return under, nil
+		}
+		exact := parent + "/" + name
+		rows, err := s.pool.Query(ctx, `select e.path
+			from entries e join entries p on p.id = e.parent_id
+			where p.volume_id = $1 and p.path collate "C" = $2
+			and e.volume_id = $1 and lower(e.name) = lower($3)
+			group by e.path order by (e.path = $4) desc, e.path collate "C" limit 2`, volumeID, parent, name, exact)
+		if err != nil {
+			return "", err
+		}
+		paths, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return "", err
+		}
+		if len(paths) == 0 {
+			return under, nil
+		}
+		if len(paths) > 1 && paths[0] != exact {
+			return "", fmt.Errorf("verification scope %q matches multiple catalogue paths; use exact spelling", under)
+		}
+		parent = paths[0]
+	}
+	return parent, nil
 }
 
 // WalkVerification streams one statement's catalogue snapshot, including missing
