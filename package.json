@@ -46,6 +46,7 @@
     "test": "vp test run"
   },
   "devDependencies": {
+    "@shadcn/lint": "0.2.3",
     "@types/node": "catalog:",
     "typescript": "7.0.2",
     "vite": "catalog:",
