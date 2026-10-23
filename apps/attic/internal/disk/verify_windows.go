@@ -9,6 +9,16 @@ import (
 )
 
 func openOrdinary(root, rel string) (*os.File, error) {
+	p, err := windows.UTF16PtrFromString(strings.TrimRight(longPath(root), `\`) + `\`)
+	if err != nil {
+		return nil, err
+	}
+	// Mounted folders are reparse points. Walking from the volume GUID lets
+	// the root work while keeping the reparse checks on every path below it.
+	var volumeName [windows.MAX_PATH + 1]uint16
+	if windows.GetVolumeNameForVolumeMountPoint(p, &volumeName[0], uint32(len(volumeName))) == nil {
+		root = windows.UTF16ToString(volumeName[:])
+	}
 	parts := append([]string{root}, strings.Split(rel, string(filepath.Separator))...)
 	var held []windows.Handle
 	defer func() {
