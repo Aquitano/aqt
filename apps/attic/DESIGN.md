@@ -50,4 +50,4 @@ Filename, archive-member, document-text, metadata and enrichment indexes rank se
 
 Entry extensions describe files; archive-member extensions describe members. Volume and folder filters identify where the enclosing file lives. An archive named by `--under` includes its members. Copy lists retain the same filters as the search result.
 
-The entry path B-tree can intersect with BM25 matches for volume and subtree filters. Additional filter fields do not need to be added to BM25 without measurements showing a benefit.
+Volume, kind and extension are entry BM25 fields, so ParadeDB can apply those filters inside the index scan. Subtree filters use the entry path range. Ranked entries and archive members break equal scores by ID. Wordless searches retain path order. The ranked entry page is selected before joining volumes and contents, so ParadeDB can stop after the requested page instead of returning every match for Postgres to sort.
