@@ -81,3 +81,30 @@ func TestCoverageBoundsLocationsPerContent(t *testing.T) {
 		}
 	}
 }
+
+func TestCoverageTreatsInvalidatedHashesAsUnknown(t *testing.T) {
+	st, conn := searchFixture(t)
+	_, err := conn.Exec(t.Context(), `update entries set hash_state='pending',size_bytes=10 where id=6;
+ update entries set hash_state='failed',size_bytes=10 where id=5`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := st.Coverage(t.Context(), store.CoverageOptions{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Contents != 2 || r.Bytes != 30 || r.Undercovered != 2 || r.UndercoveredBytes != 30 || r.UnknownFiles != 2 || r.UnknownBytes != 20 {
+		t.Fatalf("invalidated hashes affected totals: %+v", r)
+	}
+	if len(r.Content) != 2 || r.Content[1].ID != 1 || r.Content[1].Volumes != 1 || r.Content[1].Copies != 1 ||
+		len(r.Content[1].Locations) != 1 || r.Content[1].Locations[0].ID != 3 {
+		t.Fatalf("invalidated copies counted: %+v", r.Content)
+	}
+	if len(r.Unknown) != 2 || r.Unknown[0].ID != 5 || r.Unknown[1].ID != 6 || r.Unknown[0].Ref != "" || r.Unknown[1].Ref != "" {
+		t.Fatalf("unknown copies: %+v", r.Unknown)
+	}
+	r, err = st.Coverage(t.Context(), store.CoverageOptions{VolumeID: "00000000-0000-0000-0000-000000000002", Under: "/docs", Limit: 20})
+	if err != nil || r.Contents != 0 || len(r.Content) != 0 || r.UnknownFiles != 1 || r.UnknownBytes != 10 || len(r.Unknown) != 1 || r.Unknown[0].ID != 6 {
+		t.Fatalf("invalidated selection borrowed known content from another volume: %+v, %v", r, err)
+	}
+}

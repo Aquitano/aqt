@@ -57,10 +57,11 @@ func (s *Store) Coverage(ctx context.Context, o CoverageOptions) (CoverageReport
 	q := &search{}
 	where := append([]string{"e.kind = 'file'", "e.missing_scan is null"},
 		q.entryFilters(copiesOf(SearchOptions{VolumeID: o.VolumeID, Under: o.Under}, true))...)
-	cte := `with selected as (select e.id, e.content_id, e.size_bytes from entries e where ` + strings.Join(where, " and ") + `),
+	cte := `with selected as (select e.id, case when e.hash_state = 'done' then e.content_id end as content_id,
+ e.size_bytes from entries e where ` + strings.Join(where, " and ") + `),
  covered as (select c.id, c.blake3, c.size_bytes, count(distinct e.volume_id) as volumes, count(*) as copies
  from contents c join entries e on e.content_id = c.id
- where c.id in (select content_id from selected) and e.kind = 'file' and e.missing_scan is null
+ where c.id in (select content_id from selected) and e.kind = 'file' and e.missing_scan is null and e.hash_state = 'done'
  group by c.id) `
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
@@ -99,7 +100,7 @@ func (s *Store) Coverage(ctx context.Context, o CoverageOptions) (CoverageReport
  from unnest($1::bigint[]) with ordinality selected(content_id, ordinality)
  cross join lateral (select `+hitColumns+`, e.updated_scan, sc.started_at`+hitFrom+`
  join scans sc on sc.id = e.updated_scan
- where e.content_id = selected.content_id and e.kind = 'file' and e.missing_scan is null
+ where e.content_id = selected.content_id and e.kind = 'file' and e.missing_scan is null and e.hash_state = 'done'
  order by e.volume_id, e.path collate "C", e.id limit $2) places
  order by selected.ordinality, places.volume_id, places.path collate "C", places.id`, ids, r.LocationLimit)
 		if err != nil {
@@ -129,6 +130,9 @@ func (s *Store) Coverage(ctx context.Context, o CoverageOptions) (CoverageReport
 	r.Unknown, err = pgx.CollectRows(rows, scanCoverageLocation)
 	if err != nil {
 		return r, err
+	}
+	for i := range r.Unknown {
+		r.Unknown[i].Ref = ""
 	}
 	return r, tx.Commit(ctx)
 }
