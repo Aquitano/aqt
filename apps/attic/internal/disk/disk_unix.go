@@ -48,8 +48,8 @@ func Stat(path string) (Entry, error) {
 	return fromInfo(filepath.Base(path), info), nil
 }
 
-// fromInfo fills what every Unix reports. Creation, access and change times
-// differ in name across platforms and stay zero until macOS scanning lands.
+// fromInfo fills what Unix reports. Creation and access times stay zero
+// until macOS scanning lands.
 func fromInfo(name string, info fs.FileInfo) Entry {
 	e := Entry{
 		Name:     name,
@@ -62,6 +62,7 @@ func fromInfo(name string, info fs.FileInfo) Entry {
 	}
 	if st, ok := info.Sys().(*syscall.Stat_t); ok {
 		e.FileID = st.Ino
+		e.Changed = changeTime(st)
 	}
 	return e
 }

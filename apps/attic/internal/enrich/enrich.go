@@ -3,7 +3,6 @@
 package enrich
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -41,20 +40,30 @@ type Summary struct {
 	Skipped   int `json:"skipped"`
 }
 
+func ValidateLimit(provider string, limit int) error {
+	if limit < 1 || limit > 1000 {
+		return errors.New("limit must be between 1 and 1000")
+	}
+	if provider == "codex" && limit > 20 {
+		return errors.New("Codex enrichment is limited to 20 contents per run")
+	}
+	return nil
+}
+
 func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 	var summary Summary
 	if o.Provider == nil {
 		return summary, errors.New("enrichment needs a provider")
 	}
 	summary.Key = o.Provider.Key()
-	if o.Limit < 1 || o.Limit > 1000 {
-		return summary, errors.New("limit must be between 1 and 1000")
+	if err := ValidateLimit(summary.Provider, o.Limit); err != nil {
+		return summary, err
 	}
-	if summary.Provider == "codex" && o.Limit > 20 {
-		return summary, errors.New("Codex enrichment is limited to 20 contents per run")
+	if err := o.Config.AI.Validate(); err != nil {
+		return summary, err
 	}
-	if o.Config.AI.TimeoutSeconds <= 0 || o.Config.AI.MaxBytes < 0 {
-		return summary, errors.New("invalid enrichment limits")
+	if err := o.Config.NormalizeTemp(); err != nil {
+		return summary, err
 	}
 	if len(o.Mounts) == 0 {
 		return summary, errors.New("no selected catalogue volumes are online")
@@ -63,7 +72,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	temp := cmp.Or(o.Config.AI.Temp, o.Config.Archives.Temp, os.TempDir())
+	temp := o.Config.Temp
 	selection := o.Selection
 	selection.Key, selection.Extensions = o.Provider.Key(), o.Provider.Extensions()
 	selection.Volumes = nil

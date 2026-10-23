@@ -11,7 +11,7 @@ import { AuthLive } from "../src/auth.ts";
 import { type OidcAuth, ServerConfig } from "../src/config.ts";
 import { DashboardRoutes, sealLogin } from "../src/dashboard-auth.ts";
 import { Db } from "../src/db/client.ts";
-import { dashboardSessions } from "../src/db/schema.ts";
+import { blobs, dashboardSessions } from "../src/db/schema.ts";
 import { ApiLive } from "../src/http.ts";
 import { OpenId } from "../src/openid.ts";
 import { runTest, type TestServices } from "./support.ts";
@@ -213,4 +213,27 @@ test("expired login, expired session and a session for a different owner are rej
       );
       expect((await request("/api/stats", { headers: { cookie: session } })).status).toBe(401);
     }
+  }));
+
+test("blob reads require dashboard authentication and return the original bytes", () =>
+  withDashboard(async (request, services) => {
+    const data = Buffer.from([0, 255, 1, 254]);
+    const sha256 = sha256Hex(data);
+    await Effect.runPromise(
+      Effect.flatMap(Db, (db) => db.insert(blobs).values({ sha256, data })).pipe(
+        Effect.provideContext(services),
+      ),
+    );
+    const path = `/api/blobs/${sha256}`;
+    expect((await request(path)).status).toBe(401);
+    expect(
+      (await request(path, { headers: { authorization: "Bearer admin-secret" } })).status,
+    ).toBe(401);
+    const { session } = await signIn(request);
+    const headers = { cookie: session };
+    const response = await request(path, { headers });
+    expect(response.status).toBe(200);
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(data);
+    expect((await request(`/api/blobs/${"0".repeat(64)}`, { headers })).status).toBe(404);
+    expect((await request("/api/blobs/invalid", { headers })).status).toBe(400);
   }));

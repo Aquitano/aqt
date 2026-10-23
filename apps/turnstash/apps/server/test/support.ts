@@ -48,6 +48,8 @@ const tables = [
   "conversation_machines",
   "conversations",
   "dirty_conversations",
+  "record_blobs",
+  "blobs",
   "source_records",
   "source_streams",
   "ingest_batches",

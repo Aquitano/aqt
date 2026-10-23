@@ -1,124 +1,138 @@
 # attic
 
-Search the files on backup disks and USB sticks, including disks that are not plugged in. attic records every file's metadata and a BLAKE3 hash in ParadeDB and never writes to the disks it reads. See [DESIGN.md](DESIGN.md) for the identity model and the roadmap.
-
-Scanning runs on Windows. Search works from any machine that can reach the database.
+Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It does not change source files. Scanning runs on Windows; search runs wherever the database is reachable.
 
 ## Setup
 
 ```sh
-docker compose up -d --wait        # ParadeDB on 127.0.0.1:5436, or: mise run attic:db
+docker compose up -d --wait
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 ```
 
-`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. Migrations run on start through tern. Existing databases keep their `schema_migrations` history and adopt `schema_version` after validating that history. Unknown or missing migration entries stop startup before any migration runs; only a pending pg_search extension update applies first.
+`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. Database migrations run on startup.
+
+The identity upgrade rewrites catalogue entries once and builds indexes. Startup waits for it to finish, and PostgreSQL needs additional database storage during the upgrade.
+
+Install ExifTool for embedded metadata. OCR also needs Tesseract and Poppler's `pdftoppm`. Missing ExifTool leaves metadata pending and records `metadata_unavailable`; the rest of the scan continues.
 
 ## Use
 
-```sh
-attic scan E:\                      # list everything, then hash files whose content is unknown
-attic scan E:\Files --no-hash       # list only; a later scan hashes
-attic scan E:\ --log-level debug    # log every hashed file and read document too
-attic search minecraft server       # every word, in the name, the path or as a name fragment
-attic search werkstudent --ext pdf  # fragments match: Werkstudentenvertrag.pdf
-attic search --volume Data --ext iso
+```powershell
+attic scan E:\
+attic scan E:\Files --no-hash
+attic search minecraft server
+attic search werkstudent --ext pdf
 attic search notes --under E:\Files --json
-attic search --under E:\Backups\Minecraft.7z  # what one archive holds
-attic show 36331                    # one entry, its times, its ref and its other copies
-attic show 3f9a1c2b4d5e6f70         # a ref: every place that content lives
-attic metadata 36331                # embedded tags, including dimensions, dates and authors
-attic text 36331                    # the words read from a document, for reading or quoting
-attic volumes                       # known disks, mounted or not, and their last scan
-attic scans --volume Data            # scan history: each phase's time, what it found
-attic dupes --same-volume           # copies that share a disk, largest waste first
-attic skips                         # what the newest scan left out, grouped by reason
-attic skips --reason unreadable     # the paths themselves
+attic search --under E:\Backups\Minecraft.7z
+attic show 36331
+attic text 36331
+attic metadata 36331
+attic volumes
+attic scans --volume Data
+attic dupes --same-volume
+attic skips --reason unreadable
+attic stats
+attic help scan
 ```
 
-A scan commits every couple of seconds, so search sees it while it runs. Interrupting it with Ctrl+C, or killing the process, keeps finished work; the same command continues where hashing stopped. Rescanning an unchanged disk writes almost nothing and takes seconds.
+Search requires every searchable word by default; `--any` accepts any word. Words can match names, paths or name fragments. Archive members, document text, metadata and enrichment results appear in separate ranked groups. `--volume` accepts a label or ID. `--under` accepts a mounted path, or a volume-relative path with `--volume`. All read commands support `--json`.
 
-Each scan writes a JSON-lines log to `%LOCALAPPDATA%\attic\logs`, named in its summary: the phases with their times and counts, each archive, failures as warnings, and every hashed file and read document at `--log-level debug`. The summary also names the slowest archives and documents. Logs older than 90 days are removed.
+Argument parsing errors exit with code 2. Command failures, including `enrich --task ocr` without targets or `--under`, exit with code 1.
 
-Results show where a file can be opened now (`E:\Files\x.zip`) or the volume it lives on when the disk is unplugged (`Data:\Files\x.zip  (offline)`).
+An entry ID identifies a file at a place. A content ref such as `attic:3f9a1c2b4d5e6f70` identifies its bytes across disks. `show <ref>` lists the copies. Missing files remain searchable and are marked missing. `dupes --same-volume` counts copies that share a disk.
 
-After hashing, a scan lists what zip, 7z, rar and tar archives hold, and the archives inside those, without asking for passwords. Search shows those files after the plain hits, inside the copy of the archive that can be opened now: `E:\Backups\Minecraft.7z :: MinecraftServer.rar :: world\level.dat`. Each archive is read once however many disks hold it. Nested archives are copied into private `aqt-attic/scan-*` workspaces below the temporary folder and deleted right after listing. Workspaces abandoned for more than a day are removed only when their file lock is free. Failed stale cleanup logs a warning and leaves the scan running. Existing `attic-*` files in the shared temporary folder are left alone. The temporary folder must already exist. To scan C: when system temp is there, set `[archives] temp` to an existing directory on another disk. Metadata inherits that directory. Setting `archives.depth = 1` removes only the nested-archive scratch requirement; metadata still needs a separate disk or `metadata.enabled = false`.
+A scan lists directories, hashes unknown files, lists archives, extracts document text and reads embedded metadata. It skips links, cloud placeholders, excluded paths and name-only files. ZIP, 7z, RAR and tar listings can include nested archives. Documents include plain text, Markdown, CSV, HTML, Office, OpenDocument and PDFs with a text layer. Source code and configuration files keep their names only. Extracted document text is capped at 1 MB.
 
-It also reads documents for their words: text files, Markdown, CSV, HTML, Word, Excel, PowerPoint, OpenDocument and PDFs with a text layer. Matching documents follow file and archive hits in search, with the passage that matched. The first 1 MB of each document's text is kept. Scanned PDFs wait for an explicit OCR pass, and source code and configuration files are never read.
+On volumes with stable file IDs, matching hard links can reuse a hash within the scanned subtree. Scan a common parent of the links to repair conflicting hashes left by older scans.
 
-The metadata phase uses [ExifTool](https://exiftool.org/) in batches for images, PDFs, Office and OpenDocument files, audio and video. Install `exiftool` on PATH, or set `metadata.exiftool`. If it is missing, scanning continues and records `metadata_unavailable`; the next scan tries again. `attic metadata <id|ref>` prints the embedded tags, and `search` includes matching metadata after document hits.
+A changed or unavailable device serial requires an identity decision when the volume resembles a known one. Rerun with `--volume <id>` to confirm the known disk, or `--new-volume` to record a separate disk. This can also happen after moving a disk to another enclosure.
 
-External tools read verified temporary copies, made through Attic's last-access-preserving reader. Set `metadata.temp`, which otherwise inherits `archives.temp`, to an existing directory on another disk when scanning the disk that holds the system temp directory. Each batch holds up to 256 MiB of copies, or one larger file up to `metadata.max_bytes`, then removes them. The default file cap is 1 GiB. This reads each eligible file in full again after hashing. Files above the cap, failed reads and files changed since hashing remain eligible on the next scan. A corrupt file's metadata failure is recorded once per content. A timeout or malformed batch is retried one file at a time; a file that still fails stays pending without blocking the rest.
+Ctrl+C keeps committed work. Run the same command again to continue. The summary includes phase times and the log path under `%LOCALAPPDATA%\attic\logs`. Use `--log-level debug` to log individual reads.
+
+## Rebuild archive listings and document text
+
+Older scans could attach results to the wrong content if a file changed between hashing and extraction. Ordinary rescans reuse those results. To rebuild the archive listings and document text associated with present files below a selected folder, run:
+
+```powershell
+attic scan E:\Files --rebuild-content
+```
+
+Results belong to content, so rebuilding also updates what other copies of those bytes show. Metadata and enrichment results are kept. The command cannot be combined with `--no-hash`.
 
 ## OCR and image descriptions
 
-`scan` never runs AI. `enrich` requires a task and a selection: entry ids or refs from `search`, or `--under` for a folder. It attempts at most 20 unique contents by default. Files must already be hashed and their volumes online. Current exclusions and name-only rules still apply.
+Scanning never runs AI. Select already-hashed files on an online volume, then run enrichment explicitly:
 
 ```powershell
 attic enrich --task ocr --under E:\Scans --limit 20
 attic enrich 36331 36332 --task describe --provider openai --model YOUR_VISION_MODEL
 attic analysis 36331 --json
-attic search submarine --json
 ```
 
-OCR defaults to local [Tesseract](https://github.com/tesseract-ocr/tesseract). Install `tesseract` and Poppler's `pdftoppm` on PATH. It reads images and PDFs that the text phase marked `needs_ocr`, using the configured languages and first 20 pages by default. PDF pages render at 300 dpi; page count and the per-file deadline bound the OCR pass. Partial page failures or page/text limits mark the result `truncated`.
+OCR defaults to local Tesseract. It reads images and PDFs marked `needs_ocr`, with the configured languages and page limit. Descriptions default to an OpenAI-compatible endpoint at `http://localhost:11434/v1`. OpenAI-compatible and Codex tasks require an explicit vision model. Remote endpoints receive image bytes and the prompt, require HTTPS, and refuse redirects. Set `ai.api_key_env` to an environment variable's name when authentication is needed. HTTP is accepted for localhost and loopback addresses.
 
-Descriptions default to an [OpenAI-compatible chat endpoint](https://docs.ollama.com/api/openai-compatibility), with Ollama's `http://localhost:11434/v1` as the initial URL. Select a vision model with `--model`; there is no default model. The same provider supports `--task ocr` on images. Remote endpoints receive the selected image bytes and the prompt. Set `ai.api_key_env` to the name of an environment variable holding the key when needed. For OpenAI models that require `max_completion_tokens`, set `ai.token_parameter` accordingly. Remote endpoints require HTTPS. HTTP is accepted only for localhost and loopback IPs, including the default local Ollama endpoint. Redirects are refused.
+An authenticated native Codex CLI is also available through `--provider codex --model MODEL`. It runs each image in an ephemeral session with tools disabled and a restricted permission profile. Strict configuration rejects unsupported settings; the profile was verified with Codex 0.162.1. On Windows, `ai.codex` must point to `codex.exe`, rather than a `.cmd` or `.bat` shim. Codex is limited to 20 contents per command.
 
-An authenticated, recent [Codex CLI](https://developers.openai.com/codex/noninteractive) can handle a small selection with `--provider codex --model MODEL`. Each file runs through `codex exec` in its scratch directory with an ephemeral session and no approvals. Shell, local-image, browser, computer-use, app, plugin and subagent tools are disabled. A [permission profile](https://learn.chatgpt.com/docs/permissions) limits command reads to scratch and minimal runtime paths, with command networking disabled. User config, rules, project instructions and host skill discovery are disabled. Strict configuration checking rejects unsupported settings; this policy was verified with Codex 0.162.1. This uses the CLI's configured authentication and is limited to 20 contents per command. On Windows, `ai.codex` must point to the native `codex.exe`, rather than a `.cmd` or `.bat` shim. A Codex command failure stops the selection without storing per-content failures.
-
-Both vision providers accept PNG, JPEG, GIF and WebP, up to 20 MiB per image. Tesseract also accepts TIFF and BMP. Every provider reads a verified temporary copy; `ai.temp` inherits `archives.temp` and must be on another disk. `ai.max_bytes` defaults to 64 MiB, and each provider call has a five-minute deadline. Codex and ExifTool run in a process group on Unix and a kill-on-close job on Windows, so cancellation also stops launcher children. Failed copy cleanup is retried by the scratch sweeper.
-
-Results belong to content, so duplicates reuse them. Each task, provider endpoint, model and prompt policy has a separate row with status, elapsed time and reported model. Successful rows are reused. New work runs before failed retries, so a permanently failing file cannot block the rest of a bounded selection. Provider outages, missing models, authentication failures and rate limits stop the run without writing content failures. Unsupported input is skipped. `--force` repeats completed work without destroying a good answer if the new request fails. Ctrl+C keeps each completed result. `analysis` compares stored results, and `search` includes OCR and descriptions even with the source disk unplugged.
-
-To compare models, run the same small list of ids or refs once for each model, then inspect `analysis` for accuracy and latency. No vision model has been selected yet: the remaining evaluation is on your own images. The automated tests cover provider behavior and real Tesseract OCR on a synthetic invoice; they do not measure vision-model quality.
+Vision providers accept PNG, JPEG, GIF and WebP up to 20 MiB. Tesseract also accepts TIFF and BMP. Tools receive verified temporary copies. Results retain their task, provider, endpoint, model and extraction policy. Duplicates reuse successful results. `--force` repeats completed work and preserves the previous answer if the new attempt fails. Provider outages stop the run without recording per-content failures. `analysis` compares results; `search` includes their text offline.
 
 ## Configuration
 
-One TOML file at `%APPDATA%\attic\config.toml`, or another with `scan --config` or `enrich --config`. `attic config` prints the effective rules. Patterns use gitignore syntax and ignore case; the built-in defaults exclude dependency and build folders, game libraries and Windows system folders, and keep BitLocker recovery-key files to their names. A pattern with a slash inside is anchored at the volume root, so write `**/name/` to match at any depth. On Windows a backslash cannot escape a bracket; match a literal `[` with a class, as in `Fotos [[]2019]/`.
+Use `%APPDATA%\attic\config.toml`, or select another file with `--config`. `attic config` prints the effective settings and rules.
+
+`temp` selects one existing directory for verified copies and nested archives. It defaults to the system temporary directory and must be on another disk when scanning. To scan C:, set `temp = 'D:\AtticTemp'` to an existing directory on another disk. Archive verification reads and copies each outer archive in full before listing it. Allow scratch space for that archive, open multipart volumes and nested archives. Private `aqt-attic/scan-*` workspaces are removed after use; abandoned workspaces are cleaned after a day when their locks are free.
+
+Legacy `archives.temp`, `metadata.temp` and `ai.temp` settings remain accepted. Empty `metadata.temp` and `ai.temp` values inherit the shared directory. Conflicting explicit directories are rejected. Remove the legacy settings when choosing a different top-level `temp`.
+
+Patterns use gitignore syntax and ignore case. Defaults exclude dependency and build output, game libraries and Windows system paths. BitLocker recovery-key files keep their names only. Configured patterns follow the defaults, so `!pattern` can re-include a path. A slash anchors a pattern at the volume root; use `**/name/` for any depth. On Windows, match a literal `[` with `[[]`.
+
+The following example shows the defaults, plus optional exclusions for one volume. Byte limits accept zero for no limit.
 
 ```toml
-exclude = ["*.iso"]
-name_only = ["*.kdbx"]
-hash_max_bytes = 0   # 0 hashes every file
+temp = ""
+exclude = []
+name_only = []
+hash_max_bytes = 0
 
 [archives]
-depth = 2                      # archive levels opened, the one on disk included; 0 reads none
-unpack_max_bytes = 4294967296  # largest nested archive copied out to be listed
+depth = 2
+unpack_max_bytes = 4294967296
 
 [text]
-max_bytes = 67108864           # largest document read for its words
+max_bytes = 67108864
 
 [metadata]
 enabled = true
 exiftool = "exiftool"
-max_bytes = 1073741824         # largest file copied for metadata; 0 is no limit
-temp = ""                      # inherits archives.temp; existing directory on another disk
+max_bytes = 1073741824
 
 [ai]
-provider = ""                 # task default: tesseract for OCR, openai for descriptions
+provider = ""
 endpoint = "http://localhost:11434/v1"
-model = ""                    # choose a vision model explicitly
-api_key_env = ""              # environment variable name, never the key itself
-max_bytes = 67108864          # largest verified copy; 0 is no limit
-temp = ""                     # inherits archives.temp
+model = ""
+api_key_env = ""
+max_bytes = 67108864
 timeout_seconds = 300
 max_tokens = 4096
-token_parameter = "max_tokens" # or max_completion_tokens
-ocr_lang = "eng"              # e.g. deu+eng; install corresponding language data
+token_parameter = "max_tokens"
+ocr_lang = "eng"
 ocr_max_pages = 20
 tesseract = "tesseract"
 pdftoppm = "pdftoppm"
 codex = "codex"
 
 [[volume]]
-label = "Data"        # or id = "<uuid from attic volumes>"
+label = "Data"
 exclude = ["/Games/"]
 ```
+
+`archives.depth = 0` disables archive listings. `unpack_max_bytes` limits each nested archive. `text.max_bytes` and `metadata.max_bytes` bound their source files. `ai.max_bytes` bounds a verified enrichment copy. `ai.token_parameter` also accepts `max_completion_tokens`. Install Tesseract language data for each language in `ocr_lang`, such as `deu+eng`.
 
 ## Develop
 
 ```sh
-mise run attic:check                # vet, test and lint, Windows and Linux builds
+mise run attic:check
 ```
 
-The integration tests use real ExifTool and Tesseract when installed; CI requires both plus Poppler, and a separate Windows job tests subprocess cleanup. HTTP and Codex providers use local test doubles, with no paid API calls. Set `ATTIC_TEST_DATABASE_URL` to a superuser on a disposable ParadeDB server. pgtestdb clones a migrated template for each test and drops successful test databases. Failed test databases remain available for inspection. Tests skip when the variable is unset or no server is listening, unless `CI` is set. `DATABASE_URL` only configures the application. `mise run attic:check` also runs the shared `packages/go/pgschema` tests, which read `PGSCHEMA_TEST_DATABASE_URL`; it can name the same disposable server.
+Checks cover vet, race tests and lint, plus Linux and Windows builds. Set `ATTIC_TEST_DATABASE_URL` to a superuser on disposable ParadeDB. Set `PGSCHEMA_TEST_DATABASE_URL` for the shared migration tests; both can name the same server. Tests create separate databases, drop successful fixtures and retain failures for inspection. CI requires ExifTool, Tesseract and Poppler. HTTP and Codex tests use local doubles and make no paid API calls.
+
+[DESIGN.md](DESIGN.md) describes catalogue identity and extraction decisions.

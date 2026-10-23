@@ -68,3 +68,33 @@ func TestCopyDistinguishesScratchAndSourceFailures(t *testing.T) {
 		t.Fatalf("source failure: %v", err)
 	}
 }
+
+func TestRelativeWorkspaceProducesAbsoluteCopies(t *testing.T) {
+	base := t.TempDir()
+	source := filepath.Join(base, "source.txt")
+	if err := os.WriteFile(source, []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	digest, _, err := disk.Hash(t.Context(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(base)
+	w, err := New(".", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	copied, err := w.Copy(t.Context(), source, digest, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(copied) {
+		t.Fatalf("relative copy path: %s", copied)
+	}
+	f, err := disk.Open(copied)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+}

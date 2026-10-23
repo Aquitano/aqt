@@ -29,9 +29,9 @@
       "react": "^19.3.0",
       "react-dom": "^19.3.0",
       "lucide-react": "^1.55.0",
-      "effect": "4.0.4",
-      "@effect/platform-bun": "4.0.4",
-      "@effect/sql-pg": "4.0.4",
+      "effect": "4.0.5",
+      "@effect/platform-bun": "4.0.5",
+      "@effect/sql-pg": "4.0.5",
       "vite": "npm:@voidzero-dev/vite-plus-core@1.2.0",
       "vite-plus": "1.2.0"
     }
@@ -46,6 +46,7 @@
     "test": "vp test run"
   },
   "devDependencies": {
+    "@shadcn/lint": "0.2.3",
     "@types/node": "catalog:",
     "typescript": "7.0.2",
     "vite": "catalog:",

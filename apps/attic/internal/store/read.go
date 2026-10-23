@@ -28,6 +28,27 @@ func ParseRef(s string) (string, bool) {
 	return s, len(s) == RefChars && err == nil
 }
 
+type contentLookup struct {
+	entryID int64
+	prefix  []byte
+}
+
+const contentLookupWhere = `(($1::bigint <> 0 and c.id = (select content_id from entries where id = $1))
+ or ($1::bigint = 0 and substr(c.blake3, 1, 8) = $2))`
+
+func newContentLookup(entryID int64, ref string) (contentLookup, error) {
+	lookup := contentLookup{entryID: entryID}
+	if entryID != 0 {
+		return lookup, nil
+	}
+	parsed, ok := ParseRef(ref)
+	if !ok {
+		return lookup, fmt.Errorf("not a ref: %q", ref)
+	}
+	lookup.prefix, _ = hex.DecodeString(parsed)
+	return lookup, nil
+}
+
 // Hit is one entry as search, show and dupes print it.
 type Hit struct {
 	ID       int64      `json:"id"`
@@ -69,19 +90,14 @@ type SearchOptions struct {
 }
 
 // Search ranks name matches above path matches above name fragments. A query
-// with no words lists whatever the filters select, in path order.
+// with no text lists whatever the filters select, in path order. Pieces with
+// no indexed terms are ignored; if none remain, the query matches nothing.
 func (s *Store) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
-	q, err := newSearch(o, "e")
+	q, err := s.newSearch(ctx, o, "e")
 	if err != nil {
 		return nil, err
 	}
-	if o.VolumeID != "" {
-		q.where = append(q.where, "e.volume_id = "+q.next(o.VolumeID))
-	}
-	if o.Under != "" {
-		under := strings.TrimSuffix(o.Under, "/")
-		q.where = append(q.where, `e.path collate "C" > `+q.next(under+"/")+` and e.path collate "C" < `+q.next(under+"0"))
-	}
+	q.where = append(q.where, q.entryFilters(copiesOf(o, false))...)
 	rows, err := s.pool.Query(ctx, `select `+hitColumns+`, `+q.score+hitFrom+q.tail(o), q.args...)
 	if err != nil {
 		return nil, err
@@ -102,7 +118,7 @@ type search struct {
 	score, order string
 }
 
-func newSearch(o SearchOptions, alias string) (*search, error) {
+func (s *Store) newSearch(ctx context.Context, o SearchOptions, alias string) (*search, error) {
 	words := strings.Fields(o.Query)
 	switch {
 	case len(words) == 0 && o.VolumeID == "" && o.Ext == "" && o.Kind == "" && o.Under == "":
@@ -110,14 +126,18 @@ func newSearch(o SearchOptions, alias string) (*search, error) {
 	case o.Under != "" && o.VolumeID == "":
 		return nil, errors.New("--under needs a volume")
 	}
+	words, err := s.searchWords(ctx, words, true)
+	if err != nil {
+		return nil, err
+	}
 	q := &search{score: "0::real", order: alias + `.path collate "C", ` + alias + ".id"}
+	if len(words) == 0 && strings.TrimSpace(o.Query) != "" {
+		q.where = append(q.where, "false")
+	}
 	if len(words) > 0 {
 		q.where = append(q.where, alias+".id @@@ "+searchPredicate(words, o.Any, q.next))
 		q.score = "paradedb.score(" + alias + ".id)"
 		q.order = q.score + " desc, " + q.order
-	}
-	if o.Ext != "" {
-		q.where = append(q.where, alias+".ext = "+q.next(strings.ToLower(strings.TrimPrefix(o.Ext, "."))))
 	}
 	if o.Kind != "" {
 		q.where = append(q.where, alias+".kind = "+q.next(o.Kind))
@@ -157,20 +177,16 @@ type MemberHit struct {
 // Search. The volume and the folder filter where the archive lives; a folder
 // that is the archive itself selects its members.
 func (s *Store) SearchMembers(ctx context.Context, o SearchOptions) ([]MemberHit, error) {
-	q, err := newSearch(o, "m")
+	q, err := s.newSearch(ctx, o, "m")
 	if err != nil {
 		return nil, err
 	}
 	// A listing outlives an archive file that was rewritten; only contents some
 	// entry still has are found.
 	place := []string{"e.content_id = m.archive_id"}
-	if o.VolumeID != "" {
-		place = append(place, "e.volume_id = "+q.next(o.VolumeID))
-	}
-	if o.Under != "" {
-		under := strings.TrimSuffix(o.Under, "/")
-		place = append(place, `(e.path = `+q.next(under)+` or (e.path collate "C" > `+q.next(under+"/")+
-			` and e.path collate "C" < `+q.next(under+"0")+`))`)
+	place = append(place, q.entryFilters(copiesOf(o, true))...)
+	if o.Ext != "" {
+		q.where = append(q.where, "m.ext = "+q.next(searchExt(o.Ext)))
 	}
 	q.where = append(q.where, `exists (select 1 from entries e where `+strings.Join(place, " and ")+`)`)
 	rows, err := s.pool.Query(ctx, `select m.id, m.kind, m.path, m.size_bytes, m.modified_at, m.crc32, m.encrypted,
@@ -221,11 +237,7 @@ func searchPredicate(words []string, any bool, next func(any) string) string {
 		}
 		clauses = append(clauses, "paradedb.boolean(should => array["+strings.Join(parts, ", ")+"])")
 	}
-	mode := "must"
-	if any {
-		mode = "should"
-	}
-	return "paradedb.boolean(" + mode + " => array[" + strings.Join(clauses, ", ") + "])"
+	return searchBoolean(clauses, any)
 }
 
 // EntryDetail is everything known about one entry, plus the other places its
@@ -343,18 +355,19 @@ type copies struct {
 	volumes []string
 	under   string
 	self    bool
-	ext     string
+	ext     *string
 }
 
 // copiesOf keeps the places a search shows inside its own filters, so a
 // search of E:\Work does not point at the copy in E:\Archive or on F:.
 func copiesOf(o SearchOptions, self bool) copies {
-	c := copies{under: strings.TrimSuffix(o.Under, "/"), self: self}
+	c := copies{under: o.Under, self: self}
 	if o.VolumeID != "" {
 		c.volumes = []string{o.VolumeID}
 	}
 	if !self && o.Ext != "" {
-		c.ext = strings.ToLower(strings.TrimPrefix(o.Ext, "."))
+		ext := searchExt(o.Ext)
+		c.ext = &ext
 	}
 	return c
 }
@@ -370,15 +383,14 @@ func (s *Store) occurrencesMany(ctx context.Context, ids []int64, except int64, 
 	if len(ids) == 0 {
 		return nil, nil
 	}
+	q := &search{args: []any{ids, except, presentOnly}}
+	where := []string{"e.content_id = selected.id", "e.id <> $2", "(not $3 or e.missing_scan is null)"}
+	where = append(where, q.entryFilters(c)...)
 	rows, err := s.pool.Query(ctx, `select places.* from (select distinct unnest($1::bigint[]) as id) selected
 		cross join lateral (select `+hitColumns+`, e.content_id`+hitFrom+`
-		where e.content_id = selected.id and e.id <> $2 and (not $3 or e.missing_scan is null)
-		  and ($4::uuid[] is null or e.volume_id = any($4))
-		  and ($5 = '' or (e.path collate "C" > $5 || '/' and e.path collate "C" < $5 || '0') or ($6 and e.path = $5))
-		  and ($7 = '' or e.ext = $7)
+		where `+strings.Join(where, " and ")+`
 		order by e.missing_scan is not null, v.label, e.path collate "C", e.id limit 100) places
-		order by places.content_id, places.missing, places.label, places.path collate "C", places.id`,
-		ids, except, presentOnly, c.volumes, c.under, c.self, c.ext)
+		order by places.content_id, places.missing, places.label, places.path collate "C", places.id`, q.args...)
 	if err != nil {
 		return nil, err
 	}

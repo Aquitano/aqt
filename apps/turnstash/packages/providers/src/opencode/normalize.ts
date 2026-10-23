@@ -7,6 +7,7 @@ import {
   jsonStringAt as stringAt,
   parseJsonObject,
   sqliteTableOf,
+  storedBlobOf,
   streamPartsOf,
   emptyUsage,
   textOfParts,
@@ -351,6 +352,40 @@ interface MessageBuild {
   readonly requests: ReadonlyArray<NormalizedRequest>;
 }
 
+const freeKey = (toolKey: string, messageKey: string, used: ReadonlySet<string>): string => {
+  const qualified = `${toolKey}@${messageKey}`;
+  let key = toolKey;
+  for (let count = 1; used.has(key); count += 1)
+    key = count === 1 ? qualified : `${qualified}#${count}`;
+  return key;
+};
+
+// Some models number tool calls per message (Kimi's `functions.read:6`), so a call id can repeat within a
+// message and across a session. A repeat is qualified by its message, then counted; a first use keeps its
+// key. Each tool's call part, and the result right after it, follow the tools in order.
+const withUniqueToolKeys = (build: MessageBuild, used: Set<string>): MessageBuild => {
+  const keys = build.tools.map((tool) => {
+    const key = freeKey(tool.toolKey, build.message.messageKey, used);
+    used.add(key);
+    return key;
+  });
+  if (keys.every((key, index) => key === build.tools[index]?.toolKey)) return build;
+  const parts: Array<MessagePart> = [];
+  let call = -1;
+  for (const part of build.message.parts) {
+    if (part.type === "tool_call") call += 1;
+    const toolKey = keys[call];
+    if (toolKey !== undefined && (part.type === "tool_call" || part.type === "tool_result"))
+      parts.push({ ...part, toolKey });
+    else parts.push(part);
+  }
+  return {
+    message: { ...build.message, parts },
+    tools: build.tools.map((tool, index) => ({ ...tool, toolKey: keys[index] ?? tool.toolKey })),
+    requests: build.requests,
+  };
+};
+
 const messageOf = (
   entry: Entry,
   seq: number,
@@ -377,7 +412,14 @@ const buildV2Message = (
   const text = stringAt(entry.data, "text");
   if (text !== undefined) built.parts.push({ type: "text", text });
   const files = arrayAt(entry.data, "files");
-  if (files.length > 0) built.parts.push({ type: "opaque", kind: "files", data: files });
+  const otherFiles: Array<Json> = [];
+  for (const file of files) {
+    const mediaType = isJsonObject(file) ? stringAt(file, "mime") : undefined;
+    if (isJsonObject(file) && mediaType?.startsWith("image/") === true)
+      built.parts.push({ type: "image", mediaType, ...storedBlobOf(file["data"]) });
+    else otherFiles.push(file);
+  }
+  if (otherFiles.length > 0) built.parts.push({ type: "opaque", kind: "files", data: otherFiles });
   if (type !== "user" && type !== "assistant") {
     built.parts.push({ type: "opaque", kind: type, data: entry.data });
   }
@@ -432,7 +474,8 @@ const buildLegacyMessage = (
     else if (type === "file") {
       const mediaType = stringAt(part.data, "mime");
       const filename = stringAt(part.data, "filename");
-      if (mediaType?.startsWith("image/") === true) built.parts.push({ type: "image", mediaType });
+      if (mediaType?.startsWith("image/") === true)
+        built.parts.push({ type: "image", mediaType, ...storedBlobOf(part.data["url"]) });
       else {
         built.parts.push({
           type: "opaque",
@@ -519,10 +562,12 @@ const normalize = (
   const messages: Array<NormalizedMessage> = [];
   const toolExecutions: Array<NormalizedToolExecution> = [];
   const requests: Array<NormalizedRequest> = [];
+  const toolKeys = new Set<string>();
   const collect = (build: MessageBuild): void => {
-    messages.push(build.message);
-    toolExecutions.push(...build.tools);
-    requests.push(...build.requests);
+    const unique = withUniqueToolKeys(build, toolKeys);
+    messages.push(unique.message);
+    toolExecutions.push(...unique.tools);
+    requests.push(...unique.requests);
   };
 
   if (generation === "v2") {
@@ -593,7 +638,7 @@ const trimmedPayload = (kind: SourceKind, payload: string): string => {
   const row = parseJsonObject(payload);
   const data = row?.["data"];
   if (row === undefined || !Predicate.isString(data)) return payload;
-  const parsed = parseJsonObject(data);
+  const parsed = dataOf(kind, row);
   return parsed === undefined ? payload : JSON.stringify(withJsonField(row, "data", parsed));
 };
 
@@ -604,7 +649,7 @@ const trim = (streamId: StreamId, payload: string): string => {
 
 export const opencodeNormalizer: Normalizer = {
   id: "opencode",
-  parserVersion: 3,
+  parserVersion: 4,
   conversationKeyOf,
   normalize,
   trim,
