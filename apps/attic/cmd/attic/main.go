@@ -33,6 +33,7 @@ type cli struct {
 	Volumes  volumesCmd  `cmd:"" help:"List known volumes and their last scans."`
 	Scans    scansCmd    `cmd:"" help:"List scan history, phase times and counts."`
 	Dupes    dupesCmd    `cmd:"" help:"Find contents stored more than once."`
+	Coverage coverageCmd `cmd:"" help:"Report content on fewer than two recorded volumes."`
 	Skips    skipsCmd    `cmd:"" help:"Show what a scan left out and why."`
 	Stats    statsCmd    `cmd:"" help:"Show catalogue totals."`
 	Config   configCmd   `cmd:"" help:"Show the configuration and effective rules."`
