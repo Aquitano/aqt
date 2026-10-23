@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"slices"
 	"strings"
 	"testing"
@@ -52,6 +54,17 @@ func TestCoverageOutput(t *testing.T) {
 	for _, want := range []string{"physical disk independence", "Unknown content hashes:", "/unknown", "scan 0 at"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in %s", want, out.String())
+		}
+	}
+}
+
+func TestCoverageOutputWriteFailure(t *testing.T) {
+	reader, writer := io.Pipe()
+	reader.Close()
+	defer writer.Close()
+	for _, asJSON := range []bool{false, true} {
+		if err := printCoverage(writer, store.CoverageReport{}, asJSON); !errors.Is(err, io.ErrClosedPipe) {
+			t.Errorf("JSON=%t: got %v, want closed-pipe error", asJSON, err)
 		}
 	}
 }

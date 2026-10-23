@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -59,24 +60,25 @@ func printCoverage(w io.Writer, r store.CoverageReport, asJSON bool) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(r)
 	}
-	fmt.Fprintf(w, "%s unique contents, %s; %s on fewer than two recorded volumes, %s\n",
+	out := bufio.NewWriter(w)
+	fmt.Fprintf(out, "%s unique contents, %s; %s on fewer than two recorded volumes, %s\n",
 		count(r.Contents), humanBytes(r.Bytes), count(r.Undercovered), humanBytes(r.UndercoveredBytes))
-	fmt.Fprintf(w, "%s unknown files, %s of path sizes (not deduplicated)\n", count(r.UnknownFiles), humanBytes(r.UnknownBytes))
-	fmt.Fprintln(w, "Recorded copies include offline volumes and exclude missing entries. This does not verify backup health or physical disk independence.")
-	fmt.Fprintf(w, "Page offset %d, limit %d for each list; up to %d locations per content. Dates are recorded update scan starts.\n", r.Offset, r.Limit, r.LocationLimit)
+	fmt.Fprintf(out, "%s unknown files, %s of path sizes (not deduplicated)\n", count(r.UnknownFiles), humanBytes(r.UnknownBytes))
+	fmt.Fprintln(out, "Recorded copies include offline volumes and exclude missing entries. This does not verify backup health or physical disk independence.")
+	fmt.Fprintf(out, "Page offset %d, limit %d for each list; up to %d locations per content. Dates are recorded update scan starts.\n", r.Offset, r.Limit, r.LocationLimit)
 	for _, c := range r.Content {
-		fmt.Fprintf(w, "\n%s, %d recorded volumes, %d paths, BLAKE3 %s\n", humanBytes(c.Size), c.Volumes, c.Copies, c.BLAKE3)
+		fmt.Fprintf(out, "\n%s, %d recorded volumes, %d paths, BLAKE3 %s\n", humanBytes(c.Size), c.Volumes, c.Copies, c.BLAKE3)
 		for _, l := range c.Locations {
-			printCoverageLocation(w, l)
+			printCoverageLocation(out, l)
 		}
 	}
 	if len(r.Unknown) > 0 {
-		fmt.Fprintln(w, "\nUnknown content hashes:")
+		fmt.Fprintln(out, "\nUnknown content hashes:")
 		for _, l := range r.Unknown {
-			printCoverageLocation(w, l)
+			printCoverageLocation(out, l)
 		}
 	}
-	return nil
+	return out.Flush()
 }
 
 func printCoverageLocation(w io.Writer, l store.CoverageLocation) {
