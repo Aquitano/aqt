@@ -70,9 +70,15 @@ func makeMountPoint(t *testing.T, link, target string) {
 		t.Fatal(err)
 	}
 	defer windows.CloseHandle(h)
+	if err := writeMountPoint(h, target); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeMountPoint(h windows.Handle, target string) error {
 	name, err := windows.UTF16FromString(target)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	// Mount-point reparse data has an 8-byte header, four 16-bit name fields,
 	// then the substitute name and an empty print name, both NUL-terminated.
@@ -85,7 +91,51 @@ func makeMountPoint(t *testing.T, link, target string) {
 		binary.LittleEndian.PutUint16(data[16+i*2:], c)
 	}
 	var returned uint32
-	if err := windows.DeviceIoControl(h, windows.FSCTL_SET_REPARSE_POINT, &data[0], uint32(len(data)), nil, 0, &returned, nil); err != nil {
-		t.Fatal(err)
+	return windows.DeviceIoControl(h, windows.FSCTL_SET_REPARSE_POINT, &data[0], uint32(len(data)), nil, 0, &returned, nil)
+}
+
+func TestOrdinaryChildDoesNotFollowChangedAncestor(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		access uint32
+	}{
+		{"write", windows.GENERIC_WRITE},
+		{"attributes", windows.FILE_WRITE_ATTRIBUTES},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, target := t.TempDir(), t.TempDir()
+			if err := os.WriteFile(filepath.Join(target, "file"), []byte("outside"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			p, err := windows.UTF16PtrFromString(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			h, err := openOrdinaryHandle(0, root, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer windows.CloseHandle(h)
+			writer, err := windows.CreateFile(p, tc.access, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+				nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT|windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer windows.CloseHandle(writer)
+			if err := writeMountPoint(writer, `\??\`+target); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := os.ReadFile(filepath.Join(root, "file")); err != nil || string(got) != "outside" {
+				t.Fatalf("junction did not redirect an absolute lookup: %q, %v", got, err)
+			}
+			child, err := openOrdinaryHandle(h, "file", true)
+			if err == nil {
+				windows.CloseHandle(child)
+				t.Fatal("opened a file through the changed ancestor")
+			}
+			if !errors.Is(err, ErrNotOrdinary) && !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("unexpected refusal: %v", err)
+			}
+		})
 	}
 }
