@@ -502,7 +502,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		if !moved && unchanged(r, l, parentID) {
 			continue
 		}
-		reset, state := contentAfter(r, l, moved, linked[r.ID])
+		reset, state := contentAfter(r, l, moved, linked[r.ID], sc.Volume.FS)
 		batch.Queue(`
 			update entries set parent_id = $2, kind = $3, name = $4, path = $5, ext = $6, file_id = $7, size_bytes = $8,
 			       created_at = $9, modified_at = $10, accessed_at = $11, changed_at = $12, attributes = $13,
@@ -694,16 +694,21 @@ func unchanged(r *entryRow, l Listed, parentID *int64) bool {
 		sameTime(r.Changed, l.Changed) && hashStateAfter(r.HashState, l.HashState) == r.HashState
 }
 
-// contentAfter decides whether a changed entry keeps its content. Size or
-// modified time changing means new bytes. A change time that moved while the
-// entry stayed put does too: some writers restore the modified time. NTFS also
-// changes that time on a move, so single-file moves keep their content. Hard
-// links must be verified because another path may already know newer bytes.
-func contentAfter(r *entryRow, l Listed, moved, linked bool) (bool, string) {
+// contentAfter keeps content only while its identity, size and write times
+// agree. NTFS changes the change time on a move, so single-file moves ignore
+// it. Hard links need verification because another path may know newer bytes.
+func contentAfter(r *entryRow, l Listed, moved, linked bool, fs string) (bool, string) {
 	if l.Kind != "file" {
 		return true, "none"
 	}
-	if r.Kind != "file" || !samePtr(r.PhysicalFileID, nullIDPtr(l.physicalFileID)) || r.Size != l.Size || !sameTime(r.Modified, l.Modified) || ((!moved || linked) && !sameTime(r.Changed, l.Changed)) {
+	sameModified := sameTime(r.Modified, l.Modified)
+	sameChanged := moved && !linked || sameTime(r.Changed, l.Changed)
+	if fs == "FAT" || fs == "FAT32" {
+		// FAT has no change time, and Windows shifts its local timestamps at DST.
+		sameChanged = true
+		sameModified = sameModified || r.Modified != nil && !l.Modified.IsZero() && l.Modified.Sub(*r.Modified).Abs() == time.Hour
+	}
+	if r.Kind != "file" || !samePtr(r.PhysicalFileID, nullIDPtr(l.physicalFileID)) || r.Size != l.Size || !sameModified || !sameChanged {
 		return true, l.HashState
 	}
 	return false, hashStateAfter(r.HashState, l.HashState)
