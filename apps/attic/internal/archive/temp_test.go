@@ -36,7 +36,7 @@ func TestListContinuesWhenCleanupLockCannotOpen(t *testing.T) {
 	if res.Status != Listed || len(members) != 2 {
 		t.Fatalf("listing after cleanup failure: %+v, members %+v", res, members)
 	}
-	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), ".cleanup.lock") {
+	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "could not clean abandoned workspaces") {
 		t.Fatalf("cleanup failure was not logged: %s", logs.String())
 	}
 }
