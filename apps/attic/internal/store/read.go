@@ -146,8 +146,7 @@ func (s *Store) newSearch(ctx context.Context, o SearchOptions, alias string) (*
 	if len(words) > 0 {
 		q.where = append(q.where, alias+".id @@@ "+searchPredicate(words, o.Any, q.next))
 		q.score = "paradedb.score(" + alias + ".id)"
-		// Breaking ties on a column outside the BM25 index, such as the path,
-		// makes ParadeDB return every match instead of the top ones.
+		// ID tie-breaking lets ParadeDB select the page inside the index.
 		q.ties = alias + ".id"
 		q.order = q.score + " desc, " + q.ties
 	}
