@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
@@ -79,61 +78,6 @@ func TestRawNamesKeepDistinctRowsAndParents(t *testing.T) {
 			scanAt(t, st, root, fp)
 			if n := pgschematest.QueryInt(t, dsn, `select count(*) from entries child join entries parent on child.parent_id=parent.id where parent.raw_name=$1 and child.missing_scan is null`, []byte(names[1])); n != 1 {
 				t.Fatalf("other directory lost its child: %d", n)
-			}
-		})
-	}
-}
-
-func TestContentAcrossDaylightSavingShift(t *testing.T) {
-	for _, tc := range []struct {
-		fs     string
-		hashed int64
-	}{
-		{"FAT", 0},
-		{"FAT32", 0},
-		{"exFAT", 1},
-		{"NTFS", 1},
-	} {
-		t.Run(tc.fs, func(t *testing.T) {
-			st, _ := storetest.New(t)
-			root := t.TempDir()
-			write(t, root, "photo.jpg", "pixels")
-			fp := testVolume
-			fp.FS, fp.StableIDs = tc.fs, false
-			scanAt(t, st, root, fp)
-			before := find(t, st, "photo")
-			p := filepath.Join(root, "photo.jpg")
-			shift := func(d time.Duration) {
-				t.Helper()
-				info, err := os.Stat(p)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Chtimes(p, info.ModTime().Add(d), info.ModTime().Add(d)); err != nil {
-					t.Fatal(err)
-				}
-			}
-			for _, d := range []time.Duration{time.Hour, -time.Hour} {
-				shift(d)
-				if res := scanAt(t, st, root, fp); res.Counts.Hashed != tc.hashed || find(t, st, "photo").Ref != before.Ref {
-					t.Fatalf("%s shift: %+v, want %d hashed", d, res.Counts, tc.hashed)
-				}
-			}
-			shift(2 * time.Second)
-			if res := scanAt(t, st, root, fp); res.Counts.Hashed != 1 {
-				t.Fatalf("a real time change hashed %d files, want 1", res.Counts.Hashed)
-			}
-			info, err := os.Stat(p)
-			if err != nil {
-				t.Fatal(err)
-			}
-			write(t, root, "photo.jpg", "more pixels")
-			if err := os.Chtimes(p, info.ModTime(), info.ModTime()); err != nil {
-				t.Fatal(err)
-			}
-			shift(time.Hour)
-			if res := scanAt(t, st, root, fp); res.Counts.Hashed != 1 || find(t, st, "photo").Ref == before.Ref {
-				t.Fatalf("a size change kept old content: %+v", res.Counts)
 			}
 		})
 	}

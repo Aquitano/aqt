@@ -101,7 +101,9 @@ func (s *Store) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
 	}
 	q.where = append(q.where, q.entryFilters(copiesOf(o, false))...)
 	// Limit before the joins so ParadeDB can select the page inside the index.
-	rows, err := s.pool.Query(ctx, `select `+hitColumns+`, e.score from (select e.*, `+q.score+` as score from entries e`+
+	rows, err := s.pool.Query(ctx, `select `+hitColumns+`, e.score from (
+		select e.id, e.volume_id, e.kind, e.path, e.size_bytes, e.modified_at, e.missing_scan, e.content_id,
+		`+q.score+` as score from entries e`+
 		q.tail(o)+`) e`+hitJoins+` order by e.score desc, `+q.ties, q.args...)
 	if err != nil {
 		return nil, err
@@ -115,7 +117,8 @@ func (s *Store) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
 }
 
 // search holds what entries and members share: the words, the ext and kind
-// filters, the order and the page. Both BM25 indexes have the same fields.
+// filters, the order and the page. Both BM25 indexes share the name and path
+// search fields; only the entry index also includes volume, kind and ext filters.
 type search struct {
 	args         []any
 	where        []string
