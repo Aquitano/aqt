@@ -36,8 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       db:
-        # pg_search 0.26.1, also used by the local Compose stack.
-        image: paradedb/paradedb:v0.26.1-pg18@sha256:29bd8cc90a89ff15f8350f89b4849c2ef807aa9381c79febd1afb1a8a25fb706
+        # pg_search 0.26.2, also used by the local Compose stack.
+        image: paradedb/paradedb:v0.26.2-pg18@sha256:c552094b6b68dcb0a4e7a3969963d801eaec02490db4d2dd032dcb096bc86cf8
         env:
           POSTGRES_USER: attic
           POSTGRES_PASSWORD: attic

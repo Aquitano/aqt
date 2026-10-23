@@ -30,6 +30,8 @@ attic metadata 36331
 attic volumes
 attic scans --volume Data
 attic dupes --same-volume
+attic coverage --volume Data --under /Files
+attic coverage --volume Data --json --limit 50 --offset 0
 attic skips --reason unreadable
 attic stats
 attic help scan
@@ -40,6 +42,10 @@ Search requires every searchable word by default; `--any` accepts any word. Word
 Argument parsing errors exit with code 2. Command failures, including `enrich --task ocr` without targets or `--under`, exit with code 1.
 
 An entry ID identifies a file at a place. A content ref such as `attic:3f9a1c2b4d5e6f70` identifies its bytes across disks. `show <ref>` lists the copies. Missing files remain searchable and are marked missing. `dupes --same-volume` counts copies that share a disk.
+
+`coverage` selects present files in the requested scope and counts distinct volume IDs for their completed full content hashes across the entire catalogue. It reports content recorded on fewer than two volumes, with unique byte totals. Multiple paths and hard links on one volume count as one volume. Unknown and invalidated hashes appear separately, with path byte totals that cannot be deduplicated. Offline volumes count; entries marked missing do not. With no scope, it reports the whole catalogue.
+
+Coverage totals include all selected content, independently of pagination. `--limit` and `--offset` page the undercovered content and unknown-file lists separately. Each content lists up to 100 locations and its total path count. Location dates identify the recorded update scan's start, not a fresh verification. This read-only report does not rehash files or verify backup health or physical disk independence. Scans can be partial or stale; use `attic scans --volume Data` to inspect their scope and status.
 
 A scan lists directories, hashes unknown files, lists archives, extracts document text and reads embedded metadata. It skips links, cloud placeholders, excluded paths and name-only files. ZIP, 7z, RAR and tar listings can include nested archives. Documents include plain text, Markdown, CSV, HTML, Office, OpenDocument and PDFs with a text layer. Source code and configuration files keep their names only. Extracted document text is capped at 1 MB.
 
