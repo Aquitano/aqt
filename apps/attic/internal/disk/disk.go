@@ -69,10 +69,15 @@ func Hash(ctx context.Context, path string) (Digest, int64, error) {
 		return d, 0, err
 	}
 	defer f.Close()
+	return hashReader(ctx, f)
+}
+
+func hashReader(ctx context.Context, r io.Reader) (Digest, int64, error) {
+	var d Digest
 	buffer := hashBuffers.Get().(*[1 << 20]byte)
 	defer hashBuffers.Put(buffer)
 	h := blake3.New(len(d), nil)
-	n, err := io.CopyBuffer(h, ctxReader{ctx, f}, buffer[:])
+	n, err := io.CopyBuffer(h, ctxReader{ctx, r}, buffer[:])
 	if err != nil {
 		return d, n, err
 	}

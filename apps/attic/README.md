@@ -55,6 +55,37 @@ A changed or unavailable device serial requires an identity decision when the vo
 
 Ctrl+C keeps committed work. Run the same command again to continue. The summary includes phase times and the log path under `%LOCALAPPDATA%\attic\logs`. Use `--log-level debug` to log individual reads.
 
+## Verify stored file hashes during maintenance
+
+`verify` runs only when explicitly invoked. Normal scans and file changes do not trigger this maintenance pass. Run it when the source disk is mounted and can be read for the duration of the check.
+
+```powershell
+attic verify --under E:\Files
+attic verify --volume Data --under /Files --json
+```
+
+Verification rereads each selected catalogue file and compares its full BLAKE3 digest, even when its size and timestamps have not changed. It checks that specific copy, including copies marked missing, without falling back to another disk. It leaves source bytes, catalogue hashes and extracted results unchanged. A mismatch means the bytes differ from the baseline; it does not establish corruption.
+
+`--under` is required. Mounted paths use the disk's current identity. `--volume` confirms an ambiguous identity and also accepts volume-relative paths, including missing folders or offline volumes. Links, junctions and cloud placeholders are not read. Like scanning, mounted volume identification currently requires Windows.
+
+Results distinguish matched, mismatched, unreadable, missing, unavailable and unknown files. Unknown means the catalogue has no full digest, or the scope contains no catalogue files. Verification does not discover files absent from the catalogue. Any result other than matched exits with code 1. The text output ends with counts; `--json` streams one JSON entry per line followed by a summary with `type: "summary"`. The summary's `complete` flag means selection finished, not that all files matched. Cancellation or a catalogue error leaves a partial report with `complete: false` and a nonzero exit.
+
+Ordinary scans can reuse a hash when file metadata is unchanged. `verify` checks those bytes explicitly. `scan --rebuild-content` rebuilds archive listings and document text; it does not replace verification of every selected file.
+
+To keep a dated report, use PowerShell 7.4 or later, which [preserves native output bytes during redirection](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_redirection#redirecting-output-from-native-commands). Run this from a reports folder outside the verified subtree:
+
+```powershell
+$report = "attic-verify-$(Get-Date -Format yyyyMMdd-HHmmss).ndjson"
+attic verify --volume Data --under /Files --json > $report
+$verifyExitCode = $LASTEXITCODE
+Get-Content -LiteralPath $report -Tail 1
+"Verification exit code: $verifyExitCode"
+```
+
+Exit code 0 means every selected file matched its stored digest. Keep reports to see which scope was checked and which files differed or could not be checked. A successful report describes the bytes read during that run; it does not establish that they remain unchanged afterwards. Verification does not store a last-checked status in the catalogue.
+
+For recurring maintenance, Windows Task Scheduler can run the same command at the chosen interval while the disk is connected. Give each run a separate report and retain the command's exit code. Attic does not install a schedule or start a background verifier.
+
 ## Rebuild archive listings and document text
 
 Older scans could attach results to the wrong content if a file changed between hashing and extraction. Ordinary rescans reuse those results. To rebuild the archive listings and document text associated with present files below a selected folder, run:
