@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -38,7 +39,17 @@ func TestCoverageOutput(t *testing.T) {
 	if err := printCoverage(&out, r, false); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"3 unique contents", "1 on fewer than two recorded volumes", "1 unknown files", "physical disk independence", "Unknown content hashes:", "/unknown", "scan 0 at"} {
+	lines := strings.Split(out.String(), "\n")
+	for _, want := range []string{
+		"3 unique contents, 30 B; 1 on fewer than two recorded volumes, 10 B",
+		"1 unknown files, 7 B of path sizes (not deduplicated)",
+		"10 B, 1 recorded volumes, 2 paths, BLAKE3 " + strings.Repeat("11", 32),
+	} {
+		if !slices.Contains(lines, want) {
+			t.Errorf("missing line %q in %s", want, out.String())
+		}
+	}
+	for _, want := range []string{"physical disk independence", "Unknown content hashes:", "/unknown", "scan 0 at"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in %s", want, out.String())
 		}

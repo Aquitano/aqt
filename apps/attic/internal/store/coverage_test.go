@@ -50,3 +50,34 @@ func TestCoverageCountsVolumesAcrossScope(t *testing.T) {
 		t.Fatalf("empty page totals: %+v, %v", r, err)
 	}
 }
+
+func TestCoverageBoundsLocationsPerContent(t *testing.T) {
+	st, conn := searchFixture(t)
+	_, err := conn.Exec(t.Context(), `
+ update entries set missing_scan = 1 where id = 6;
+ insert into entries(id,volume_id,parent_id,kind,name,raw_name,path,content_id,hash_state,first_scan,updated_scan)
+ overriding system value
+ select 100+n, '00000000-0000-0000-0000-000000000001', 1, 'file',
+ 'copy-' || n, convert_to('copy-' || n, 'UTF8'), '/copies/' || n, 2, 'done', 1, 1
+ from generate_series(1,105) n;`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := st.Coverage(t.Context(), store.CoverageOptions{Limit: 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Content) != 2 || r.Content[0].ID != 2 || r.Content[1].ID != 1 {
+		t.Fatalf("content page: %+v", r.Content)
+	}
+	if r.Content[0].Copies != 106 || len(r.Content[0].Locations) != r.LocationLimit || len(r.Content[1].Locations) != 2 {
+		t.Fatalf("per-content limits: %+v", r)
+	}
+	for _, c := range r.Content {
+		for i, location := range c.Locations {
+			if i > 0 && location.Path < c.Locations[i-1].Path {
+				t.Fatalf("locations are not ordered: %+v", c.Locations)
+			}
+		}
+	}
+}
