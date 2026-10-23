@@ -72,7 +72,7 @@ Results distinguish matched, mismatched, unreadable, missing, unavailable and un
 
 Ordinary scans can reuse a hash when file metadata is unchanged. `verify` checks those bytes explicitly. `scan --rebuild-content` rebuilds archive listings and document text; it does not replace verification of every selected file.
 
-To keep a dated report, run this from a reports folder outside the verified subtree:
+To keep a dated report, use PowerShell 7.4 or later, which [preserves native output bytes during redirection](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_redirection#redirecting-output-from-native-commands). Run this from a reports folder outside the verified subtree:
 
 ```powershell
 $report = "attic-verify-$(Get-Date -Format yyyyMMdd-HHmmss).ndjson"
