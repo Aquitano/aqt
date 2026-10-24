@@ -48,6 +48,9 @@ func (c *Client) ListLibraryFiles(ctx context.Context, o library.ListOptions) ([
 func (c *Client) LibraryItem(ctx context.Context, id string) (library.Item, error) {
 	return getJSON[library.Item](ctx, c, "/v1/library/items/"+url.PathEscape(id), nil)
 }
+func (c *Client) LibraryActivity(ctx context.Context, id string) (library.Activity, error) {
+	return getJSON[library.Activity](ctx, c, "/v1/library/activity/"+url.PathEscape(id), nil)
+}
 func (c *Client) LibraryCollection(ctx context.Context, id string) (library.Collection, error) {
 	return getJSON[library.Collection](ctx, c, "/v1/library/collections/"+url.PathEscape(id), nil)
 }

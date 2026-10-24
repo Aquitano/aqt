@@ -232,3 +232,21 @@ func TestImportMboxReportsAFileThatDidNotSplit(t *testing.T) {
 		})
 	}
 }
+
+func TestIngestSkipsRetiredMail(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	blobs, _ := blobStore(t)
+	raw := []byte(twoAttachmentMail)
+	opts := IngestOpts{Source: "proton", ExternalID: "mail:two", RawRef: "proton/two.eml"}
+	if _, err := Ingest(ctx, st, blobs, raw, opts); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.RetireMessages(ctx, store.RetireOptions{Source: "proton", ExternalPrefixes: []string{"mail:"}, Apply: true}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Ingest(ctx, st, blobs, raw, opts)
+	if err != nil || res.Inserted || res.Attachments != 0 {
+		t.Fatalf("replayed retired mail: %+v %v", res, err)
+	}
+}

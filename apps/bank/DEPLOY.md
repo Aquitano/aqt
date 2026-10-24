@@ -369,6 +369,7 @@ tracking state, collection snapshots, edit history, item links, and provenance e
 This includes `library_activity_aliases` and `library_activity_evidence`.
 Library ratings, statuses, notes, tags and collection edits exist only in Postgres,
 not in the raw archive, so a re-import does not bring them back.
+`message_tombstones` is not in the list, so messages retired with `bank retire` stay out of a re-import; add it to forget them.
 `schema_version` and the legacy `schema_migrations` table stay, so no migration re-runs; `restart identity` resets
 generated row IDs. If a backup cron from §7 is
 live, take one last snapshot first — the wipe is exactly the kind of action the

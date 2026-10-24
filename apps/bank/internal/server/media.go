@@ -31,6 +31,7 @@ func (s *Server) registerLibraryRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/library/items/{id}", s.handleMediaItem)
 	mux.HandleFunc("PUT /v1/library/items/{id}/state", s.handleMediaState)
 	mux.HandleFunc("GET /v1/library/activity", s.handleMediaActivity)
+	mux.HandleFunc("GET /v1/library/activity/{id}", s.handleMediaActivityRecord)
 	mux.HandleFunc("GET /v1/library/collections", s.handleMediaCollections)
 	mux.HandleFunc("POST /v1/library/collections", s.handleCollectionCreate)
 	mux.HandleFunc("GET /v1/library/collections/{id}", s.handleCollection)
@@ -141,6 +142,15 @@ func (s *Server) handleMediaCreate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMediaItem(w http.ResponseWriter, r *http.Request) {
 	row, err := s.db.LibraryItem(r.Context(), r.PathValue("id"))
+	if err != nil {
+		libraryFailure(w, err)
+		return
+	}
+	writeJSON(w, 200, row)
+}
+
+func (s *Server) handleMediaActivityRecord(w http.ResponseWriter, r *http.Request) {
+	row, err := s.db.LibraryActivity(r.Context(), r.PathValue("id"))
 	if err != nil {
 		libraryFailure(w, err)
 		return

@@ -377,11 +377,11 @@ func importOutcome(res any) inbox.Outcome {
 	case linkedin.Result:
 		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
 	case youtube.Result:
-		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
+		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates + r.Retired, Result: r}
 	case aichat.Result:
 		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
 	case generic.Result:
-		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: r.Rejected, Result: r}
+		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates + r.Retired, Rejected: r.Rejected, Result: r}
 	}
 	return inbox.Outcome{Result: res}
 }
@@ -452,6 +452,9 @@ func printLinkedInResult(res linkedin.Result) {
 func printYouTubeResult(res youtube.Result) {
 	fmt.Printf("youtube: %d channels, %d new, %d already known, %d records skipped",
 		res.Channels, res.Inserted, res.Duplicates, res.Skipped)
+	if res.Retired > 0 {
+		fmt.Printf(", %d retired", res.Retired)
+	}
 	if res.Ads > 0 {
 		fmt.Printf(", %d ad impressions dropped", res.Ads)
 	}
@@ -479,6 +482,9 @@ func printGenericResult(res generic.Result) {
 	fmt.Printf("json: %d new, %d already known, %d attachments", res.Inserted, res.Duplicates, res.Attachments)
 	if res.Healed > 0 {
 		fmt.Printf(" (%d recovered)", res.Healed)
+	}
+	if res.Retired > 0 {
+		fmt.Printf(", %d retired", res.Retired)
 	}
 	if res.Rejected > 0 {
 		fmt.Printf(", %d entries rejected", res.Rejected)
