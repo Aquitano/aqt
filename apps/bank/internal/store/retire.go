@@ -123,12 +123,15 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 
-	rows, _ := tx.Query(ctx, `
+	rows, err := tx.Query(ctx, `
 		select distinct wanted.id from unnest($1::text[]) as wanted(id)
 		where not exists (select 1 from library_items i where i.id = wanted.id)
 		  and not exists (select 1 from library_activity a where a.id = wanted.id)
 		  and not exists (select 1 from library_collections c where c.id = wanted.id)
 		order by wanted.id`, ids)
+	if err != nil {
+		return res, err
+	}
 	missing, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
 		return res, err
@@ -163,10 +166,13 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 	}
 
 	for i := range res.Prefixes {
-		rows, _ := tx.Query(ctx, `
+		rows, err := tx.Query(ctx, `
 			select `+refSQL("m")+`, m.source, m.external_id, m.sent_at, m.subject, m.raw_ref
 			from messages m where m.source = $1 and starts_with(m.external_id, $2)
 			order by m.sent_at, m.id limit $3`, o.Source, res.Prefixes[i].Prefix, retireSamples)
+		if err != nil {
+			return res, err
+		}
 		samples, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (RetiredMessage, error) {
 			var r RetiredMessage
 			err := row.Scan(&r.Ref, &r.Source, &r.ExternalID, &r.SentAt, &r.Subject, &r.RawRef)
@@ -179,9 +185,12 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 		res.Prefixes[i].Samples = samples
 	}
 
-	rows, _ = tx.Query(ctx, `
+	rows, err = tx.Query(ctx, `
 		select m.ref from (select `+refSQL("m")+` as ref from messages m where `+retiringPredicate+`) m
 		where m.ref = any($3)`, o.Source, o.ExternalPrefixes, refs)
+	if err != nil {
+		return res, err
+	}
 	matched, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
 		return res, err
@@ -198,6 +207,13 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 	}
 	if len(res.UnmatchedReplacements) > 0 {
 		return res, fmt.Errorf("replacement map refs match no retiring message: %s", strings.Join(res.UnmatchedReplacements, ", "))
+	}
+	// An insert checks for tombstones in its own snapshot, then waits on the
+	// unique key of the row being deleted here; once this commits it would
+	// insert the retired key again. Holding off every message write until the
+	// commit makes such an insert start after the tombstones are visible.
+	if _, err := tx.Exec(ctx, `lock table messages in share row exclusive mode`); err != nil {
+		return res, err
 	}
 	tag, err := tx.Exec(ctx, `
 		with gone as (
