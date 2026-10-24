@@ -185,13 +185,13 @@ type TextDetail struct {
 // Text returns the text read from an entry's content, or from a ref's.
 func (s *Store) Text(ctx context.Context, entryID int64, ref string) (TextDetail, error) {
 	var d TextDetail
-	lookup, err := newContentLookup(entryID, ref)
+	lookup, err := s.newContentLookup(ctx, entryID, ref)
 	if err != nil {
 		return d, err
 	}
 	err = s.pool.QueryRow(ctx, `select `+refSQL+`, t.status, t.extractor, t.detail, t.chars, t.extracted_at, t.text
 		from texts t join contents c on c.id = t.content_id
-		where `+contentLookupWhere+` order by c.id limit 1`, lookup.entryID, lookup.prefix).
+		where `+contentLookupWhere, lookup.entryID, lookup.contentID).
 		Scan(&d.Ref, &d.Status, &d.Extractor, &d.Detail, &d.Chars, &d.Extracted, &d.Text)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, fmt.Errorf("no text read for that file: %w", ErrNotFound)

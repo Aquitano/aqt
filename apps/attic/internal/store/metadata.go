@@ -109,13 +109,13 @@ func cleanJSON(v any) any {
 
 func (s *Store) Metadata(ctx context.Context, entryID int64, ref string) (MetadataDetail, error) {
 	var d MetadataDetail
-	lookup, err := newContentLookup(entryID, ref)
+	lookup, err := s.newContentLookup(ctx, entryID, ref)
 	if err != nil {
 		return d, err
 	}
 	err = s.pool.QueryRow(ctx, `select `+refSQL+`, m.status, m.detail, m.tags, m.extracted_at
  from metadata m join contents c on c.id = m.content_id
- where `+contentLookupWhere+` order by c.id limit 1`, lookup.entryID, lookup.prefix).
+ where `+contentLookupWhere, lookup.entryID, lookup.contentID).
 		Scan(&d.Ref, &d.Status, &d.Detail, &d.Tags, &d.Extracted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, fmt.Errorf("no metadata read for that file: %w", ErrNotFound)

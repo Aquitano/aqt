@@ -122,37 +122,35 @@ func TestContentLookupsKeepResultSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := "attic:" + strings.Repeat("11", 8)
-	for _, entryID := range []int64{0, 3} {
-		text, err := st.Text(t.Context(), entryID, ref)
-		if err != nil || text.Text != "Tom & Jerry" {
+	for _, target := range []struct {
+		entryID  int64
+		ref      string
+		text     string
+		analyses int
+	}{{3, "", "Tom & Jerry", 3}, {0, "attic:" + strings.Repeat("1", 16) + "3", "collision", 1}} {
+		text, err := st.Text(t.Context(), target.entryID, target.ref)
+		if err != nil || text.Text != target.text {
 			t.Errorf("text: %+v, %v", text, err)
 		}
-		meta, err := st.Metadata(t.Context(), entryID, ref)
+		meta, err := st.Metadata(t.Context(), target.entryID, target.ref)
 		if err != nil || meta.Status != "ok" {
 			t.Errorf("metadata: %+v, %v", meta, err)
 		}
-		analyses, err := st.Analyses(t.Context(), entryID, ref)
-		want := 3
-		if entryID == 0 {
-			want = 4
-		}
-		if err != nil || len(analyses) != want {
+		analyses, err := st.Analyses(t.Context(), target.entryID, target.ref)
+		if err != nil || len(analyses) != target.analyses {
 			t.Errorf("analyses: %+v, %v", analyses, err)
 		}
+	}
+	shared := strings.Repeat("11", 8)
+	if _, err := st.Metadata(t.Context(), 0, shared); !errors.As(err, new(*store.AmbiguousRefError)) {
+		t.Errorf("metadata picked a content for a shared ref: %v", err)
+	}
+	if _, err := st.Analyses(t.Context(), 0, shared); !errors.As(err, new(*store.AmbiguousRefError)) {
+		t.Errorf("analyses merged contents for a shared ref: %v", err)
 	}
 	if _, err := conn.Exec(t.Context(), `delete from texts where content_id=1; delete from metadata where content_id=1`); err != nil {
 		t.Fatal(err)
 	}
-	text, err := st.Text(t.Context(), 0, ref)
-	if err != nil || text.Text != "collision" {
-		t.Errorf("text ref must select a content with text: %+v, %v", text, err)
-	}
-	meta, err := st.Metadata(t.Context(), 0, ref)
-	if err != nil || meta.Status != "ok" {
-		t.Errorf("metadata ref must select a content with metadata: %+v, %v", meta, err)
-	}
-
 	for _, entryID := range []int64{3, 4, 999} {
 		if _, err := st.Text(t.Context(), entryID, ""); !errors.Is(err, store.ErrNotFound) || !strings.Contains(err.Error(), "no text read") {
 			t.Errorf("text missing: %v", err)
