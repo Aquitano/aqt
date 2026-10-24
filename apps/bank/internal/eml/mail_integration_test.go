@@ -202,3 +202,45 @@ func TestGmailIMAPMailJoinsTakeoutThread(t *testing.T) {
 		t.Fatalf("label observations = %v", paths)
 	}
 }
+
+func TestSenderThreadHeaderOutsideMboxIsIgnored(t *testing.T) {
+	ctx := context.Background()
+	st, _ := storetest.NewNamed(t)
+	root := t.TempDir()
+	blobs, err := blob.New(filepath.Join(root, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archiveDir := filepath.Join(root, "archive")
+	for _, name := range []string{"one", "two"} {
+		path := filepath.Join(root, name+".eml")
+		if err := os.WriteFile(path, []byte("X-GM-THRID: 1\r\nMessage-ID: <"+name+"@example.com>\r\nSubject: "+name+"\r\n\r\nbody\r\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ImportEmlPath(ctx, st, blobs, archiveDir, "proton", path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	threadOf := func(messageID string) string {
+		t.Helper()
+		id, err := st.FindByEmailMessageID(ctx, "proton", messageID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		message, err := st.GetMessageDetail(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return message.ThreadID
+	}
+	for _, step := range []string{"import", "rebuild"} {
+		if step == "rebuild" {
+			if _, err := RebuildMail(ctx, st, archiveDir, "proton", true); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if one, two := threadOf("one@example.com"), threadOf("two@example.com"); one == two || one == "1" {
+			t.Fatalf("%s joined unrelated EML on a sender's X-GM-THRID: %q %q", step, one, two)
+		}
+	}
+}

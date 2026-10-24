@@ -2,7 +2,6 @@ package eml
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -110,7 +109,7 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				report.Skipped++
 				return nil
 			}
-			facts := store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, RawRef: record.RawRef, NativeThreadID: cmp.Or(record.ThreadID, message.GmailThreadID), PreserveNative: true, PreserveHeaders: true, Context: record.Context}
+			facts := store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, RawRef: record.RawRef, NativeThreadID: message.nativeThreadID(record.ThreadID, record.InputKind == "mbox"), PreserveNative: true, PreserveHeaders: true, Context: record.Context}
 			var projection store.MailProjectionResult
 			if apply {
 				projection, err = st.ProjectMail(ctx, id, facts, true, workKey)

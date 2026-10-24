@@ -131,6 +131,16 @@ func GmailThreadID(thread uint64) string {
 	return strconv.FormatUint(thread, 16)
 }
 
+// nativeThreadID prefers the explicit provider thread ID. Only an mbox, the
+// form Takeout exports, falls back to the X-GM-THRID header: Takeout writes it,
+// while in any other mail it is whatever the sender put there.
+func (m *Message) nativeThreadID(explicit string, mbox bool) string {
+	if explicit != "" || !mbox {
+		return explicit
+	}
+	return m.GmailThreadID
+}
+
 // parser collects body candidates while walking the MIME tree.
 type parser struct {
 	out   *Message

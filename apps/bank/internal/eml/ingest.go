@@ -27,6 +27,7 @@ type IngestOpts struct {
 	ThreadID    string
 	SentAt      time.Time // overrides the Date header (e.g. Gmail internalDate)
 	RawRef      string
+	Mbox        bool
 }
 
 type MailImportContext = archive.MailImportContext
@@ -101,7 +102,7 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 		return IngestResult{}, err
 	}
 	res := IngestResult{Warnings: m.Warnings}
-	threadID := cmp.Or(o.ThreadID, m.GmailThreadID)
+	threadID := m.nativeThreadID(o.ThreadID, o.Mbox)
 
 	externalID := o.ExternalID
 	if externalID == "" {
@@ -334,7 +335,7 @@ func importMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archive
 		} else {
 			only = nil
 		}
-		out, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: source, RawRef: rel, MailContext: observation})
+		out, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: source, RawRef: rel, MailContext: observation, Mbox: true})
 		if err != nil {
 			if fail.IsOp(err) {
 				return err
