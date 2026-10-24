@@ -14,6 +14,7 @@ require (
 	github.com/mholt/archives v0.1.5
 	github.com/nwaples/rardecode/v2 v2.4.5
 	github.com/pelletier/go-toml/v2 v2.4.3
+	github.com/peterldowns/pgtestdb v0.1.1
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 	lukechampine.com/blake3 v1.4.1
@@ -45,7 +46,6 @@ require (
 	github.com/minio/minlz v1.0.1 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
-	github.com/peterldowns/pgtestdb v0.1.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sorairolake/lzip-go v0.3.8 // indirect
