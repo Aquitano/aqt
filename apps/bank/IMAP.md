@@ -9,7 +9,7 @@ The collector uses read-only `EXAMINE` and `BODY.PEEK[]`. It does not mark mail
 as read, move messages, delete messages, or copy mailbox deletions into Bank.
 The first run imports the existing contents of every selected folder.
 
-Each upload includes its account ID and exact IMAP folder. Bank stores historical folder observations, including duplicates already seen elsewhere. Upgrade the Bank server before this collector: a response without `mail_context_version: 1` keeps the queued file pending and does not advance its checkpoint. See [MAIL.md](MAIL.md) for folder filters and recovery.
+Each upload includes its account ID and exact IMAP folder. Bank stores historical folder observations, including duplicates already seen elsewhere. Upgrade the Bank server before this collector: a response that does not acknowledge the upload's `mail_context_version` (1, or 2 for Gmail metadata) keeps the queued file pending and does not advance its checkpoint. See [MAIL.md](MAIL.md) for folder filters and recovery.
 
 ## Start with Proton Bridge on Windows
 
@@ -113,6 +113,35 @@ Supply an existing Google OAuth client and refresh token authorized for the
 authenticates with XOAUTH2. This command does not run the initial browser consent
 flow. Tokens from Bank's existing `bank auth gmail` use `gmail.readonly` and are
 not sufficient for IMAP. See [Google's IMAP OAuth documentation](https://developers.google.com/workspace/gmail/imap/xoauth2-protocol).
+
+### Gmail threads and labels
+
+When the server advertises `X-GM-EXT-1` and a folder has new mail, the collector
+opens a second read-only connection and fetches `X-GM-THRID` and `X-GM-LABELS`
+once per metadata window, not per message. The IMAP library used for bodies
+cannot read these items. Servers without the capability are collected exactly as
+before.
+
+Bank stores the thread ID as the message's provider thread ID, in the
+hexadecimal form the Gmail API returns as `threadId`. Takeout's decimal
+`X-GM-THRID` header is converted to the same value, so IMAP, API and Takeout
+mail with one Gmail thread ID share a conversation without needing reply
+headers. Labels become folder observations under the names Gmail exposes over
+IMAP: `\Inbox` is `INBOX`, `\Sent` is the folder with the `\Sent` attribute, and
+a user label is its own folder name. A system label without a visible folder
+keeps its Gmail name, such as `\Important`. Collecting only All Mail therefore
+still records every label.
+
+These uploads use mail context version 2. A Bank server that predates it
+rejects them, and the mail stays queued until the server is upgraded.
+
+Takeout mail imported before this version has no stored thread ID. Run
+`bank mail rebuild --source gmail --apply` once on the archive host, as
+described in [MAIL.md](MAIL.md#rebuild-metadata), so the archived mbox headers
+supply it. Without the rebuild, new mail joins those conversations only through
+`References` and `In-Reply-To`.
+
+### Running beside the Gmail API
 
 Keep `source` as `gmail` when trying IMAP alongside existing Gmail API imports.
 Bank deduplicates messages with the same Message-ID within a source. After the
@@ -242,6 +271,7 @@ restart recovery, UIDVALIDITY changes, read-only access, rejected imports,
 oversized messages, certificate trust, XOAUTH2 success/error responses, process
 locking, queued mail surviving mailbox deletion, independent account retries,
 polling, mid-body cancellation and timeouts, body-before-UID responses, changed
-sequence mappings and failed batch publication. They do not contact Proton, Gmail or a live
+sequence mappings, failed batch publication, and Gmail thread IDs and labels
+surviving a queued retry. They do not contact Proton, Gmail or a live
 Bank server. The benchmark measures local IMAP fetch, staging and checkpoints
 with an acknowledging importer, not remote Bank/database throughput.

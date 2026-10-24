@@ -24,13 +24,28 @@ type MailImportContext struct {
 	Mailbox      string `json:"mailbox"`
 	RelativePath string `json:"relative_path"`
 	AccountID    string `json:"account_id,omitempty"`
+	// Version 2 adds the provider's thread ID and the further IMAP folders
+	// the message was observed in, such as Gmail labels.
+	ThreadID string   `json:"thread_id,omitempty"`
+	Labels   []string `json:"labels,omitempty"`
 }
 
 func (context MailImportContext) Validate() error {
-	if context.Version != 1 || (context.Kind != "export" && context.Kind != "imap") {
-		return fmt.Errorf("mail context requires version 1 and kind export or imap")
+	if (context.Version != 1 && context.Version != 2) || (context.Kind != "export" && context.Kind != "imap") {
+		return fmt.Errorf("mail context requires version 1 or 2 and kind export or imap")
 	}
-	for _, value := range []string{context.Mailbox, context.RelativePath, context.AccountID} {
+	if context.Version == 1 && (context.ThreadID != "" || len(context.Labels) > 0) {
+		return fmt.Errorf("mail context version 1 cannot carry a thread ID or labels")
+	}
+	if len(context.Labels) > 0 && context.Kind != "imap" {
+		return fmt.Errorf("mail context labels require kind imap")
+	}
+	for _, label := range context.Labels {
+		if label == "" {
+			return fmt.Errorf("mail context label is empty")
+		}
+	}
+	for _, value := range append([]string{context.Mailbox, context.RelativePath, context.AccountID, context.ThreadID}, context.Labels...) {
 		if len(value) > 4096 || !utf8.ValidString(value) || strings.ContainsAny(value, "\x00\r\n") {
 			return fmt.Errorf("invalid or overlong mail context value")
 		}
