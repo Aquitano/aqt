@@ -86,15 +86,21 @@ type InsertMessagesOpts struct {
 // of thousands of records.
 const messageBatchSize = 1000
 
+// notRetired makes every import skip a key `bank retire` removed, so replaying
+// the raw input that first brought it in cannot resurrect it. The skipped row
+// reads as a duplicate, which is what it is to the importer.
+const notRetired = `
+	where not exists (select 1 from message_tombstones t where t.source = $1 and t.external_id = $2)`
+
 const insertMessageSQL = `
 	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index)
-	values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13` + notRetired + `
 	on conflict do nothing
 	returning id`
 
 const rethreadMessageSQL = `
 	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index)
-	values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13` + notRetired + `
 	on conflict (source, external_id) do update
 		set thread_id = excluded.thread_id, subject = excluded.subject, sent_at = excluded.sent_at,
             parent_external_id = coalesce(nullif(excluded.parent_external_id, ''), messages.parent_external_id),
@@ -587,7 +593,8 @@ func (s *Store) GetMessage(ctx context.Context, id int64) (Message, []Attachment
 // GetMessageByRef resolves a citation. There is no index on the ref: the
 // expression is derived, the archive is one person's mail, and a sequential
 // scan answers in a fraction of a second — cheaper than a stored column that
-// could disagree with the formula.
+// could disagree with the formula. A ref whose message was retired returns a
+// *RetiredError, which still matches ErrNotFound.
 func (s *Store) GetMessageByRef(ctx context.Context, ref string) (Message, []Attachment, error) {
 	var m Message
 	if err := ValidRef(ref); err != nil {
@@ -596,7 +603,11 @@ func (s *Store) GetMessageByRef(ctx context.Context, ref string) (Message, []Att
 	err := m.scanFull(s.pool.QueryRow(ctx,
 		`select `+messageColumns+` from messages m where `+refSQL("m")+` = $1 order by m.id limit 1`, ref))
 	if errors.Is(err, pgx.ErrNoRows) {
-		return m, nil, ErrNotFound
+		retired, err := s.RetiredByRef(ctx, ref)
+		if err != nil {
+			return m, nil, err
+		}
+		return m, nil, &RetiredError{Retired: retired}
 	}
 	if err != nil {
 		return m, nil, err

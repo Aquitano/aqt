@@ -61,6 +61,12 @@ func (c *Client) request(ctx context.Context, method, path string, q url.Values,
 	}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusGone && strings.HasPrefix(path, "/v1/messages/") {
+			var retired store.RetiredError
+			if err := json.NewDecoder(io.LimitReader(resp.Body, 65536)).Decode(&retired); err == nil && retired.Retired.Ref != "" {
+				return nil, &retired
+			}
+		}
 		if resp.StatusCode == http.StatusNotFound && strings.HasPrefix(path, "/v1/library/") {
 			return nil, fmt.Errorf("%s: %w", path, store.ErrNotFound)
 		}

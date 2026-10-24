@@ -36,6 +36,9 @@ func TestCLIParsesDocumentedForms(t *testing.T) {
 		{[]string{"contact", "alias", "remove", "alice", "whatsapp:Alice"}, func(c cli) bool {
 			return c.Contact.Alias.Rm.Name == "alice" && reflect.DeepEqual(c.Contact.Alias.Rm.Aliases, []string{"whatsapp:Alice"})
 		}},
+		{[]string{"retire", "--source", "youtube", "--external-prefix", "watch:", "--external-prefix", "playlist:"}, func(c cli) bool {
+			return c.Retire.Source == "youtube" && reflect.DeepEqual(c.Retire.ExternalPrefix, []string{"watch:", "playlist:"}) && !c.Retire.Apply
+		}},
 		{[]string{"mail", "conflict", "key", "--source", "gmail", "--json"}, func(c cli) bool {
 			return c.Mail.Conflict.Key == "key" && c.Mail.Source == "gmail" && c.Mail.Conflict.Limit == 100
 		}},
@@ -105,6 +108,22 @@ func TestLibraryGetRoutesActivityIDs(t *testing.T) {
 		}
 		if path != want {
 			t.Errorf("get %s requested %s, want %s", id, path, want)
+		}
+	}
+}
+
+func TestShowPrintsRetiredRefs(t *testing.T) {
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGone)
+		fmt.Fprint(w, `{"error":"message 0123456789ab was retired","retired":{"ref":"0123456789ab","source":"youtube","external_id":"watch:1","replacement":"activity_ab"}}`)
+	}))
+	defer remote.Close()
+	t.Setenv("BANK_URL", remote.URL)
+	t.Setenv("BANK_TOKEN", "test")
+	for _, args := range [][]string{{"show", "0123456789ab"}, {"show", "0123456789ab", "--json"}} {
+		if err := execute(context.Background(), args); err != nil {
+			t.Errorf("%v: %v", args, err)
 		}
 	}
 }

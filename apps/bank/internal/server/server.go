@@ -224,6 +224,10 @@ func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
 		}
 		m, atts, err = s.read.GetMessage(r.Context(), id)
 	}
+	if retired, ok := errors.AsType[*store.RetiredError](err); ok {
+		writeJSON(w, http.StatusGone, map[string]any{"error": retired.Error(), "retired": retired.Retired})
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, fmt.Sprintf("no message %s", arg))
 		return

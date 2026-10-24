@@ -77,6 +77,7 @@ type cli struct {
 	Query       queryCmd       `cmd:"" help:"Read-only ad-hoc SQL: READ ONLY tx, 15s timeout, row cap 100."`
 	Fetch       fetchCmd       `cmd:"" help:"Write an attachment to a file."`
 	Verify      verifyCmd      `cmd:"" help:"Check archive integrity, optionally repair."`
+	Retire      retireCmd      `cmd:"" help:"Delete messages by external id prefix, keeping tombstones."`
 	Healthcheck healthcheckCmd `cmd:"" help:"Check server and database health."`
 	Serve       serveCmd       `cmd:"" help:"HTTP API; logs JSON to stderr at BANK_LOG_LEVEL (default info)."`
 	UI          uiCmd          `cmd:"" name:"ui" help:"Local archive browser (needs BANK_URL)."`
@@ -460,6 +461,9 @@ func (c *showCmd) Run(ctx context.Context) error {
 		}
 		d, err = b.GetMessageDetail(ctx, id)
 	}
+	if retired, ok := errors.AsType[*store.RetiredError](err); ok {
+		return printRetired(retired.Retired, c.JSON)
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("no message %s", c.Ref)
 	}
@@ -504,6 +508,25 @@ func (c *showCmd) Run(ctx context.Context) error {
 				fmt.Println()
 			}
 		}
+	}
+	return nil
+}
+
+func printRetired(r store.RetiredMessage, asJSON bool) error {
+	if asJSON {
+		return printJSON(store.RetiredError{Retired: r})
+	}
+	replacement := r.Replacement
+	if replacement == "" {
+		replacement = "none recorded"
+	}
+	fmt.Printf("retired: %s\nsource:  %s\nexternal ID: %s\ndate:    %s\n", r.Ref, r.Source, r.ExternalID, r.SentAt.Format(time.RFC1123))
+	if r.Subject != "" {
+		fmt.Printf("subject: %s\n", r.Subject)
+	}
+	fmt.Printf("retired at: %s\nreason:  %s\nreplacement: %s\n", r.RetiredAt.Format(time.RFC1123), r.Reason, replacement)
+	if r.RawRef != "" {
+		fmt.Printf("original archive input: %s\n", r.RawRef)
 	}
 	return nil
 }
