@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -60,24 +59,22 @@ func persistMailboxObservation(ctx context.Context, transaction pgx.Tx, message 
 		return nil
 	}
 	observation := projection.Context
-	for _, path := range append([]string{observation.Mailbox}, observation.Labels...) {
+	paths := append([]string{observation.Mailbox}, observation.Labels...)
+	for i, path := range paths {
 		if observation.Kind == "imap" && strings.EqualFold(path, "INBOX") {
-			path = "INBOX"
-		}
-		var mailboxID int64
-		err := transaction.QueryRow(ctx, `select id from mailboxes where source=$1 and kind=$2 and path=$3`, message.Source, observation.Kind, path).Scan(&mailboxID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			err = transaction.QueryRow(ctx, `insert into mailboxes(source,kind,path) values($1,$2,$3)
-				on conflict(source,kind,path) do update set path=excluded.path returning id`, message.Source, observation.Kind, path).Scan(&mailboxID)
-		}
-		if err != nil {
-			return err
-		}
-		if _, err := transaction.Exec(ctx, `insert into mailbox_messages(mailbox_id,message_id) values($1,$2) on conflict do nothing`, mailboxID, message.ID); err != nil {
-			return err
+			paths[i] = "INBOX"
 		}
 	}
-	return nil
+	if _, err := transaction.Exec(ctx, `insert into mailboxes(source,kind,path)
+		select $1,$2,wanted.path from unnest($3::text[]) wanted(path)
+		where not exists(select 1 from mailboxes m where m.source=$1 and m.kind=$2 and m.path=wanted.path)
+		on conflict(source,kind,path) do nothing`, message.Source, observation.Kind, paths); err != nil {
+		return err
+	}
+	_, err := transaction.Exec(ctx, `insert into mailbox_messages(mailbox_id,message_id)
+		select m.id,$4 from mailboxes m where m.source=$1 and m.kind=$2 and m.path=any($3)
+		on conflict do nothing`, message.Source, observation.Kind, paths, message.ID)
+	return err
 }
 
 func persistMailComponents(ctx context.Context, transaction pgx.Tx, source string, components []mailComponent, history []mailHistory) error {
