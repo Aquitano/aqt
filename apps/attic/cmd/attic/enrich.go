@@ -157,16 +157,3 @@ func (cmd *analysisCmd) Run(ctx context.Context) error {
 	}
 	return nil
 }
-
-type analysisOut struct {
-	textOut
-	ai.Key
-}
-
-func outAnalyses(hits []store.AIHit, roots map[string]string) []analysisOut {
-	out := make([]analysisOut, len(hits))
-	for i, h := range hits {
-		out[i] = analysisOut{textOut: outTexts([]store.TextHit{h.TextHit}, roots)[0], Key: h.Key}
-	}
-	return out
-}
