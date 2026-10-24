@@ -73,7 +73,10 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 		log = slog.Default()
 	}
 	temp := o.Config.Temp
-	selection := o.Selection
+	selection, err := st.ResolveRefs(ctx, o.Selection)
+	if err != nil {
+		return summary, err
+	}
 	selection.Key, selection.Extensions = o.Provider.Key(), o.Provider.Extensions()
 	selection.Volumes = nil
 	rules := map[string]config.Rules{}

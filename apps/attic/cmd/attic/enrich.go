@@ -115,7 +115,7 @@ func parseTarget(arg string) (int64, string, error) {
 	}
 	id, err := strconv.ParseInt(arg, 10, 64)
 	if err != nil || id <= 0 {
-		return 0, "", fmt.Errorf("not an entry id or a ref: %q", arg)
+		return 0, "", fmt.Errorf("not an entry id or a ref: %q; a ref is 16 to 64 hex characters, optionally after attic:", arg)
 	}
 	return id, "", nil
 }

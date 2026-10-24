@@ -316,6 +316,10 @@ type showCmd struct {
 }
 
 func (cmd *showCmd) Run(ctx context.Context) error {
+	id, ref, err := parseTarget(cmd.Target)
+	if err != nil {
+		return err
+	}
 	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
@@ -327,7 +331,7 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 	}
 	roots := onlineRoots(vols)
 
-	if ref, ok := store.ParseRef(cmd.Target); ok {
+	if ref != "" {
 		c, err := st.Content(ctx, ref)
 		if err != nil {
 			return err
@@ -351,10 +355,6 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 		return printHits(places[previous:])
 	}
 
-	id, err := strconv.ParseInt(cmd.Target, 10, 64)
-	if err != nil {
-		return fmt.Errorf("not an entry id or a ref: %q", cmd.Target)
-	}
 	d, err := st.Entry(ctx, id)
 	if err != nil {
 		return err
@@ -668,13 +668,9 @@ type textCmd struct {
 }
 
 func (cmd *textCmd) Run(ctx context.Context) error {
-	var id int64
-	ref, isRef := store.ParseRef(cmd.Target)
-	if !isRef {
-		var err error
-		if id, err = strconv.ParseInt(cmd.Target, 10, 64); err != nil {
-			return fmt.Errorf("not an entry id or a ref: %q", cmd.Target)
-		}
+	id, ref, err := parseTarget(cmd.Target)
+	if err != nil {
+		return err
 	}
 	st, err := openReadOnlyStore(ctx)
 	if err != nil {
@@ -791,13 +787,9 @@ type metadataCmd struct {
 }
 
 func (cmd *metadataCmd) Run(ctx context.Context) error {
-	var id int64
-	ref, isRef := store.ParseRef(cmd.Target)
-	if !isRef {
-		var err error
-		if id, err = strconv.ParseInt(cmd.Target, 10, 64); err != nil {
-			return fmt.Errorf("not an entry id or a ref: %q", cmd.Target)
-		}
+	id, ref, err := parseTarget(cmd.Target)
+	if err != nil {
+		return err
 	}
 	st, err := openReadOnlyStore(ctx)
 	if err != nil {

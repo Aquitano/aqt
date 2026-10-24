@@ -2,10 +2,10 @@ package store
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,20 +23,32 @@ type AISelection struct {
 	Key        ai.Key
 	Force      bool
 	Retry      bool
+	contents   []int64
 }
 
-// candidates keeps ref-only selections on the digest-prefix index. Combining
-// entry and ref predicates with OR across the join prevents that index lookup.
-func (o AISelection) candidates(after int64) (string, []any, error) {
-	prefixes := make([][]byte, 0, len(o.Refs))
+// ResolveRefs looks up the selection's refs once, so paging through its
+// candidates does not query them again.
+func (s *Store) ResolveRefs(ctx context.Context, o AISelection) (AISelection, error) {
+	contents := slices.Clone(o.contents)
 	for _, ref := range o.Refs {
-		r, ok := ParseRef(ref)
-		if !ok {
-			return "", nil, fmt.Errorf("not a ref: %q", ref)
+		lookup, err := s.newContentLookup(ctx, 0, ref)
+		if err != nil {
+			return o, err
 		}
-		prefix, _ := hex.DecodeString(r)
-		prefixes = append(prefixes, prefix)
+		contents = append(contents, lookup.contentID)
 	}
+	o.Refs, o.contents = nil, contents
+	return o, nil
+}
+
+// aiCandidates keeps ref-only selections on the content key. Combining entry
+// and ref predicates with OR across the join prevents that index lookup.
+func (s *Store) aiCandidates(ctx context.Context, o AISelection, after int64) (string, []any, error) {
+	o, err := s.ResolveRefs(ctx, o)
+	if err != nil {
+		return "", nil, err
+	}
+	contents := o.contents
 	q := &search{args: []any{after, o.Volumes, o.Extensions, strings.TrimSuffix(o.Under, "/"), o.Key.Task, o.Key.Provider, o.Key.Model, o.Key.PromptVersion, o.Force}}
 	sql := ` from entries e join contents c on c.id=e.content_id
  left join ai_results a on a.content_id=c.id and a.task=$5 and a.provider=$6 and a.model=$7 and a.prompt_version=$8
@@ -45,20 +57,20 @@ func (o AISelection) candidates(after int64) (string, []any, error) {
  and ($5 <> 'ocr' or e.ext <> 'pdf' or exists (select 1 from texts t where t.content_id=c.id and t.status='needs_ocr'))
  and ($9 or a.id is null or a.status='failed')`
 	switch {
-	case len(o.Entries) > 0 && len(prefixes) > 0:
+	case len(o.Entries) > 0 && len(contents) > 0:
 		sql += ` and e.id in (select unnest(` + q.next(o.Entries) + `::bigint[]) union
- select pe.id from entries pe join contents pc on pc.id=pe.content_id where substr(pc.blake3,1,8)=any(` + q.next(prefixes) + `::bytea[]))`
+ select pe.id from entries pe where pe.content_id=any(` + q.next(contents) + `::bigint[]))`
 	case len(o.Entries) > 0:
 		sql += ` and e.id=any(` + q.next(o.Entries) + `::bigint[])`
-	case len(prefixes) > 0:
-		sql += ` and substr(c.blake3,1,8)=any(` + q.next(prefixes) + `::bytea[])`
+	case len(contents) > 0:
+		sql += ` and c.id=any(` + q.next(contents) + `::bigint[])`
 	}
 	return sql, q.args, nil
 }
 
 // AIVolumes preflights all selected source disks before creating scratch files.
 func (s *Store) AIVolumes(ctx context.Context, o AISelection) ([]string, error) {
-	sql, args, err := o.candidates(0)
+	sql, args, err := s.aiCandidates(ctx, o, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +82,7 @@ func (s *Store) AIVolumes(ctx context.Context, o AISelection) ([]string, error) 
 }
 
 func (s *Store) NextAI(ctx context.Context, o AISelection, after int64, limit int) ([]ContentFile, error) {
-	sql, args, err := o.candidates(after)
+	sql, args, err := s.aiCandidates(ctx, o, after)
 	if err != nil {
 		return nil, err
 	}
@@ -175,13 +187,13 @@ func (c *AIClaim) Save(ctx context.Context, result ai.Result, failure error, ela
 }
 
 func (s *Store) Analyses(ctx context.Context, entryID int64, ref string) ([]Analysis, error) {
-	lookup, err := newContentLookup(entryID, ref)
+	lookup, err := s.newContentLookup(ctx, entryID, ref)
 	if err != nil {
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `select a.id,`+refSQL+`,a.task,a.provider,a.model,a.prompt_version,a.status,a.text,a.detail,a.reported_model,a.elapsed_ms,a.attempts,a.updated_at
  from ai_results a join contents c on c.id=a.content_id
- where `+contentLookupWhere+` order by a.updated_at desc,a.id desc`, lookup.entryID, lookup.prefix)
+ where `+contentLookupWhere+` order by a.updated_at desc,a.id desc`, lookup.entryID, lookup.contentID)
 	if err != nil {
 		return nil, err
 	}

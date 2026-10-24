@@ -18,46 +18,29 @@ type Retrieval struct {
 
 func (s *Store) Retrieval(ctx context.Context, entryID int64, ref string) (Retrieval, error) {
 	var result Retrieval
-	lookup, err := newContentLookup(entryID, ref)
+	lookup, err := s.newContentLookup(ctx, entryID, ref)
 	if err != nil {
 		return result, err
 	}
-	rows, err := s.pool.Query(ctx, `select c.id, c.blake3, c.size_bytes, `+refSQL+`
+	var contentID int64
+	var digest []byte
+	err = s.pool.QueryRow(ctx, `select c.id, c.blake3, c.size_bytes, `+refSQL+`
 		from contents c where `+contentLookupWhere+`
-		and ($1::bigint = 0 or exists (select 1 from entries where id = $1 and kind = 'file' and hash_state = 'done'))
-		order by c.id limit 2`, lookup.entryID, lookup.prefix)
-	if err != nil {
-		return result, err
-	}
-	type content struct {
-		id     int64
-		digest []byte
-		size   int64
-		ref    string
-	}
-	found, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (content, error) {
-		var c content
-		err := row.Scan(&c.id, &c.digest, &c.size, &c.ref)
-		return c, err
-	})
-	if err != nil {
-		return result, err
-	}
-	if len(found) == 0 {
+		and ($1::bigint = 0 or exists (select 1 from entries where id = $1 and kind = 'file' and hash_state = 'done'))`,
+		lookup.entryID, lookup.contentID).Scan(&contentID, &digest, &result.Size, &result.Ref)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return result, fmt.Errorf("get needs a hashed ordinary file: %w", ErrNotFound)
 	}
-	if len(found) != 1 {
-		return result, errors.New("ambiguous content ref; use an entry ID")
+	if err != nil {
+		return result, err
 	}
-	c := found[0]
-	if len(c.digest) != len(result.Digest) {
+	if len(digest) != len(result.Digest) {
 		return result, errors.New("invalid stored BLAKE3 digest")
 	}
-	copy(result.Digest[:], c.digest)
-	result.Ref, result.Size = c.ref, c.size
-	rows, err = s.pool.Query(ctx, `select `+hitColumns+hitFrom+`
+	copy(result.Digest[:], digest)
+	rows, err := s.pool.Query(ctx, `select `+hitColumns+hitFrom+`
 		where e.content_id = $1 and e.kind = 'file' and e.hash_state = 'done'
-		order by e.id <> $2, e.missing_scan is not null, v.label, e.path collate "C", e.id`, c.id, entryID)
+		order by e.id <> $2, e.missing_scan is not null, v.label, e.path collate "C", e.id`, contentID, entryID)
 	if err != nil {
 		return result, err
 	}
