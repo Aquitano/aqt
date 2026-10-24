@@ -85,6 +85,8 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
 		{"/v1/contents/xyz", token, http.StatusUnprocessableEntity, "InvalidRequest"},
 		{"/v1/search?q=minecraft&limit=0", token, http.StatusUnprocessableEntity, "InvalidRequest"},
 		{"/v1/search?q=minecraft&under=/x", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/search", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/search?q=%20", token, http.StatusUnprocessableEntity, "InvalidRequest"},
 		{"/v1/contents/abababababababab/file", token, http.StatusConflict, "Unavailable"},
 	} {
 		var failure struct {
