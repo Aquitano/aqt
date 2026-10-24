@@ -25,6 +25,7 @@ attic search werkstudent --ext pdf
 attic search notes --under E:\Files --json
 attic search --under E:\Backups\Minecraft.7z
 attic show 36331
+attic get 36331 --to C:\Recovered\document.pdf --json
 attic text 36331
 attic metadata 36331
 attic volumes
@@ -46,6 +47,10 @@ An entry ID identifies a file at a place. A content ref such as `attic:3f9a1c2b4
 `coverage` selects present files in the requested scope and counts distinct volume IDs for their completed full content hashes across the entire catalogue. It reports content recorded on fewer than two volumes, with unique byte totals. Multiple paths and hard links on one volume count as one volume. Unknown and invalidated hashes appear separately, with path byte totals that cannot be deduplicated. Offline volumes count; entries marked missing do not. With no scope, it reports the whole catalogue.
 
 Coverage totals include all selected content, independently of pagination. `--limit` and `--offset` page the undercovered content and unknown-file lists separately. Each content lists up to 100 locations and its total path count. Location dates identify the recorded update scan's start, not a fresh verification. This read-only report does not rehash files or verify backup health or physical disk independence. Scans can be partial or stale; use `attic scans --volume Data` to inspect their scope and status.
+
+`get <id-or-ref> --to <new-file>` retrieves one hashed ordinary file from an online copy. It verifies the full stored BLAKE3 digest before publishing the destination and tries another copy after a source read failure or digest mismatch. Existing destinations are never overwritten, including files created concurrently. If no copy is usable, the error names known offline volumes to connect. Directories, archive members, links, cloud placeholders and files excluded by current content rules cannot be retrieved. A hashed archive can be retrieved as a whole file.
+
+The destination directory must already exist. Retrieval stages a private copy beside the destination for atomic publication, independently of the configured `temp` directory. On Windows the destination must be on a different volume from the online source copies. Only Windows currently discovers mounted catalogue volumes. `--json` returns the full verified digest, destination and selected source. Cancellation or verification failure removes the temporary copy without publishing a partial destination.
 
 A scan lists directories, hashes unknown files, lists archives, extracts document text and reads embedded metadata. It skips links, cloud placeholders, excluded paths and name-only files. ZIP, 7z, RAR and tar listings can include nested archives. Documents include plain text, Markdown, CSV, HTML, Office, OpenDocument and PDFs with a text layer. Source code and configuration files keep their names only. Extracted document text is capped at 1 MB.
 
