@@ -80,6 +80,8 @@ bank library get activity_ID
 bank library snapshots collection_ID
 ```
 
+`bank library get` takes any library ID and picks the record kind from its prefix: `item_`, `activity_`, `collection_`, `file_` or `page_`.
+
 Correspondence-specific filters such as sender, recipient, mailbox, and contact restrict combined search to correspondence. Account filters restrict it to the library because mail has a different account model. Message fuzzy matching stays in ParadeDB; library text search uses Postgres full-text indexes. Scores from these indexes are not treated as comparable. Date filters apply to correspondence, dated activity, and message attachments. Items, collections, standalone files, and pages have no event date, so they remain unfiltered by those dates. Undated activity is excluded when a date filter is present. Bank rejects combinations of correspondence filters with a library kind or account.
 
 Pages, notes and extracted text retain their full contents when they exceed PostgreSQL's vector limit. Search parses the selected oversized text for each query, so its cost grows with those documents.

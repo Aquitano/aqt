@@ -106,7 +106,7 @@ type libraryCmd struct {
 	Activity         libraryListCmd             `cmd:"" help:"Activity matching a query."`
 	Collections      libraryListCmd             `cmd:"" help:"Collections matching a query."`
 	Files            libraryListCmd             `cmd:"" help:"Files matching a query."`
-	Get              libraryGetCmd              `cmd:"" help:"One item, or one activity record by its activity_ id."`
+	Get              libraryGetCmd              `cmd:"" help:"Any record by id: item_, activity_, collection_, file_ or page_."`
 	Collection       libraryGetCmd              `cmd:"" help:"One collection."`
 	File             libraryGetCmd              `cmd:"" help:"One file."`
 	Page             libraryGetCmd              `cmd:"" help:"One page."`
@@ -169,7 +169,13 @@ func (c *libraryGetCmd) Run(ctx context.Context, kctx *kong.Context, lib *librar
 		return err
 	}
 	defer closeBackend()
-	switch kctx.Selected().Name {
+	kind := kctx.Selected().Name
+	if kind == "get" {
+		kind, _, _ = strings.Cut(c.ID, "_")
+	}
+	switch kind {
+	case "activity":
+		return printLibrary(b.LibraryActivity(ctx, c.ID))
 	case "collection":
 		return printLibrary(b.LibraryCollection(ctx, c.ID))
 	case "file":
@@ -178,9 +184,6 @@ func (c *libraryGetCmd) Run(ctx context.Context, kctx *kong.Context, lib *librar
 		return printLibrary(b.LibraryPage(ctx, c.ID))
 	case "snapshots":
 		return printLibrary(b.LibraryCollectionSnapshots(ctx, c.ID))
-	}
-	if strings.HasPrefix(c.ID, "activity_") {
-		return printLibrary(b.LibraryActivity(ctx, c.ID))
 	}
 	return printLibrary(b.LibraryItem(ctx, c.ID))
 }
