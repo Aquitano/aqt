@@ -132,9 +132,8 @@ func GmailThreadID(thread uint64) string {
 }
 
 // nativeThreadID prefers the explicit provider thread ID. Only a Takeout mbox,
-// one imported on its own rather than from a mail tree, falls back to the
-// X-GM-THRID header: Takeout writes it, while in any other mail it is whatever
-// the sender put there.
+// an mbox in the gmail source, falls back to the X-GM-THRID header: Takeout
+// writes it, while in any other mail it is whatever the sender put there.
 func (m *Message) nativeThreadID(explicit string, takeout bool) string {
 	if explicit != "" || !takeout {
 		return explicit

@@ -151,7 +151,7 @@ func TestGmailIMAPMailJoinsTakeoutThread(t *testing.T) {
 	if err := os.WriteFile(takeout, []byte("From 1278455344230334865@xxx Mon Aug 03 10:00:00 +0000 2026\r\nX-GM-THRID: 1278455344230334865\r\nX-Gmail-Labels: Inbox\r\nMessage-ID: <takeout@example.com>\r\nSubject: Plans\r\n\r\nfirst\r\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ImportMbox(ctx, st, blobs, archiveDir, "gmail", takeout); err != nil {
+	if _, err := ImportMbox(ctx, st, blobs, archiveDir, "gmail", takeout, &MailImportContext{Version: 1, Kind: "export", Mailbox: "Archive", RelativePath: "takeout.mbox"}); err != nil {
 		t.Fatal(err)
 	}
 	threadOf := func(messageID string) string {
@@ -198,7 +198,7 @@ func TestGmailIMAPMailJoinsTakeoutThread(t *testing.T) {
 		paths = append(paths, folder.Kind+":"+folder.Path)
 	}
 	slices.Sort(paths)
-	if !slices.Equal(paths, []string{"imap:INBOX", "imap:Work/Receipts", "imap:[Gmail]/All Mail"}) {
+	if !slices.Equal(paths, []string{"export:Archive", "imap:INBOX", "imap:Work/Receipts", "imap:[Gmail]/All Mail"}) {
 		t.Fatalf("label observations = %v", paths)
 	}
 }
@@ -225,7 +225,7 @@ func TestSenderThreadHeaderOutsideTakeoutIsIgnored(t *testing.T) {
 	if _, err := ImportEmlPath(ctx, st, blobs, archiveDir, "proton", eml); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ImportMbox(ctx, st, blobs, archiveDir, "proton", tree, &MailImportContext{Version: 1, Kind: "export", Mailbox: "Inbox", RelativePath: "Inbox"}); err != nil {
+	if _, err := ImportMbox(ctx, st, blobs, archiveDir, "proton", tree); err != nil {
 		t.Fatal(err)
 	}
 	threadOf := func(messageID string) string {

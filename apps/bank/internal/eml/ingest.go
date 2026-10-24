@@ -335,7 +335,7 @@ func importMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archive
 		} else {
 			only = nil
 		}
-		out, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: source, RawRef: rel, MailContext: observation, Takeout: observation == nil})
+		out, err := Ingest(ctx, st, blobs, raw, IngestOpts{Source: source, RawRef: rel, MailContext: observation, Takeout: source == "gmail"})
 		if err != nil {
 			if fail.IsOp(err) {
 				return err
