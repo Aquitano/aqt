@@ -85,11 +85,16 @@ func TestRetireApplyDeletesMatchingRowsAndRecordsTombstones(t *testing.T) {
 	}
 
 	opts.Replacements = map[string]string{refs["youtube/watch:a"]: item.ID, "000000000000": item.ID}
+	if _, err := st.RetireMessages(ctx, opts); err == nil || !strings.Contains(err.Error(), "000000000000") {
+		t.Fatalf("a map ref matching no retiring message was applied: %v", err)
+	}
+
+	delete(opts.Replacements, "000000000000")
 	res, err := st.RetireMessages(ctx, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.Applied || res.Retired != 3 || res.Replaced != 1 || len(res.UnmatchedReplacements) != 1 {
+	if !res.Applied || res.Retired != 3 || res.Replaced != 1 || len(res.UnmatchedReplacements) != 0 {
 		t.Fatalf("result = %+v", res)
 	}
 	if m, a, ts := countRows(t, dsn); m != 2 || a != 0 || ts != 3 {

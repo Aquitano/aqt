@@ -66,6 +66,9 @@ func (c *retireCmd) Run(ctx context.Context) error {
 		for _, ref := range res.UnmatchedReplacements {
 			fmt.Printf("  unmatched: %s\n", ref)
 		}
+		if len(res.UnmatchedReplacements) > 0 {
+			fmt.Println("--apply refuses until every map ref matches a retiring message")
+		}
 	}
 	if !res.Applied {
 		fmt.Printf("dry run: %s would be retired; pass --apply to delete them and write tombstones\n", plural(int(res.Messages), "message"))

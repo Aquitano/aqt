@@ -196,6 +196,9 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 	if !o.Apply {
 		return res, nil
 	}
+	if len(res.UnmatchedReplacements) > 0 {
+		return res, fmt.Errorf("replacement map refs match no retiring message: %s", strings.Join(res.UnmatchedReplacements, ", "))
+	}
 	tag, err := tx.Exec(ctx, `
 		with gone as (
 			delete from messages m where `+retiringPredicate+`
