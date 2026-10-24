@@ -88,3 +88,23 @@ func TestHealthcheckReportsHTTPFailure(t *testing.T) {
 		}
 	}
 }
+
+func TestLibraryGetRoutesActivityIDs(t *testing.T) {
+	var path string
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{}`)
+	}))
+	defer remote.Close()
+	t.Setenv("BANK_URL", remote.URL)
+	t.Setenv("BANK_TOKEN", "test")
+	for id, want := range map[string]string{"activity_ab": "/v1/library/activity/activity_ab", "item_ab": "/v1/library/items/item_ab"} {
+		if err := execute(context.Background(), []string{"library", "get", id}); err != nil {
+			t.Fatal(err)
+		}
+		if path != want {
+			t.Errorf("get %s requested %s, want %s", id, path, want)
+		}
+	}
+}

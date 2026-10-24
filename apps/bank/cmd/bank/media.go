@@ -28,6 +28,7 @@ type libraryBackend interface {
 	ListLibraryCollections(context.Context, library.ListOptions) ([]library.Collection, error)
 	ListLibraryFiles(context.Context, library.ListOptions) ([]library.File, error)
 	LibraryItem(context.Context, string) (library.Item, error)
+	LibraryActivity(context.Context, string) (library.Activity, error)
 	LibraryCollection(context.Context, string) (library.Collection, error)
 	LibraryCollectionSnapshots(context.Context, string) ([]library.Snapshot, error)
 	LibraryFile(context.Context, string) (library.File, error)
@@ -105,7 +106,7 @@ type libraryCmd struct {
 	Activity         libraryListCmd             `cmd:"" help:"Activity matching a query."`
 	Collections      libraryListCmd             `cmd:"" help:"Collections matching a query."`
 	Files            libraryListCmd             `cmd:"" help:"Files matching a query."`
-	Get              libraryGetCmd              `cmd:"" help:"One item."`
+	Get              libraryGetCmd              `cmd:"" help:"One item, or one activity record by its activity_ id."`
 	Collection       libraryGetCmd              `cmd:"" help:"One collection."`
 	File             libraryGetCmd              `cmd:"" help:"One file."`
 	Page             libraryGetCmd              `cmd:"" help:"One page."`
@@ -177,9 +178,11 @@ func (c *libraryGetCmd) Run(ctx context.Context, kctx *kong.Context, lib *librar
 		return printLibrary(b.LibraryPage(ctx, c.ID))
 	case "snapshots":
 		return printLibrary(b.LibraryCollectionSnapshots(ctx, c.ID))
-	default:
-		return printLibrary(b.LibraryItem(ctx, c.ID))
 	}
+	if strings.HasPrefix(c.ID, "activity_") {
+		return printLibrary(b.LibraryActivity(ctx, c.ID))
+	}
+	return printLibrary(b.LibraryItem(ctx, c.ID))
 }
 
 type libraryCreateCmd struct {

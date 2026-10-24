@@ -76,6 +76,7 @@ bank library list --kind track --source youtube
 bank library activity --source netflix --account thomas
 bank library collections --kind playlist
 bank library get item_ID
+bank library get activity_ID
 bank library snapshots collection_ID
 ```
 

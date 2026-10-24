@@ -189,6 +189,9 @@ func (s *Store) ListLibraryPages(ctx context.Context, o library.ListOptions) ([]
 func (s *Store) LibraryItem(ctx context.Context, id string) (library.Item, error) {
 	return getLibrary[library.Item](ctx, s, "library_items", id)
 }
+func (s *Store) LibraryActivity(ctx context.Context, id string) (library.Activity, error) {
+	return getLibrary[library.Activity](ctx, s, "library_activity", id)
+}
 func (s *Store) LibraryCollection(ctx context.Context, id string) (library.Collection, error) {
 	return getLibrary[library.Collection](ctx, s, "library_collections", id)
 }
