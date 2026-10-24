@@ -40,7 +40,7 @@ With query text, search returns ranked messages. Without query text, it returns 
 
 Bank joins email using bounded `References` and `In-Reply-To` evidence. Subject similarity alone never joins messages. Missing ancestors are retained as placeholders so later arrivals can complete the conversation. The projection preserves message refs, external IDs, bodies, raw references, and attachment rows.
 
-A component with one explicit provider thread ID uses that ID. For Gmail this is the API's hexadecimal `threadId`; the decimal `X-GM-THRID` from a Takeout header or from IMAP is converted to it. Without one, Bank derives an ID beginning with `mail:`. Only an mbox import, the form Takeout exports, reads the `X-GM-THRID` header; in EML and collected mail the sender chose it, so Bank ignores it. Earlier derived IDs resolve through aliases if later mail changes the grouping.
+A component with one explicit provider thread ID uses that ID. For Gmail this is the API's hexadecimal `threadId`; the decimal `X-GM-THRID` from a Takeout header or from IMAP is converted to it. Without one, Bank derives an ID beginning with `mail:`. Only a Takeout mbox imported with `bank import mbox` reads the `X-GM-THRID` header; in EML, `mail-tree` mailboxes and collected mail the sender chose it, so Bank ignores it. Earlier derived IDs resolve through aliases if later mail changes the grouping.
 
 When contradictory headers connect multiple provider threads, Bank preserves each provider's thread and leaves unanchored messages separate. Opening an old combined thread returns a typed conflict instead of silently choosing one provider. The browser offers provider choices and a paginated list of unanchored messages. The CLI error includes the commands to read both:
 
@@ -91,7 +91,7 @@ Each limit accepts 1 through 100000. Exceeding a limit retains header facts and 
 
 After a split, `--current` reads a subgroup listed in the conflict response without following its historical alias. Without that flag, the old combined ID continues to describe the split. The browser follows aliases for search and browse results, then uses current subgroup reads when a subgroup is chosen in the conflict picker.
 
-Rebuild preserves headers and provider IDs already recorded in the database, so older archive inputs cannot undo a correction. It still recovers folder observations from every input, and a message without a provider ID takes the Gmail thread ID from the `X-GM-THRID` header of an archived mbox. Keep the database backup: immutable context records do not record correction order, so raw inputs alone cannot identify which variant was the last correction.
+Rebuild preserves headers and provider IDs already recorded in the database, so older archive inputs cannot undo a correction. It still recovers folder observations from every input, and a message without a provider ID takes the Gmail thread ID from the `X-GM-THRID` header of an archived Takeout mbox. Keep the database backup: immutable context records do not record correction order, so raw inputs alone cannot identify which variant was the last correction.
 
 ## Recover folder provenance
 

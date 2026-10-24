@@ -203,7 +203,7 @@ func TestGmailIMAPMailJoinsTakeoutThread(t *testing.T) {
 	}
 }
 
-func TestSenderThreadHeaderOutsideMboxIsIgnored(t *testing.T) {
+func TestSenderThreadHeaderOutsideTakeoutIsIgnored(t *testing.T) {
 	ctx := context.Background()
 	st, _ := storetest.NewNamed(t)
 	root := t.TempDir()
@@ -212,14 +212,21 @@ func TestSenderThreadHeaderOutsideMboxIsIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	archiveDir := filepath.Join(root, "archive")
-	for _, name := range []string{"one", "two"} {
-		path := filepath.Join(root, name+".eml")
-		if err := os.WriteFile(path, []byte("X-GM-THRID: 1\r\nMessage-ID: <"+name+"@example.com>\r\nSubject: "+name+"\r\n\r\nbody\r\n"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := ImportEmlPath(ctx, st, blobs, archiveDir, "proton", path); err != nil {
-			t.Fatal(err)
-		}
+	mail := func(name string) string {
+		return "X-GM-THRID: 1\r\nMessage-ID: <" + name + "@example.com>\r\nSubject: " + name + "\r\n\r\nbody\r\n"
+	}
+	eml, tree := filepath.Join(root, "one.eml"), filepath.Join(root, "Inbox")
+	if err := os.WriteFile(eml, []byte(mail("one")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tree, []byte("From a Mon Aug 03 10:00:00 2026\r\n"+mail("two")+"From b Mon Aug 03 10:00:00 2026\r\n"+mail("three")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportEmlPath(ctx, st, blobs, archiveDir, "proton", eml); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportMbox(ctx, st, blobs, archiveDir, "proton", tree, &MailImportContext{Version: 1, Kind: "export", Mailbox: "Inbox", RelativePath: "Inbox"}); err != nil {
+		t.Fatal(err)
 	}
 	threadOf := func(messageID string) string {
 		t.Helper()
@@ -239,8 +246,12 @@ func TestSenderThreadHeaderOutsideMboxIsIgnored(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if one, two := threadOf("one@example.com"), threadOf("two@example.com"); one == two || one == "1" {
-			t.Fatalf("%s joined unrelated EML on a sender's X-GM-THRID: %q %q", step, one, two)
+		threads := map[string]bool{}
+		for _, name := range []string{"one", "two", "three"} {
+			threads[threadOf(name+"@example.com")] = true
+		}
+		if len(threads) != 3 || threads["1"] {
+			t.Fatalf("%s joined unrelated mail on a sender's X-GM-THRID: %v", step, threads)
 		}
 	}
 }
