@@ -16,9 +16,9 @@ Hard links identify one filesystem object through several paths. Entries retain 
 
 ## Versions keep earlier content searchable
 
-The catalogue is a permanent history, so a file whose bytes change keeps what was read from its earlier content. `entry_versions` records each content an entry held, with its size and modified time, the scan that first saw it and the scan that saw it replaced. The earlier bytes are not kept, and nothing is deleted.
+The catalogue is a permanent history, so a file whose bytes change keeps what was read from its earlier content. `entry_versions` records each content an entry held, with its size and modified time, the scan that first saw it and the scan that saw it replaced. The earlier bytes are not kept, and nothing is deleted. Entries catalogued before version history start with one version whose first scan is the entry's last update, which can be later than the scan that hashed it.
 
-A listing that resets an entry's content closes its open version. Hashing opens a version for the new content. When the latest version holds the same bytes, hashing reopens that version, so a touch, a save-via-rename or a hard-link check that rehashes unchanged bytes keeps one version. Moves and renames keep the content and never reach the version table. A missing entry keeps its open version, because missing is recorded on the entry.
+A listing that resets an entry's content closes its open version. Hashing opens a version for the new content. When the latest version holds the same bytes, hashing reopens that version, so a touch, a save-via-rename or a hard-link check that rehashes unchanged bytes keeps one version. Moves and renames that keep their content never reach the version table. A missing entry keeps its open version, because missing is recorded on the entry.
 
 Every content an entry holds has an open version, so content searches reach current and earlier contents through one `EXISTS` over the versions. Postgres plans that as a semi join. An `OR` of an entry `EXISTS` and a version `EXISTS` became hashed subplans that read the whole version table. `--current` keeps the original entry-only `EXISTS`. Place lists derive the flag from the entry: current while it points at the content, previous otherwise.
 
