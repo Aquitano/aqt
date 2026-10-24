@@ -22,6 +22,12 @@ func TestOpenReadOnlyReadsButCannotWrite(t *testing.T) {
 	if _, err := st.KnownVolumes(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := st.Search(t.Context(), store.SearchOptions{Query: "report", Limit: 5}); err != nil {
+		t.Fatalf("name search on a read-only store: %v", err)
+	}
+	if _, err := st.SearchTexts(t.Context(), store.SearchOptions{Query: "report", Limit: 5}); err != nil {
+		t.Fatalf("text search on a read-only store: %v", err)
+	}
 	_, err = st.ResolveVolume(t.Context(), disk.Volume{Label: "Data"}, "", true)
 	if pgErr, ok := errors.AsType[*pgconn.PgError](err); !ok || pgErr.Code != "25006" {
 		t.Fatalf("write on a read-only store: %v", err)
