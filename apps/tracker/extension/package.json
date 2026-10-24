@@ -18,7 +18,7 @@
     "@aqt/config": "workspace:*",
     "@types/node": "catalog:",
     "@webext-core/fake-browser": "^2.0.1",
-    "fake-indexeddb": "^6.2.5",
+    "fake-indexeddb": "^6.2.6",
     "typescript": "catalog:",
     "vite-plus": "catalog:",
     "wxt": "^0.21.4"
