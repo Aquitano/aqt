@@ -7,14 +7,26 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// The tokenizers searchWords casts query words to. ParadeDB records each
+// tokenizer configuration the first time it parses one, in
+// paradedb._typmod_cache. A read-only session cannot make that write, so Open
+// parses these once with write access.
+const (
+	wordTokenizer = `pdb.unicode_words('ascii_folding=true')`
+	codeTokenizer = `pdb.source_code('ascii_folding=true')`
+	gramTokenizer = `pdb.ngram(3, 3, 'ascii_folding=true')`
+)
+
+const recordTokenizers = `select null::` + wordTokenizer + `, null::` + codeTokenizer + `, null::` + gramTokenizer
+
 func (s *Store) searchWords(ctx context.Context, words []string, names bool) ([]string, error) {
 	if len(words) == 0 {
 		return nil, nil
 	}
-	tokens := `cardinality(pdb.tokenize_unicode_words(word::pdb.unicode_words('ascii_folding=true'))) > 0`
+	tokens := `cardinality(pdb.tokenize_unicode_words(word::` + wordTokenizer + `)) > 0`
 	if names {
-		tokens = `cardinality(pdb.tokenize_source_code(word::pdb.source_code('ascii_folding=true'))) > 0
-   or cardinality(pdb.tokenize_ngram(word::pdb.ngram(3, 3, 'ascii_folding=true'))) > 0`
+		tokens = `cardinality(pdb.tokenize_source_code(word::` + codeTokenizer + `)) > 0
+   or cardinality(pdb.tokenize_ngram(word::` + gramTokenizer + `)) > 0`
 	}
 	rows, err := s.pool.Query(ctx, `select word from unnest($1::text[]) with ordinality as words(word, position)
   where `+tokens+` order by position`, words)
