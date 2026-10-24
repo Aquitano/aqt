@@ -65,3 +65,7 @@ Filename, archive-member, document-text, metadata and enrichment indexes rank se
 Entry extensions describe files; archive-member extensions describe members. Volume and folder filters identify where the enclosing file lives. An archive named by `--under` includes its members. Copy lists retain the same filters as the search result.
 
 Volume, kind and extension are entry BM25 fields, so ParadeDB can apply those filters inside the index scan. Subtree filters use the entry path range. Ranked entries and archive members break equal scores by ID. Wordless searches retain path order. The ranked entry page is selected before joining volumes and contents, so ParadeDB can stop after the requested page instead of returning every match for Postgres to sort.
+
+## The CLI and the API return one shape
+
+`internal/view` turns catalogue records into what readers receive: every place says whether its disk is attached to this machine and how to open it. `--json` and the HTTP API both return those types, and the API's OpenAPI document is generated from them, so a field added for one reader reaches the other. Errors differ on purpose: the API gives each failure a `_tag` and its own schema so agent code can branch on it, while the CLI prints the message.
