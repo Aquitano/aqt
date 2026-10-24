@@ -61,7 +61,7 @@ func Get(ctx context.Context, content store.Retrieval, to string, known []store.
 		return result, unavailableError(unavailable)
 	}
 	return copyCandidates(ctx, content, destination, candidates, unavailable, func(p store.Hit) (*os.File, error) {
-		if cfg.Rules(p.VolumeID, p.Volume).SkipContent(p.Path) {
+		if cfg.Rules(p.VolumeID, mounts[p.VolumeID].Label).SkipContent(p.Path) {
 			return nil, errors.New("excluded by current rules")
 		}
 		return openSource(p, mounts[p.VolumeID], known)
