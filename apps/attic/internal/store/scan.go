@@ -464,6 +464,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		}
 	}
 	var fresh newRows
+	var replaced []int64
 	for i, l := range listed {
 		entryPath := paths[i]
 		r := matched[i]
@@ -503,6 +504,9 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			continue
 		}
 		reset, state := contentAfter(r, l, moved, linked[r.ID])
+		if reset && r.Kind == "file" {
+			replaced = append(replaced, r.ID)
+		}
 		batch.Queue(`
 			update entries set parent_id = $2, kind = $3, name = $4, path = $5, ext = $6, file_id = $7, size_bytes = $8,
 			       created_at = $9, modified_at = $10, accessed_at = $11, changed_at = $12, attributes = $13,
@@ -514,6 +518,12 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		reads = append(reads, execResult)
 		sc.Counts.Written++
 		sc.dirty++
+	}
+	if len(replaced) > 0 {
+		// Unchanged bytes reopen this version once they are hashed again.
+		batch.Queue(`update entry_versions set replaced_scan = $2 where entry_id = any($1) and replaced_scan is null`,
+			replaced, sc.ID)
+		reads = append(reads, execResult)
 	}
 	if complete {
 		var gone []int64
@@ -907,15 +917,20 @@ func (sc *Scan) flushContents(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	rows, err = tx.Query(ctx, `
+	var batch pgx.Batch
+	batch.Queue(`
 		update entries e set content_id = u.content_id, hash_state = 'done', updated_scan = $4
 		from unnest($1::bigint[], $2::bigint[], $3::bigint[]) as u(id, content_id, size)
 		where e.id = u.id and e.size_bytes = u.size returning e.id`, ids, contents, sizes, sc.ID)
-	if err != nil {
-		return err
-	}
+	sc.queueVersions(&batch, ids)
+	br := tx.SendBatch(ctx, &batch)
+	rows, _ = br.Query()
 	updatedIDs, err := pgx.CollectRows(rows, pgx.RowTo[int64])
 	if err != nil {
+		br.Close()
+		return err
+	}
+	if err := br.Close(); err != nil {
 		return err
 	}
 	updated := make(map[int64]bool, len(updatedIDs))
@@ -939,6 +954,27 @@ func (sc *Scan) flushContents(ctx context.Context) error {
 	}
 	sc.hashes = sc.hashes[:0]
 	return nil
+}
+
+// queueVersions brings each entry's versions in line with the content it now
+// holds. An open version of other bytes closes. The latest version reopens
+// when its bytes came back, so a touch or a hard-link check that rehashes the
+// same bytes keeps one version. Anything else opens a new one.
+func (sc *Scan) queueVersions(batch *pgx.Batch, entryIDs []int64) {
+	batch.Queue(`
+		update entry_versions ver set replaced_scan = $2 from entries e
+		where e.id = any($1) and ver.entry_id = e.id and ver.replaced_scan is null
+		  and ver.content_id <> e.content_id`, entryIDs, sc.ID)
+	batch.Queue(`
+		update entry_versions ver set replaced_scan = null from entries e
+		where e.id = any($1) and ver.entry_id = e.id and ver.content_id = e.content_id and ver.replaced_scan is not null
+		  and ver.id = (select max(latest.id) from entry_versions latest where latest.entry_id = e.id)`, entryIDs)
+	batch.Queue(`
+		insert into entry_versions (entry_id, content_id, size_bytes, modified_at, first_scan)
+		select e.id, e.content_id, e.size_bytes, e.modified_at, $2 from entries e
+		where e.id = any($1) and e.content_id is not null
+		  and not exists (select 1 from entry_versions ver where ver.entry_id = e.id and ver.replaced_scan is null)
+		order by e.id`, entryIDs, sc.ID)
 }
 
 // HashFailed marks a file whose bytes could not be read; the next scan tries

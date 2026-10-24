@@ -40,7 +40,9 @@ func searchFixture(t *testing.T) (*store.Store, *pgx.Conn) {
  insert into ai_results(content_id,task,provider,model,prompt_version,status,text) values
  (1,'describe','test','one','v1','ok','Tom & Jerry'),
  (1,'ocr','test','two','v2','truncated','Tom & Jerry'),
- (1,'describe','test','failed','v1','failed','Tom & Jerry');`)
+ (1,'describe','test','failed','v1','failed','Tom & Jerry');
+ insert into entry_versions(entry_id,content_id,size_bytes,first_scan)
+ select id,content_id,size_bytes,1 from entries where content_id is not null;`)
 	if err != nil {
 		t.Fatal(err)
 	}

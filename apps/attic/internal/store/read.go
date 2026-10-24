@@ -60,7 +60,23 @@ type Hit struct {
 	Modified *time.Time `json:"modified,omitempty"`
 	Ref      string     `json:"ref,omitempty"`
 	Missing  bool       `json:"missing,omitempty"`
-	Score    float64    `json:"score,omitempty"`
+	// Version is set on the places of a content: current while the entry
+	// holds it, previous once its bytes changed. A previous place carries the
+	// size, modified time and ref the entry had then.
+	Version string  `json:"version,omitempty"`
+	Score   float64 `json:"score,omitempty"`
+}
+
+const (
+	VersionCurrent  = "current"
+	VersionPrevious = "previous"
+)
+
+func versionOf(previous bool) string {
+	if previous {
+		return VersionPrevious
+	}
+	return VersionCurrent
 }
 
 const hitColumns = `e.id, e.volume_id::text, v.label, e.kind, e.path, e.size_bytes, e.modified_at,
@@ -86,9 +102,11 @@ type SearchOptions struct {
 	Ext      string
 	Kind     string
 	// Under restricts to a folder, volume-relative; it needs VolumeID.
-	Under  string
-	Limit  int
-	Offset int
+	Under string
+	// Current leaves out contents that entries held before their bytes changed.
+	Current bool
+	Limit   int
+	Offset  int
 }
 
 // Search ranks name matches above path matches above name fragments. A query
@@ -192,14 +210,10 @@ func (s *Store) SearchMembers(ctx context.Context, o SearchOptions) ([]MemberHit
 	if err != nil {
 		return nil, err
 	}
-	// A listing outlives an archive file that was rewritten; only contents some
-	// entry still has are found.
-	place := []string{"e.content_id = m.archive_id"}
-	place = append(place, q.entryFilters(copiesOf(o, true))...)
+	q.where = append(q.where, q.holders("m.archive_id", copiesOf(o, true)))
 	if o.Ext != "" {
 		q.where = append(q.where, "m.ext = "+q.next(searchExt(o.Ext)))
 	}
-	q.where = append(q.where, `exists (select 1 from entries e where `+strings.Join(place, " and ")+`)`)
 	rows, err := s.pool.Query(ctx, `select m.id, m.kind, m.path, m.size_bytes, m.modified_at, m.crc32, m.encrypted,
 		m.archive_id, `+q.score+` from members m`+q.tail(o), q.args...)
 	if err != nil {
@@ -255,19 +269,20 @@ func searchPredicate(words []string, any bool, next func(any) string) string {
 // content lives.
 type EntryDetail struct {
 	Hit
-	Name       string     `json:"name"`
-	FileID     *int64     `json:"file_id,omitempty"`
-	Created    *time.Time `json:"created,omitempty"`
-	Accessed   *time.Time `json:"accessed,omitempty"`
-	Changed    *time.Time `json:"changed,omitempty"`
-	Attributes int32      `json:"attributes"`
-	HashState  string     `json:"hash_state"`
-	GitRemote  *string    `json:"git_remote,omitempty"`
-	FirstSeen  time.Time  `json:"first_seen"`
-	Updated    time.Time  `json:"updated"`
-	Listed     *time.Time `json:"listed,omitempty"`
-	MissingAt  *time.Time `json:"missing_since,omitempty"`
-	Copies     []Hit      `json:"copies,omitempty"`
+	Name       string         `json:"name"`
+	FileID     *int64         `json:"file_id,omitempty"`
+	Created    *time.Time     `json:"created,omitempty"`
+	Accessed   *time.Time     `json:"accessed,omitempty"`
+	Changed    *time.Time     `json:"changed,omitempty"`
+	Attributes int32          `json:"attributes"`
+	HashState  string         `json:"hash_state"`
+	GitRemote  *string        `json:"git_remote,omitempty"`
+	FirstSeen  time.Time      `json:"first_seen"`
+	Updated    time.Time      `json:"updated"`
+	Listed     *time.Time     `json:"listed,omitempty"`
+	MissingAt  *time.Time     `json:"missing_since,omitempty"`
+	Versions   []EntryVersion `json:"versions,omitempty"`
+	Copies     []Hit          `json:"copies,omitempty"`
 	// Archive is set once the entry's content was read as an archive, Text
 	// once it was read as a document.
 	Archive  *ArchiveInfo    `json:"archive,omitempty"`
@@ -299,6 +314,9 @@ func (s *Store) Entry(ctx context.Context, id int64) (EntryDetail, error) {
 		return d, err
 	}
 	d.Hit = h
+	if d.Versions, err = s.versions(ctx, id); err != nil {
+		return d, err
+	}
 	if contentID == nil {
 		return d, nil
 	}
@@ -324,6 +342,38 @@ func (s *Store) Entry(ctx context.Context, id int64) (EntryDetail, error) {
 	}
 	d.Archive = &a
 	return d, nil
+}
+
+// EntryVersion is one content an entry held, from the scan that first saw it
+// to the scan that saw the bytes change.
+type EntryVersion struct {
+	Ref          string     `json:"ref"`
+	Size         int64      `json:"size"`
+	Modified     *time.Time `json:"modified,omitempty"`
+	Version      string     `json:"version"`
+	FirstScan    int64      `json:"first_scan"`
+	FirstSeen    time.Time  `json:"first_seen"`
+	ReplacedScan *int64     `json:"replaced_scan,omitempty"`
+	Replaced     *time.Time `json:"replaced,omitempty"`
+}
+
+// versions lists an entry's contents, newest first.
+func (s *Store) versions(ctx context.Context, entryID int64) ([]EntryVersion, error) {
+	rows, err := s.pool.Query(ctx, `select `+refSQL+`, ver.size_bytes, ver.modified_at, ver.replaced_scan is not null,
+		ver.first_scan, f.started_at, ver.replaced_scan, r.started_at
+		from entry_versions ver join contents c on c.id = ver.content_id join scans f on f.id = ver.first_scan
+		left join scans r on r.id = ver.replaced_scan
+		where ver.entry_id = $1 order by ver.id desc`, entryID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (EntryVersion, error) {
+		var v EntryVersion
+		var previous bool
+		err := r.Scan(&v.Ref, &v.Size, &v.Modified, &previous, &v.FirstScan, &v.FirstSeen, &v.ReplacedScan, &v.Replaced)
+		v.Version = versionOf(previous)
+		return v, err
+	})
 }
 
 // ContentDetail is one unique content and every place it lives.
@@ -355,24 +405,25 @@ func (s *Store) Content(ctx context.Context, ref string) (ContentDetail, error) 
 		return d, err
 	}
 	d.BLAKE3 = hex.EncodeToString(digest)
-	d.Occurrences, err = s.occurrences(ctx, id, 0, false, copies{})
+	d.Occurrences, err = s.occurrences(ctx, id, 0, false, copies{previous: true})
 	return d, err
 }
 
 // copies narrows the places listed for a content. under is a volume-relative
 // folder; with self, the path itself counts too, as for an archive named by
-// --under.
+// --under. previous adds entries that held the content before.
 type copies struct {
-	volumes []string
-	under   string
-	self    bool
-	ext     *string
+	volumes  []string
+	under    string
+	self     bool
+	ext      *string
+	previous bool
 }
 
 // copiesOf keeps the places a search shows inside its own filters, so a
 // search of E:\Work does not point at the copy in E:\Archive or on F:.
 func copiesOf(o SearchOptions, self bool) copies {
-	c := copies{under: o.Under, self: self}
+	c := copies{under: o.Under, self: self, previous: !o.Current}
 	if o.VolumeID != "" {
 		c.volumes = []string{o.VolumeID}
 	}
@@ -383,8 +434,9 @@ func copiesOf(o SearchOptions, self bool) copies {
 	return c
 }
 
-// occurrences lists where a content lives, present copies first. presentOnly
-// drops missing ones; c narrows them further.
+// occurrences lists where a content lives, present copies first, then the
+// entries that held it before. presentOnly drops missing ones; c narrows them
+// further.
 func (s *Store) occurrences(ctx context.Context, contentID, except int64, presentOnly bool, c copies) ([]Hit, error) {
 	places, err := s.occurrencesMany(ctx, []int64{contentID}, except, presentOnly, c)
 	return places[contentID], err
@@ -394,14 +446,26 @@ func (s *Store) occurrencesMany(ctx context.Context, ids []int64, except int64, 
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	q := &search{args: []any{ids, except, presentOnly}}
-	where := []string{"e.content_id = selected.id", "e.id <> $2", "(not $3 or e.missing_scan is null)"}
+	q := &search{args: []any{ids, except, presentOnly, c.previous}}
+	where := []string{"e.id <> $2", "(not $3 or e.missing_scan is null)"}
 	where = append(where, q.entryFilters(c)...)
+	// A previous place is the entry where it is now, with the size, time and
+	// ref of its latest version that held the selected content.
 	rows, err := s.pool.Query(ctx, `select places.* from (select distinct unnest($1::bigint[]) as id) selected
-		cross join lateral (select `+hitColumns+`, e.content_id`+hitFrom+`
+		cross join lateral (select `+hitColumns+`, e.previous, selected.id as content_id from (
+			select e.id, e.volume_id, e.kind, e.path, e.ext, e.size_bytes, e.modified_at, e.missing_scan, e.content_id,
+			       false as previous
+			from entries e where e.content_id = selected.id
+			union all
+			(select distinct on (e.id) e.id, e.volume_id, e.kind, e.path, e.ext, ver.size_bytes, ver.modified_at,
+			        e.missing_scan, ver.content_id, true
+			 from entry_versions ver join entries e on e.id = ver.entry_id
+			 where $4 and ver.content_id = selected.id and e.content_id is distinct from selected.id
+			 order by e.id, ver.id desc)
+		) e`+hitJoins+`
 		where `+strings.Join(where, " and ")+`
-		order by e.missing_scan is not null, v.label, e.path collate "C", e.id limit 100) places
-		order by places.content_id, places.missing, places.label, places.path collate "C", places.id`, q.args...)
+		order by e.previous, e.missing_scan is not null, v.label, e.path collate "C", e.id limit 100) places
+		order by places.content_id, places.previous, places.missing, places.label, places.path collate "C", places.id`, q.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -409,10 +473,12 @@ func (s *Store) occurrencesMany(ctx context.Context, ids []int64, except int64, 
 	places := make(map[int64][]Hit)
 	for rows.Next() {
 		var id int64
-		h, err := scanHit(rows, &id)
+		var previous bool
+		h, err := scanHit(rows, &previous, &id)
 		if err != nil {
 			return nil, err
 		}
+		h.Version = versionOf(previous)
 		places[id] = append(places[id], h)
 	}
 	return places, rows.Err()
