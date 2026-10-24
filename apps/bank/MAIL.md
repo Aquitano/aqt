@@ -22,7 +22,7 @@ bank import mbox --source gmail --mailbox Archive ./archive.mbox
 
 Existing imports without `--mailbox` still work, but do not invent folder membership. Folder identity includes the source, import kind, and exact path. `Work!`, `Work`, and `work` stay distinct. Export and IMAP folders stay distinct. Only IMAP's case-insensitive `INBOX` receives canonical spelling.
 
-With `BANK_URL` set, the CLI uploads each file with the same context used by local imports. Upgrade the receiving Bank server before the collector. A contextual upload requires `mail_context_version: 1` in its successful response. A response from an older server leaves IMAP mail queued for retry.
+With `BANK_URL` set, the CLI uploads each file with the same context used by local imports. Upgrade the receiving Bank server before the collector. A contextual upload requires its own context version in the successful response's `mail_context_version`. Version 2 adds a provider thread ID and further IMAP folders, which the IMAP collector sends for Gmail threads and labels. A response from an older server leaves IMAP mail queued for retry.
 
 ## Find mail
 
@@ -40,7 +40,7 @@ With query text, search returns ranked messages. Without query text, it returns 
 
 Bank joins email using bounded `References` and `In-Reply-To` evidence. Subject similarity alone never joins messages. Missing ancestors are retained as placeholders so later arrivals can complete the conversation. The projection preserves message refs, external IDs, bodies, raw references, and attachment rows.
 
-A component with one explicit provider thread ID uses that ID. Without one, Bank derives an ID beginning with `mail:`. Earlier derived IDs resolve through aliases if later mail changes the grouping.
+A component with one explicit provider thread ID uses that ID. For Gmail this is the API's hexadecimal `threadId`; the decimal `X-GM-THRID` from a Takeout header or from IMAP is converted to it. Without one, Bank derives an ID beginning with `mail:`. Earlier derived IDs resolve through aliases if later mail changes the grouping.
 
 When contradictory headers connect multiple provider threads, Bank preserves each provider's thread and leaves unanchored messages separate. Opening an old combined thread returns a typed conflict instead of silently choosing one provider. The browser offers provider choices and a paginated list of unanchored messages. The CLI error includes the commands to read both:
 
@@ -91,7 +91,7 @@ Each limit accepts 1 through 100000. Exceeding a limit retains header facts and 
 
 After a split, `--current` reads a subgroup listed in the conflict response without following its historical alias. Without that flag, the old combined ID continues to describe the split. The browser follows aliases for search and browse results, then uses current subgroup reads when a subgroup is chosen in the conflict picker.
 
-Rebuild preserves headers and provider IDs already recorded in the database, so older archive inputs cannot undo a correction. It still recovers folder observations from every input. Keep the database backup: immutable context records do not record correction order, so raw inputs alone cannot identify which variant was the last correction.
+Rebuild preserves headers and provider IDs already recorded in the database, so older archive inputs cannot undo a correction. It still recovers folder observations from every input, and a message without a provider ID takes the Gmail thread ID from an archived `X-GM-THRID` header. Keep the database backup: immutable context records do not record correction order, so raw inputs alone cannot identify which variant was the last correction.
 
 ## Recover folder provenance
 

@@ -11,6 +11,10 @@ linters:
     - misspell
     - unconvert
   settings:
+    misspell:
+      # Gmail's X-GM-THRID header and IMAP FETCH item.
+      ignore-rules:
+        - thrid
     errcheck:
       exclude-functions:
         - (io.Closer).Close

@@ -2,6 +2,7 @@ package eml
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -69,7 +70,7 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 			return err
 		}
 		rawDigest := hex.EncodeToString(digest.Sum(nil))
-		prefix := "mail-projection-v3:" + identity + ":" + rawDigest + ":" + string(configuration)
+		prefix := "mail-projection-v4:" + identity + ":" + rawDigest + ":" + string(configuration)
 		report.Inputs++
 		visit := func(input io.Reader, contentDigest string) error {
 			if err := ctx.Err(); err != nil {
@@ -109,7 +110,7 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				report.Skipped++
 				return nil
 			}
-			facts := store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, RawRef: record.RawRef, NativeThreadID: record.ThreadID, PreserveNative: true, PreserveHeaders: true, Context: record.Context}
+			facts := store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, RawRef: record.RawRef, NativeThreadID: cmp.Or(record.ThreadID, message.GmailThreadID), PreserveNative: true, PreserveHeaders: true, Context: record.Context}
 			var projection store.MailProjectionResult
 			if apply {
 				projection, err = st.ProjectMail(ctx, id, facts, true, workKey)

@@ -37,12 +37,14 @@ type messageInfo struct {
 	UID    imap.UID
 	SeqNum uint32
 	Size   int64
+	Gmail  *gmailMetadata
 }
 
 type downloaded struct {
-	UID  imap.UID
-	Path string
-	Size int64
+	UID   imap.UID
+	Path  string
+	Size  int64
+	Gmail *gmailMetadata
 }
 
 type observedLiteral struct {
@@ -94,13 +96,13 @@ func (session *session) download(messages []messageInfo, dir string, limit int64
 	stop := session.deadline()
 	defer stop()
 	var set imap.SeqSet
-	expected := make(map[imap.UID]bool, len(messages))
+	expected := make(map[imap.UID]messageInfo, len(messages))
 	for _, message := range messages {
 		if message.SeqNum == 0 {
 			return nil, fmt.Errorf("UID %d: missing message sequence number", message.UID)
 		}
 		set.AddNum(message.SeqNum)
-		expected[message.UID] = true
+		expected[message.UID] = message
 	}
 	command := session.client.Fetch(set, &imap.FetchOptions{UID: true, BodySection: []*imap.FetchItemBodySection{{Peek: true}}})
 	defer func() {
@@ -149,7 +151,8 @@ func (session *session) download(messages []messageInfo, dir string, limit int64
 				}
 			}
 		}
-		if !expected[uid] {
+		info, ok := expected[uid]
+		if !ok {
 			if path != "" {
 				return nil, fmt.Errorf("unexpected body for UID %d", uid)
 			}
@@ -162,7 +165,7 @@ func (session *session) download(messages []messageInfo, dir string, limit int64
 		if err := publishMessage(path, stablePath); err != nil {
 			return nil, err
 		}
-		files = append(files, downloaded{UID: uid, Path: stablePath, Size: size})
+		files = append(files, downloaded{UID: uid, Path: stablePath, Size: size, Gmail: info.Gmail})
 		delete(expected, uid)
 	}
 	if err := command.Close(); err != nil {
@@ -203,6 +206,9 @@ func syncFolder(ctx context.Context, session *session, st *state, config Config,
 		end := uint32(min(uint64(point.UID)+uidWindow, uint64(last)))
 		messages, err := session.metadata(point.UID+1, end)
 		if err != nil {
+			return err
+		}
+		if err := session.annotateGmail(folder, point.Validity, messages); err != nil {
 			return err
 		}
 		for len(messages) > 0 {
@@ -284,11 +290,14 @@ func flushQueued(ctx context.Context, st *state, config Config, account Account,
 			requestCtx, cancel := context.WithTimeout(groupCtx, timeout)
 			defer cancel()
 			observation := eml.MailImportContext{Version: 1, Kind: "imap", Mailbox: folder, RelativePath: filepath.Base(file.Path), AccountID: account.ID}
+			if file.Gmail != nil {
+				observation.Version, observation.ThreadID, observation.Labels = 2, file.Gmail.ThreadID, file.Gmail.Labels
+			}
 			outcome, err := importer(requestCtx, account.Source, file.Path, observation)
 			if err != nil {
 				return fmt.Errorf("UID %d import failed: %w", file.UID, err)
 			}
-			if outcome.MailContextVersion != 1 {
+			if outcome.MailContextVersion != observation.Version {
 				return fmt.Errorf("UID %d mail context was not acknowledged; upgrade Bank before retrying", file.UID)
 			}
 			if outcome.Inserted+outcome.Duplicates+outcome.Rejected != 1 {

@@ -2,6 +2,7 @@ package eml
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -83,6 +84,11 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 		if err := o.MailContext.Validate(); err != nil {
 			return IngestResult{}, fail.Opf("mail context: %w", err)
 		}
+		if o.MailContext.ThreadID != "" {
+			observation := *o.MailContext
+			o.ThreadID, observation.ThreadID = cmp.Or(o.ThreadID, observation.ThreadID), ""
+			o.MailContext = &observation
+		}
 	}
 	if o.ArchiveDir != "" {
 		_, err := archive.WriteMailContext(o.ArchiveDir, archive.MailContextRecord{Version: 1, Source: o.Source, RawRef: o.RawRef, InputKind: "eml", Context: o.MailContext, ExternalID: o.ExternalID, ThreadID: o.ThreadID, SentAt: o.SentAt})
@@ -95,6 +101,7 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 		return IngestResult{}, err
 	}
 	res := IngestResult{Warnings: m.Warnings}
+	threadID := cmp.Or(o.ThreadID, m.GmailThreadID)
 
 	externalID := o.ExternalID
 	if externalID == "" {
@@ -120,7 +127,7 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 			Source:     o.Source,
 			ExternalID: externalID,
 			MessageID:  m.MessageID,
-			ThreadID:   o.ThreadID,
+			ThreadID:   threadID,
 			Sender:     m.From,
 			Recipients: append(m.To, m.Cc...),
 			Subject:    m.Subject,
@@ -143,7 +150,7 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 	if err := syncAttachments(ctx, st, blobs, id, m.Attachments, res.Inserted, &res); err != nil {
 		return res, err
 	}
-	projection, err := st.ProjectMail(ctx, id, store.MailProjection{MessageID: m.NormalizedMessageID, InReplyTo: m.InReplyTo, References: m.References, RawRef: filepath.ToSlash(o.RawRef), NativeThreadID: o.ThreadID, Context: o.MailContext}, true, "")
+	projection, err := st.ProjectMail(ctx, id, store.MailProjection{MessageID: m.NormalizedMessageID, InReplyTo: m.InReplyTo, References: m.References, RawRef: filepath.ToSlash(o.RawRef), NativeThreadID: threadID, Context: o.MailContext}, true, "")
 	if err != nil {
 		return res, fail.Opf("persist mail metadata: %w", err)
 	}
@@ -235,7 +242,7 @@ func ImportEmlPath(ctx context.Context, st *store.Store, blobs *blob.Store, arch
 	}
 	result, err := importEmlPath(ctx, st, blobs, archiveDir, source, path, observation)
 	if err == nil && observation != nil {
-		result.MailContextVersion = 1
+		result.MailContextVersion = observation.Version
 	}
 	return result, err
 }
@@ -293,7 +300,7 @@ func ImportMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archive
 	}
 	result, err := importMbox(ctx, st, blobs, archiveDir, source, path, observation)
 	if err == nil && observation != nil {
-		result.MailContextVersion = 1
+		result.MailContextVersion = observation.Version
 	}
 	return result, err
 }
@@ -302,6 +309,9 @@ func importMbox(ctx context.Context, st *store.Store, blobs *blob.Store, archive
 	var res Result
 	if err := archive.ValidSource(source); err != nil {
 		return res, err
+	}
+	if observation != nil && observation.ThreadID != "" {
+		return res, fmt.Errorf("a provider thread ID applies to one message; import it as EML")
 	}
 	rel, err := archive.Copy(archiveDir, source, path)
 	if err != nil {

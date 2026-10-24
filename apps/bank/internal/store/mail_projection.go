@@ -56,16 +56,19 @@ func persistMailFacts(ctx context.Context, transaction pgx.Tx, message Message, 
 }
 
 func persistMailboxObservation(ctx context.Context, transaction pgx.Tx, message Message, projection MailProjection) error {
-	if projection.Context != nil {
-		observation := *projection.Context
-		if observation.Kind == "imap" && strings.EqualFold(observation.Mailbox, "INBOX") {
-			observation.Mailbox = "INBOX"
+	if projection.Context == nil {
+		return nil
+	}
+	observation := projection.Context
+	for _, path := range append([]string{observation.Mailbox}, observation.Labels...) {
+		if observation.Kind == "imap" && strings.EqualFold(path, "INBOX") {
+			path = "INBOX"
 		}
 		var mailboxID int64
-		err := transaction.QueryRow(ctx, `select id from mailboxes where source=$1 and kind=$2 and path=$3`, message.Source, observation.Kind, observation.Mailbox).Scan(&mailboxID)
+		err := transaction.QueryRow(ctx, `select id from mailboxes where source=$1 and kind=$2 and path=$3`, message.Source, observation.Kind, path).Scan(&mailboxID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			err = transaction.QueryRow(ctx, `insert into mailboxes(source,kind,path) values($1,$2,$3)
-				on conflict(source,kind,path) do update set path=excluded.path returning id`, message.Source, observation.Kind, observation.Mailbox).Scan(&mailboxID)
+				on conflict(source,kind,path) do update set path=excluded.path returning id`, message.Source, observation.Kind, path).Scan(&mailboxID)
 		}
 		if err != nil {
 			return err

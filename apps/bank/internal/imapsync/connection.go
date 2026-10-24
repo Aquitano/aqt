@@ -31,6 +31,10 @@ type session struct {
 	conn    net.Conn
 	stop    func() bool
 	timeout time.Duration
+	// openGmail is set when the server advertises X-GM-EXT-1. The metadata
+	// connection opens only once a folder has new mail.
+	openGmail func() (*gmailSession, error)
+	gmail     *gmailSession
 }
 
 func newConnector(ctx context.Context, account Account, timeout time.Duration) (*connector, error) {
@@ -108,18 +112,8 @@ func (connection *connector) connect(ctx context.Context) (*session, error) {
 		err = client.WaitGreeting()
 	}
 	if err == nil {
-		switch {
-		case connection.tokens != nil:
-			var token *oauth2.Token
-			token, err = connection.tokens.Token()
-			if err == nil {
-				err = client.Authenticate(&xoauth2Client{username: connection.username, token: token.AccessToken})
-			}
-		case client.Caps().Has(imap.AuthCap(sasl.Plain)):
-			err = client.Authenticate(sasl.NewPlainClient("", connection.username, connection.password))
-		default:
-			err = client.Login(connection.username, connection.password).Wait()
-		}
+		err = connection.authenticate(func() bool { return client.Caps().Has(imap.AuthCap(sasl.Plain)) }, client.Authenticate,
+			func(username, password string) error { return client.Login(username, password).Wait() })
 	}
 	if err != nil {
 		stop()
@@ -129,13 +123,35 @@ func (connection *connector) connect(ctx context.Context) (*session, error) {
 		}
 		return nil, err
 	}
-	return &session{client: client, conn: conn, stop: stop, timeout: connection.timeout}, nil
+	opened := &session{client: client, conn: conn, stop: stop, timeout: connection.timeout}
+	if client.Caps().Has(gmailExtension) {
+		opened.openGmail = func() (*gmailSession, error) { return connection.connectGmail(ctx) }
+	}
+	return opened, nil
+}
+
+func (connection *connector) authenticate(plain func() bool, authenticate func(sasl.Client) error, login func(username, password string) error) error {
+	switch {
+	case connection.tokens != nil:
+		token, err := connection.tokens.Token()
+		if err != nil {
+			return err
+		}
+		return authenticate(&xoauth2Client{username: connection.username, token: token.AccessToken})
+	case plain():
+		return authenticate(sasl.NewPlainClient("", connection.username, connection.password))
+	default:
+		return login(connection.username, connection.password)
+	}
 }
 
 func (session *session) close() {
 	session.stop()
 	_ = session.conn.Close()
 	_ = session.client.Close()
+	if session.gmail != nil {
+		session.gmail.close()
+	}
 }
 
 func (session *session) deadline() func() {

@@ -6,6 +6,7 @@ require (
 	github.com/alecthomas/kong v1.16.1
 	github.com/aquitano/aqt/packages/go/extract v0.0.0
 	github.com/aquitano/aqt/packages/go/pgschema v0.0.0
+	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6

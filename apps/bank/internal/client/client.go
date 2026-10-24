@@ -388,8 +388,8 @@ func ImportFile[T any](ctx context.Context, c *Client, kind, source, path string
 		var ack struct {
 			Version int `json:"mail_context_version"`
 		}
-		if err := json.Unmarshal(raw, &ack); err != nil || ack.Version != 1 {
-			return res, fmt.Errorf("server did not acknowledge mail context version 1; upgrade Bank before retrying")
+		if err := json.Unmarshal(raw, &ack); err != nil || ack.Version != contexts[0].Version {
+			return res, fmt.Errorf("server did not acknowledge mail context version %d; upgrade Bank before retrying", contexts[0].Version)
 		}
 	}
 	return res, json.Unmarshal(raw, &res)

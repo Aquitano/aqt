@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
@@ -125,5 +126,79 @@ func TestRemoteMailContextRequiresAcknowledgement(t *testing.T) {
 	}
 	if _, err := client.ImportFile[Result](context.Background(), remote, "eml", "mail", input); err != nil {
 		t.Fatal(err)
+	}
+	versionOne := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = io.Copy(io.Discard, request.Body)
+		_, _ = io.WriteString(writer, `{"inserted":1,"mail_context_version":1}`)
+	}))
+	defer versionOne.Close()
+	gmail := &MailImportContext{Version: 2, Kind: "imap", Mailbox: "INBOX", RelativePath: "mail.eml", ThreadID: "11bdfc5cae0c8191"}
+	if _, err := client.ImportFile[Result](context.Background(), client.New(versionOne.URL, "test"), "eml", "gmail", input, gmail); err == nil {
+		t.Fatal("version 1 acknowledgement accepted for a version 2 context")
+	}
+}
+
+func TestGmailIMAPMailJoinsTakeoutThread(t *testing.T) {
+	ctx := context.Background()
+	st, dsn := storetest.NewNamed(t)
+	root := t.TempDir()
+	blobs, err := blob.New(filepath.Join(root, "blobs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	archiveDir := filepath.Join(root, "archive")
+	takeout := filepath.Join(root, "takeout.mbox")
+	if err := os.WriteFile(takeout, []byte("From 1278455344230334865@xxx Mon Aug 03 10:00:00 +0000 2026\r\nX-GM-THRID: 1278455344230334865\r\nX-Gmail-Labels: Inbox\r\nMessage-ID: <takeout@example.com>\r\nSubject: Plans\r\n\r\nfirst\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportMbox(ctx, st, blobs, archiveDir, "gmail", takeout); err != nil {
+		t.Fatal(err)
+	}
+	threadOf := func(messageID string) string {
+		t.Helper()
+		id, err := st.FindByEmailMessageID(ctx, "gmail", messageID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		message, err := st.GetMessageDetail(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return message.ThreadID
+	}
+	if thread := threadOf("takeout@example.com"); thread != "11bdfc5cae0c8191" {
+		t.Fatalf("Takeout thread = %q, want the Gmail API form", thread)
+	}
+	storetest.Exec(t, dsn, `update mail_details set native_thread_id=''; update messages set thread_id='mail:before-takeout-thread-ids'`)
+	if _, err := RebuildMail(ctx, st, archiveDir, "gmail", true); err != nil {
+		t.Fatal(err)
+	}
+	if thread := threadOf("takeout@example.com"); thread != "11bdfc5cae0c8191" {
+		t.Fatalf("rebuilt Takeout thread = %q", thread)
+	}
+
+	collected := filepath.Join(root, "collected.eml")
+	if err := os.WriteFile(collected, []byte("Message-ID: <imap@example.com>\r\nSubject: Re: Plans\r\n\r\nsecond\r\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	observation := &MailImportContext{Version: 2, Kind: "imap", Mailbox: "[Gmail]/All Mail", RelativePath: "collected.eml", AccountID: "gmail-personal", ThreadID: "11bdfc5cae0c8191", Labels: []string{"INBOX", "Work/Receipts"}}
+	result, err := ImportEmlPath(ctx, st, blobs, archiveDir, "gmail", collected, observation)
+	if err != nil || result.Inserted != 1 || result.MailContextVersion != 2 {
+		t.Fatalf("IMAP import: %+v, %v", result, err)
+	}
+	if thread := threadOf("imap@example.com"); thread != "11bdfc5cae0c8191" {
+		t.Fatalf("IMAP thread = %q, want the Takeout thread", thread)
+	}
+	folders, err := st.ListMailboxes(ctx, "gmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{}
+	for _, folder := range folders {
+		paths = append(paths, folder.Kind+":"+folder.Path)
+	}
+	slices.Sort(paths)
+	if !slices.Equal(paths, []string{"imap:INBOX", "imap:Work/Receipts", "imap:[Gmail]/All Mail"}) {
+		t.Fatalf("label observations = %v", paths)
 	}
 }
