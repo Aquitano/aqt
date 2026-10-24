@@ -10,7 +10,8 @@ import (
 
 func TestSharedRefListsCandidates(t *testing.T) {
 	st, conn := searchFixture(t)
-	if _, err := conn.Exec(t.Context(), `insert into contents(id,blake3,size_bytes) overriding system value values(3,decode(repeat('11',8)||repeat('22',24),'hex'),30)`); err != nil {
+	if _, err := conn.Exec(t.Context(), `insert into contents(id,blake3,size_bytes) overriding system value values(3,decode(repeat('11',8)||repeat('22',24),'hex'),30);
+		insert into entry_versions(entry_id,content_id,size_bytes,first_scan,replaced_scan) values(4,3,30,1,1)`); err != nil {
 		t.Fatal(err)
 	}
 	_, err := st.Content(t.Context(), "attic:"+strings.Repeat("1", 16))
@@ -20,7 +21,7 @@ func TestSharedRefListsCandidates(t *testing.T) {
 	}
 	want := []store.RefCandidate{
 		{Ref: strings.Repeat("1", 17), Size: 10, Volume: "Search", Path: "/docs/Tom & Jerry.pdf"},
-		{Ref: strings.Repeat("1", 16) + "2", Size: 30},
+		{Ref: strings.Repeat("1", 16) + "2", Size: 30, Volume: "Search", Path: "/docs/bundle.zip"},
 	}
 	if len(ambiguous.Candidates) != 2 || ambiguous.Candidates[0] != want[0] || ambiguous.Candidates[1] != want[1] {
 		t.Fatalf("candidates: %+v", ambiguous.Candidates)

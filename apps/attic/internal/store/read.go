@@ -71,8 +71,9 @@ func (s *Store) resolveRef(ctx context.Context, ref string) (int64, error) {
 	head, _ := hex.DecodeString(ref[:RefChars])
 	rows, err := s.pool.Query(ctx, `select c.id, encode(c.blake3, 'hex'), c.size_bytes, coalesce(v.label, ''), coalesce(p.path, '')
 		from contents c
-		left join lateral (select e.volume_id, e.path from entries e where e.content_id = c.id
-			order by e.missing_scan is not null, e.id limit 1) p on true
+		left join lateral (select e.volume_id, e.path from entry_versions ver join entries e on e.id = ver.entry_id
+			where ver.content_id = c.id
+			order by ver.replaced_scan is not null, e.missing_scan is not null, e.id limit 1) p on true
 		left join volumes v on v.id = p.volume_id
 		where substr(c.blake3, 1, 8) = $1 and starts_with(encode(c.blake3, 'hex'), $2)
 		order by c.id`, head, ref)
