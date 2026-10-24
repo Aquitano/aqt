@@ -72,9 +72,22 @@ func (s *Store) newTextSearch(ctx context.Context, o SearchOptions, key, content
 	for i, word := range words {
 		clauses[i] = "paradedb.match('text', " + q.next(word) + ")"
 	}
-	q.where = append(q.where, key+" @@@ "+searchBoolean(clauses, o.Any))
-	place := []string{"e.content_id = " + contentID}
-	place = append(place, q.entryFilters(copiesOf(o, false))...)
-	q.where = append(q.where, "exists (select 1 from entries e where "+strings.Join(place, " and ")+")")
+	q.where = append(q.where, key+" @@@ "+searchBoolean(clauses, o.Any), q.holders(contentID, copiesOf(o, false)))
 	return q, nil
+}
+
+// holders requires an entry within the filters that holds the content now
+// or, when c includes previous versions, held it before its bytes changed.
+// The open version stands for the current content, so one EXISTS covers
+// both: Postgres turns it into a semi join, where an OR of two EXISTS
+// became hashed subplans that read every version.
+func (q *search) holders(contentID string, c copies) string {
+	place := []string{"e.content_id = " + contentID}
+	from := "entries e"
+	if c.previous {
+		place = []string{"ver.content_id = " + contentID}
+		from = "entry_versions ver join entries e on e.id = ver.entry_id"
+	}
+	place = append(place, q.entryFilters(c)...)
+	return "exists (select 1 from " + from + " where " + strings.Join(place, " and ") + ")"
 }

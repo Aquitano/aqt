@@ -4,6 +4,8 @@ import (
 	"context"
 	"slices"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
 
@@ -59,7 +61,8 @@ func (sc *Scan) ReuseContent(ctx context.Context, p Pending, observed disk.Entry
 		return false, err
 	}
 	l := normalize(Listed{Modified: observed.Modified, Changed: observed.Changed}, true)
-	result, err := tx.Exec(ctx, `
+	var batch pgx.Batch
+	batch.Queue(`
 		update entries e set content_id = known.content_id, hash_state = 'done', updated_scan = $6
 		from entries known
 		where e.id = $1 and e.volume_id = $2 and e.physical_file_id = $3
@@ -71,7 +74,14 @@ func (sc *Scan) ReuseContent(ctx context.Context, p Pending, observed disk.Entry
 		  and known.path collate "C" > $8 and ($9 = '' or known.path collate "C" < $9)
 		  and known.size_bytes = e.size_bytes and known.modified_at = e.modified_at and known.changed_at = e.changed_at`,
 		p.ID, sc.Volume.ID, p.PhysicalFileID, p.Size, l.Modified, sc.ID, l.Changed, lower, upper)
+	sc.queueVersions(&batch, []int64{p.ID})
+	br := tx.SendBatch(ctx, &batch)
+	result, err := br.Exec()
 	if err != nil {
+		br.Close()
+		return false, err
+	}
+	if err := br.Close(); err != nil {
 		return false, err
 	}
 	if result.RowsAffected() == 0 {

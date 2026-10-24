@@ -417,7 +417,8 @@ func zipOf(t *testing.T, files map[string]string) string {
 }
 
 // Two copies of one backup zip are read once, and a hit inside it names both.
-// Once both copies are rewritten, the old listing is no longer found.
+// Once both copies are rewritten, the old listing is found as a previous
+// version, which --current leaves out.
 func TestArchivesAreListedOncePerContent(t *testing.T) {
 	st, _ := storetest.New(t)
 	ctx := context.Background()
@@ -454,8 +455,12 @@ func TestArchivesAreListedOncePerContent(t *testing.T) {
 	write(t, root, "Backups/Minecraft.zip", rewritten)
 	write(t, root, "Old/Minecraft copy.zip", rewritten)
 	scanAt(t, st, root, testVolume, withArchives)
-	if hits, err := st.SearchMembers(ctx, store.SearchOptions{Query: "server properties"}); err != nil || len(hits) != 0 {
-		t.Errorf("members of a rewritten archive still found: %+v, %v", hits, err)
+	hits, err = st.SearchMembers(ctx, store.SearchOptions{Query: "server properties"})
+	if err != nil || len(hits) != 1 || len(hits[0].Archive) != 2 || hits[0].Archive[0].Version != store.VersionPrevious {
+		t.Errorf("members of a rewritten archive: %+v, %v; want both copies as previous versions", hits, err)
+	}
+	if hits, err := st.SearchMembers(ctx, store.SearchOptions{Query: "server properties", Current: true}); err != nil || len(hits) != 0 {
+		t.Errorf("members of a rewritten archive found with --current: %+v, %v", hits, err)
 	}
 }
 

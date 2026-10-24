@@ -23,6 +23,7 @@ attic scan E:\Files --no-hash
 attic search minecraft server
 attic search werkstudent --ext pdf
 attic search notes --under E:\Files --json
+attic search minecraft lobby --current
 attic search --under E:\Backups\Minecraft.7z
 attic show 36331
 attic get 36331 --to C:\Recovered\document.pdf --json
@@ -44,6 +45,8 @@ Search requires every searchable word by default; `--any` accepts any word. Word
 Argument parsing errors exit with code 2. Command failures, including `enrich --task ocr` without targets or `--under`, exit with code 1.
 
 An entry ID identifies a file at a place. A content ref such as `attic:3f9a1c2b4d5e6f70` identifies its bytes across disks. `show <ref>` lists the copies. Missing files remain searchable and are marked missing. `dupes --same-volume` counts copies that share a disk.
+
+When a file's bytes change, the catalogue keeps what it read from the earlier content: archive listings, document text, metadata and enrichment results. The earlier bytes themselves are not kept. Archive-member, document-text, metadata and enrichment searches include these earlier versions by default. Text output marks such a place `previous version` and counts the other earlier holders as `held before`. In `--json`, every place of a content hit has `version` set to `current` or `previous`. A previous place shows the entry's path as it is now, with the size, modified time and ref it had then. `--current` leaves out content that no file holds now. Name and path search matches entries as they are now. `show <id>` lists the entry's versions with the scans that first saw each one and saw it replaced. `show <ref>` lists the files that hold the content now, then those that held it before. Use `text <ref>` or `metadata <ref>` to read an earlier version's results. Moves, renames and rehashing unchanged bytes keep one version.
 
 `coverage` selects present files in the requested scope and counts distinct volume IDs for their completed full content hashes across the entire catalogue. It reports content recorded on fewer than two volumes, with unique byte totals. Multiple paths and hard links on one volume count as one volume. Unknown and invalidated hashes appear separately, with path byte totals that cannot be deduplicated. Offline volumes count; entries marked missing do not. With no scope, it reports the whole catalogue.
 

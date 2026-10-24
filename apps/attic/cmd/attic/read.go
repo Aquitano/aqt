@@ -49,6 +49,9 @@ func printHits(hits []hitOut) error {
 		if h.Missing {
 			notes = append(notes, "missing")
 		}
+		if h.Version == store.VersionPrevious {
+			notes = append(notes, "previous version")
+		}
 		note := ""
 		if len(notes) > 0 {
 			note = "  (" + strings.Join(notes, ", ") + ")"
@@ -60,15 +63,16 @@ func printHits(hits []hitOut) error {
 }
 
 type searchCmd struct {
-	Words  []string `arg:"" optional:"" help:"Words to find in names, paths and content."`
-	Any    bool     `help:"Match any word instead of every word."`
-	Volume string   `help:"Volume label or ID."`
-	Ext    string   `help:"File extension, such as pdf."`
-	Kind   string   `enum:"file,dir,link," default:"" help:"Entry kind: file, dir or link."`
-	Under  string   `help:"Mounted path, or volume-relative path with --volume."`
-	Limit  int      `default:"20" help:"Maximum results per result type."`
-	Offset int      `help:"Skip this many ranked results."`
-	JSON   bool     `help:"Print JSON."`
+	Words   []string `arg:"" optional:"" help:"Words to find in names, paths and content."`
+	Any     bool     `help:"Match any word instead of every word."`
+	Volume  string   `help:"Volume label or ID."`
+	Ext     string   `help:"File extension, such as pdf."`
+	Kind    string   `enum:"file,dir,link," default:"" help:"Entry kind: file, dir or link."`
+	Under   string   `help:"Mounted path, or volume-relative path with --volume."`
+	Current bool     `help:"Leave out content that files held before they changed."`
+	Limit   int      `default:"20" help:"Maximum results per result type."`
+	Offset  int      `help:"Skip this many ranked results."`
+	JSON    bool     `help:"Print JSON."`
 }
 
 func (cmd *searchCmd) Run(ctx context.Context) error {
@@ -81,7 +85,7 @@ func (cmd *searchCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	o := store.SearchOptions{Query: strings.Join(cmd.Words, " "), Any: cmd.Any, Ext: cmd.Ext, Kind: cmd.Kind, Limit: cmd.Limit, Offset: cmd.Offset}
+	o := store.SearchOptions{Query: strings.Join(cmd.Words, " "), Any: cmd.Any, Ext: cmd.Ext, Kind: cmd.Kind, Current: cmd.Current, Limit: cmd.Limit, Offset: cmd.Offset}
 	if cmd.Volume != "" {
 		v, err := st.FindVolume(ctx, cmd.Volume)
 		if err != nil {
@@ -154,13 +158,15 @@ func (cmd *searchCmd) Run(ctx context.Context) error {
 	return nil
 }
 
-// bestCopy is the copy to show: one that can be opened now, or the first
-// present one, as occurrences sorts them.
+// bestCopy is the copy to show: one that holds the content and can be opened
+// now, or the first present one, as occurrences sorts them.
 func bestCopy(copies []hitOut) hitOut {
 	if len(copies) == 0 {
 		return hitOut{}
 	}
-	return copies[max(slices.IndexFunc(copies, func(h hitOut) bool { return h.Online && !h.Missing }), 0)]
+	return copies[max(slices.IndexFunc(copies, func(h hitOut) bool {
+		return h.Online && !h.Missing && h.Version != store.VersionPrevious
+	}), 0)]
 }
 
 // textOut is a document hit as printed, at its best copy.
@@ -191,15 +197,39 @@ func printTexts(docs []textOut) {
 		if d.shown.Missing {
 			notes = append(notes, "missing")
 		}
-		if n := len(d.Places) - 1; n > 0 {
-			notes = append(notes, fmt.Sprintf("%d more copies", n))
-		}
+		notes = append(notes, placeNotes(d.Places, d.shown)...)
 		note := ""
 		if len(notes) > 0 {
 			note = "  (" + strings.Join(notes, ", ") + ")"
 		}
 		fmt.Printf("%10s  %s  %s%s\n    %s\n", humanBytes(d.shown.Size), shortDate(d.shown.Modified), d.Display, note, d.Snippet)
 	}
+}
+
+// placeNotes marks a shown place that held the content only before, and
+// counts the other places that hold it now or held it before.
+func placeNotes(places []hitOut, shown hitOut) []string {
+	var notes []string
+	if shown.Version == store.VersionPrevious {
+		notes = append(notes, "previous version")
+	}
+	copies, previous := 0, 0
+	for _, p := range places {
+		switch {
+		case p.ID == shown.ID:
+		case p.Version == store.VersionPrevious:
+			previous++
+		default:
+			copies++
+		}
+	}
+	if copies > 0 {
+		notes = append(notes, fmt.Sprintf("%d more copies", copies))
+	}
+	if previous > 0 {
+		notes = append(notes, fmt.Sprintf("%d held before", previous))
+	}
+	return notes
 }
 
 // memberOut is a member as printed: inside the copy of its archive that can
@@ -245,9 +275,7 @@ func printMembers(members []memberOut) error {
 		if m.Encrypted {
 			notes = append(notes, "encrypted")
 		}
-		if n := len(m.Archive) - 1; n > 0 {
-			notes = append(notes, fmt.Sprintf("%d more copies", n))
-		}
+		notes = append(notes, placeNotes(m.Archive, m.shown)...)
 		note := ""
 		if len(notes) > 0 {
 			note = "  (" + strings.Join(notes, ", ") + ")"
@@ -312,7 +340,15 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 			}{c, places})
 		}
 		fmt.Printf("attic:%s  %s, first seen %s\n  blake3  %s\n", c.Ref, humanBytes(c.Size), c.FirstSeen.Local().Format("2006-01-02"), c.BLAKE3)
-		return printHits(places)
+		previous := slices.IndexFunc(places, func(h hitOut) bool { return h.Version == store.VersionPrevious })
+		if previous < 0 {
+			return printHits(places)
+		}
+		if err := printHits(places[:previous]); err != nil {
+			return err
+		}
+		fmt.Println("  held before:")
+		return printHits(places[previous:])
 	}
 
 	id, err := strconv.ParseInt(cmd.Target, 10, 64)
@@ -385,11 +421,32 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 	if d.MissingAt != nil {
 		fmt.Fprintf(tw, "  missing\tsince the scan of %s\n", stamp(d.MissingAt))
 	}
-	if err := tw.Flush(); err != nil || len(copies) == 0 {
+	if err := tw.Flush(); err != nil {
 		return err
+	}
+	if len(d.Versions) > 0 {
+		fmt.Println("  versions:")
+		if err := printVersions(d.Versions); err != nil {
+			return err
+		}
+	}
+	if len(copies) == 0 {
+		return nil
 	}
 	fmt.Printf("  also stored at:\n")
 	return printHits(copies)
+}
+
+func printVersions(versions []store.EntryVersion) error {
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	for _, v := range versions {
+		seen := "seen from scan " + strconv.FormatInt(v.FirstScan, 10) + " (" + shortDate(&v.FirstSeen) + ")"
+		if v.ReplacedScan != nil {
+			seen += " to scan " + strconv.FormatInt(*v.ReplacedScan, 10) + " (" + shortDate(v.Replaced) + ")"
+		}
+		fmt.Fprintf(tw, "    %s\tattic:%s\t%s\t%s\t%s\n", v.Version, v.Ref, humanBytes(v.Size), shortDate(v.Modified), seen)
+	}
+	return tw.Flush()
 }
 
 type volumesCmd struct {

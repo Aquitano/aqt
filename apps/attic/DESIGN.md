@@ -14,6 +14,14 @@ On NTFS and ReFS, stable file IDs let an entry retain its identity across moves.
 
 Hard links identify one filesystem object through several paths. Entries retain their separate places, while stable object identity and matching size and timestamps allow hash reuse within the scanned subtree. Size or timestamp changes invalidate known content. Single-file moves retain their hash because NTFS can change the change time on a rename. Moves involving hard links require verification because another path can already hold newer bytes. A scan covering conflicting hard links rechecks their bytes.
 
+## Versions keep earlier content searchable
+
+The catalogue is a permanent history, so a file whose bytes change keeps what was read from its earlier content. `entry_versions` records each content an entry held, with its size and modified time, the scan that first saw it and the scan that saw it replaced. The earlier bytes are not kept, and nothing is deleted.
+
+A listing that resets an entry's content closes its open version. Hashing opens a version for the new content. When the latest version holds the same bytes, hashing reopens that version, so a touch, a save-via-rename or a hard-link check that rehashes unchanged bytes keeps one version. Moves and renames keep the content and never reach the version table. A missing entry keeps its open version, because missing is recorded on the entry.
+
+Every content an entry holds has an open version, so content searches reach current and earlier contents through one `EXISTS` over the versions. Postgres plans that as a semi join. An `OR` of an entry `EXISTS` and a version `EXISTS` became hashed subplans that read the whole version table. `--current` keeps the original entry-only `EXISTS`. Place lists derive the flag from the entry: current while it points at the content, previous otherwise.
+
 ## Ancestry determines what moves or disappears
 
 Every entry records its parent and its volume-relative path. The path is also indexed because filename and path words contribute to search ranking. Moving a directory updates descendants by parent ancestry. Path-prefix matching alone cannot distinguish directories during backup rotations or swaps.
@@ -52,7 +60,7 @@ Enrichment results retain content, task, provider, endpoint, model and policy id
 
 ## Search groups preserve their own ranking
 
-Filename, archive-member, document-text, metadata and enrichment indexes rank separately because their BM25 scores are not comparable. Every searchable word must match within one result unless `--any` is set. Query pieces with no searchable terms must not turn an otherwise valid every-word query into an empty match.
+Filename, archive-member, document-text, metadata and enrichment indexes rank separately because their BM25 scores are not comparable. Content results include earlier versions unless `--current` is set; filename results describe entries as they are now. Every searchable word must match within one result unless `--any` is set. Query pieces with no searchable terms must not turn an otherwise valid every-word query into an empty match.
 
 Entry extensions describe files; archive-member extensions describe members. Volume and folder filters identify where the enclosing file lives. An archive named by `--under` includes its members. Copy lists retain the same filters as the search result.
 
