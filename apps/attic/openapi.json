@@ -1438,7 +1438,7 @@
         "type": "object"
       },
       "UnavailableError": {
-        "description": "No copy can be read now. volumes lists the detached disks that hold one; an empty list means every attached copy is missing.",
+        "description": "No copy can be read now. volumes lists the detached disks that hold one. It is empty when the copies on attached disks are missing, changed since their scan, or excluded by the server's content rules.",
         "properties": {
           "_tag": {
             "enum": [
@@ -1826,7 +1826,7 @@
                 }
               }
             },
-            "description": "AmbiguousRef: the ref prefix matches several contents. Retry with one of the candidates' longer refs. Unavailable: no copy can be read now. volumes lists the detached disks that hold one; an empty list means every attached copy is missing."
+            "description": "AmbiguousRef: the ref prefix matches several contents. Retry with one of the candidates' longer refs. Unavailable: no copy can be read now. volumes lists the detached disks that hold one. It is empty when the copies on attached disks are missing, changed since their scan, or excluded by the server's content rules."
           },
           "422": {
             "content": {
