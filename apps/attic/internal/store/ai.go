@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,19 +23,32 @@ type AISelection struct {
 	Key        ai.Key
 	Force      bool
 	Retry      bool
+	contents   []int64
+}
+
+// ResolveRefs looks up the selection's refs once, so paging through its
+// candidates does not query them again.
+func (s *Store) ResolveRefs(ctx context.Context, o AISelection) (AISelection, error) {
+	contents := slices.Clone(o.contents)
+	for _, ref := range o.Refs {
+		lookup, err := s.newContentLookup(ctx, 0, ref)
+		if err != nil {
+			return o, err
+		}
+		contents = append(contents, lookup.contentID)
+	}
+	o.Refs, o.contents = nil, contents
+	return o, nil
 }
 
 // aiCandidates keeps ref-only selections on the content key. Combining entry
 // and ref predicates with OR across the join prevents that index lookup.
 func (s *Store) aiCandidates(ctx context.Context, o AISelection, after int64) (string, []any, error) {
-	contents := make([]int64, 0, len(o.Refs))
-	for _, ref := range o.Refs {
-		lookup, err := s.newContentLookup(ctx, 0, ref)
-		if err != nil {
-			return "", nil, err
-		}
-		contents = append(contents, lookup.contentID)
+	o, err := s.ResolveRefs(ctx, o)
+	if err != nil {
+		return "", nil, err
 	}
+	contents := o.contents
 	q := &search{args: []any{after, o.Volumes, o.Extensions, strings.TrimSuffix(o.Under, "/"), o.Key.Task, o.Key.Provider, o.Key.Model, o.Key.PromptVersion, o.Force}}
 	sql := ` from entries e join contents c on c.id=e.content_id
  left join ai_results a on a.content_id=c.id and a.task=$5 and a.provider=$6 and a.model=$7 and a.prompt_version=$8
