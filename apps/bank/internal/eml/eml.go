@@ -13,6 +13,7 @@ import (
 	"mime/quotedprintable"
 	"net/mail"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -37,6 +38,7 @@ type Message struct {
 	InReplyTo           []string
 	References          []string
 	MessageID           string
+	GmailThreadID       string
 	From                string
 	To                  []string
 	Cc                  []string
@@ -116,8 +118,27 @@ func parseHeader(h mail.Header) *Message {
 	if d, err := mail.ParseDate(h.Get("Date")); err == nil {
 		out.Date = d
 	}
+	if thread, err := strconv.ParseUint(strings.TrimSpace(h.Get("X-GM-THRID")), 10, 64); err == nil {
+		out.GmailThreadID = GmailThreadID(thread)
+	}
 
 	return out
+}
+
+// GmailThreadID renders Gmail's decimal X-GM-THRID in the hexadecimal form the
+// Gmail API returns as threadId, so Takeout, IMAP and API mail share threads.
+func GmailThreadID(thread uint64) string {
+	return strconv.FormatUint(thread, 16)
+}
+
+// nativeThreadID prefers the explicit provider thread ID. Only a Takeout mbox,
+// an mbox in the gmail source, falls back to the X-GM-THRID header: Takeout
+// writes it, while in any other mail it is whatever the sender put there.
+func (m *Message) nativeThreadID(explicit string, takeout bool) string {
+	if explicit != "" || !takeout {
+		return explicit
+	}
+	return m.GmailThreadID
 }
 
 // parser collects body candidates while walking the MIME tree.

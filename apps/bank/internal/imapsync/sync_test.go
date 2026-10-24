@@ -136,19 +136,25 @@ func (fixture *fixture) append(tb testing.TB, folder string, raw []byte) {
 	}
 }
 
-func newFixture(tb testing.TB, mode string) *fixture {
+func testTLS(tb testing.TB, dir string) (*tls.Config, string) {
 	tb.Helper()
-	tb.Setenv("BANK_TEST_IMAP_USER", "test@example.com")
-	tb.Setenv("BANK_TEST_IMAP_PASSWORD", "secret")
 	certServer := httptest.NewTLSServer(http.NotFoundHandler())
 	tlsConfig := certServer.TLS.Clone()
 	certificate := certServer.Certificate()
 	certServer.Close()
-	dir := tb.TempDir()
 	caFile := filepath.Join(dir, "ca.pem")
 	if err := os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate.Raw}), 0o600); err != nil {
 		tb.Fatal(err)
 	}
+	return tlsConfig, caFile
+}
+
+func newFixture(tb testing.TB, mode string) *fixture {
+	tb.Helper()
+	tb.Setenv("BANK_TEST_IMAP_USER", "test@example.com")
+	tb.Setenv("BANK_TEST_IMAP_PASSWORD", "secret")
+	dir := tb.TempDir()
+	tlsConfig, caFile := testTLS(tb, dir)
 	backend := imapmemserver.New()
 	user := imapmemserver.NewUser("test@example.com", "secret")
 	for _, folder := range []string{"INBOX", "Sent"} {
@@ -395,6 +401,9 @@ func TestMissingContextAcknowledgementKeepsPendingMail(t *testing.T) {
 	oldImporter := func(_ context.Context, _ string, path string, observation eml.MailImportContext) (eml.Result, error) {
 		if observation.Mailbox != "INBOX" || observation.AccountID != fixture.config.Accounts[0].ID || observation.RelativePath != filepath.Base(path) {
 			t.Error("missing queued mail context")
+		}
+		if observation.Version != 1 || observation.ThreadID != "" || len(observation.Labels) != 0 {
+			t.Errorf("server without X-GM-EXT-1 produced context %+v", observation)
 		}
 		return eml.Result{Inserted: 1}, nil
 	}

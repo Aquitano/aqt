@@ -3,6 +3,7 @@ package imapsync
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -77,6 +78,13 @@ func openState(dir string) (*state, error) {
 			rejected_at TEXT NOT NULL,
 			PRIMARY KEY (account, folder, validity, uid)
 		)`)
+	var tracksGmail bool
+	if err == nil {
+		err = db.QueryRow(`SELECT EXISTS (SELECT 1 FROM pragma_table_info('pending') WHERE name = 'gmail')`).Scan(&tracksGmail)
+	}
+	if err == nil && !tracksGmail {
+		_, err = db.Exec(`ALTER TABLE pending ADD COLUMN gmail TEXT NOT NULL DEFAULT ''`)
+	}
 	if err != nil {
 		st.close()
 		return nil, err
@@ -158,7 +166,13 @@ func (st *state) stage(ctx context.Context, account, folder string, validity uin
 		if err != nil {
 			return err
 		}
-		if _, err := transaction.ExecContext(ctx, `INSERT INTO pending(account, folder, validity, uid, path, size) VALUES (?, ?, ?, ?, ?, ?)`, account, folder, validity, file.UID, path, file.Size); err != nil {
+		var gmail []byte
+		if file.Gmail != nil {
+			if gmail, err = json.Marshal(file.Gmail); err != nil {
+				return err
+			}
+		}
+		if _, err := transaction.ExecContext(ctx, `INSERT INTO pending(account, folder, validity, uid, path, size, gmail) VALUES (?, ?, ?, ?, ?, ?, ?)`, account, folder, validity, file.UID, path, file.Size, string(gmail)); err != nil {
 			return err
 		}
 	}
@@ -166,7 +180,7 @@ func (st *state) stage(ctx context.Context, account, folder string, validity uin
 }
 
 func (st *state) queued(ctx context.Context, account, folder string) ([]downloaded, checkpoint, error) {
-	rows, err := st.db.QueryContext(ctx, `SELECT validity, uid, path, size FROM pending WHERE account = ? AND folder = ? ORDER BY uid`, account, folder)
+	rows, err := st.db.QueryContext(ctx, `SELECT validity, uid, path, size, gmail FROM pending WHERE account = ? AND folder = ? ORDER BY uid`, account, folder)
 	if err != nil {
 		return nil, checkpoint{}, err
 	}
@@ -175,8 +189,15 @@ func (st *state) queued(ctx context.Context, account, folder string) ([]download
 	var point checkpoint
 	for rows.Next() {
 		var file downloaded
-		if err := rows.Scan(&point.Validity, &file.UID, &file.Path, &file.Size); err != nil {
+		var gmail string
+		if err := rows.Scan(&point.Validity, &file.UID, &file.Path, &file.Size, &gmail); err != nil {
 			return nil, point, err
+		}
+		if gmail != "" {
+			file.Gmail = new(gmailMetadata)
+			if err := json.Unmarshal([]byte(gmail), file.Gmail); err != nil {
+				return nil, point, fmt.Errorf("queued UID %d Gmail metadata: %w", file.UID, err)
+			}
 		}
 		if !filepath.IsLocal(file.Path) {
 			return nil, point, fmt.Errorf("invalid queued message path")
