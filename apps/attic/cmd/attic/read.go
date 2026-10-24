@@ -72,7 +72,7 @@ type searchCmd struct {
 }
 
 func (cmd *searchCmd) Run(ctx context.Context) error {
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -288,7 +288,7 @@ type showCmd struct {
 }
 
 func (cmd *showCmd) Run(ctx context.Context) error {
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -397,7 +397,7 @@ type volumesCmd struct {
 }
 
 func (cmd *volumesCmd) Run(ctx context.Context) error {
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -451,7 +451,7 @@ func (cmd *dupesCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -503,7 +503,7 @@ type skipsCmd struct {
 }
 
 func (cmd *skipsCmd) Run(ctx context.Context) error {
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -564,7 +564,7 @@ type statsCmd struct {
 }
 
 func (cmd *statsCmd) Run(ctx context.Context) error {
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -619,7 +619,7 @@ func (cmd *textCmd) Run(ctx context.Context) error {
 			return fmt.Errorf("not an entry id or a ref: %q", cmd.Target)
 		}
 	}
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -694,7 +694,7 @@ type scansCmd struct {
 }
 
 func (cmd *scansCmd) Run(ctx context.Context) error {
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
@@ -742,7 +742,7 @@ func (cmd *metadataCmd) Run(ctx context.Context) error {
 			return fmt.Errorf("not an entry id or a ref: %q", cmd.Target)
 		}
 	}
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}

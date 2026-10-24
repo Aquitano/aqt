@@ -105,3 +105,24 @@ func TestMigrateRejectsInvalidLegacyHistoryWithoutBaseline(t *testing.T) {
 		})
 	}
 }
+
+func TestVersionReadsWithoutMigrating(t *testing.T) {
+	dsn := legacyDatabase(t, 0)
+	pool, err := pgxpool.New(t.Context(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if current, latest, err := pgschema.Version(t.Context(), pool, files); err != nil || current != 0 || latest != 3 {
+		t.Fatalf("empty: %d, %d, %v", current, latest, err)
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from pg_tables where schemaname = 'public' and tablename = 'schema_version'`); n != 0 {
+		t.Fatal("Version created the version table")
+	}
+	if err := pgschema.Migrate(t.Context(), pool, lockKey, files); err != nil {
+		t.Fatal(err)
+	}
+	if current, latest, err := pgschema.Version(t.Context(), pool, files); err != nil || current != 3 || latest != 3 {
+		t.Fatalf("migrated: %d, %d, %v", current, latest, err)
+	}
+}

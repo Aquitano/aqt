@@ -7,6 +7,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/peterldowns/pgtestdb"
+
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
@@ -31,4 +33,10 @@ func New(t *testing.T) (*store.Store, string) {
 	}
 	t.Cleanup(st.Close)
 	return st, dsn
+}
+
+// Empty returns the URL of a database no migration has touched.
+func Empty(t *testing.T) string {
+	t.Helper()
+	return pgschematest.Database(t, "ATTIC_TEST_DATABASE_URL", pgtestdb.NoopMigrator{})
 }

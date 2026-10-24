@@ -24,7 +24,7 @@ func (cmd *getCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openStore(ctx)
+	st, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}

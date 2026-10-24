@@ -9,9 +9,9 @@ docker compose up -d --wait
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 ```
 
-`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. Database migrations run on startup.
+`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. `attic scan`, `attic enrich` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
 
-The identity upgrade rewrites catalogue entries once and builds indexes. Startup waits for it to finish, and PostgreSQL needs additional database storage during the upgrade.
+The identity upgrade rewrites catalogue entries once and builds indexes. Migration waits for it to finish, and PostgreSQL needs additional database storage during the upgrade.
 
 Install ExifTool for embedded metadata. OCR also needs Tesseract and Poppler's `pdftoppm`. Missing ExifTool leaves metadata pending and records `metadata_unavailable`; the rest of the scan continues.
 
@@ -35,6 +35,7 @@ attic coverage --volume Data --under /Files
 attic coverage --volume Data --json --limit 50 --offset 0
 attic skips --reason unreadable
 attic stats
+attic migrate
 attic help scan
 ```
 

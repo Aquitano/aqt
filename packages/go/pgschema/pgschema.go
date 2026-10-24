@@ -94,3 +94,23 @@ func adoptLegacyHistory(ctx context.Context, conn *pgx.Conn, migrations fs.FS) (
 	}
 	return m, nil
 }
+
+// Version reports the version Migrate recorded and the latest one migrations
+// define, without changing the database. A database Migrate never ran on
+// reports version zero.
+func Version(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS) (current, latest int32, err error) {
+	names, err := migrate.FindMigrations(migrations)
+	if err != nil {
+		return 0, 0, err
+	}
+	var initialized bool
+	if err := pool.QueryRow(ctx, `select to_regclass('public.schema_version') is not null`).Scan(&initialized); err != nil {
+		return 0, 0, err
+	}
+	if initialized {
+		if err := pool.QueryRow(ctx, `select version from public.schema_version`).Scan(&current); err != nil {
+			return 0, 0, err
+		}
+	}
+	return current, int32(len(names)), nil
+}

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -38,6 +39,7 @@ type cli struct {
 	Skips    skipsCmd    `cmd:"" help:"Show what a scan left out and why."`
 	Stats    statsCmd    `cmd:"" help:"Show catalogue totals."`
 	Config   configCmd   `cmd:"" help:"Show the configuration and effective rules."`
+	Migrate  migrateCmd  `cmd:"" help:"Upgrade the catalogue schema; read commands never do."`
 	Help     helpCmd     `cmd:"" help:"Show help for a command."`
 }
 
@@ -165,12 +167,17 @@ func printHelp(parser *kong.Kong, path []string) error {
 	return target.PrintUsage(false)
 }
 
+func databaseURL() string {
+	return cmp.Or(os.Getenv("DATABASE_URL"), "postgres://attic:attic@localhost:5436/attic?sslmode=disable")
+}
+
+// openStore migrates the catalogue first; only commands that write use it.
 func openStore(ctx context.Context) (*store.Store, error) {
-	url := os.Getenv("DATABASE_URL")
-	if url == "" {
-		url = "postgres://attic:attic@localhost:5436/attic?sslmode=disable"
-	}
-	return store.Open(ctx, url)
+	return store.Open(ctx, databaseURL())
+}
+
+func openReadOnlyStore(ctx context.Context) (*store.Store, error) {
+	return store.OpenReadOnly(ctx, databaseURL())
 }
 
 // loadConfig reads --config when given, the default file otherwise, and
