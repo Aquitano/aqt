@@ -317,6 +317,9 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 	if d.MissingAt != nil {
 		fmt.Fprintf(tw, "  missing\tsince the scan of %s\n", stamp(d.MissingAt))
 	}
+	if m := d.SetAside; m != nil {
+		fmt.Fprintf(tw, "  set aside\tby dedupe on %s to %s; the kept copy is entry %d\n", stamp(&m.MovedAt), m.MovedTo, m.KeptEntryID)
+	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}

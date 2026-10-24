@@ -89,8 +89,8 @@ type Volume struct {
 }
 
 // DefaultExclude keeps out what no search wants: dependency trees and build
-// output, installed game libraries, and the folders and files Windows owns.
-// AppData stays in: profile backups keep game saves, mail and browser
+// output, installed game libraries, the folders and files Windows owns, and
+// the quarantine dedupe moves extra copies into. AppData stays in: profile backups keep game saves, mail and browser
 // profiles there. A pattern with a slash inside is anchored at the volume
 // root, hence the leading **/ on .yarn/cache.
 var DefaultExclude = []string{
@@ -100,6 +100,7 @@ var DefaultExclude = []string{
 	"/Windows/", "/Program Files/", "/Program Files (x86)/", "/ProgramData/",
 	"$Recycle.Bin/", "System Volume Information/", "/Recovery/",
 	"/pagefile.sys", "/hiberfil.sys", "/swapfile.sys", "/DumpStack.log.tmp",
+	"/.attic-quarantine/",
 }
 
 // DefaultNameOnly lists files indexed by name and never read: BitLocker

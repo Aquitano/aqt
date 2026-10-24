@@ -69,3 +69,7 @@ Volume, kind and extension are entry BM25 fields, so ParadeDB can apply those fi
 ## The CLI and the API return one shape
 
 `internal/view` turns catalogue records into what readers receive: every place says whether its disk is attached to this machine and how to open it. `--json` and the HTTP API both return those types, and the API's OpenAPI document is generated from them, so a field added for one reader reaches the other. Errors differ on purpose: the API gives each failure a `_tag` and its own schema so agent code can branch on it, while the CLI prints the message.
+
+## Dedupe sets copies aside and never deletes
+
+A copy leaves its place only when a copy inside the kept folders and the copy itself both hash to the catalogued digest at that moment, so a file that changed since its scan is never treated as a duplicate. The move is a rename into `.attic-quarantine` on the same disk: it frees no space yet, and it cannot lose bytes. Deleting stays a person's decision, for once the kept copy is backed up off-site. Each move is recorded against the entry before the command reports success; a move that cannot be recorded is undone.
