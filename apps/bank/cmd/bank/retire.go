@@ -79,7 +79,7 @@ func (c *retireCmd) Run(ctx context.Context) error {
 }
 
 // readReplacementMap reads ref -> library id from a JSON object or a two-column
-// CSV, with or without a header row.
+// CSV, with or without a ref,replacement header row.
 func readReplacementMap(path string) (map[string]string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -101,7 +101,7 @@ func readReplacementMap(path string) (map[string]string, error) {
 			return nil, err
 		}
 		ref, id := strings.TrimSpace(record[0]), strings.TrimSpace(record[1])
-		if line == 1 && store.ValidRef(ref) != nil {
+		if line == 1 && strings.EqualFold(ref, "ref") {
 			continue
 		}
 		if previous, ok := out[ref]; ok && previous != id {

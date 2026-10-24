@@ -25,3 +25,14 @@ func TestReadReplacementMapAcceptsJSONAndCSV(t *testing.T) {
 		}
 	}
 }
+
+func TestReadReplacementMapKeepsAMalformedFirstRef(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "typo.csv")
+	if err := os.WriteFile(path, []byte("0123456789abc,activity_ab\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readReplacementMap(path)
+	if err != nil || got["0123456789abc"] != "activity_ab" {
+		t.Fatalf("a typo in the first ref must reach validation, not pass as a header: %v %v", got, err)
+	}
+}
