@@ -109,7 +109,7 @@ Apply that document with `bank library state item_ID state.json`. State edits re
 
 YouTube history that reached Bank as generic JSON lives in `messages` under external ids such as `watch:`, `playlist:` and `library-song:`. Once `bank import youtube-media` holds the same history as library records, `bank retire` deletes those message rows. Each deleted row leaves a tombstone in `message_tombstones` with its source, external ID, ref, date, subject, raw input, reason and optional replacement library ID.
 
-Every message import skips a tombstoned source and external ID, so a JSON re-upload, `bank reimport` or an inbox sweep cannot bring the row back; the importer counts it as already known. `bank verify --heal` only repairs rows that exist. `bank show <ref>` for a retired ref prints the tombstone and its replacement instead of failing. Over HTTP, `GET /v1/messages/{ref}` answers `410 Gone` with the tombstone under `retired`.
+Every message import skips a tombstoned source and external ID, so a JSON re-upload, `bank reimport` or an inbox sweep cannot bring the row back; the JSON and `youtube` importers count it as retired, other importers as already known. `bank verify --heal` only repairs rows that exist. `bank show <ref>` for a retired ref prints the tombstone and its replacement instead of failing. Over HTTP, `GET /v1/messages/{ref}` answers `410 Gone` with the tombstone under `retired`.
 
 Run the cutover on the server. `retire` refuses to run through `BANK_URL`.
 

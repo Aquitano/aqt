@@ -61,7 +61,7 @@ func TestRetiredMessagesStayRetired(t *testing.T) {
 	}
 
 	res, err := Run(ctx, target, "json", Input{Path: upload, Source: "youtube"})
-	if err != nil || res.(generic.Result).Inserted != 0 {
+	if r, ok := res.(generic.Result); err != nil || !ok || r.Inserted != 0 || r.Retired != 1 || r.Duplicates != 1 {
 		t.Fatalf("JSON re-upload: %+v %v", res, err)
 	}
 	entries, err := archive.List(target.ArchiveDir, "youtube")
@@ -78,7 +78,7 @@ func TestRetiredMessagesStayRetired(t *testing.T) {
 			t.Fatal(err)
 		}
 		res, err := Run(ctx, target, "youtube", Input{Path: staged})
-		if err != nil || res.(youtube.Result).Inserted != 0 {
+		if r, ok := res.(youtube.Result); err != nil || !ok || r.Inserted != 0 || r.Retired != 1 {
 			t.Fatalf("reimport: %+v %v", res, err)
 		}
 	}

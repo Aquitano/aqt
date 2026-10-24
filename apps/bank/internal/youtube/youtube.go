@@ -43,6 +43,8 @@ type Result struct {
 	Channels   int `json:"channels"`
 	Inserted   int `json:"inserted"`
 	Duplicates int `json:"duplicates"`
+	// Retired counts watches whose key `bank retire` tombstoned; they stay out.
+	Retired int `json:"retired"`
 	// Skipped counts records with no title or no readable timestamp: there is
 	// nothing to store and nothing to deduplicate on.
 	Skipped int `json:"skipped"`
@@ -110,13 +112,18 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 	if err != nil {
 		return res, fail.Opf("insert messages: %w", err)
 	}
-	for _, id := range ids {
+	var present []store.Message
+	for i, id := range ids {
 		if id == 0 {
-			res.Duplicates++
+			present = append(present, messages[i])
 		} else {
 			res.Inserted++
 		}
 	}
+	if res.Retired, err = st.CountRetired(ctx, present); err != nil {
+		return res, fail.Opf("count retired messages: %w", err)
+	}
+	res.Duplicates = len(present) - res.Retired
 	res.Channels = len(channels)
 	return res, nil
 }

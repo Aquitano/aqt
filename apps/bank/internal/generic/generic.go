@@ -33,8 +33,10 @@ import (
 )
 
 type Result struct {
-	Inserted    int `json:"inserted"`
-	Duplicates  int `json:"duplicates"`
+	Inserted   int `json:"inserted"`
+	Duplicates int `json:"duplicates"`
+	// Retired counts entries whose key `bank retire` tombstoned; they stay out.
+	Retired     int `json:"retired"`
 	Attachments int `json:"attachments"`
 	// Healed counts attachment rows added to a message that was already
 	// archived without them, e.g. after a blob write failed mid-import.
@@ -129,13 +131,22 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 	if err != nil {
 		return res, fail.Opf("insert messages: %w", err)
 	}
+	var present []store.Message
+	for j, id := range ids {
+		if id == 0 {
+			present = append(present, messages[j])
+		}
+	}
+	if res.Retired, err = st.CountRetired(ctx, present); err != nil {
+		return res, fail.Opf("count retired messages: %w", err)
+	}
+	res.Duplicates = len(present) - res.Retired
 	for j, p := range pending {
 		i, e, externalID, id := p.index, p.entry, p.externalID, ids[j]
 		fresh := id != 0
 		if fresh {
 			res.Inserted++
 		} else {
-			res.Duplicates++
 			if len(e.Attachments) == 0 {
 				continue
 			}

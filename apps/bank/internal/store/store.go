@@ -88,7 +88,7 @@ const messageBatchSize = 1000
 
 // notRetired makes every import skip a key `bank retire` removed, so replaying
 // the raw input that first brought it in cannot resurrect it. The skipped row
-// reads as a duplicate, which is what it is to the importer.
+// returns id zero like a duplicate; CountRetired tells the two apart.
 const notRetired = `
 	where not exists (select 1 from message_tombstones t where t.source = $1 and t.external_id = $2)`
 

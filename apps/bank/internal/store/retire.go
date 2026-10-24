@@ -219,6 +219,25 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 	return res, nil
 }
 
+// CountRetired counts the messages an import skipped because `bank retire`
+// tombstoned their key. InsertMessages reports them as already present, so
+// importers subtract this from their duplicates.
+func (s *Store) CountRetired(ctx context.Context, messages []Message) (int, error) {
+	if len(messages) == 0 {
+		return 0, nil
+	}
+	sources, externalIDs := make([]string, len(messages)), make([]string, len(messages))
+	for i, m := range messages {
+		sources[i], externalIDs[i] = m.Source, cleanText(m.ExternalID)
+	}
+	var n int
+	err := s.pool.QueryRow(ctx, `
+		select count(*) from unnest($1::text[], $2::text[]) as k(source, external_id)
+		where exists (select 1 from message_tombstones t where t.source = k.source and t.external_id = k.external_id)`,
+		sources, externalIDs).Scan(&n)
+	return n, err
+}
+
 // RetiredByRef is the tombstone a ref lookup falls back to.
 func (s *Store) RetiredByRef(ctx context.Context, ref string) (RetiredMessage, error) {
 	var r RetiredMessage
