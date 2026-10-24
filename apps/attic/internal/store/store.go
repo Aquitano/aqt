@@ -37,6 +37,10 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 		pool.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	if _, err := pool.Exec(ctx, recordTokenizers); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("record search tokenizers: %w", err)
+	}
 	return &Store{pool: pool}, nil
 }
 
