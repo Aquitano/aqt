@@ -20,6 +20,14 @@ Every entry records its parent and its volume-relative path. The path is also in
 
 Only a complete directory listing can mark an unseen entry missing. Unreadable and excluded directories leave their recorded descendants untouched. When a directory becomes a file or link, its descendants become missing. Rows remain available as history. Finishing a scan counts its remaining missing entries because an entry marked missing early can reappear elsewhere later in the scan.
 
+## Verification preserves the catalogue baseline
+
+`verify --under` is an explicit maintenance command, independent of scans and file changes. It streams selected entries from one catalogue query and rereads ordinary files against their full stored digests. Missing and unhashed entries remain in the selection. Each path is checked separately, including hard links and duplicate contents. The command does not update hashes or derived results. A mismatch only establishes that the bytes read differ from the baseline.
+
+Verification requires an explicit subtree and resolves its mounted volume without updating volume identity. Ambiguous identity requires `--volume`. File opens refuse links and placeholders, including ancestor links. Results stream as files finish; cancellation keeps emitted results and marks the summary incomplete.
+
+During a maintenance run, Windows rechecks the mounted fingerprint before each file so a removed or replaced disk is not treated as the selected copy. This adds work for small files but keeps the identity check on every read. Reports can be retained outside the catalogue; no persistent verification status or scheduler is maintained by Attic.
+
 ## Derived results must describe verified bytes
 
 Archive listings, document text and metadata belong to content. Once a result exists, copies on other disks reuse it. This makes attaching a result to the wrong digest a persistent catalogue error.
@@ -48,4 +56,4 @@ Filename, archive-member, document-text, metadata and enrichment indexes rank se
 
 Entry extensions describe files; archive-member extensions describe members. Volume and folder filters identify where the enclosing file lives. An archive named by `--under` includes its members. Copy lists retain the same filters as the search result.
 
-The entry path B-tree can intersect with BM25 matches for volume and subtree filters. Additional filter fields do not need to be added to BM25 without measurements showing a benefit.
+Volume, kind and extension are entry BM25 fields, so ParadeDB can apply those filters inside the index scan. Subtree filters use the entry path range. Ranked entries and archive members break equal scores by ID. Wordless searches retain path order. The ranked entry page is selected before joining volumes and contents, so ParadeDB can stop after the requested page instead of returning every match for Postgres to sort.

@@ -268,6 +268,50 @@ func TestSearchFiltersAndAIProvenance(t *testing.T) {
 	}
 }
 
+func TestSearchPagesEqualScoresByIDAndWordlessResultsByPath(t *testing.T) {
+	st, conn := searchFixture(t)
+	_, err := conn.Exec(t.Context(), `
+ update entries set name='needle.pdf', ext='pdf',
+ path=case id when 3 then '/z/needle.pdf' when 5 then '/a/needle.pdf' when 6 then '/m/needle.pdf' end
+ where id in (3,5,6);
+ update members set name='needle.pdf',path='z/needle.pdf';
+ insert into members(archive_id,kind,name,path,ext) values
+ (2,'file','needle.pdf','a/needle.pdf','pdf'), (2,'file','needle.pdf','m/needle.pdf','pdf');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		query   string
+		entries []int64
+		members []int64
+	}{
+		{"needle", []int64{3, 5, 6}, []int64{1, 2, 3}},
+		{"", []int64{5, 6, 3}, []int64{2, 3, 1}},
+	} {
+		t.Run("query="+tc.query, func(t *testing.T) {
+			o := store.SearchOptions{Query: tc.query, Kind: "file", Ext: ".PDF", Limit: 1}
+			var entryScore, memberScore float64
+			for i := range tc.entries {
+				o.Offset = i
+				entries, err := st.Search(t.Context(), o)
+				if err != nil || len(entries) != 1 || entries[0].ID != tc.entries[i] {
+					t.Fatalf("entry page %d: %+v, %v", i, entries, err)
+				}
+				members, err := st.SearchMembers(t.Context(), o)
+				if err != nil || len(members) != 1 || members[0].ID != tc.members[i] {
+					t.Fatalf("member page %d: %+v, %v", i, members, err)
+				}
+				if i == 0 {
+					entryScore, memberScore = entries[0].Score, members[0].Score
+				}
+				if entries[0].Score != entryScore || members[0].Score != memberScore {
+					t.Fatal("fixture must give every hit the same score")
+				}
+			}
+		})
+	}
+}
+
 func TestSearchExplicitNoExtension(t *testing.T) {
 	st, conn := searchFixture(t)
 	_, err := conn.Exec(t.Context(), `update entries set name='Tom',path='/else/Tom',ext='' where id=5;

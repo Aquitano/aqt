@@ -31,6 +31,8 @@ attic metadata 36331
 attic volumes
 attic scans --volume Data
 attic dupes --same-volume
+attic coverage --volume Data --under /Files
+attic coverage --volume Data --json --limit 50 --offset 0
 attic skips --reason unreadable
 attic stats
 attic help scan
@@ -41,6 +43,10 @@ Search requires every searchable word by default; `--any` accepts any word. Word
 Argument parsing errors exit with code 2. Command failures, including `enrich --task ocr` without targets or `--under`, exit with code 1.
 
 An entry ID identifies a file at a place. A content ref such as `attic:3f9a1c2b4d5e6f70` identifies its bytes across disks. `show <ref>` lists the copies. Missing files remain searchable and are marked missing. `dupes --same-volume` counts copies that share a disk.
+
+`coverage` selects present files in the requested scope and counts distinct volume IDs for their completed full content hashes across the entire catalogue. It reports content recorded on fewer than two volumes, with unique byte totals. Multiple paths and hard links on one volume count as one volume. Unknown and invalidated hashes appear separately, with path byte totals that cannot be deduplicated. Offline volumes count; entries marked missing do not. With no scope, it reports the whole catalogue.
+
+Coverage totals include all selected content, independently of pagination. `--limit` and `--offset` page the undercovered content and unknown-file lists separately. Each content lists up to 100 locations and its total path count. Location dates identify the recorded update scan's start, not a fresh verification. This read-only report does not rehash files or verify backup health or physical disk independence. Scans can be partial or stale; use `attic scans --volume Data` to inspect their scope and status.
 
 `get <id-or-ref> --to <new-file>` retrieves one hashed ordinary file from an online copy. It verifies the full stored BLAKE3 digest before publishing the destination and tries another copy after a source read failure or digest mismatch. Existing destinations are never overwritten, including files created concurrently. If no copy is usable, the error names known offline volumes to connect. Directories, archive members, links, cloud placeholders and files excluded by current content rules cannot be retrieved. A hashed archive can be retrieved as a whole file.
 
@@ -53,6 +59,37 @@ On volumes with stable file IDs, matching hard links can reuse a hash within the
 A changed or unavailable device serial requires an identity decision when the volume resembles a known one. Rerun with `--volume <id>` to confirm the known disk, or `--new-volume` to record a separate disk. This can also happen after moving a disk to another enclosure.
 
 Ctrl+C keeps committed work. Run the same command again to continue. The summary includes phase times and the log path under `%LOCALAPPDATA%\attic\logs`. Use `--log-level debug` to log individual reads.
+
+## Verify stored file hashes during maintenance
+
+`verify` runs only when explicitly invoked. Normal scans and file changes do not trigger this maintenance pass. Run it when the source disk is mounted and can be read for the duration of the check.
+
+```powershell
+attic verify --under E:\Files
+attic verify --volume Data --under /Files --json
+```
+
+Verification rereads each selected catalogue file and compares its full BLAKE3 digest, even when its size and timestamps have not changed. It checks that specific copy, including copies marked missing, without falling back to another disk. It leaves source bytes, catalogue hashes and extracted results unchanged. A mismatch means the bytes differ from the baseline; it does not establish corruption.
+
+`--under` is required. Mounted paths use the disk's current identity. `--volume` confirms an ambiguous identity and also accepts volume-relative paths, including missing folders or offline volumes. Links, junctions and cloud placeholders are not read. Like scanning, mounted volume identification currently requires Windows.
+
+Results distinguish matched, mismatched, unreadable, missing, unavailable and unknown files. Unknown means the catalogue has no full digest, or the scope contains no catalogue files. Verification does not discover files absent from the catalogue. Any result other than matched exits with code 1. The text output ends with counts; `--json` streams one JSON entry per line followed by a summary with `type: "summary"`. The summary's `complete` flag means selection finished, not that all files matched. Cancellation or a catalogue error leaves a partial report with `complete: false` and a nonzero exit.
+
+Ordinary scans can reuse a hash when file metadata is unchanged. `verify` checks those bytes explicitly. `scan --rebuild-content` rebuilds archive listings and document text; it does not replace verification of every selected file.
+
+To keep a dated report, use PowerShell 7.4 or later, which [preserves native output bytes during redirection](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_redirection#redirecting-output-from-native-commands). Run this from a reports folder outside the verified subtree:
+
+```powershell
+$report = "attic-verify-$(Get-Date -Format yyyyMMdd-HHmmss).ndjson"
+attic verify --volume Data --under /Files --json > $report
+$verifyExitCode = $LASTEXITCODE
+Get-Content -LiteralPath $report -Tail 1
+"Verification exit code: $verifyExitCode"
+```
+
+Exit code 0 means every selected file matched its stored digest. Keep reports to see which scope was checked and which files differed or could not be checked. A successful report describes the bytes read during that run; it does not establish that they remain unchanged afterwards. Verification does not store a last-checked status in the catalogue.
+
+For recurring maintenance, Windows Task Scheduler can run the same command at the chosen interval while the disk is connected. Give each run a separate report and retain the command's exit code. Attic does not install a schedule or start a background verifier.
 
 ## Rebuild archive listings and document text
 

@@ -40,7 +40,9 @@ const rules = {
   "typescript/use-unknown-in-catch-callback-variable": "warn",
   "anti-slop/no-chained-type-assertions": "error",
   "anti-slop/no-conditional-empty-object-spread": "warn",
+  "anti-slop/no-em-dash-copy": "warn",
   "anti-slop/no-known-value-widening": "warn",
+  "anti-slop/no-low-value-comments": "warn",
   "anti-slop/no-module-mocking": "warn",
   "anti-slop/no-object-parameters": "warn",
   "anti-slop/no-reflect-apply": "warn",
@@ -53,6 +55,7 @@ const rules = {
   "anti-slop/no-unsafe-dictionary-type": "warn",
   "anti-slop/no-widen-then-assert": "error",
   "anti-slop/require-safety-comment-for-type-assertion": "warn",
+  "anti-slop/require-suppression-reason": "error",
   "react/react-in-jsx-scope": "off",
   "react/set-state-in-effect": "warn",
   "react/refs": "warn",
@@ -106,7 +109,14 @@ export default defineConfig({
     jsPlugins: [
       { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
       { name: "vite-plus", specifier: "vite-plus/oxlint-plugin" },
+      "@shadcn/lint",
     ],
+    settings: {
+      shadcn: {
+        ui: ["@aqt/ui/components", "@/components/ui"],
+        themeImports: ["^@aqt/ui/"],
+      },
+    },
     rules,
     overrides: [
       {
@@ -132,12 +142,37 @@ export default defineConfig({
           ...strictRules,
           "typescript/only-throw-error": ["error", { allow: [{ from: "lib", name: "Response" }] }],
           "typescript/no-unnecessary-condition": "warn",
+          "anti-slop/no-low-value-comments": "warn",
           "typescript/no-floating-promises": "error",
         },
       },
       {
         files: ["apps/bank/**"],
-        rules: strictRules,
+        rules: {
+          ...strictRules,
+          "anti-slop/no-em-dash-copy": "warn",
+          "anti-slop/no-low-value-comments": "warn",
+        },
+      },
+      {
+        files: [
+          "apps/bank/internal/webui/app/src/**",
+          "apps/gallery/apps/web/src/**",
+          "apps/img/src/**",
+          "apps/turnstash/apps/web/src/**",
+          "packages/ts/ui/**",
+        ],
+        rules: {
+          "anti-slop/no-hookless-use-function": "warn",
+          "shadcn/no-unknown-classes": "warn",
+          "shadcn/require-static-classes": "warn",
+        },
+      },
+      {
+        files: ["packages/ts/ui/src/components/**"],
+        rules: {
+          "shadcn/require-static-classes": "off",
+        },
       },
       {
         files: ["apps/turnstash/**"],
@@ -160,6 +195,7 @@ export default defineConfig({
           "anti-slop/no-unknown-type-aliases": "error",
           "anti-slop/no-unsafe-dictionary-type": "error",
           "anti-slop/require-safety-comment-for-type-assertion": "error",
+          "anti-slop-effect/no-inline-schema-compile": "warn",
           "anti-slop-effect/no-manual-effect-error-tag": "error",
           "anti-slop-effect/no-manual-tag-comparison": "error",
           "anti-slop-effect/no-manual-tagged-construction": "error",
@@ -191,6 +227,7 @@ export default defineConfig({
       },
     ],
     options: {
+      reportUnusedDisableDirectives: "error",
       typeAware: true,
       typeCheck: true,
     },

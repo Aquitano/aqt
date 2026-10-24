@@ -66,7 +66,9 @@ type Hit struct {
 const hitColumns = `e.id, e.volume_id::text, v.label, e.kind, e.path, e.size_bytes, e.modified_at,
 	e.missing_scan is not null as missing, coalesce(` + refSQL + `, '')`
 
-const hitFrom = ` from entries e join volumes v on v.id = e.volume_id left join contents c on c.id = e.content_id`
+const hitJoins = ` join volumes v on v.id = e.volume_id left join contents c on c.id = e.content_id`
+
+const hitFrom = ` from entries e` + hitJoins
 
 func scanHit(row pgx.Row, extra ...any) (Hit, error) {
 	var h Hit
@@ -98,7 +100,11 @@ func (s *Store) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
 		return nil, err
 	}
 	q.where = append(q.where, q.entryFilters(copiesOf(o, false))...)
-	rows, err := s.pool.Query(ctx, `select `+hitColumns+`, `+q.score+hitFrom+q.tail(o), q.args...)
+	// Limit before the joins so ParadeDB can select the page inside the index.
+	rows, err := s.pool.Query(ctx, `select `+hitColumns+`, e.score from (
+		select e.id, e.volume_id, e.kind, e.path, e.size_bytes, e.modified_at, e.missing_scan, e.content_id,
+		`+q.score+` as score from entries e`+
+		q.tail(o)+`) e`+hitJoins+` order by e.score desc, `+q.ties, q.args...)
 	if err != nil {
 		return nil, err
 	}
@@ -111,11 +117,13 @@ func (s *Store) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
 }
 
 // search holds what entries and members share: the words, the ext and kind
-// filters, the order and the page. Both BM25 indexes have the same fields.
+// filters, the order and the page. Both BM25 indexes share the name and path
+// search fields; only the entry index also includes volume, kind and ext filters.
 type search struct {
 	args         []any
 	where        []string
 	score, order string
+	ties         string
 }
 
 func (s *Store) newSearch(ctx context.Context, o SearchOptions, alias string) (*search, error) {
@@ -130,14 +138,17 @@ func (s *Store) newSearch(ctx context.Context, o SearchOptions, alias string) (*
 	if err != nil {
 		return nil, err
 	}
-	q := &search{score: "0::real", order: alias + `.path collate "C", ` + alias + ".id"}
+	q := &search{score: "0::real", ties: alias + `.path collate "C", ` + alias + ".id"}
+	q.order = q.ties
 	if len(words) == 0 && strings.TrimSpace(o.Query) != "" {
 		q.where = append(q.where, "false")
 	}
 	if len(words) > 0 {
 		q.where = append(q.where, alias+".id @@@ "+searchPredicate(words, o.Any, q.next))
 		q.score = "paradedb.score(" + alias + ".id)"
-		q.order = q.score + " desc, " + q.order
+		// ID tie-breaking lets ParadeDB select the page inside the index.
+		q.ties = alias + ".id"
+		q.order = q.score + " desc, " + q.ties
 	}
 	if o.Kind != "" {
 		q.where = append(q.where, alias+".kind = "+q.next(o.Kind))

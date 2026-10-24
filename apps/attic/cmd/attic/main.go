@@ -23,6 +23,7 @@ var errMissingFlagValue = errors.New("expected a value")
 
 type cli struct {
 	Scan     scanCmd     `cmd:"" help:"Index a folder and its descendants."`
+	Verify   verifyCmd   `cmd:"" help:"Run a maintenance check against stored file hashes."`
 	Search   searchCmd   `cmd:"" help:"Find files, archive members and document text."`
 	Show     showCmd     `cmd:"" help:"Show an entry or every place a content lives."`
 	Get      getCmd      `cmd:"" help:"Retrieve one verified file to a new destination."`
@@ -33,6 +34,7 @@ type cli struct {
 	Volumes  volumesCmd  `cmd:"" help:"List known volumes and their last scans."`
 	Scans    scansCmd    `cmd:"" help:"List scan history, phase times and counts."`
 	Dupes    dupesCmd    `cmd:"" help:"Find contents stored more than once."`
+	Coverage coverageCmd `cmd:"" help:"Report content on fewer than two recorded volumes."`
 	Skips    skipsCmd    `cmd:"" help:"Show what a scan left out and why."`
 	Stats    statsCmd    `cmd:"" help:"Show catalogue totals."`
 	Config   configCmd   `cmd:"" help:"Show the configuration and effective rules."`
