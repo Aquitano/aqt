@@ -3,20 +3,25 @@ package disk
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 )
 
 var ErrNotOrdinary = errors.New("not an ordinary local file or directory")
 
-// HashOrdinary refuses links and placeholders in every component below root.
+// OpenOrdinary refuses links and placeholders in every component below root.
+func OpenOrdinary(root, rel string) (*os.File, error) {
+	if !filepath.IsLocal(rel) {
+		return nil, ErrNotOrdinary
+	}
+	return openOrdinary(root, filepath.Clean(rel))
+}
+
 func HashOrdinary(ctx context.Context, root, rel string) (Digest, int64, error) {
 	if err := ctx.Err(); err != nil {
 		return Digest{}, 0, err
 	}
-	if !filepath.IsLocal(rel) {
-		return Digest{}, 0, ErrNotOrdinary
-	}
-	f, err := openOrdinary(root, filepath.Clean(rel))
+	f, err := OpenOrdinary(root, rel)
 	if err != nil {
 		return Digest{}, 0, err
 	}
