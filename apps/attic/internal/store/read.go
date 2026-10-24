@@ -375,6 +375,7 @@ type EntryDetail struct {
 	MissingAt  *time.Time     `json:"missing_since,omitempty"`
 	Versions   []EntryVersion `json:"versions,omitempty"`
 	Copies     []Hit          `json:"copies,omitempty"`
+	SetAside   *DedupeMove    `json:"set_aside,omitempty" doc:"Set when dedupe moved this copy into its disk's quarantine folder."`
 	// Archive is set once the entry's content was read as an archive, Text
 	// once it was read as a document.
 	Archive  *ArchiveInfo    `json:"archive,omitempty"`
@@ -407,6 +408,9 @@ func (s *Store) Entry(ctx context.Context, id int64) (EntryDetail, error) {
 	}
 	d.Hit = h
 	if d.Versions, err = s.versions(ctx, id); err != nil {
+		return d, err
+	}
+	if d.SetAside, err = s.dedupeMove(ctx, id); err != nil {
 		return d, err
 	}
 	if contentID == nil {

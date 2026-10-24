@@ -64,6 +64,19 @@ A changed or unavailable device serial requires an identity decision when the vo
 
 Ctrl+C keeps committed work. Run the same command again to continue. The summary includes phase times and the log path under `%LOCALAPPDATA%\attic\logs`. Use `--log-level debug` to log individual reads.
 
+## Set aside duplicate copies
+
+Name the folders whose copies stay, then review what would move:
+
+```powershell
+attic dedupe plan --keep E:\Files --keep F:\Photos
+attic dedupe apply --keep E:\Files --keep F:\Photos
+```
+
+`plan` lists every hashed content that has a copy inside the kept folders and copies outside them. `apply` hashes the kept copy and each extra copy again, and moves an extra copy only when both still match the catalogue. It moves the copy into `.attic-quarantine\<run>\<original path>` on the same disk and never deletes anything, so a move is a rename and a copy can go back to its original path by hand. Scans skip the quarantine folder. `attic show <id>` reports a moved copy and the kept entry, and the next scan of its folder marks it missing.
+
+Only hashed files take part, so scan with hashing first. Emptying the quarantine is up to you; delete a quarantined copy only once its kept copy is backed up somewhere else.
+
 ## Verify stored file hashes during maintenance
 
 `verify` runs only when explicitly invoked. Normal scans and file changes do not trigger this maintenance pass. Run it when the source disk is mounted and can be read for the duration of the check.
