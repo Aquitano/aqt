@@ -208,11 +208,12 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 	if len(res.UnmatchedReplacements) > 0 {
 		return res, fmt.Errorf("replacement map refs match no retiring message: %s", strings.Join(res.UnmatchedReplacements, ", "))
 	}
-	// An insert checks for tombstones in its own snapshot, then waits on the
-	// unique key of the row being deleted here; once this commits it would
-	// insert the retired key again. Holding off every message write until the
-	// commit makes such an insert start after the tombstones are visible.
-	if _, err := tx.Exec(ctx, `lock table messages in share row exclusive mode`); err != nil {
+	// An insert checks for tombstones in its own snapshot and then waits on the
+	// unique key of a row deleted here, so after this commits it would bring
+	// the key back. Blocking message writes until the commit closes that.
+	// Exclusive, not share row exclusive, also waits out a mail projection
+	// holding a row FOR UPDATE, which would otherwise deadlock with the delete.
+	if _, err := tx.Exec(ctx, `lock table messages in exclusive mode`); err != nil {
 		return res, err
 	}
 	tag, err := tx.Exec(ctx, `
