@@ -76,8 +76,11 @@ bank library list --kind track --source youtube
 bank library activity --source netflix --account thomas
 bank library collections --kind playlist
 bank library get item_ID
+bank library get activity_ID
 bank library snapshots collection_ID
 ```
+
+`bank library get` takes any library ID and picks the record kind from its prefix: `item_`, `activity_`, `collection_`, `file_` or `page_`.
 
 Correspondence-specific filters such as sender, recipient, mailbox, and contact restrict combined search to correspondence. Account filters restrict it to the library because mail has a different account model. Message fuzzy matching stays in ParadeDB; library text search uses Postgres full-text indexes. Scores from these indexes are not treated as comparable. Date filters apply to correspondence, dated activity, and message attachments. Items, collections, standalone files, and pages have no event date, so they remain unfiltered by those dates. Undated activity is excluded when a date filter is present. Bank rejects combinations of correspondence filters with a library kind or account.
 
@@ -101,6 +104,22 @@ CLI edits accept JSON from a file or standard input. State and collection edits 
 ```
 
 Apply that document with `bank library state item_ID state.json`. State edits replace the complete personal state, so include fields you want to retain.
+
+## Retire messages a library import replaces
+
+YouTube history that reached Bank as generic JSON lives in `messages` under external ids such as `watch:`, `playlist:` and `library-song:`. Once `bank import youtube-media` holds the same history as library records, `bank retire` deletes those message rows. Each deleted row leaves a tombstone in `message_tombstones` with its source, external ID, ref, date, subject, raw input, reason and optional replacement library ID.
+
+Every message import skips a tombstoned source and external ID, so a JSON re-upload, `bank reimport` or an inbox sweep cannot bring the row back; the JSON and `youtube` importers count it as retired, other importers as already known. `bank verify --heal` only repairs rows that exist. `bank show <ref>` for a retired ref prints the tombstone and its replacement instead of failing. Over HTTP, `GET /v1/messages/{ref}` answers `410 Gone` with the tombstone under `retired`.
+
+Run the cutover on the server. `retire` refuses to run through `BANK_URL`.
+
+1. Back up with `docker-backup bank` or the `pg_dump` block in [DEPLOY.md](DEPLOY.md) §7. The delete has no undo except that dump.
+2. Import every Takeout: `bank import youtube-media takeout.zip --account thomas`.
+3. Compare counts per kind: `bank query "select split_part(external_id, ':', 1), count(*) from messages where source = 'youtube' group by 1"` against `bank query "select kind, count(*) from library_activity where source = 'youtube' group by 1"` and the collection snapshots. Spot-check a few titles with `bank search`.
+4. Build the replacement map for every cited ref. `bank show <ref> --json` says what the message was; `bank search "<title>" --json` or `bank library activity "<title>" --source youtube` finds the library record. Write a CSV of `ref,replacement` rows, or a JSON object of ref to ID, into `BANK_DATA_DIR` so the container sees it under `/data`. Replacements must be existing item, activity or collection IDs.
+5. Dry run: `bank retire --source youtube --external-prefix watch: --external-prefix playlist: --external-prefix library-song: --replacement-map /data/youtube-refs.csv --reason "replaced by youtube-media"`. It prints counts and samples per prefix, and every map ref that matches no retiring row. Such a ref is a typo or a citation of a row this run keeps, and `--apply` refuses to run until the map has none.
+6. Apply: repeat the command with `--apply`. One statement deletes the rows and writes their tombstones; attachment, mailbox and mail-thread rows follow through their cascades. Message imports wait until it commits, so none can bring a retired row back. Blobs and raw archive files stay.
+7. Verify: `bank stats`, `bank show <cited ref>` reports it retired with its replacement, and `bank library get <replacement>` resolves. Then re-point the wiki citations to the library IDs.
 
 ## Extend and move Bank
 
