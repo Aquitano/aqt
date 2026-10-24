@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"runtime"
 	"testing"
 
 	"github.com/aquitano/aqt/apps/attic/internal/store"
@@ -22,6 +23,9 @@ func TestReadCommandsWaitForMigrate(t *testing.T) {
 }
 
 func TestScanMigrates(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("the scan command needs Windows volume discovery")
+	}
 	t.Setenv("DATABASE_URL", storetest.Empty(t))
 	for _, dir := range []string{"APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"} {
 		t.Setenv(dir, t.TempDir())
