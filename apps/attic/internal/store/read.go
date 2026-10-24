@@ -41,10 +41,10 @@ const digestBytes = 32
 // RefCandidate is one content an ambiguous ref matches, with the shortest
 // ref that names it alone.
 type RefCandidate struct {
-	Ref    string
-	Size   int64
-	Volume string
-	Path   string
+	Ref    string `json:"ref"`
+	Size   int64  `json:"size"`
+	Volume string `json:"volume,omitempty"`
+	Path   string `json:"path,omitempty"`
 }
 
 type AmbiguousRefError struct {

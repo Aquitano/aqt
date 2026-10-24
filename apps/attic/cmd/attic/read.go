@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,25 +16,10 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/archive"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
+	"github.com/aquitano/aqt/apps/attic/internal/view"
 )
 
-// hitOut is a hit as printed, with the path spelled for opening.
-type hitOut struct {
-	store.Hit
-	Display string `json:"display"`
-	Online  bool   `json:"online"`
-}
-
-func outHits(hits []store.Hit, roots map[string]string) []hitOut {
-	out := make([]hitOut, len(hits))
-	for i, h := range hits {
-		_, online := roots[h.VolumeID]
-		out[i] = hitOut{Hit: h, Display: displayPath(h.VolumeID, h.Volume, h.Path, roots), Online: online}
-	}
-	return out
-}
-
-func printHits(hits []hitOut) error {
+func printHits(hits []view.Place) error {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight)
 	for _, h := range hits {
 		size := humanBytes(h.Size)
@@ -98,117 +82,61 @@ func (cmd *searchCmd) Run(ctx context.Context) error {
 			return err
 		}
 	}
-	hits, err := st.Search(ctx, o)
+	res, err := view.Search(ctx, st, o, view.OnlineRoots(vols))
 	if err != nil {
 		return err
 	}
-	members, err := st.SearchMembers(ctx, o)
-	if err != nil {
-		return err
-	}
-	texts, err := st.SearchTexts(ctx, o)
-	if err != nil {
-		return err
-	}
-	meta, err := st.SearchMetadata(ctx, o)
-	if err != nil {
-		return err
-	}
-	analyses, err := st.SearchAI(ctx, o)
-	if err != nil {
-		return err
-	}
-	roots := onlineRoots(vols)
-	out, inside, docs := outHits(hits, roots), outMembers(members, roots), outTexts(texts, roots)
 	if cmd.JSON {
-		return printJSON(struct {
-			Entries  []hitOut      `json:"entries"`
-			Members  []memberOut   `json:"members"`
-			Texts    []textOut     `json:"texts"`
-			Metadata []textOut     `json:"metadata"`
-			Analyses []analysisOut `json:"analyses"`
-		}{out, inside, docs, outTexts(meta, roots), outAnalyses(analyses, roots)})
+		return printJSON(res)
 	}
-	if err := printHits(out); err != nil {
+	if err := printHits(res.Entries); err != nil {
 		return err
 	}
-	// Each BM25 index scores on its own scale, so archive members and document
-	// text get their own ranking instead of being merged into the files'.
-	if len(inside) > 0 {
+	if len(res.Members) > 0 {
 		fmt.Println("\ninside archives:")
-		if err := printMembers(inside); err != nil {
+		if err := printMembers(res.Members); err != nil {
 			return err
 		}
 	}
-	if len(docs) > 0 {
+	if len(res.Texts) > 0 {
 		fmt.Println("\nin documents:")
-		printTexts(docs)
+		printTexts(res.Texts)
 	}
-	if len(meta) > 0 {
+	if len(res.Metadata) > 0 {
 		fmt.Println("\nin metadata:")
-		printTexts(outTexts(meta, roots))
+		printTexts(res.Metadata)
 	}
-	if len(analyses) > 0 {
+	if len(res.Analyses) > 0 {
 		fmt.Println("\nin OCR and descriptions:")
-		for _, a := range outAnalyses(analyses, roots) {
+		for _, a := range res.Analyses {
 			fmt.Printf("  %s / %s / %s\n", a.Task, a.Provider, a.Model)
-			printTexts([]textOut{a.textOut})
+			printTexts([]view.TextMatch{a.TextMatch})
 		}
 	}
 	return nil
 }
 
-// bestCopy is the copy to show: one that holds the content and can be opened
-// now, or the first present one, as occurrences sorts them.
-func bestCopy(copies []hitOut) hitOut {
-	if len(copies) == 0 {
-		return hitOut{}
-	}
-	return copies[max(slices.IndexFunc(copies, func(h hitOut) bool {
-		return h.Online && !h.Missing && h.Version != store.VersionPrevious
-	}), 0)]
-}
-
-// textOut is a document hit as printed, at its best copy.
-type textOut struct {
-	store.TextHit
-	Display string   `json:"display"`
-	Online  bool     `json:"online"`
-	Places  []hitOut `json:"places"`
-	shown   hitOut
-}
-
-func outTexts(texts []store.TextHit, roots map[string]string) []textOut {
-	out := make([]textOut, len(texts))
-	for i, t := range texts {
-		places := outHits(t.Places, roots)
-		shown := bestCopy(places)
-		out[i] = textOut{TextHit: t, Display: shown.Display, Online: shown.Online, Places: places, shown: shown}
-	}
-	return out
-}
-
-func printTexts(docs []textOut) {
+func printTexts(docs []view.TextMatch) {
 	for _, d := range docs {
 		var notes []string
 		if !d.Online {
 			notes = append(notes, "offline")
 		}
-		if d.shown.Missing {
+		if d.Shown.Missing {
 			notes = append(notes, "missing")
 		}
-		notes = append(notes, placeNotes(d.Places, d.shown)...)
+		notes = append(notes, placeNotes(d.Places, d.Shown)...)
 		note := ""
 		if len(notes) > 0 {
 			note = "  (" + strings.Join(notes, ", ") + ")"
 		}
-		fmt.Printf("%10s  %s  %s%s\n    %s\n", humanBytes(d.shown.Size), shortDate(d.shown.Modified), d.Display, note, d.Snippet)
+		fmt.Printf("%10s  %s  %s%s\n    %s\n", humanBytes(d.Shown.Size), shortDate(d.Shown.Modified), d.Display, note, d.Snippet)
 	}
 }
 
 // placeNotes marks a shown place that held the content only before, and
 // counts the other places that hold it now or held it before.
-func placeNotes(places []hitOut, shown hitOut) []string {
+func placeNotes(places []view.Place, shown view.Place) []string {
 	var notes []string
 	if shown.Version == store.VersionPrevious {
 		notes = append(notes, "previous version")
@@ -232,33 +160,7 @@ func placeNotes(places []hitOut, shown hitOut) []string {
 	return notes
 }
 
-// memberOut is a member as printed: inside the copy of its archive that can
-// be opened now, or the first present one.
-type memberOut struct {
-	store.MemberHit
-	Display string   `json:"display"`
-	Online  bool     `json:"online"`
-	Archive []hitOut `json:"archive"`
-	shown   hitOut
-}
-
-func outMembers(members []store.MemberHit, roots map[string]string) []memberOut {
-	out := make([]memberOut, len(members))
-	for i, m := range members {
-		copies := outHits(m.Archive, roots)
-		out[i] = memberOut{MemberHit: m, Archive: copies}
-		if len(copies) == 0 {
-			continue
-		}
-		shown := bestCopy(copies)
-		out[i].shown = shown
-		out[i].Display = shown.Display + archive.Separator + filepath.FromSlash(m.Path)
-		out[i].Online = shown.Online
-	}
-	return out
-}
-
-func printMembers(members []memberOut) error {
+func printMembers(members []view.MemberMatch) error {
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', tabwriter.AlignRight)
 	for _, m := range members {
 		size := humanBytes(m.Size)
@@ -269,13 +171,13 @@ func printMembers(members []memberOut) error {
 		if !m.Online {
 			notes = append(notes, "offline")
 		}
-		if m.shown.Missing {
+		if m.Shown.Missing {
 			notes = append(notes, "missing")
 		}
 		if m.Encrypted {
 			notes = append(notes, "encrypted")
 		}
-		notes = append(notes, placeNotes(m.Archive, m.shown)...)
+		notes = append(notes, placeNotes(m.Archive, m.Shown)...)
 		note := ""
 		if len(notes) > 0 {
 			note = "  (" + strings.Join(notes, ", ") + ")"
@@ -329,22 +231,20 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	roots := onlineRoots(vols)
+	roots := view.OnlineRoots(vols)
 
 	if ref != "" {
 		c, err := st.Content(ctx, ref)
 		if err != nil {
 			return err
 		}
-		places := outHits(c.Occurrences, roots)
+		content := view.NewContent(c, roots)
 		if cmd.JSON {
-			return printJSON(struct {
-				store.ContentDetail
-				Occurrences []hitOut `json:"occurrences"`
-			}{c, places})
+			return printJSON(content)
 		}
+		places := content.Occurrences
 		fmt.Printf("attic:%s  %s, first seen %s\n  blake3  %s\n", c.Ref, humanBytes(c.Size), c.FirstSeen.Local().Format("2006-01-02"), c.BLAKE3)
-		previous := slices.IndexFunc(places, func(h hitOut) bool { return h.Version == store.VersionPrevious })
+		previous := slices.IndexFunc(places, func(h view.Place) bool { return h.Version == store.VersionPrevious })
 		if previous < 0 {
 			return printHits(places)
 		}
@@ -359,17 +259,13 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	root, online := roots[d.VolumeID]
-	copies := outHits(d.Copies, roots)
+	entry := view.NewEntry(d, roots)
 	if cmd.JSON {
-		return printJSON(struct {
-			store.EntryDetail
-			Display string   `json:"display"`
-			Online  bool     `json:"online"`
-			Copies  []hitOut `json:"copies,omitempty"`
-		}{d, displayPath(d.VolumeID, d.Volume, d.Path, roots), online, copies})
+		return printJSON(entry)
 	}
-	fmt.Println(displayPath(d.VolumeID, d.Volume, d.Path, roots))
+	root, online := roots[d.VolumeID], entry.Online
+	copies := entry.Copies
+	fmt.Println(entry.Display)
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	where := "offline"
 	if online {
@@ -463,26 +359,14 @@ func (cmd *volumesCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	known := make([]store.Volume, len(vols))
-	for i, v := range vols {
-		known[i] = v.Volume
-	}
-	roots := onlineRoots(known)
+	statuses := view.VolumeStatuses(vols)
 	if cmd.JSON {
-		type volumeOut struct {
-			store.VolumeSummary
-			MountedAt string `json:"mounted_at,omitempty"`
-		}
-		out := make([]volumeOut, len(vols))
-		for i, v := range vols {
-			out[i] = volumeOut{v, roots[v.ID]}
-		}
-		return printJSON(out)
+		return printJSON(statuses)
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "ID\tLABEL\tFS\tMOUNTED\tFILES\tSIZE\tHASHED\tPENDING\tMISSING\tLAST SCAN")
-	for _, v := range vols {
-		mounted := roots[v.ID]
+	for _, v := range statuses {
+		mounted := v.MountedAt
 		if mounted == "" {
 			mounted = "-"
 		}
@@ -521,29 +405,18 @@ func (cmd *dupesCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	roots := onlineRoots(vols)
+	report := view.NewDupeReport(dupes, wasted, view.OnlineRoots(vols))
 	if cmd.JSON {
-		type dupeOut struct {
-			store.Dupe
-			Places []hitOut `json:"places"`
-		}
-		out := struct {
-			Wasted int64     `json:"wasted"`
-			Dupes  []dupeOut `json:"dupes"`
-		}{Wasted: wasted, Dupes: make([]dupeOut, len(dupes))}
-		for i, d := range dupes {
-			out.Dupes[i] = dupeOut{d, outHits(d.Places, roots)}
-		}
-		return printJSON(out)
+		return printJSON(report)
 	}
 	if len(dupes) == 0 {
 		fmt.Println("no content of that size is stored twice")
 		return nil
 	}
 	fmt.Printf("copies beyond the first take %s in total; the largest:\n", humanBytes(wasted))
-	for _, d := range dupes {
+	for _, d := range report.Dupes {
 		fmt.Printf("\n%s x %d, attic:%s\n", humanBytes(d.Size), d.Copies, d.Ref)
-		if err := printHits(outHits(d.Places, roots)); err != nil {
+		if err := printHits(d.Places); err != nil {
 			return err
 		}
 	}
@@ -599,10 +472,7 @@ func (cmd *skipsCmd) Run(ctx context.Context) error {
 		return err
 	}
 	if cmd.JSON {
-		return printJSON(struct {
-			Scan   store.ScanInfo    `json:"scan"`
-			Groups []store.SkipGroup `json:"groups"`
-		}{sc, groups})
+		return printJSON(view.SkipReport{Scan: sc, Groups: groups})
 	}
 	root := sc.Root
 	if root == "" {
@@ -635,10 +505,7 @@ func (cmd *statsCmd) Run(ctx context.Context) error {
 		return err
 	}
 	if cmd.JSON {
-		return printJSON(struct {
-			store.Totals
-			Analyses map[string]int64 `json:"analyses"`
-		}{t, analyses})
+		return printJSON(view.Stats{Totals: t, Analyses: analyses})
 	}
 	fmt.Printf("%s volumes, %s entries, %s files, %s\n", count(t.Volumes), count(t.Entries), count(t.Files), humanBytes(t.Bytes))
 	fmt.Printf("%s unique contents, %s; %s files left to hash, %s entries missing\n",

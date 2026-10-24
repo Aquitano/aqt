@@ -7,6 +7,7 @@ require (
 	github.com/aquitano/aqt/packages/go/extract v0.0.0
 	github.com/aquitano/aqt/packages/go/pgschema v0.0.0
 	github.com/bodgit/sevenzip v1.6.5
+	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/gofrs/flock v0.13.1
 	github.com/jackc/pgx/v5 v5.11.0
@@ -40,7 +41,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jackc/tern/v2 v2.4.3 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
-	github.com/klauspost/cpuid/v2 v2.0.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/mikelolasagasti/xz v1.0.1 // indirect
 	github.com/minio/minlz v1.0.1 // indirect

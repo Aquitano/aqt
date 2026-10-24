@@ -34,41 +34,80 @@ func Get(ctx context.Context, content store.Retrieval, to string, known []store.
 	if err != nil {
 		return result, err
 	}
-	mounts := map[string]disk.Volume{}
-	for _, m := range mounted {
-		if v := store.MatchMountedVolume(m.Fingerprint, known); v != nil {
-			mounts[v.ID] = m
-		}
-	}
-	var candidates []store.Hit
-	var unavailable []string
-	seenVolumes := map[string]bool{}
-	for _, p := range content.Places {
-		m, online := mounts[p.VolumeID]
-		if !online && !seenVolumes[p.VolumeID] {
-			unavailable = append(unavailable, fmt.Sprintf("%q (%s)", p.Volume, p.VolumeID))
-			seenVolumes[p.VolumeID] = true
-		}
-		if !online || p.Missing {
-			continue
-		}
-		if err := scratch.CheckVolume(m.Fingerprint, filepath.Dir(destination)); err != nil {
+	sel := selectCopies(content, known, mounted)
+	for _, p := range sel.candidates {
+		if err := scratch.CheckVolume(sel.mounts[p.VolumeID].Fingerprint, filepath.Dir(destination)); err != nil {
 			return result, fmt.Errorf("destination must be off the source volume: %w", err)
 		}
-		candidates = append(candidates, p)
 	}
-	if len(candidates) == 0 {
-		return result, unavailableError(unavailable)
+	if len(sel.candidates) == 0 {
+		return result, &UnavailableError{Volumes: sel.offline}
 	}
-	return copyCandidates(ctx, content, destination, candidates, unavailable, func(p store.Hit) (*os.File, error) {
-		if cfg.Rules(p.VolumeID, mounts[p.VolumeID].Label).SkipContent(p.Path) {
-			return nil, errors.New("excluded by current rules")
-		}
-		return openSource(p, mounts[p.VolumeID], known)
+	return copyCandidates(ctx, content, destination, sel.candidates, sel.offline, func(p store.Hit) (*os.File, error) {
+		return openCopy(p, sel.mounts, known, cfg)
 	})
 }
 
-func copyCandidates(ctx context.Context, content store.Retrieval, destination string, candidates []store.Hit, unavailable []string, open func(store.Hit) (*os.File, error)) (result Result, err error) {
+// UnavailableError says no catalogued copy can be read on this machine: the
+// disks that hold one are detached, or every attached copy is missing.
+type UnavailableError struct {
+	Volumes []OfflineVolume
+}
+
+// OfflineVolume is a detached disk that holds a copy.
+type OfflineVolume struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+func (e *UnavailableError) Error() string {
+	if len(e.Volumes) == 0 {
+		return "no usable online copy; rescan a known volume to refresh missing or changed files"
+	}
+	names := make([]string, len(e.Volumes))
+	for i, v := range e.Volumes {
+		names[i] = fmt.Sprintf("%q (%s)", v.Label, v.ID)
+	}
+	return "no usable online copy; connect known volume(s): " + strings.Join(names, ", ")
+}
+
+// selection is where a content can be read on this machine now: present
+// copies on attached disks, and the detached disks that hold the others.
+type selection struct {
+	mounts     map[string]disk.Volume
+	candidates []store.Hit
+	offline    []OfflineVolume
+}
+
+func selectCopies(content store.Retrieval, known []store.Volume, mounted []disk.Volume) selection {
+	sel := selection{mounts: map[string]disk.Volume{}}
+	for _, m := range mounted {
+		if v := store.MatchMountedVolume(m.Fingerprint, known); v != nil {
+			sel.mounts[v.ID] = m
+		}
+	}
+	seenVolumes := map[string]bool{}
+	for _, p := range content.Places {
+		_, online := sel.mounts[p.VolumeID]
+		if !online && !seenVolumes[p.VolumeID] {
+			sel.offline = append(sel.offline, OfflineVolume{ID: p.VolumeID, Label: p.Volume})
+			seenVolumes[p.VolumeID] = true
+		}
+		if online && !p.Missing {
+			sel.candidates = append(sel.candidates, p)
+		}
+	}
+	return sel
+}
+
+func openCopy(p store.Hit, mounts map[string]disk.Volume, known []store.Volume, cfg config.Config) (*os.File, error) {
+	if cfg.Rules(p.VolumeID, mounts[p.VolumeID].Label).SkipContent(p.Path) {
+		return nil, errors.New("excluded by current rules")
+	}
+	return openSource(p, mounts[p.VolumeID], known)
+}
+
+func copyCandidates(ctx context.Context, content store.Retrieval, destination string, candidates []store.Hit, offline []OfflineVolume, open func(store.Hit) (*os.File, error)) (result Result, err error) {
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
@@ -107,14 +146,7 @@ func copyCandidates(ctx context.Context, content store.Retrieval, destination st
 		return Result{Ref: "attic:" + content.Ref, Blake3: hex.EncodeToString(content.Digest[:]), Destination: destination,
 			EntryID: p.ID, VolumeID: p.VolumeID, Source: p.Path, Size: content.Size}, nil
 	}
-	return result, errors.Join(unavailableError(unavailable), errors.Join(failures...))
-}
-
-func unavailableError(volumes []string) error {
-	if len(volumes) != 0 {
-		return fmt.Errorf("no usable online copy; connect known volume(s): %s", strings.Join(volumes, ", "))
-	}
-	return errors.New("no usable online copy; rescan a known volume to refresh missing or changed files")
+	return result, errors.Join(&UnavailableError{Volumes: offline}, errors.Join(failures...))
 }
 
 func destinationPath(to string) (string, error) {

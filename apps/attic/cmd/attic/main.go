@@ -40,6 +40,9 @@ type cli struct {
 	Stats    statsCmd    `cmd:"" help:"Show catalogue totals."`
 	Config   configCmd   `cmd:"" help:"Show the configuration and effective rules."`
 	Migrate  migrateCmd  `cmd:"" help:"Upgrade the catalogue schema; read commands never do."`
+	Serve    serveCmd    `cmd:"" help:"Serve the catalogue over HTTP for agents."`
+	Token    tokenCmd    `cmd:"" help:"Manage the API tokens serve accepts."`
+	OpenAPI  openapiCmd  `cmd:"" name:"openapi" help:"Print the API's OpenAPI document."`
 	Help     helpCmd     `cmd:"" help:"Show help for a command."`
 }
 

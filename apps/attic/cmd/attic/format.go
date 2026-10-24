@@ -4,41 +4,10 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/aquitano/aqt/apps/attic/internal/disk"
-	"github.com/aquitano/aqt/apps/attic/internal/store"
 )
-
-// onlineRoots maps each known volume that is attached right now to where it
-// is mounted. A clone of a known disk does not light up the original.
-func onlineRoots(vols []store.Volume) map[string]string {
-	roots := map[string]string{}
-	for _, m := range disk.Mounted() {
-		for _, v := range vols {
-			if v.Holds(m.Fingerprint) {
-				roots[v.ID] = m.Root
-			}
-		}
-	}
-	return roots
-}
-
-// displayPath spells an entry the way it can be opened right now, or names
-// its volume when the disk is not attached.
-func displayPath(volumeID, label, p string, roots map[string]string) string {
-	rel := filepath.FromSlash(strings.TrimPrefix(p, "/"))
-	if root, ok := roots[volumeID]; ok {
-		return filepath.Join(root, rel)
-	}
-	if label == "" && len(volumeID) >= 8 {
-		label = volumeID[:8]
-	}
-	return label + ":" + string(filepath.Separator) + rel
-}
 
 // humanBytes uses binary units, as Explorer does, so sizes match what
 // Windows shows for the same files.

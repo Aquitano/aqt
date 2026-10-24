@@ -121,6 +121,21 @@ An authenticated native Codex CLI is also available through `--provider codex --
 
 Vision providers accept PNG, JPEG, GIF and WebP up to 20 MiB. Tesseract also accepts TIFF and BMP. Tools receive verified temporary copies. Results retain their task, provider, endpoint, model and extraction policy. Duplicates reuse successful results. `--force` repeats completed work and preserves the previous answer if the new attempt fails. Provider outages stop the run without recording per-content failures. `analysis` compares results; `search` includes their text offline.
 
+## Serve the catalogue to agents
+
+`attic serve` answers the read commands over HTTP. Like them, it opens the catalogue read-only.
+
+```powershell
+attic token new executor
+attic serve --listen 127.0.0.1:8490
+```
+
+`token new` prints the token once. Every `/v1` route needs it as `Authorization: Bearer <token>`. Tokens are kept as SHA-256 digests in `%APPDATA%\attic\tokens`; `attic token list` and `attic token revoke <name>` manage them, and a revocation applies to the next request. There is no TLS, so listen on localhost, or on a Tailscale address to reach the API from the tailnet. `ATTIC_LISTEN` also sets the address. A catalogue at another schema version stops `serve` from starting; run `attic migrate` or upgrade attic first.
+
+`/openapi.json` describes every operation and needs no token. `openapi.json` in this directory is the committed copy; regenerate it with `go run ./cmd/attic openapi > openapi.json` after changing the API, because a test fails while it is stale. Responses have the same shapes as `--json`. An error is JSON with a `_tag` naming the failure (`Unauthorized`, `InvalidRequest`, `NotFound`, `AmbiguousRef`, `Unavailable` or `Internal`), a `message`, and a `recovery` with what to do where the caller can act. Each tag has its own schema, so code generated from the document can branch on it.
+
+`GET /v1/contents/{ref}/file` streams a file from an attached disk and checks its BLAKE3 digest on the way. The last 64 KiB wait until the digest matches, so a copy that changed since its scan ends short of `Content-Length` instead of delivering wrong bytes. Without an attached copy the answer is `Unavailable`, with the disks to connect. Like `attic get`, downloads need Windows volume discovery.
+
 ## Configuration
 
 Use `%APPDATA%\attic\config.toml`, or select another file with `--config`. `attic config` prints the effective settings and rules.
