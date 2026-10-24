@@ -203,7 +203,8 @@ func OpenReadOnly(ctx context.Context, databaseURL string) (*Store, error) {
 }
 
 // InsertMessages inserts a batch atomically and returns one id per input, in
-// input order. An id of zero means that row was already present. Records are
+// input order. An id of zero means that row was already present or its key was
+// retired; CountRetired tells the two apart. Records are
 // cleaned before the transaction begins, so malformed input cannot leave a
 // valid prefix committed.
 //
@@ -316,7 +317,7 @@ func scanMessageInsert(row pgx.Row, o InsertMessagesOpts) (int64, error) {
 
 // InsertMessage is the single-record compatibility wrapper around
 // InsertMessages. It is idempotent via (source, external_id) and returns zero
-// when the message was already present.
+// when the message was already present or retired.
 func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
 	ids, err := s.InsertMessages(ctx, []Message{m}, InsertMessagesOpts{})
 	if err != nil {
@@ -335,7 +336,7 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
 //
 // Like InsertMessage it returns (0, nil) for a message that was already
 // present, re-keyed or not, so importers keep counting it as a duplicate
-// rather than as new.
+// rather than as new, and for a retired one.
 //
 // Only (source, external_id) is treated as the conflict: a caller that also
 // sets MessageID would hit the second unique index as a raw error rather than
