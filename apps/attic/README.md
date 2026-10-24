@@ -136,6 +136,18 @@ attic serve --listen 127.0.0.1:8490
 
 `GET /v1/contents/{ref}/file` streams a file from an attached disk and checks its BLAKE3 digest on the way. The last 64 KiB wait until the digest matches, so a copy that changed since its scan ends short of `Content-Length` instead of delivering wrong bytes. Without an attached copy the answer is `Unavailable`, with the disks to connect. Like `attic get`, downloads need Windows volume discovery.
 
+### Code mode through Executor
+
+`executor/` is an [Executor](https://executor.sh) app that turns the live `/openapi.json` into typed tools, so an agent writes code such as `await tools.attic.catalogue.search({ q: "minecraft server" })` instead of calling one tool per endpoint. It needs a local or self-hosted Executor: Executor Cloud cannot reach a tailnet or loopback address. The token travels only to the host in `executor/provider.ts`, and any future write operation asks for approval.
+
+```powershell
+attic token new executor
+executor apps create --name attic --files apps/attic/executor
+executor apps deploy --app <app-id> --files apps/attic/executor
+```
+
+Then connect the app's attic account in the Executor dashboard and paste the token there. Type-check changes with `npm install --no-package-lock` and the `tsc` command in Executor's app-authoring guide; the `apps` version in `package.json` must match `executor apps framework`.
+
 ## Configuration
 
 Use `%APPDATA%\attic\config.toml`, or select another file with `--config`. `attic config` prints the effective settings and rules.
