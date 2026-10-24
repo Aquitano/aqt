@@ -1,0 +1,9 @@
+{
+  "name": "attic",
+  "private": true,
+  "type": "module",
+  "description": "Search attic's file catalogue and fetch files from attached disks.",
+  "dependencies": {
+    "apps": "0.0.1-beta.101"
+  }
+}
