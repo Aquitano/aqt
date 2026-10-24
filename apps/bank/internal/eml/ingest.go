@@ -138,6 +138,13 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 		}
 	}
 	if id == 0 {
+		retired, err := st.CountRetired(ctx, []store.Message{{Source: o.Source, ExternalID: externalID}})
+		if err != nil {
+			return res, fail.Opf("look up retired message: %w", err)
+		}
+		if retired > 0 {
+			return res, nil
+		}
 		return res, fail.Opf("canonical mail row could not be resolved after insert")
 	}
 	if err := syncAttachments(ctx, st, blobs, id, m.Attachments, res.Inserted, &res); err != nil {
