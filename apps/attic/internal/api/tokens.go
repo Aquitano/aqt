@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gofrs/flock"
 )
 
 // Tokens live in one line-oriented file, "<name>:<sha256 of the token>", the
@@ -57,9 +59,6 @@ func (t Tokens) write(entries []tokenEntry) error {
 	for _, e := range entries {
 		fmt.Fprintf(&b, "%s:%s\n", e.name, e.hash)
 	}
-	if err := os.MkdirAll(filepath.Dir(t.Path), 0o700); err != nil {
-		return err
-	}
 	tmp, err := os.CreateTemp(filepath.Dir(t.Path), ".tokens-*")
 	if err != nil {
 		return err
@@ -75,24 +74,45 @@ func (t Tokens) write(entries []tokenEntry) error {
 	return err
 }
 
+// update rewrites the file under a lock, so two token commands cannot both
+// read the old entries and one undo the other, such as a mint restoring a
+// token another command just revoked.
+func (t Tokens) update(change func([]tokenEntry) ([]tokenEntry, error)) (err error) {
+	if err := os.MkdirAll(filepath.Dir(t.Path), 0o700); err != nil {
+		return err
+	}
+	lock := flock.New(t.Path + ".lock")
+	if err := lock.Lock(); err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, lock.Unlock()) }()
+	entries, err := t.read()
+	if err != nil {
+		return err
+	}
+	if entries, err = change(entries); err != nil {
+		return err
+	}
+	return t.write(entries)
+}
+
 // New mints a token for name and stores only its digest. The returned
 // plaintext is the only copy.
 func (t Tokens) New(name string) (string, error) {
 	if name == "" || strings.ContainsAny(name, ":\r\n") {
 		return "", fmt.Errorf("invalid token name %q", name)
 	}
-	entries, err := t.read()
+	token := "attic_" + rand.Text()
+	err := t.update(func(entries []tokenEntry) ([]tokenEntry, error) {
+		for _, e := range entries {
+			if e.name == name {
+				return nil, fmt.Errorf("token %q already exists", name)
+			}
+		}
+		return append(entries, tokenEntry{name, hashToken(token)}), nil
+	})
 	if err != nil {
 		return "", err
-	}
-	for _, e := range entries {
-		if e.name == name {
-			return "", fmt.Errorf("token %q already exists", name)
-		}
-	}
-	token := "attic_" + rand.Text()
-	if err := t.write(append(entries, tokenEntry{name, hashToken(token)})); err != nil {
-		return "", fmt.Errorf("write tokens: %w", err)
 	}
 	return token, nil
 }
@@ -107,20 +127,18 @@ func (t Tokens) Names() ([]string, error) {
 }
 
 func (t Tokens) Revoke(name string) error {
-	entries, err := t.read()
-	if err != nil {
-		return err
-	}
-	kept := make([]tokenEntry, 0, len(entries))
-	for _, e := range entries {
-		if e.name != name {
-			kept = append(kept, e)
+	return t.update(func(entries []tokenEntry) ([]tokenEntry, error) {
+		kept := make([]tokenEntry, 0, len(entries))
+		for _, e := range entries {
+			if e.name != name {
+				kept = append(kept, e)
+			}
 		}
-	}
-	if len(kept) == len(entries) {
-		return fmt.Errorf("no token named %q", name)
-	}
-	return t.write(kept)
+		if len(kept) == len(entries) {
+			return nil, fmt.Errorf("no token named %q", name)
+		}
+		return kept, nil
+	})
 }
 
 // Verify reports whether presented matches a stored token.

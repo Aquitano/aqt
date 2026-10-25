@@ -236,13 +236,20 @@ type search struct {
 	ties         string
 }
 
+// InvalidSearchError rejects options no search can run with.
+type InvalidSearchError struct {
+	Reason string
+}
+
+func (e *InvalidSearchError) Error() string { return e.Reason }
+
 func (s *Store) newSearch(ctx context.Context, o SearchOptions, alias string) (*search, error) {
 	words := strings.Fields(o.Query)
 	switch {
 	case len(words) == 0 && o.VolumeID == "" && o.Ext == "" && o.Kind == "" && o.Under == "":
-		return nil, errors.New("search needs words or a filter")
+		return nil, &InvalidSearchError{"search needs words or a filter"}
 	case o.Under != "" && o.VolumeID == "":
-		return nil, errors.New("--under needs a volume")
+		return nil, &InvalidSearchError{"--under needs a volume"}
 	}
 	words, err := s.searchWords(ctx, words, true)
 	if err != nil {

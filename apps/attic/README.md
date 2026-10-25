@@ -9,7 +9,7 @@ docker compose up -d --wait
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 ```
 
-`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. `attic scan`, `attic enrich`, `attic dedupe apply` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
+`DATABASE_URL` defaults to `postgres://attic:attic@127.0.0.1:5436/attic?sslmode=disable`. Use `127.0.0.1` rather than `localhost` in your own URL too: the database listens on IPv4 only, and on Windows a `localhost` connection first spends about a second on IPv6. `attic scan`, `attic enrich`, `attic dedupe apply` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
 
 The identity upgrade rewrites catalogue entries once and builds indexes. Migration waits for it to finish, and PostgreSQL needs additional database storage during the upgrade.
 
@@ -39,6 +39,8 @@ attic stats
 attic migrate
 attic help scan
 ```
+
+To keep the catalogue current, run scans from a nightly task: [SCHEDULED-SCANS.md](SCHEDULED-SCANS.md).
 
 Search requires every searchable word by default; `--any` accepts any word. Words can match names, paths or name fragments. Archive members, document text, metadata and enrichment results appear in separate ranked groups. `--volume` accepts a label or ID. `--under` accepts a mounted path, or a volume-relative path with `--volume`. All read commands support `--json`.
 
@@ -148,6 +150,18 @@ attic serve --listen 127.0.0.1:8490
 `/openapi.json` describes every operation and needs no token. `openapi.json` in this directory is the committed copy; regenerate it with `go run ./cmd/attic openapi > openapi.json` after changing the API, because a test fails while it is stale. Responses have the same shapes as `--json`. An error is JSON with a `_tag` naming the failure (`Unauthorized`, `InvalidRequest`, `NotFound`, `AmbiguousRef`, `Unavailable` or `Internal`), a `message`, and a `recovery` with what to do where the caller can act. Each tag has its own schema, so code generated from the document can branch on it.
 
 `GET /v1/contents/{ref}/file` streams a file from an attached disk and checks its BLAKE3 digest on the way. The last 64 KiB wait until the digest matches, so a copy that changed since its scan ends short of `Content-Length` instead of delivering wrong bytes. Without an attached copy the answer is `Unavailable`, with the disks to connect. Like `attic get`, downloads need Windows volume discovery.
+
+### Code mode through Executor
+
+`executor/` is an [Executor](https://executor.sh) app that turns the live `/openapi.json` into typed tools, so an agent writes code such as `await tools.attic.catalogue.search({ q: "minecraft server" })` instead of calling one tool per endpoint. It needs a local or self-hosted Executor: Executor Cloud cannot reach a tailnet or loopback address. The token travels only to the host in `executor/provider.ts`, and any future write operation asks for approval.
+
+```powershell
+attic token new executor
+executor apps create --name attic --files apps/attic/executor
+executor apps deploy --app <app-id> --files apps/attic/executor
+```
+
+Then connect the app's attic account in the Executor dashboard and paste the token there. The app reaches attic at `origin` in `executor/provider.ts`, `http://127.0.0.1:8490` for an Executor on the same PC. For a self-hosted Executor on another machine, such as the VPS, set `origin` to the PC's tailnet address before deploying, run `attic serve --listen <tailnet address>:8490`, and start that Executor with `EXECUTOR_APPS_ALLOW_PRIVATE_FETCH=true`, because it refuses private addresses otherwise. `mise run attic:ts` type-checks and lints it; the `apps` version in `package.json` must match `executor apps framework`.
 
 ## Configuration
 

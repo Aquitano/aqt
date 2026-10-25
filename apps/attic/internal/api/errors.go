@@ -3,6 +3,7 @@ package api
 import (
 	"cmp"
 	"errors"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"slices"
@@ -20,11 +21,13 @@ import (
 // act, says what to do next.
 type apiError struct {
 	status     int
-	Tag        string                   `json:"_tag"`
-	Message    string                   `json:"message"`
-	Recovery   *recovery                `json:"recovery,omitempty"`
-	Candidates []store.RefCandidate     `json:"candidates,omitempty"`
-	Volumes    []retrieve.OfflineVolume `json:"volumes,omitempty"`
+	Tag        string               `json:"_tag"`
+	Message    string               `json:"message"`
+	Recovery   *recovery            `json:"recovery,omitempty"`
+	Candidates []store.RefCandidate `json:"candidates,omitempty"`
+	// A pointer, so an Unavailable error keeps its empty list while other
+	// failures leave the field out.
+	Volumes *[]retrieve.OfflineVolume `json:"volumes,omitempty"`
 }
 
 type recovery struct {
@@ -55,7 +58,7 @@ var (
 		doc:   "The ref prefix matches several contents. Retry with one of the candidates' longer refs.",
 		extra: map[string]reflect.Type{"candidates": reflect.TypeFor[[]store.RefCandidate]()}}
 	errUnavailable = errorKind{tag: "Unavailable", status: http.StatusConflict,
-		doc:   "No copy can be read now. volumes lists the detached disks that hold one; an empty list means every attached copy is missing.",
+		doc:   "No copy can be read now. volumes lists the detached disks that hold one. It is empty when the copies on attached disks are missing, changed since their scan, or excluded by the server's content rules.",
 		extra: map[string]reflect.Type{"volumes": reflect.TypeFor[[]retrieve.OfflineVolume]()}}
 	errInternal = errorKind{tag: "Internal", status: http.StatusInternalServerError,
 		doc: "The server failed; message says how."}
@@ -138,22 +141,24 @@ func fail(err error) error {
 	}
 	if unavailable, ok := errors.AsType[*retrieve.UnavailableError](err); ok {
 		e := errUnavailable.new(err.Error())
-		e.Volumes = unavailable.Volumes
-		if e.Volumes == nil {
-			e.Volumes = []retrieve.OfflineVolume{}
-		}
-		if len(unavailable.Volumes) > 0 {
+		volumes := append([]retrieve.OfflineVolume{}, unavailable.Volumes...)
+		e.Volumes = &volumes
+		if len(volumes) > 0 {
 			e.Recovery = &recovery{Action: "Connect a listed volume",
 				Instructions: "Ask the owner to attach one of the listed disks to the machine serving attic, then retry."}
 		} else {
-			e.Recovery = &recovery{Action: "Rescan the volume",
-				Instructions: "Every attached copy is missing or changed; a scan of its volume refreshes the catalogue."}
+			e.Recovery = &recovery{Action: "Check the attached copies",
+				Instructions: "The copies on attached disks are missing, changed since their scan, or excluded by the server's content rules. Ask the owner to rescan the volume or review the rules; message says which copies failed."}
 		}
 		return e
 	}
 	if errors.Is(err, store.ErrNotFound) {
 		return errNotFound.new(err.Error())
 	}
+	if _, ok := errors.AsType[*store.InvalidSearchError](err); ok {
+		return errInvalid.new(err.Error())
+	}
+	slog.Error("request failed", "err", err)
 	return errInternal.new(err.Error())
 }
 
