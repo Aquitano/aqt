@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -126,7 +127,7 @@ func (cmd *dedupeApplyCmd) Run(ctx context.Context) error {
 	}
 	res, err := dedupe.Apply(ctx, st, groups, roots, time.Now().Format("20060102-150405"))
 	if cmd.JSON {
-		return printJSON(res)
+		return errors.Join(err, printJSON(res))
 	}
 	for _, m := range res.Moved {
 		fmt.Printf("moved  %s\n    -> %s\n", m.From, m.To)

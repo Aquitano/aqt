@@ -70,4 +70,4 @@ jobs:
       - uses: jdx/mise-action@v5
         with:
           install_args: go
-      - run: go test ./apps/attic/internal/disk ./apps/attic/internal/archive ./apps/attic/internal/scratch ./apps/attic/internal/process
+      - run: go test ./apps/attic/internal/disk ./apps/attic/internal/archive ./apps/attic/internal/scratch ./apps/attic/internal/process ./apps/attic/internal/dedupe
