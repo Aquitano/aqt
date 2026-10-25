@@ -12,13 +12,13 @@ $disks = @('Data')                           # external disks by label, scanned 
 
 foreach ($folder in $folders) { attic scan $folder }
 foreach ($volume in attic volumes --json | ConvertFrom-Json) {
-    if ($volume.label -in $disks -and $volume.mounted_at) { attic scan $volume.mounted_at --volume $volume.id }
+    if ($volume.label -in $disks -and $volume.mounted_at) { attic scan $volume.mounted_at }
 }
 ```
 
 A scan writes scratch copies to `temp`, which must be on another disk than the one it scans; see [Configuration](README.md#configuration). The default system temporary directory is on `C:`, so folders there need `temp` set to an existing directory on a disk that stays attached and is not in `$disks`, such as a second internal drive. Every scan reads the same `config.toml`, so a `temp` on one of the listed disks makes that disk's scans fail. When the only other disk is one of `$disks`, give the folder scans their own copy of the configuration with `temp` on that disk and pass it as `attic scan $folder --config <file>`. The disk scans keep the default on `C:`, and the folder scans then need that disk attached.
 
-List external disks by label rather than scanning every attached volume: once a folder on `C:` has been scanned, `C:` is a known volume too, and scanning its root would index the whole system drive. A disk's label appears in `attic volumes` after its first scan. `--volume` confirms the catalogue volume the loop picked, so a disk whose USB bridge reports no serial does not stop on an identity question every night.
+List external disks by label rather than scanning every attached volume: once a folder on `C:` has been scanned, `C:` is a known volume too, and scanning its root would index the whole system drive. A disk's label appears in `attic volumes` after its first scan. A disk whose USB bridge reports no serial cannot be scanned unattended: a sector clone on such a bridge looks the same, so every scan of it stops on the identity question and the loop moves on. Scan it by hand with `--volume <id>` once you have checked which disk it is.
 
 Register the script as a nightly task:
 
