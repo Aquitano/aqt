@@ -84,16 +84,14 @@ func Apply(ctx context.Context, rec Recorder, groups []store.DedupeGroup, mounts
 			if err := ctx.Err(); err != nil {
 				return res, err
 			}
-			// Hashing a large extra copy takes a while, so the kept copy is
-			// checked again before each move.
 			if kept != nil && !kept.intact() {
-				kept, reason = nil, "the kept copy changed or went away during the run"
+				kept, reason = nil, keptChanged
 			}
 			if kept == nil {
 				skip(extra, reason)
 				continue
 			}
-			m, reason, err := setAside(ctx, rec, g, kept.hit.ID, extra, attached[extra.VolumeID], run)
+			m, reason, err := setAside(ctx, rec, g, kept, extra, attached[extra.VolumeID], run)
 			if err != nil {
 				return res, err
 			}
@@ -126,10 +124,12 @@ func unambiguous(mounts map[string]disk.Volume) (map[string]disk.Volume, map[str
 	return attached, shared
 }
 
+const keptChanged = "the kept copy changed or went away during the run"
+
 // setAside moves one extra copy into the quarantine. A reason means the copy
 // stayed in place; an error means the run must stop, and says where the copy
 // is when it could not go back.
-func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int64, extra store.Hit, mount disk.Volume, run string) (Move, string, error) {
+func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, kept *keptCopy, extra store.Hit, mount disk.Volume, run string) (Move, string, error) {
 	rel, err := local(extra.Path)
 	if err != nil {
 		return Move{}, err.Error(), nil
@@ -148,6 +148,11 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int
 	if digest != g.Digest {
 		return Move{}, "changed since its scan", nil
 	}
+	// Hashing a large copy takes a while, so the kept copy is checked again
+	// right before the move.
+	if !kept.intact() {
+		return Move{}, keptChanged, nil
+	}
 	toRel := filepath.Join(Quarantine, run, rel)
 	from, to := filepath.Join(root, rel), filepath.Join(root, toRel)
 	if err := folders(root, filepath.Dir(toRel), true); err != nil {
@@ -159,13 +164,13 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int
 	// The move resolves the path again, so an editor saving over the file or a
 	// folder swapped for a junction meanwhile would move other bytes. Only the
 	// hashed bytes, unwritten since, stay in the quarantine.
-	if !stillHashed(ctx, root, toRel, hashed, digest) {
+	if !stillHashed(ctx, root, toRel, hashed, digest, mount.StableIDs) {
 		if err := putBack(root, rel, to); err != nil {
 			return Move{}, "", fmt.Errorf("%s changed while it was set aside and stays at %s: %w", from, to, err)
 		}
 		return Move{}, "changed while it was being set aside", nil
 	}
-	if err := rec.RecordDedupeMove(ctx, store.DedupeMove{EntryID: extra.ID, KeptEntryID: keptID, ContentID: g.ContentID, MovedTo: to}); err != nil {
+	if err := rec.RecordDedupeMove(ctx, store.DedupeMove{EntryID: extra.ID, KeptEntryID: kept.hit.ID, ContentID: g.ContentID, MovedTo: to}); err != nil {
 		// An unrecorded move would leave the catalogue unable to say where the
 		// copy went, so the copy goes back unless its path was taken meanwhile.
 		err = fmt.Errorf("record the move of %s: %w", extra.Path, err)
@@ -174,7 +179,7 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int
 		}
 		return Move{}, "", err
 	}
-	return Move{Ref: g.Ref, EntryID: extra.ID, KeptEntryID: keptID, From: from, To: to, Size: extra.Size}, "", nil
+	return Move{Ref: g.Ref, EntryID: extra.ID, KeptEntryID: kept.hit.ID, From: from, To: to, Size: extra.Size}, "", nil
 }
 
 // putBack returns a set-aside copy to root/rel. It refuses a path that is
@@ -237,9 +242,10 @@ func here(m disk.Volume) bool {
 }
 
 // stillHashed reports whether root/rel, reached without following links,
-// holds the hashed bytes, unwritten since. The same file needs no second read.
-// FAT and exFAT give a moved file a new ID, so another file is hashed again.
-func stillHashed(ctx context.Context, root, rel string, hashed fs.FileInfo, digest disk.Digest) bool {
+// holds the hashed bytes, unwritten since. With stable IDs it must be the
+// same file. FAT and exFAT give a moved file a new ID, so there another file
+// is hashed again and must stay unwritten through that read.
+func stillHashed(ctx context.Context, root, rel string, hashed fs.FileInfo, digest disk.Digest, stableIDs bool) bool {
 	now, err := statOrdinary(root, rel)
 	if err != nil || !unwritten(hashed, now) {
 		return false
@@ -247,8 +253,15 @@ func stillHashed(ctx context.Context, root, rel string, hashed fs.FileInfo, dige
 	if os.SameFile(now, hashed) {
 		return true
 	}
+	if stableIDs {
+		return false
+	}
 	got, _, err := disk.HashOrdinary(ctx, root, rel)
-	return err == nil && got == digest
+	if err != nil || got != digest {
+		return false
+	}
+	after, err := statOrdinary(root, rel)
+	return err == nil && os.SameFile(after, now) && unwritten(hashed, after)
 }
 
 func statOrdinary(root, rel string) (fs.FileInfo, error) {

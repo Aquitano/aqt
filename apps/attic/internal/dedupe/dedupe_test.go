@@ -219,16 +219,18 @@ func TestStillHashedAcceptsOnlyTheHashedBytes(t *testing.T) {
 		}
 	}
 	for _, tc := range []struct {
-		rel  string
-		want bool
+		rel       string
+		stableIDs bool
+		want      bool
 	}{
-		{"server.zip", true},
+		{"server.zip", true, true},
 		// On FAT and exFAT a moved file has a new ID but the same bytes and times.
-		{"copy.zip", true},
-		{"edited.zip", false},
+		{"copy.zip", false, true},
+		{"copy.zip", true, false},
+		{"edited.zip", false, false},
 	} {
-		if got := stillHashed(t.Context(), root, tc.rel, hashed, digest); got != tc.want {
-			t.Errorf("stillHashed(%s) = %v, want %v", tc.rel, got, tc.want)
+		if got := stillHashed(t.Context(), root, tc.rel, hashed, digest, tc.stableIDs); got != tc.want {
+			t.Errorf("stillHashed(%s, stable IDs %v) = %v, want %v", tc.rel, tc.stableIDs, got, tc.want)
 		}
 	}
 }
