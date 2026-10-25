@@ -11,7 +11,7 @@
     "test": "vp test run"
   },
   "dependencies": {
-    "arktype": "^2.2.8",
+    "arktype": "^2.2.9",
     "oauth4webapi": "^3.8.8"
   },
   "devDependencies": {
