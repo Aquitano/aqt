@@ -12,11 +12,13 @@ $disks = @('Data')                           # external disks by label, scanned 
 
 foreach ($folder in $folders) { attic scan $folder }
 foreach ($volume in attic volumes --json | ConvertFrom-Json) {
-    if ($volume.label -in $disks -and $volume.mounted_at) { attic scan $volume.mounted_at }
+    if ($volume.label -in $disks -and $volume.mounted_at) { attic scan $volume.mounted_at --volume $volume.id }
 }
 ```
 
-List external disks by label rather than scanning every attached volume: once a folder on `C:` has been scanned, `C:` is a known volume too, and scanning its root would index the whole system drive. A disk's label appears in `attic volumes` after its first scan.
+A scan writes scratch copies to `temp`, which must be on another disk than the folder. The default system temporary directory is on `C:`, so scanning a folder there needs `temp` in `config.toml` set to an existing directory on another disk; see [Configuration](README.md#configuration). External disks scan with the default.
+
+List external disks by label rather than scanning every attached volume: once a folder on `C:` has been scanned, `C:` is a known volume too, and scanning its root would index the whole system drive. A disk's label appears in `attic volumes` after its first scan. `--volume` confirms the catalogue volume the loop picked, so a disk whose USB bridge reports no serial does not stop on an identity question every night.
 
 Register the script as a nightly task:
 
