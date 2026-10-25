@@ -170,8 +170,10 @@ func printHelp(parser *kong.Kong, path []string) error {
 	return target.PrintUsage(false)
 }
 
+// The compose file publishes the database on IPv4 only. With "localhost" the
+// driver tries ::1 first, and Windows takes about a second to give up on it.
 func databaseURL() string {
-	return cmp.Or(os.Getenv("DATABASE_URL"), "postgres://attic:attic@localhost:5436/attic?sslmode=disable")
+	return cmp.Or(os.Getenv("DATABASE_URL"), "postgres://attic:attic@127.0.0.1:5436/attic?sslmode=disable")
 }
 
 // openStore migrates the catalogue first; only commands that write use it.

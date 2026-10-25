@@ -9,7 +9,7 @@ docker compose up -d --wait
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 ```
 
-`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. `attic scan`, `attic enrich` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
+`DATABASE_URL` defaults to `postgres://attic:attic@127.0.0.1:5436/attic?sslmode=disable`. Use `127.0.0.1` rather than `localhost` in your own URL too: the database listens on IPv4 only, and on Windows a `localhost` connection first spends about a second on IPv6. `attic scan`, `attic enrich` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
 
 The identity upgrade rewrites catalogue entries once and builds indexes. Migration waits for it to finish, and PostgreSQL needs additional database storage during the upgrade.
 
@@ -39,6 +39,8 @@ attic stats
 attic migrate
 attic help scan
 ```
+
+To keep the catalogue current, run scans from a nightly task: [SCHEDULED-SCANS.md](SCHEDULED-SCANS.md).
 
 Search requires every searchable word by default; `--any` accepts any word. Words can match names, paths or name fragments. Archive members, document text, metadata and enrichment results appear in separate ranked groups. `--volume` accepts a label or ID. `--under` accepts a mounted path, or a volume-relative path with `--volume`. All read commands support `--json`.
 
