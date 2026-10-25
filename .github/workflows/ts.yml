@@ -5,6 +5,7 @@ on:
     paths:
       [
         "packages/ts/**",
+        "apps/attic/executor/**",
         "apps/gallery/**",
         "apps/img/**",
         "apps/bank/internal/webui/app/**",
@@ -22,6 +23,7 @@ on:
     paths:
       [
         "packages/ts/**",
+        "apps/attic/executor/**",
         "apps/gallery/**",
         "apps/img/**",
         "apps/bank/internal/webui/app/**",
@@ -55,6 +57,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: mise run workspace:check
       - run: mise run shared:ts
+      - run: mise run attic:ts
       - run: mise run stack:ts
       - run: mise run bank:ts
       - run: mise run gallery:ts

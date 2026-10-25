@@ -1,0 +1,12 @@
+{
+  "name": "attic",
+  "private": true,
+  "description": "Search attic's file catalogue and fetch files from attached disks.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "apps": "0.0.1-beta.101"
+  }
+}
