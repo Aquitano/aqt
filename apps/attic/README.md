@@ -146,7 +146,7 @@ executor apps create --name attic --files apps/attic/executor
 executor apps deploy --app <app-id> --files apps/attic/executor
 ```
 
-Then connect the app's attic account in the Executor dashboard and paste the token there. `mise run attic:ts` type-checks and lints it; the `apps` version in `package.json` must match `executor apps framework`.
+Then connect the app's attic account in the Executor dashboard and paste the token there. The app reaches attic at `origin` in `executor/provider.ts`, `http://127.0.0.1:8490` for an Executor on the same PC. For a self-hosted Executor on another machine, such as the VPS, set `origin` to the PC's tailnet address before deploying, run `attic serve --listen <tailnet address>:8490`, and start that Executor with `EXECUTOR_APPS_ALLOW_PRIVATE_FETCH=true`, because it refuses private addresses otherwise. `mise run attic:ts` type-checks and lints it; the `apps` version in `package.json` must match `executor apps framework`.
 
 ## Configuration
 
