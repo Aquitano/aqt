@@ -90,9 +90,10 @@ type Volume struct {
 
 // DefaultExclude keeps out what no search wants: dependency trees and build
 // output, installed game libraries, the folders and files Windows owns, and
-// the quarantine dedupe moves extra copies into. AppData stays in: profile backups keep game saves, mail and browser
-// profiles there. A pattern with a slash inside is anchored at the volume
-// root, hence the leading **/ on .yarn/cache.
+// the quarantine dedupe moves extra copies into. AppData stays in: profile
+// backups keep game saves, mail and browser profiles there. A pattern with a
+// slash inside is anchored at the volume root, hence the leading **/ on
+// .yarn/cache.
 var DefaultExclude = []string{
 	"node_modules/", ".git/", ".pnpm-store/", "**/.yarn/cache/", "vendor/", ".venv/", "venv/", "__pycache__/",
 	"target/", "dist/", "build/", ".gradle/", ".next/", ".nuxt/", ".turbo/", ".cache/",

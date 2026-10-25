@@ -29,7 +29,9 @@ type DedupeGroup struct {
 }
 
 // DedupePlan finds hashed contents stored both inside and outside the kept
-// folders, most bytes outside first. Copies already set aside are left out.
+// folders, most bytes outside first. Copies already set aside are left out
+// until a complete listing of their folder after the move finds them again,
+// as when one was put back by hand.
 func (s *Store) DedupePlan(ctx context.Context, kept []KeptFolder, minSize int64, limit int) ([]DedupeGroup, error) {
 	volumes, paths := make([]string, len(kept)), make([]string, len(kept))
 	for i, k := range kept {
@@ -43,7 +45,11 @@ func (s *Store) DedupePlan(ctx context.Context, kept []KeptFolder, minSize int64
 			) as kept
 			from entries e
 			where e.kind = 'file' and e.hash_state = 'done' and e.missing_scan is null and e.content_id is not null
-			  and not exists (select 1 from dedupe_moves m where m.entry_id = e.id)
+			  and not exists (
+				select 1 from dedupe_moves m
+				where m.entry_id = e.id and not exists (
+					select 1 from entries parent join scans s on s.id = parent.listed_scan
+					where parent.id = e.parent_id and s.started_at > m.moved_at))
 		), groups as (
 			select p.content_id, row_number() over (order by sum(c.size_bytes) filter (where not p.kept) desc, p.content_id) as rank
 			from places p join contents c on c.id = p.content_id

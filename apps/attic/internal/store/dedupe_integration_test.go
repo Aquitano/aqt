@@ -66,4 +66,16 @@ func TestDedupePlanPairsKeptAndExtraCopies(t *testing.T) {
 	if d.SetAside == nil || d.SetAside.KeptEntryID != 2 || d.SetAside.MovedTo != `E:\.attic-quarantine\run\Backup\a` {
 		t.Fatalf("entry 3 set aside = %+v", d.SetAside)
 	}
+
+	// A complete listing after the move that still finds the copy, as when it
+	// was put back by hand, returns it to the plan.
+	if _, err := conn.Exec(ctx, `
+  insert into scans(id,volume_id,root,status,started_at) overriding system value
+   select 3,'`+volume+`'::uuid,'','complete',moved_at + interval '1 second' from dedupe_moves where entry_id = 3;
+  update entries set listed_scan = 3 where id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if groups, err = st.DedupePlan(ctx, kept, 1<<20, 10); err != nil || len(groups) != 1 || len(groups[0].Extra) != 2 {
+		t.Fatalf("after the copy came back: %+v %v", groups, err)
+	}
 }

@@ -1,6 +1,6 @@
 # attic
 
-Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It does not change source files. Scanning runs on Windows; search runs wherever the database is reachable.
+Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It changes source files only when `attic dedupe apply` moves duplicate copies into a quarantine folder. Scanning runs on Windows; search runs wherever the database is reachable.
 
 ## Setup
 
@@ -9,7 +9,7 @@ docker compose up -d --wait
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 ```
 
-`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. `attic scan`, `attic enrich` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
+`DATABASE_URL` defaults to `postgres://attic:attic@localhost:5436/attic?sslmode=disable`. `attic scan`, `attic enrich`, `attic dedupe apply` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
 
 The identity upgrade rewrites catalogue entries once and builds indexes. Migration waits for it to finish, and PostgreSQL needs additional database storage during the upgrade.
 
@@ -73,7 +73,7 @@ attic dedupe plan --keep E:\Files --keep F:\Photos
 attic dedupe apply --keep E:\Files --keep F:\Photos
 ```
 
-`plan` lists every hashed content that has a copy inside the kept folders and copies outside them. `apply` hashes the kept copy and each extra copy again, and moves an extra copy only when both still match the catalogue. It moves the copy into `.attic-quarantine\<run>\<original path>` on the same disk and never deletes anything, so a move is a rename and a copy can go back to its original path by hand. Scans skip the quarantine folder. `attic show <id>` reports a moved copy and the kept entry, and the next scan of its folder marks it missing.
+`plan` lists hashed contents that have a copy inside the kept folders and copies outside them, most bytes outside first. It skips contents under `--min-size` (default `1M`) and stops after `--limit` contents (default 100). `apply` hashes the kept copy and each extra copy again, and moves an extra copy only when both still match the catalogue. It moves the copy into `.attic-quarantine\<run>\<original path>` on the same disk and never deletes anything, so a move is a rename and a copy can go back to its original path by hand. Scans skip the quarantine folder. `attic show <id>` reports a moved copy and the kept entry, and the next scan of its folder marks it missing. A copy put back by hand takes part again once a scan of its folder finds it.
 
 Only hashed files take part, so scan with hashing first. Emptying the quarantine is up to you; delete a quarantined copy only once its kept copy is backed up somewhere else.
 
