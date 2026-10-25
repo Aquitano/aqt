@@ -16,7 +16,7 @@ foreach ($volume in attic volumes --json | ConvertFrom-Json) {
 }
 ```
 
-A scan writes scratch copies to `temp`, which must be on another disk than the folder. The default system temporary directory is on `C:`, so scanning a folder there needs `temp` in `config.toml` set to an existing directory on another disk; see [Configuration](README.md#configuration). External disks scan with the default.
+A scan writes scratch copies to `temp`, which must be on another disk than the one it scans; see [Configuration](README.md#configuration). The default system temporary directory is on `C:`, so folders there need `temp` set to an existing directory on a disk that stays attached and is not in `$disks`, such as a second internal drive. Every scan reads the same `config.toml`, so a `temp` on one of the listed disks makes that disk's scans fail. When the only other disk is one of `$disks`, give the folder scans their own copy of the configuration with `temp` on that disk and pass it as `attic scan $folder --config <file>`. The disk scans keep the default on `C:`, and the folder scans then need that disk attached.
 
 List external disks by label rather than scanning every attached volume: once a folder on `C:` has been scanned, `C:` is a known volume too, and scanning its root would index the whole system drive. A disk's label appears in `attic volumes` after its first scan. `--volume` confirms the catalogue volume the loop picked, so a disk whose USB bridge reports no serial does not stop on an identity question every night.
 
