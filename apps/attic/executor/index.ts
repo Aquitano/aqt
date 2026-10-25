@@ -9,7 +9,7 @@ const instructions = `attic catalogues every file on the owner's disks, attached
 - Find files with catalogue.search. Entries, archive members, document text, tags and OCR come back as separate lists, each ranked on its own scale.
 - A place is online when its disk is attached now, missing when the last scan no longer found it, and version "previous" when the file held this content before it changed.
 - Cite a file as attic:<ref>. Entry IDs only name a location in this catalogue.
-- contents.downloadContent returns the bytes from an attached disk. Unavailable means no copy is attached: tell the owner which of the error's volumes to connect.
+- contents.downloadContent returns the bytes from an attached disk. Unavailable means no copy can be read now: tell the owner which of the error's volumes to connect, or, when it lists none, pass on its recovery, such as rescanning the volume.
 - AmbiguousRef lists candidates; retry with one candidate's longer ref.`;
 
 const requirements = { app: { accounts: { attic } } };
