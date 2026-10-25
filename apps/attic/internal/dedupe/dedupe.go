@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
@@ -48,14 +49,15 @@ type Result struct {
 }
 
 // Apply moves each group's extra copies into
-// <volume root>/.attic-quarantine/<run>/<original path>. roots maps the IDs of
-// attached volumes to where they are mounted. A group whose kept copies are
-// all detached or no longer match their digest moves nothing. Neither does a
-// disk that several known volumes claim, such as two clones whose USB bridge
+// <volume root>/.attic-quarantine/<run>/<original path>. mounts maps the IDs
+// of attached volumes to their mounts. A group whose kept copies are all
+// detached or no longer match their digest moves nothing. Neither does a disk
+// that several known volumes claim, such as two clones whose USB bridge
 // reports no serial: a kept and an extra entry could name the same file.
-func Apply(ctx context.Context, rec Recorder, groups []store.DedupeGroup, roots map[string]string, run string) (Result, error) {
+func Apply(ctx context.Context, rec Recorder, groups []store.DedupeGroup, mounts map[string]disk.Volume, run string) (Result, error) {
 	res := Result{Moved: []Move{}, Skipped: []Skip{}}
-	attached, shared := unambiguous(roots)
+	roots := view.Roots(mounts)
+	attached, shared := unambiguous(mounts)
 	for _, g := range groups {
 		if err := ctx.Err(); err != nil {
 			return res, err
@@ -79,11 +81,19 @@ func Apply(ctx context.Context, rec Recorder, groups []store.DedupeGroup, roots 
 		}
 		kept, reason := verifiedCopy(ctx, g.Kept, g.Digest, attached)
 		for _, extra := range movable {
+			if err := ctx.Err(); err != nil {
+				return res, err
+			}
+			// Hashing a large extra copy takes a while, so the kept copy is
+			// checked again before each move.
+			if kept != nil && !kept.intact() {
+				kept, reason = nil, "the kept copy changed or went away during the run"
+			}
 			if kept == nil {
 				skip(extra, reason)
 				continue
 			}
-			m, reason, err := setAside(ctx, rec, g, kept.ID, extra, attached[extra.VolumeID], run)
+			m, reason, err := setAside(ctx, rec, g, kept.hit.ID, extra, attached[extra.VolumeID], run)
 			if err != nil {
 				return res, err
 			}
@@ -95,20 +105,20 @@ func Apply(ctx context.Context, rec Recorder, groups []store.DedupeGroup, roots 
 			res.Bytes += m.Size
 		}
 	}
-	return res, nil
+	return res, ctx.Err()
 }
 
-// unambiguous keeps the roots that exactly one volume claims and returns the
+// unambiguous keeps the mounts that exactly one volume claims and returns the
 // IDs of the volumes that share one.
-func unambiguous(roots map[string]string) (map[string]string, map[string]bool) {
+func unambiguous(mounts map[string]disk.Volume) (map[string]disk.Volume, map[string]bool) {
 	claims := map[string]int{}
-	for _, root := range roots {
-		claims[root]++
+	for _, m := range mounts {
+		claims[m.Root]++
 	}
-	attached, shared := map[string]string{}, map[string]bool{}
-	for id, root := range roots {
-		if claims[root] == 1 {
-			attached[id] = root
+	attached, shared := map[string]disk.Volume{}, map[string]bool{}
+	for id, m := range mounts {
+		if claims[m.Root] == 1 {
+			attached[id] = m
 		} else {
 			shared[id] = true
 		}
@@ -119,12 +129,19 @@ func unambiguous(roots map[string]string) (map[string]string, map[string]bool) {
 // setAside moves one extra copy into the quarantine. A reason means the copy
 // stayed in place; an error means the run must stop, and says where the copy
 // is when it could not go back.
-func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int64, extra store.Hit, root, run string) (Move, string, error) {
+func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int64, extra store.Hit, mount disk.Volume, run string) (Move, string, error) {
 	rel, err := local(extra.Path)
 	if err != nil {
 		return Move{}, err.Error(), nil
 	}
+	if !here(mount) {
+		return Move{}, "its disk changed since the run started", nil
+	}
+	root := mount.Root
 	digest, hashed, err := disk.HashOrdinaryInfo(ctx, root, rel)
+	if ctx.Err() != nil {
+		return Move{}, "", ctx.Err()
+	}
 	if err != nil {
 		return Move{}, "could not be read again: " + err.Error(), nil
 	}
@@ -133,7 +150,7 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int
 	}
 	toRel := filepath.Join(Quarantine, run, rel)
 	from, to := filepath.Join(root, rel), filepath.Join(root, toRel)
-	if err := mkdirs(root, filepath.Dir(toRel)); err != nil {
+	if err := folders(root, filepath.Dir(toRel), true); err != nil {
 		return Move{}, err.Error(), nil
 	}
 	if err := disk.Move(from, to); err != nil {
@@ -141,9 +158,9 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int
 	}
 	// The move resolves the path again, so an editor saving over the file or a
 	// folder swapped for a junction meanwhile would move other bytes. Only the
-	// hashed file, unwritten since, stays in the quarantine.
-	if !unchanged(root, toRel, hashed) {
-		if err := disk.Move(to, from); err != nil {
+	// hashed bytes, unwritten since, stay in the quarantine.
+	if !stillHashed(ctx, root, toRel, hashed, digest) {
+		if err := putBack(root, rel, to); err != nil {
 			return Move{}, "", fmt.Errorf("%s changed while it was set aside and stays at %s: %w", from, to, err)
 		}
 		return Move{}, "changed while it was being set aside", nil
@@ -152,7 +169,7 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int
 		// An unrecorded move would leave the catalogue unable to say where the
 		// copy went, so the copy goes back unless its path was taken meanwhile.
 		err = fmt.Errorf("record the move of %s: %w", extra.Path, err)
-		if back := disk.Move(to, from); back != nil {
+		if back := putBack(root, rel, to); back != nil {
 			return Move{}, "", errors.Join(err, fmt.Errorf("the copy stays at %s: %w", to, back))
 		}
 		return Move{}, "", err
@@ -160,48 +177,107 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, keptID int
 	return Move{Ref: g.Ref, EntryID: extra.ID, KeptEntryID: keptID, From: from, To: to, Size: extra.Size}, "", nil
 }
 
+// putBack returns a set-aside copy to root/rel. It refuses a path that is
+// taken, or whose folders now lead through a link or junction.
+func putBack(root, rel, to string) error {
+	if err := folders(root, filepath.Dir(rel), false); err != nil {
+		return err
+	}
+	return disk.Move(to, filepath.Join(root, rel))
+}
+
+// keptCopy is a kept copy as it was when it hashed to the content's digest.
+type keptCopy struct {
+	hit   store.Hit
+	mount disk.Volume
+	rel   string
+	info  fs.FileInfo
+}
+
+// intact reports whether the kept copy is still the same file on the same
+// disk, unwritten since it was hashed.
+func (k *keptCopy) intact() bool {
+	if !here(k.mount) {
+		return false
+	}
+	now, err := statOrdinary(k.mount.Root, k.rel)
+	return err == nil && os.SameFile(now, k.info) && unwritten(k.info, now)
+}
+
 // verifiedCopy is the first kept copy on an attached disk whose bytes still
 // hash to the content's digest.
-func verifiedCopy(ctx context.Context, kept []store.Hit, digest disk.Digest, roots map[string]string) (*store.Hit, string) {
+func verifiedCopy(ctx context.Context, kept []store.Hit, digest disk.Digest, mounts map[string]disk.Volume) (*keptCopy, string) {
 	reason := "no kept copy is on an attached disk"
-	for i, h := range kept {
-		root, online := roots[h.VolumeID]
-		if !online {
+	for _, h := range kept {
+		m, online := mounts[h.VolumeID]
+		if !online || !here(m) {
 			continue
 		}
 		rel, err := local(h.Path)
 		if err != nil {
 			continue
 		}
-		got, _, err := disk.HashOrdinary(ctx, root, rel)
+		got, info, err := disk.HashOrdinaryInfo(ctx, m.Root, rel)
 		if err == nil && got == digest {
-			return &kept[i], ""
+			return &keptCopy{hit: h, mount: m, rel: rel, info: info}, ""
 		}
 		reason = "no attached kept copy still matches its digest"
 	}
 	return nil, reason
 }
 
-// unchanged reports whether root/rel, reached without following links, is
-// the file that was hashed and has not been written since.
-func unchanged(root, rel string, hashed fs.FileInfo) bool {
-	f, err := disk.OpenOrdinary(root, rel)
-	if err != nil {
-		return false
+// here reports whether the disk at m.Root is still the one the run started
+// with. Locating a volume needs Windows; elsewhere the check passes.
+func here(m disk.Volume) bool {
+	if runtime.GOOS != "windows" {
+		return true
 	}
-	defer f.Close()
-	now, err := f.Stat()
-	return err == nil && os.SameFile(now, hashed) && now.Size() == hashed.Size() && now.ModTime().Equal(hashed.ModTime())
+	current, _, err := disk.Locate(m.Root)
+	return err == nil && current.Fingerprint == m.Fingerprint
 }
 
-// mkdirs creates root/rel one folder at a time and refuses one that is a link
-// or junction, so the quarantine cannot lead off the disk's own folders.
-func mkdirs(root, rel string) error {
+// stillHashed reports whether root/rel, reached without following links,
+// holds the hashed bytes, unwritten since. The same file needs no second read.
+// FAT and exFAT give a moved file a new ID, so another file is hashed again.
+func stillHashed(ctx context.Context, root, rel string, hashed fs.FileInfo, digest disk.Digest) bool {
+	now, err := statOrdinary(root, rel)
+	if err != nil || !unwritten(hashed, now) {
+		return false
+	}
+	if os.SameFile(now, hashed) {
+		return true
+	}
+	got, _, err := disk.HashOrdinary(ctx, root, rel)
+	return err == nil && got == digest
+}
+
+func statOrdinary(root, rel string) (fs.FileInfo, error) {
+	f, err := disk.OpenOrdinary(root, rel)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Stat()
+}
+
+func unwritten(was, now fs.FileInfo) bool {
+	return now.Size() == was.Size() && now.ModTime().Equal(was.ModTime())
+}
+
+// folders checks that each folder of rel below root is an ordinary folder,
+// not a link or junction that would send a move elsewhere. create makes the
+// missing ones first.
+func folders(root, rel string, create bool) error {
+	if rel == "." {
+		return nil
+	}
 	dir := root
 	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
 		dir = filepath.Join(dir, part)
-		if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
-			return err
+		if create {
+			if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+				return err
+			}
 		}
 		info, err := os.Lstat(dir)
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/attic/internal/dedupe"
+	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/view"
 )
@@ -24,9 +25,9 @@ type dedupeFlags struct {
 	JSON    bool     `help:"Print JSON."`
 }
 
-// plan resolves the kept folders and returns the groups with the roots of
+// plan resolves the kept folders and returns the groups with the mounts of
 // the volumes attached now.
-func (f *dedupeFlags) plan(ctx context.Context, st *store.Store) ([]store.DedupeGroup, map[string]string, error) {
+func (f *dedupeFlags) plan(ctx context.Context, st *store.Store) ([]store.DedupeGroup, map[string]disk.Volume, error) {
 	floor, err := parseSize(f.MinSize)
 	if err != nil {
 		return nil, nil, err
@@ -52,7 +53,7 @@ func (f *dedupeFlags) plan(ctx context.Context, st *store.Store) ([]store.Dedupe
 		kept[i] = store.KeptFolder{VolumeID: id, Path: path}
 	}
 	groups, err := st.DedupePlan(ctx, kept, floor, f.Limit)
-	return groups, view.OnlineRoots(vols), err
+	return groups, view.OnlineMounts(vols), err
 }
 
 type dedupePlanCmd struct {
@@ -72,10 +73,11 @@ func (cmd *dedupePlanCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer st.Close()
-	groups, roots, err := cmd.plan(ctx, st)
+	groups, mounts, err := cmd.plan(ctx, st)
 	if err != nil {
 		return err
 	}
+	roots := view.Roots(mounts)
 	out := make([]planGroup, len(groups))
 	var copies, bytes int64
 	for i, g := range groups {
@@ -121,11 +123,11 @@ func (cmd *dedupeApplyCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer st.Close()
-	groups, roots, err := cmd.plan(ctx, st)
+	groups, mounts, err := cmd.plan(ctx, st)
 	if err != nil {
 		return err
 	}
-	res, err := dedupe.Apply(ctx, st, groups, roots, time.Now().Format("20060102-150405"))
+	res, err := dedupe.Apply(ctx, st, groups, mounts, time.Now().Format("20060102-150405"))
 	if cmd.JSON {
 		return errors.Join(err, printJSON(res))
 	}

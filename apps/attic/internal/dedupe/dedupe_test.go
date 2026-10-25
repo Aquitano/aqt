@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"lukechampine.com/blake3"
@@ -43,6 +44,21 @@ func write(t *testing.T, root, rel string, data []byte) {
 	}
 }
 
+// mount describes root as an attached disk. On Windows it carries the real
+// fingerprint, which Apply checks before each move.
+func mount(t *testing.T, root string) disk.Volume {
+	t.Helper()
+	m := disk.Volume{}
+	if runtime.GOOS == "windows" {
+		var err error
+		if m, _, err = disk.Locate(root); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.Root = root
+	return m
+}
+
 func group(content []byte, kept, extra store.Hit) store.DedupeGroup {
 	extra.Size = int64(len(content))
 	return store.DedupeGroup{
@@ -71,7 +87,7 @@ func TestApplyMovesOnlyVerifiedExtraCopies(t *testing.T) {
 			g := group(content, store.Hit{ID: 1, VolumeID: "kept", Path: "/Files/server.zip"},
 				store.Hit{ID: 2, VolumeID: "extra", Path: "/Backup/server.zip"})
 			rec := &recorder{fail: tc.failRecording}
-			res, err := Apply(t.Context(), rec, []store.DedupeGroup{g}, map[string]string{"kept": keptRoot, "extra": extraRoot}, "run")
+			res, err := Apply(t.Context(), rec, []store.DedupeGroup{g}, map[string]disk.Volume{"kept": mount(t, keptRoot), "extra": mount(t, extraRoot)}, "run")
 
 			original := filepath.Join(extraRoot, "Backup", "server.zip")
 			quarantined := filepath.Join(extraRoot, Quarantine, "run", "Backup", "server.zip")
@@ -120,7 +136,7 @@ func TestApplyLeavesTheCopyInQuarantineWhenItsPathWasTaken(t *testing.T) {
 	g := group(content, store.Hit{ID: 1, VolumeID: "data", Path: "/Files/server.zip"},
 		store.Hit{ID: 2, VolumeID: "data", Path: "/Backup/server.zip"})
 
-	if _, err := Apply(t.Context(), rec, []store.DedupeGroup{g}, map[string]string{"data": root}, "run"); err == nil {
+	if _, err := Apply(t.Context(), rec, []store.DedupeGroup{g}, map[string]disk.Volume{"data": mount(t, root)}, "run"); err == nil {
 		t.Fatal("an unrecorded move succeeded")
 	}
 	if got, _ := os.ReadFile(original); !bytes.Equal(got, saved) {
@@ -140,7 +156,8 @@ func TestApplyLeavesADiskThatTwoVolumesClaim(t *testing.T) {
 	g := group(content, store.Hit{ID: 1, VolumeID: "original", Path: "/Files/server.zip"},
 		store.Hit{ID: 2, VolumeID: "clone", Path: "/Files/server.zip"})
 
-	res, err := Apply(t.Context(), &recorder{}, []store.DedupeGroup{g}, map[string]string{"original": root, "clone": root}, "run")
+	m := mount(t, root)
+	res, err := Apply(t.Context(), &recorder{}, []store.DedupeGroup{g}, map[string]disk.Volume{"original": m, "clone": m}, "run")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,21 +169,66 @@ func TestApplyLeavesADiskThatTwoVolumesClaim(t *testing.T) {
 	}
 }
 
-func TestUnchangedRefusesAFileSavedOverTheHashedOne(t *testing.T) {
+func TestApplyStopsMovingWhenTheKeptCopyChanges(t *testing.T) {
+	content := []byte("the 2017 server code")
 	root := t.TempDir()
-	write(t, root, "server.zip", []byte("the 2017 server code"))
-	_, hashed, err := disk.HashOrdinaryInfo(t.Context(), root, "server.zip")
+	write(t, root, "Files/server.zip", content)
+	write(t, root, "Backup/a.zip", content)
+	write(t, root, "Backup/b.zip", content)
+	g := group(content, store.Hit{ID: 1, VolumeID: "data", Path: "/Files/server.zip"},
+		store.Hit{ID: 2, VolumeID: "data", Path: "/Backup/a.zip"})
+	g.Extra = append(g.Extra, store.Hit{ID: 3, VolumeID: "data", Path: "/Backup/b.zip", Size: int64(len(content))})
+	rec := &recorder{meanwhile: func() { write(t, root, "Files/server.zip", []byte("edited during the run")) }}
+
+	res, err := Apply(t.Context(), rec, []store.DedupeGroup{g}, map[string]disk.Volume{"data": mount(t, root)}, "run")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !unchanged(root, "server.zip", hashed) {
-		t.Fatal("the hashed file itself was refused")
+	if len(res.Moved) != 1 || len(res.Skipped) != 1 || res.Skipped[0].EntryID != 3 {
+		t.Fatalf("result = %+v; the copy after the kept copy changed must stay", res)
 	}
-	write(t, root, "server.zip.tmp", []byte("the 2017 server code"))
-	if err := os.Rename(filepath.Join(root, "server.zip.tmp"), filepath.Join(root, "server.zip")); err != nil {
+}
+
+func TestApplyReportsCancellationInTheLastGroup(t *testing.T) {
+	content := []byte("the 2017 server code")
+	root := t.TempDir()
+	write(t, root, "Files/server.zip", content)
+	write(t, root, "Backup/server.zip", content)
+	ctx, cancel := context.WithCancel(t.Context())
+	g := group(content, store.Hit{ID: 1, VolumeID: "data", Path: "/Files/server.zip"},
+		store.Hit{ID: 2, VolumeID: "data", Path: "/Backup/server.zip"})
+
+	if _, err := Apply(ctx, &recorder{meanwhile: cancel}, []store.DedupeGroup{g}, map[string]disk.Volume{"data": mount(t, root)}, "run"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want the cancellation", err)
+	}
+}
+
+func TestStillHashedAcceptsOnlyTheHashedBytes(t *testing.T) {
+	content := []byte("the 2017 server code")
+	root := t.TempDir()
+	write(t, root, "server.zip", content)
+	digest, hashed, err := disk.HashOrdinaryInfo(t.Context(), root, "server.zip")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if unchanged(root, "server.zip", hashed) {
-		t.Fatal("a file saved over the hashed one passed for it")
+	write(t, root, "copy.zip", content)
+	write(t, root, "edited.zip", []byte("the 2017 server cod3"))
+	for _, name := range []string{"copy.zip", "edited.zip"} {
+		if err := os.Chtimes(filepath.Join(root, name), hashed.ModTime(), hashed.ModTime()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		rel  string
+		want bool
+	}{
+		{"server.zip", true},
+		// On FAT and exFAT a moved file has a new ID but the same bytes and times.
+		{"copy.zip", true},
+		{"edited.zip", false},
+	} {
+		if got := stillHashed(t.Context(), root, tc.rel, hashed, digest); got != tc.want {
+			t.Errorf("stillHashed(%s) = %v, want %v", tc.rel, got, tc.want)
+		}
 	}
 }

@@ -18,13 +18,27 @@ import (
 // OnlineRoots maps each known volume that is attached right now to where it
 // is mounted. A clone of a known disk does not light up the original.
 func OnlineRoots(vols []store.Volume) map[string]string {
-	roots := map[string]string{}
+	return Roots(OnlineMounts(vols))
+}
+
+// OnlineMounts is OnlineRoots with each mount's fingerprint, so a caller can
+// tell later whether the same disk is still there.
+func OnlineMounts(vols []store.Volume) map[string]disk.Volume {
+	mounts := map[string]disk.Volume{}
 	for _, m := range disk.Mounted() {
 		for _, v := range vols {
 			if v.Holds(m.Fingerprint) {
-				roots[v.ID] = m.Root
+				mounts[v.ID] = m
 			}
 		}
+	}
+	return mounts
+}
+
+func Roots(mounts map[string]disk.Volume) map[string]string {
+	roots := make(map[string]string, len(mounts))
+	for id, m := range mounts {
+		roots[id] = m.Root
 	}
 	return roots
 }
