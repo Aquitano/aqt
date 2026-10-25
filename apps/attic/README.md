@@ -1,6 +1,6 @@
 # attic
 
-Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It does not change source files. Scanning runs on Windows; search runs wherever the database is reachable.
+Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It changes source files only when `attic dedupe apply` moves duplicate copies into a quarantine folder. Scanning runs on Windows; search runs wherever the database is reachable.
 
 ## Setup
 
@@ -9,7 +9,7 @@ docker compose up -d --wait
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 ```
 
-`DATABASE_URL` defaults to `postgres://attic:attic@127.0.0.1:5436/attic?sslmode=disable`. Use `127.0.0.1` rather than `localhost` in your own URL too: the database listens on IPv4 only, and on Windows a `localhost` connection first spends about a second on IPv6. `attic scan`, `attic enrich` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
+`DATABASE_URL` defaults to `postgres://attic:attic@127.0.0.1:5436/attic?sslmode=disable`. Use `127.0.0.1` rather than `localhost` in your own URL too: the database listens on IPv4 only, and on Windows a `localhost` connection first spends about a second on IPv6. `attic scan`, `attic enrich`, `attic dedupe apply` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
 
 The identity upgrade rewrites catalogue entries once and builds indexes. Migration waits for it to finish, and PostgreSQL needs additional database storage during the upgrade.
 
@@ -65,6 +65,19 @@ On volumes with stable file IDs, matching hard links can reuse a hash within the
 A changed or unavailable device serial requires an identity decision when the volume resembles a known one. Rerun with `--volume <id>` to confirm the known disk, or `--new-volume` to record a separate disk. This can also happen after moving a disk to another enclosure.
 
 Ctrl+C keeps committed work. Run the same command again to continue. The summary includes phase times and the log path under `%LOCALAPPDATA%\attic\logs`. Use `--log-level debug` to log individual reads.
+
+## Set aside duplicate copies
+
+Name the folders whose copies stay, then review what would move:
+
+```powershell
+attic dedupe plan --keep E:\Files --keep F:\Photos
+attic dedupe apply --keep E:\Files --keep F:\Photos
+```
+
+`plan` lists hashed contents that have a copy inside the kept folders and copies outside them, most bytes outside first. It skips contents under `--min-size` (default `1M`) and stops after `--limit` contents (default 100). `apply` hashes the kept copy and each extra copy again, and moves an extra copy only when both still match the catalogue. It moves the copy into `.attic-quarantine\<run>\<original path>` on the same disk and never deletes anything, so a move is a rename and a copy can go back to its original path by hand. Scans skip the quarantine folder. `attic show <id>` reports a moved copy and the kept entry, and the next scan of its folder marks it missing. A copy put back by hand takes part again once a scan of its folder finds it.
+
+Only hashed files take part, so scan with hashing first. Emptying the quarantine is up to you; delete a quarantined copy only once its kept copy is backed up somewhere else.
 
 ## Verify stored file hashes during maintenance
 

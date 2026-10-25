@@ -137,6 +137,25 @@ func Open(path string) (*os.File, error) {
 	return os.NewFile(uintptr(h), path), nil
 }
 
+// Move renames a file within one volume and fails when to exists. os.Rename
+// would replace it.
+func Move(from, to string) error {
+	f, err := windows.UTF16PtrFromString(longPath(from))
+	if err != nil {
+		return err
+	}
+	t, err := windows.UTF16PtrFromString(longPath(to))
+	if err != nil {
+		return err
+	}
+	// No REPLACE_EXISTING or COPY_ALLOWED: an occupied path fails, and a move
+	// to another volume fails instead of copying.
+	if err := windows.MoveFileEx(f, t, 0); err != nil {
+		return &os.LinkError{Op: "move", Old: from, New: to, Err: err}
+	}
+	return nil
+}
+
 // List reads a directory with GetFileInformationByHandleEx, which returns
 // names, sizes, times, attributes and file ids for many entries per call
 // without opening any of them. File systems that cannot report ids get the

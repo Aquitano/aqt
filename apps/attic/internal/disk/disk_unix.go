@@ -21,6 +21,14 @@ func Mounted() []Volume { return nil }
 
 func Open(path string) (*os.File, error) { return os.Open(path) }
 
+// Move renames a file within one file system and fails when to exists.
+func Move(from, to string) error {
+	if err := os.Link(from, to); err != nil {
+		return err
+	}
+	return os.Remove(from)
+}
+
 func List(dir string) ([]Entry, error) {
 	des, err := os.ReadDir(dir)
 	if err != nil {

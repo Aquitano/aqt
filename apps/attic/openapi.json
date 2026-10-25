@@ -404,6 +404,28 @@
         ],
         "type": "object"
       },
+      "DedupeMove": {
+        "additionalProperties": false,
+        "properties": {
+          "kept_entry_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "moved_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "moved_to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kept_entry_id",
+          "moved_to",
+          "moved_at"
+        ],
+        "type": "object"
+      },
       "DupeGroup": {
         "additionalProperties": false,
         "properties": {
@@ -555,6 +577,10 @@
           "score": {
             "format": "double",
             "type": "number"
+          },
+          "set_aside": {
+            "$ref": "#/components/schemas/DedupeMove",
+            "description": "Set when dedupe moved this copy into its disk's quarantine folder."
           },
           "size": {
             "format": "int64",

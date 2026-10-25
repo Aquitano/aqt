@@ -1,6 +1,7 @@
 // Package disk is everything attic asks of the operating system: which volume
 // a path lives on, a folder's entries in bulk, and a file's BLAKE3 digest. It
-// never writes to the disks it reads.
+// writes to the disks it reads only through Move, which dedupe uses to set
+// copies aside.
 package disk
 
 import (
