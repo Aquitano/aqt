@@ -4,6 +4,7 @@
   "workspaces": {
     "packages": [
       "apps/*",
+      "apps/attic/executor",
       "apps/gallery/apps/*",
       "apps/gallery/packages/*",
       "apps/turnstash/apps/*",

@@ -1,5 +1,11 @@
 ["attic:check"]
-depends = ["shared:go", "attic:go", "attic:go:unix", "attic:go:windows"]
+depends = ["shared:ts", "shared:go", "attic:ts", "attic:go", "attic:go:unix", "attic:go:windows"]
+
+["attic:ts"]
+run = [
+  "bunx --no-install vp check apps/attic/executor",
+  "bun run --cwd apps/attic/executor typecheck",
+]
 
 ["attic:go"]
 dir = "apps/attic"

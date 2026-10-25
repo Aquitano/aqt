@@ -1,6 +1,6 @@
 import { defineApp, router, withApprovals } from "apps";
-import { always } from "apps/operations/approval";
 import { liveOpenapiRouter } from "apps/openapi";
+import { always } from "apps/operations/approval";
 
 import { attic, origin } from "./provider.js";
 

@@ -18,6 +18,8 @@ export const attic = defineProvider({
       headers: { Authorization: `Bearer ${account.fields.token}` },
     });
     const stats = await decodeJson(response, object({ volumes: number(), files: number() }));
-    return { accountInfo: { displayName: `attic: ${stats.files} files on ${stats.volumes} volumes` } };
+    return {
+      accountInfo: { displayName: `attic: ${stats.files} files on ${stats.volumes} volumes` },
+    };
   },
 });

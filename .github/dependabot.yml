@@ -10,6 +10,8 @@ updates:
       # vite-plus and its vite alias move together by hand; see the README's dependency updates.
       - dependency-name: "vite-plus"
       - dependency-name: "vite"
+      # attic's Executor app pins the framework version its Executor host runs; bump it by hand with the host.
+      - dependency-name: "apps"
     groups:
       tooling:
         patterns:

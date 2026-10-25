@@ -146,7 +146,7 @@ executor apps create --name attic --files apps/attic/executor
 executor apps deploy --app <app-id> --files apps/attic/executor
 ```
 
-Then connect the app's attic account in the Executor dashboard and paste the token there. Type-check changes with `npm install --no-package-lock` and the `tsc` command in Executor's app-authoring guide; the `apps` version in `package.json` must match `executor apps framework`.
+Then connect the app's attic account in the Executor dashboard and paste the token there. `mise run attic:ts` type-checks and lints it; the `apps` version in `package.json` must match `executor apps framework`.
 
 ## Configuration
 
