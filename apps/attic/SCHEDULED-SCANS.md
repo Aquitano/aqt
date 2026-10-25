@@ -23,8 +23,8 @@ List external disks by label rather than scanning every attached volume: once a 
 Register the script as a nightly task:
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute pwsh `
-    -Argument "-NoProfile -WindowStyle Hidden -File `"$env:LOCALAPPDATA\attic\scan-nightly.ps1`""
+$action = New-ScheduledTaskAction -Execute powershell.exe `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$env:LOCALAPPDATA\attic\scan-nightly.ps1`""
 $trigger = New-ScheduledTaskTrigger -Daily -At 2am
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit 0 `
     -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -32,7 +32,7 @@ Register-ScheduledTask -TaskName 'attic nightly scan' -TaskPath '\aqt\' -Action 
     -Trigger $trigger -Settings $settings
 ```
 
-The task runs while you are signed in, and `-StartWhenAvailable` catches up after a night the PC was off. The catalogue database must be running. Each scan writes a log to `%LOCALAPPDATA%\attic\logs`, and `attic scans` lists the runs. `Start-ScheduledTask -TaskPath '\aqt\' -TaskName 'attic nightly scan'` runs it once now.
+The task uses Windows PowerShell, which every Windows install has, and `-ExecutionPolicy Bypass` lets it run the script under the default `Restricted` policy. It runs while you are signed in, and `-StartWhenAvailable` catches up after a night the PC was off. The catalogue database must be running. Each scan writes a log to `%LOCALAPPDATA%\attic\logs`, and `attic scans` lists the runs. `Start-ScheduledTask -TaskPath '\aqt\' -TaskName 'attic nightly scan'` runs it once now.
 
 ## macOS
 
