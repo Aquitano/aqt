@@ -73,6 +73,7 @@ const rules = {
   "one-var": ["warn", "never"],
   "typescript/no-inferrable-types": "warn",
   "no-else-return": "warn",
+  "no-underscore-dangle": ["warn", { allow: ["_tag"] }],
   "unicorn/prefer-number-properties": "warn",
   "vite-plus/prefer-vite-plus-imports": "error",
 } satisfies DummyRuleMap;
@@ -143,6 +144,7 @@ export default defineConfig({
           "typescript/only-throw-error": ["error", { allow: [{ from: "lib", name: "Response" }] }],
           "typescript/no-unnecessary-condition": "warn",
           "anti-slop/no-low-value-comments": "warn",
+          "no-underscore-dangle": ["warn", { allow: ["_tag"] }],
           "typescript/no-floating-promises": "error",
         },
       },
