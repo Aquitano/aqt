@@ -54,26 +54,23 @@ The server stores each raw record without copies of what other records hold: Cod
 
 ## Agent
 
-Install [Bun](https://bun.sh/docs/installation) 1.4.2 or newer and [GitHub CLI](https://cli.github.com/) on each machine that collects transcripts. Run the agent as the same OS user who runs your coding tools. Authenticate with an account that can access the private repository:
+Install [Bun](https://bun.sh/docs/installation) 1.4.2 or newer and [GitHub CLI](https://cli.github.com/) on each machine that collects transcripts. Run the agent as the same OS user who runs your coding tools. Authenticate with an account that can access the private repository, then download the newest agent release, check it and install it:
 
 ```sh
 gh auth login
-gh repo clone Aquitano/aqt
-cd aqt/apps/turnstash
-```
-
-From that directory, build and install the standalone agent:
-
-```sh
-bun install --frozen-lockfile
-bun run --cwd apps/agent build
+tag=$(gh release list --repo Aquitano/aqt --json tagName --jq '[.[].tagName | select(startswith("turnstash/v"))][0]')
+cd "$(mktemp -d)"
+gh release download "$tag" --repo Aquitano/aqt --pattern turnstash.js --pattern turnstash.tgz --pattern SHA256SUMS
+shasum -a 256 -c SHA256SUMS
 mkdir -p "$HOME/.local/bin"
-install -m 755 apps/agent/dist/turnstash.js "$HOME/.local/bin/turnstash"
+install -m 755 turnstash.js "$HOME/.local/bin/turnstash"
 export PATH="$HOME/.local/bin:$PATH"
 turnstash --help
 ```
 
-Keep `~/.local/bin` and Bun on your shell's `PATH`. The bundled agent does not need the repository after installation. On Windows, run the built bundle with `bun apps/agent/dist/turnstash.js` in place of `turnstash` in the commands below, and keep the bundle at that path.
+Keep `~/.local/bin` and Bun on your shell's `PATH`. To upgrade, run the same commands again; the schedule keeps using the installed path. On Windows, keep the downloaded `turnstash.js` in a fixed place and run it with `bun <path>/turnstash.js` in place of `turnstash` in the commands below.
+
+To run an unreleased change, build the agent from a checkout instead: `gh repo clone Aquitano/aqt`, then in `aqt/apps/turnstash` run `bun install --frozen-lockfile` and `bun run --cwd apps/agent build`, and install `apps/agent/dist/turnstash.js` the same way.
 
 With authentik enabled, sign in to the dashboard and open **Settings > Machines > Enrol machine**. Choose the machine name, operating system, and architecture. Run the generated `turnstash connect` command on that machine, then run `turnstash sync` and `turnstash status`. The UI shows the machine token once. Each machine has its own token and does not need an authentik browser session to sync.
 
