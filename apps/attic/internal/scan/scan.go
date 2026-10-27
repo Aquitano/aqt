@@ -594,6 +594,30 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	}
 	r.current = a.Path
 	r.progress(false)
+	source := r.osPath(a.Path)
+	f, err := disk.Open(source)
+	if err != nil {
+		l.Abort(ctx)
+		return r.copyFailure(ctx, a.Path, err)
+	}
+	info, err := f.Stat()
+	var possible bool
+	if err == nil {
+		possible, err = archive.MayBeArchive(ctx, f, info.Size())
+	}
+	err = errors.Join(err, f.Close())
+	if err != nil {
+		l.Abort(ctx)
+		return r.copyFailure(ctx, a.Path, err)
+	}
+	if !possible {
+		l.Abort(ctx)
+		if err := r.volumeGone(); err != nil {
+			return err
+		}
+		r.sc.Skip(a.Path, archive.NotArchive, "", "")
+		return nil
+	}
 	w, err := scratch.New(r.o.Config.Temp, r.log)
 	if err != nil {
 		l.Abort(ctx)
@@ -602,7 +626,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	defer func() { err = errors.Join(err, w.Close()) }()
 	started, members := time.Now(), r.sc.Counts.Members
 	var skips []archive.Skip
-	opener := archiveCopies{r: r, w: w, ctx: ctx, source: r.osPath(a.Path), digest: a.Digest, size: a.Size}
+	opener := archiveCopies{r: r, w: w, ctx: ctx, source: source, digest: a.Digest, size: a.Size}
 	res, err := archive.List(ctx, opener.source, opener.open, r.archives,
 		func(m archive.Member) error {
 			r.progress(false)
