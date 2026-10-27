@@ -10,7 +10,6 @@ Every active app under `apps/` is a self-contained project with its own native b
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `apps/`                | Products, one directory each, each with its own build system                                                       |
 | `packages/<language>/` | Shared code, created only when two apps need it. Go extraction and Postgres migrations, shared TypeScript packages |
-| `ops/`                 | Deploy and secrets scripts for VPS services                                                                        |
 | `tools/`               | Development tooling, including the lint plugin                                                                     |
 
 ## Setup
