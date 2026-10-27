@@ -52,6 +52,19 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+func TestPDFFallback(t *testing.T) {
+	tool := fakeBin(t, "pdftotext", `printf 'recovered text'`)
+	path := write(t, "broken.pdf", []byte("not a PDF"))
+	res := File(t.Context(), path, "broken.pdf", "", Options{PDFToText: tool, MaxChars: 9})
+	if res.Status != StatusOK || res.Text != "recovered" || !res.Truncated {
+		t.Fatalf("fallback: %+v", res)
+	}
+	res = File(t.Context(), path, "broken.pdf", "", Options{PDFToText: filepath.Join(t.TempDir(), "missing")})
+	if res.Status != StatusFailed || res.Err == nil {
+		t.Fatalf("missing fallback: %+v", res)
+	}
+}
+
 func TestNormalize(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"  hello   world \n\n next ", "hello world next"},

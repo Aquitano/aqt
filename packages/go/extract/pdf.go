@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/aquitano/aqt/packages/go/extract/internal/pdf"
 )
@@ -20,6 +22,12 @@ import (
 // a countable question instead of a guess.
 func pdfResult(ctx context.Context, f io.ReaderAt, size int64, path string, o Options) Result {
 	text, cut, err := pdfText(ctx, f, size, o)
+	if err != nil && ctx.Err() == nil && o.PDFToText != "" {
+		fallback, truncated, fallbackErr := pdfToText(ctx, path, o)
+		if fallbackErr == nil {
+			text, cut, err = fallback, truncated, nil
+		}
+	}
 	if err == nil {
 		if t, truncated := normalize(text, o.MaxChars); t != "" {
 			return Result{Text: t, Extractor: "pdf", Status: StatusOK, Truncated: truncated || cut}
@@ -35,6 +43,17 @@ func pdfResult(ctx context.Context, f io.ReaderAt, size int64, path string, o Op
 		return Result{Status: StatusFailed, Extractor: "pdf", Err: err}
 	}
 	return run("ocr-pdf", o, func() (string, bool, error) { return ocrPDF(ctx, path, o) })
+}
+
+func pdfToText(ctx context.Context, path string, o Options) (string, bool, error) {
+	cmd := exec.CommandContext(ctx, o.PDFToText, path, "-")
+	stdout := ocrBuffer{left: 4 * max(o.MaxChars+1, 1)}
+	cmd.Stdout = &stdout
+	cmd.WaitDelay = 2 * time.Second
+	if err := cmd.Run(); err != nil {
+		return "", false, err
+	}
+	return stdout.String(), stdout.cut, nil
 }
 
 // pdfPageContentLimit caps one page's decompressed content stream. A content

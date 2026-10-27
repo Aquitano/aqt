@@ -84,6 +84,7 @@ type Options struct {
 	// and for a box that installed them somewhere unusual.
 	Tesseract string
 	PDFToPPM  string
+	PDFToText string
 	// Open opens the file for the in-process extractors; os.Open when nil.
 	// attic passes one that keeps the file's last-access time and watches its
 	// reads. OCR hands the path to tesseract and pdftoppm, which open it

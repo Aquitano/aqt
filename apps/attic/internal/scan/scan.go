@@ -151,7 +151,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
 		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
 		textsRead: map[int64]bool{}, log: log}
-	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20}
+	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20, PDFToText: o.Config.Text.PDFToText}
 	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
 		"root", cmp.Or(root, "/"), "no_hash", o.NoHash, "archive_depth", a.Depth, "unpack_max_bytes", a.UnpackMaxBytes,
 		"text_max_bytes", o.Config.Text.MaxBytes, "hash_max_bytes", o.Config.HashMaxBytes)
