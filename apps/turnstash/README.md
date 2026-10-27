@@ -18,7 +18,7 @@ Archive and cost dashboard for AI coding-agent sessions. A small agent on each m
 
 ## Server
 
-The server needs Postgres 17 with the `pg_search` extension for BM25 search. The `paradedb/paradedb` image ships it. Without the extension the server falls back to Postgres full-text search.
+The server needs Postgres 17 with the `pg_search` extension for BM25 search. The `paradedb/paradedb` image ships it, and migrations fail without it. Search matches message text and the string values of each message's tool call inputs, such as shell commands and file paths.
 
 Follow the [VPS deployment runbook](deploy/README.md) to pull a GitHub-built image, configure HTTPS and authentik, and back up or restore the database. A source-build option is also available.
 

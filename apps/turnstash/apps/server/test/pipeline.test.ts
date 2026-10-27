@@ -62,6 +62,7 @@ import { applyBatch, markDirty, tombstonesSince } from "../src/ingest.ts";
 import { normalizeConversation, queueStale } from "../src/normalize.ts";
 import { Normalizers } from "../src/registry.ts";
 import { reprocessArchive } from "../src/reprocess.ts";
+import { search } from "../src/search.ts";
 import { computeStats, projectDetail } from "../src/stats.ts";
 import {
   activateCatalog,
@@ -352,6 +353,26 @@ test("tool output is stored on its execution and not repeated in the result part
       );
       expect(withExecution.length).toBeGreaterThan(0);
       expect(withExecution.map((part) => part.output)).toEqual(withExecution.map(() => null));
+    }),
+  );
+});
+
+test("search finds a message by a path segment in the input of a tool call it made", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachines;
+      yield* applyBatch(
+        machineA,
+        batch("11111111-0000-4000-8000-0000000000bc", machineA, fixtureRecords()),
+      );
+      yield* workOnce();
+      const db = yield* Db;
+      const [read] = yield* db
+        .select({ messageKey: toolExecutions.messageKey })
+        .from(toolExecutions)
+        .where(eq(toolExecutions.name, "Read"));
+      const hits = (yield* search({ q: "index" })).hits;
+      expect(hits.map((hit) => hit.messageKey)).toContain(read?.messageKey ?? "missing");
     }),
   );
 });

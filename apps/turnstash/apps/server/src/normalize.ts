@@ -4,8 +4,10 @@ import {
   type ConversationAnalysis,
 } from "@aqt/turnstash-analysis";
 import {
+  isJsonObject,
   type MessagePart,
   type NormalizedConversation,
+  type NormalizedMessage,
   type ProviderId,
   RecordKey,
   type SourceRecordRow,
@@ -13,7 +15,7 @@ import {
 } from "@aqt/turnstash-core";
 import { resolveModel } from "@aqt/turnstash-pricing";
 import { and, asc, eq, lte, or, type SQL, sql } from "drizzle-orm";
-import { Array as Arr, Cause, Effect, Exit, Metric, Predicate } from "effect";
+import { Array as Arr, Cause, Effect, Exit, Metric, Predicate, type Schema } from "effect";
 
 import { lockConversations } from "./conversation-locks.ts";
 import { Db, inTransaction } from "./db/client.ts";
@@ -201,6 +203,29 @@ const withoutRepeatedOutput = (normalized: NormalizedConversation) => {
     );
 };
 
+const stringsOf = (value: Schema.Json): ReadonlyArray<string> => {
+  if (Predicate.isString(value)) return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsOf);
+  if (isJsonObject(value)) return Object.values(value).flatMap(stringsOf);
+  return [];
+};
+
+// Search matches messages.text, so a message also carries the string values of the tool calls it made, such as
+// a shell command or a file path.
+const searchTextOf = (normalized: NormalizedConversation) => {
+  const inputs = new Map<string, Array<string>>();
+  for (const tool of normalized.toolExecutions) {
+    if (tool.messageKey === undefined) continue;
+    const strings = inputs.get(tool.messageKey) ?? [];
+    strings.push(...stringsOf(tool.input));
+    inputs.set(tool.messageKey, strings);
+  }
+  return (message: NormalizedMessage): string =>
+    [message.text, ...(inputs.get(message.messageKey) ?? [])]
+      .filter((text) => text !== "")
+      .join("\n");
+};
+
 const replaceMessages = Effect.fn("Normalize.replaceMessages")(function* (
   conversationId: string,
   normalized: NormalizedConversation,
@@ -208,6 +233,7 @@ const replaceMessages = Effect.fn("Normalize.replaceMessages")(function* (
 ) {
   const db = yield* Db;
   const storedParts = withoutRepeatedOutput(normalized);
+  const searchText = searchTextOf(normalized);
   const keys = normalized.messages.map((message) => message.messageKey);
   yield* db
     .delete(bookmarks)
@@ -239,7 +265,7 @@ const replaceMessages = Effect.fn("Normalize.replaceMessages")(function* (
           parentMessageKey: message.parentMessageKey ?? null,
           createdAt: new Date(message.createdAt),
           parts: scrubJson(storedParts(message.parts)),
-          text: scrubText(message.text),
+          text: scrubText(searchText(message)),
         })),
       )
       .onConflictDoUpdate({

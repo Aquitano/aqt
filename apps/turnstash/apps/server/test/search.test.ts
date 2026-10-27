@@ -120,6 +120,7 @@ test("search combines project and role with provider and message date filters", 
         to: "2026-09-21",
       });
       expect(result.hits.map((hit) => hit.messageKey)).toEqual(["matched / &?#"]);
+      expect(result.hits[0]?.snippet).toBe("find the <b>compass</b>");
       expect((yield* search({ q: "compass", projectKey: "missing" })).hits).toEqual([]);
       expect(
         (yield* search({ q: "compass", projectKey: "unknown" })).hits.map((hit) => hit.messageKey),
