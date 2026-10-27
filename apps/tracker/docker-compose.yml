@@ -74,7 +74,7 @@ services:
       context: ../..
       dockerfile: apps/tracker/Dockerfile
       args:
-        # ops/deploy.sh sets it to the commit it pulled; serve logs it on start.
+        # ./homelab deploy sets it to the commit it pulled; serve logs it on start.
         GIT_SHA: ${GIT_SHA:-dev}
     image: aqt-tracker:local
     depends_on:
