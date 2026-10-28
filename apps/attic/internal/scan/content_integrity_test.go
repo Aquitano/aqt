@@ -65,6 +65,20 @@ func TestDerivedContentUsesHashedBytes(t *testing.T) {
 	}
 }
 
+func TestNonArchiveSkipDoesNotCacheUnverifiedBytes(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "fake.zip", "not an archive")
+	res := scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Archives.Depth = 1 })
+	skips, err := st.Skips(t.Context(), res.ScanID, "not_archive", "", 10)
+	if err != nil || len(skips) != 1 {
+		t.Fatalf("skips: %+v, %v", skips, err)
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from archives`); n != 0 {
+		t.Fatalf("cached %d unverified archive results", n)
+	}
+}
+
 func TestRebuildContentIsScopedAndPreservesOtherCaches(t *testing.T) {
 	st, dsn := storetest.New(t)
 	root := t.TempDir()

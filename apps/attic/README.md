@@ -11,9 +11,9 @@ go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic
 
 `DATABASE_URL` defaults to `postgres://attic:attic@127.0.0.1:5436/attic?sslmode=disable`. Use `127.0.0.1` rather than `localhost` in your own URL too: the database listens on IPv4 only, and on Windows a `localhost` connection first spends about a second on IPv6. `attic scan`, `attic enrich`, `attic dedupe apply` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
 
-The identity upgrade rewrites catalogue entries once and builds indexes. Migration waits for it to finish, and PostgreSQL needs additional database storage during the upgrade.
+The identity upgrade rewrites catalogue entries once and builds indexes. The search index upgrade also rebuilds BM25 indexes to remove mutable segments. Migration waits for these operations, and PostgreSQL needs additional database storage during the upgrades.
 
-Install ExifTool for embedded metadata. OCR also needs Tesseract and Poppler's `pdftoppm`. Missing ExifTool leaves metadata pending and records `metadata_unavailable`; the rest of the scan continues.
+Install ExifTool for embedded metadata. Poppler's `pdftotext` provides a fallback when the PDF text parser fails. OCR also needs Tesseract and Poppler's `pdftoppm`. Missing ExifTool leaves metadata pending and records `metadata_unavailable`; the rest of the scan continues.
 
 ## Use
 
@@ -187,6 +187,7 @@ unpack_max_bytes = 4294967296
 
 [text]
 max_bytes = 67108864
+pdftotext = "pdftotext"
 
 [metadata]
 enabled = true
@@ -213,7 +214,7 @@ label = "Data"
 exclude = ["/Games/"]
 ```
 
-`archives.depth = 0` disables archive listings. `unpack_max_bytes` limits each nested archive. `text.max_bytes` and `metadata.max_bytes` bound their source files. `ai.max_bytes` bounds a verified enrichment copy. `ai.token_parameter` also accepts `max_completion_tokens`. Install Tesseract language data for each language in `ocr_lang`, such as `deu+eng`.
+`archives.depth = 0` disables archive listings. `unpack_max_bytes` limits each nested archive. `text.max_bytes` and `metadata.max_bytes` bound their source files. `text.pdftotext` selects the Poppler binary; if unavailable, PDF parser failures remain failures. `ai.max_bytes` bounds a verified enrichment copy. `ai.token_parameter` also accepts `max_completion_tokens`. Install Tesseract language data for each language in `ocr_lang`, such as `deu+eng`.
 
 ## Develop
 

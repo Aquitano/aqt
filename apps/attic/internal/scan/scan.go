@@ -151,7 +151,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
 		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
 		textsRead: map[int64]bool{}, log: log}
-	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20}
+	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20, PDFToText: o.Config.Text.PDFToText}
 	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
 		"root", cmp.Or(root, "/"), "no_hash", o.NoHash, "archive_depth", a.Depth, "unpack_max_bytes", a.UnpackMaxBytes,
 		"text_max_bytes", o.Config.Text.MaxBytes, "hash_max_bytes", o.Config.HashMaxBytes)
@@ -594,6 +594,30 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	}
 	r.current = a.Path
 	r.progress(false)
+	source := r.osPath(a.Path)
+	f, err := disk.Open(source)
+	if err != nil {
+		l.Abort(ctx)
+		return r.copyFailure(ctx, a.Path, err)
+	}
+	info, err := f.Stat()
+	var possible bool
+	if err == nil {
+		possible, err = archive.MayBeArchive(ctx, f, info.Size())
+	}
+	err = errors.Join(err, f.Close())
+	if err != nil {
+		l.Abort(ctx)
+		return r.copyFailure(ctx, a.Path, err)
+	}
+	if !possible {
+		l.Abort(ctx)
+		if err := r.volumeGone(); err != nil {
+			return err
+		}
+		r.sc.Skip(a.Path, archive.NotArchive, "", "")
+		return nil
+	}
 	w, err := scratch.New(r.o.Config.Temp, r.log)
 	if err != nil {
 		l.Abort(ctx)
@@ -602,7 +626,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	defer func() { err = errors.Join(err, w.Close()) }()
 	started, members := time.Now(), r.sc.Counts.Members
 	var skips []archive.Skip
-	opener := archiveCopies{r: r, w: w, ctx: ctx, source: r.osPath(a.Path), digest: a.Digest, size: a.Size}
+	opener := archiveCopies{r: r, w: w, ctx: ctx, source: source, digest: a.Digest, size: a.Size}
 	res, err := archive.List(ctx, opener.source, opener.open, r.archives,
 		func(m archive.Member) error {
 			r.progress(false)

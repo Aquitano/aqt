@@ -532,6 +532,20 @@ var formats = []archives.Extraction{
 
 var compressions = []archives.Compression{archives.Gz{}, archives.Bz2{}, archives.Xz{}, archives.Zstd{}}
 
+func MayBeArchive(ctx context.Context, f io.ReaderAt, size int64) (bool, error) {
+	for _, ex := range formats {
+		if ok, err := matches(ctx, ex, f, size, nil); ok || err != nil {
+			return ok, err
+		}
+	}
+	for _, c := range compressions {
+		if ok, err := matches(ctx, c, f, size, nil); ok || err != nil {
+			return ok, err
+		}
+	}
+	return false, nil
+}
+
 // identify picks the format from the leading bytes, in a fixed order.
 // archives.Identify ranges over a map and also matches by name, so a .zip
 // holding 7z bytes could come back as either, and brotli, which has no magic

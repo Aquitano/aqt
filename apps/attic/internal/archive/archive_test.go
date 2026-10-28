@@ -140,6 +140,22 @@ func TestListTellsWhyAnArchiveCannotBeRead(t *testing.T) {
 	}
 }
 
+func TestMayBeArchive(t *testing.T) {
+	for _, tc := range []struct {
+		data []byte
+		want bool
+	}{
+		{[]byte("not an archive"), false},
+		{zipOf(t, map[string][]byte{"a": []byte("a")}), true},
+		{tarGzOf(t, "a", []byte("a")), true},
+	} {
+		got, err := MayBeArchive(t.Context(), bytes.NewReader(tc.data), int64(len(tc.data)))
+		if err != nil || got != tc.want {
+			t.Errorf("MayBeArchive = %v, %v; want %v", got, err, tc.want)
+		}
+	}
+}
+
 // Windows writes zip names in code page 850 without the UTF-8 flag, macOS and
 // Info-ZIP write UTF-8 without it; both must come out readable.
 func TestZipNamesWithoutTheUTF8Flag(t *testing.T) {

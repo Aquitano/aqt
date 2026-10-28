@@ -43,7 +43,8 @@ type Archives struct {
 // Text says which documents a scan reads for their words.
 type Text struct {
 	// MaxBytes leaves larger documents unread; 0 reads any size.
-	MaxBytes int64 `toml:"max_bytes"`
+	MaxBytes  int64  `toml:"max_bytes"`
+	PDFToText string `toml:"pdftotext"`
 }
 
 // Metadata controls batch extraction on temporary copies.
@@ -76,7 +77,7 @@ type AI struct {
 // archives are listed, nested ones up to 4 GiB, and documents up to 64 MiB
 // are read.
 func Default() Config {
-	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}, Text: Text{MaxBytes: 64 << 20}, Metadata: Metadata{Enabled: true, ExifTool: "exiftool", MaxBytes: 1 << 30}, AI: AI{Endpoint: "http://localhost:11434/v1", MaxBytes: 64 << 20, TimeoutSeconds: 300, MaxTokens: 4096, TokenParameter: "max_tokens", OCRLang: "eng", OCRMaxPages: 20, Tesseract: "tesseract", PDFToPPM: "pdftoppm", Codex: "codex"}}
+	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}, Text: Text{MaxBytes: 64 << 20, PDFToText: "pdftotext"}, Metadata: Metadata{Enabled: true, ExifTool: "exiftool", MaxBytes: 1 << 30}, AI: AI{Endpoint: "http://localhost:11434/v1", MaxBytes: 64 << 20, TimeoutSeconds: 300, MaxTokens: 4096, TokenParameter: "max_tokens", OCRLang: "eng", OCRMaxPages: 20, Tesseract: "tesseract", PDFToPPM: "pdftoppm", Codex: "codex"}}
 }
 
 // Volume holds patterns anchored at one volume's root, selected by attic's
