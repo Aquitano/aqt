@@ -20,7 +20,7 @@
       "dotenv": "^18.0.8",
       "zod": "^4.6.7",
       "typescript": "^7.0.2",
-      "@types/bun": "^1.4.3",
+      "@types/bun": "^1.4.4",
       "@types/node": "^26.6.5",
       "hono": "^4.13.13",
       "@trpc/server": "^11.19.0",
