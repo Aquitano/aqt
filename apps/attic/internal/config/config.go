@@ -1,5 +1,4 @@
-// Package config reads attic's one configuration file and turns its patterns
-// into the rules a scan applies to a volume.
+// Package config reads attic's settings and folder policies.
 package config
 
 import (
@@ -213,11 +212,13 @@ func (c *Config) resolveTemp(paths ...*string) error {
 	return nil
 }
 
-// Rules are the patterns that apply to one volume, compiled once per scan.
+// Rules are the compiled patterns and limits for a volume or folder.
 type Rules struct {
 	exclude      []rule
 	nameOnly     []rule
 	HashMaxBytes int64
+	ArchiveDepth int
+	unavailable  bool
 }
 
 type rule struct {
@@ -230,7 +231,7 @@ type rule struct {
 // Patterns and paths are compared lower-cased: Windows file systems ignore
 // case, and "$RECYCLE.BIN" and "$Recycle.Bin" are the same folder.
 func (c Config) Rules(volumeID, label string) Rules {
-	r := Rules{HashMaxBytes: c.HashMaxBytes}
+	r := Rules{HashMaxBytes: c.HashMaxBytes, ArchiveDepth: c.Archives.Depth}
 	r.exclude = compile(r.exclude, DefaultExclude, "default")
 	r.exclude = compile(r.exclude, c.Exclude, "config")
 	r.nameOnly = compile(r.nameOnly, DefaultNameOnly, "default")
@@ -252,13 +253,13 @@ func (v Volume) selector() string {
 	return v.Label
 }
 
-func compile(into []rule, patterns []string, origin string) []rule {
+func compile(into []rule, patterns []string, origin string, domain ...string) []rule {
 	for _, p := range patterns {
 		p = strings.TrimSpace(p)
 		if p == "" || strings.HasPrefix(p, "#") {
 			continue
 		}
-		into = append(into, rule{source: origin + ": " + p, pattern: gitignore.ParsePattern(strings.ToLower(p), nil)})
+		into = append(into, rule{source: origin + ": " + p, pattern: gitignore.ParsePattern(strings.ToLower(p), domain)})
 	}
 	return into
 }
@@ -266,6 +267,9 @@ func compile(into []rule, patterns []string, origin string) []rule {
 // Excluded reports whether the entry at path (lower-cased components from the
 // volume root) is left out, and which pattern decided it.
 func (r Rules) Excluded(path []string, dir bool) (bool, string) {
+	if r.unavailable {
+		return true, "folder policy unavailable"
+	}
 	return decide(r.exclude, path, dir)
 }
 

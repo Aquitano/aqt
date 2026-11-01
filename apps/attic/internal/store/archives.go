@@ -10,7 +10,7 @@ import (
 )
 
 // PendingArchive is a hashed archive below the scan root whose content has
-// no listing yet.
+// no listing at the requested depth yet.
 type PendingArchive struct {
 	ID        int64
 	Path      string
@@ -20,35 +20,34 @@ type PendingArchive struct {
 }
 
 // pendingArchiveWhere matches the names archive.IsArchive accepts, below an
-// upper path bound; the callers add the lower one as $5.
+// upper path bound at the requested depth; the callers add the lower one as $6.
 const pendingArchiveWhere = `
 	from entries e join contents c on c.id = e.content_id
 	where e.volume_id = $1 and e.kind = 'file' and e.hash_state = 'done' and e.missing_scan is null
 	  and (e.ext = any($2) or (e.ext = any($3) and lower(e.name) like ('%.tar.' || e.ext)))
-	  and not exists (select 1 from archives a where a.content_id = e.content_id)
+	  and not exists (select 1 from archives a where a.content_id = e.content_id and (a.depth is null or a.depth >= $5))
 	  and ($4 = '' or e.path collate "C" < $4)`
 
 // ArchiveTotals is the listing work left below the scan root, one per content.
-func (sc *Scan) ArchiveTotals(ctx context.Context) (int64, error) {
+func (sc *Scan) ArchiveTotals(ctx context.Context, depth int) (int64, error) {
 	lower, upper := sc.subtree()
 	var n int64
-	err := sc.store.pool.QueryRow(ctx, `select count(distinct e.content_id)`+pendingArchiveWhere+` and e.path collate "C" > $5`,
-		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lower).Scan(&n)
+	err := sc.store.pool.QueryRow(ctx, `select count(distinct e.content_id)`+pendingArchiveWhere+` and e.path collate "C" > $6`,
+		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, depth, lower).Scan(&n)
 	return n, err
 }
 
 // NextArchives returns up to limit archives after the given one, in path
-// order. Copies of one content can both come back; the first to be listed
-// settles the other.
-func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit int) ([]PendingArchive, error) {
+// order. A completed listing settles copies requesting no greater depth.
+func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit int, depth int) ([]PendingArchive, error) {
 	lower, upper := sc.subtree()
 	if after.ID != 0 {
 		lower = after.Path
 	}
 	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, c.size_bytes, e.content_id, c.blake3`+pendingArchiveWhere+`
-		  and (e.path collate "C", e.id) > ($5, $6)
-		order by e.path collate "C", e.id limit $7`,
-		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lower, after.ID, limit)
+		  and (e.path collate "C", e.id) > ($6, $7)
+		order by e.path collate "C", e.id limit $8`,
+		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, depth, lower, after.ID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -62,22 +61,23 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 }
 
 // Listing writes one archive's members in a transaction of its own, so a
-// listing is either whole or absent: an interrupted one is redone by the next
-// scan. Members are copied in batches as they are read.
+// listing replaces the previous cache only when committed. Members are copied
+// in batches as they are read.
 type Listing struct {
 	sc        *Scan
 	tx        pgx.Tx
 	contentID int64
 	rows      [][]any
 	members   int64
+	replacing bool
 }
 
 const listingBatch = 5000
 
-// StartListing claims a content for listing. It returns nil when another scan
-// listed it first; one listing the same content right now holds the claim
-// until it commits.
-func (sc *Scan) StartListing(ctx context.Context, contentID int64) (*Listing, error) {
+// StartListing claims a content for listing at depth. It returns nil when the
+// cache is already deep enough or has an unknown legacy depth. Another listing
+// holds the claim until it commits.
+func (sc *Scan) StartListing(ctx context.Context, contentID int64, depth int) (*Listing, error) {
 	tx, err := sc.store.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -86,12 +86,26 @@ func (sc *Scan) StartListing(ctx context.Context, contentID int64) (*Listing, er
 		_ = tx.Rollback(context.WithoutCancel(ctx))
 		return nil, err
 	}
-	tag, err := tx.Exec(ctx, `insert into archives (content_id, status) values ($1, 'listing') on conflict do nothing`, contentID)
-	if err != nil || tag.RowsAffected() == 0 {
+	tag, err := tx.Exec(ctx, `insert into archives (content_id, status, depth) values ($1, 'listing', $2)
+		on conflict (content_id) do nothing`, contentID, depth)
+	if err != nil {
 		_ = tx.Rollback(context.WithoutCancel(ctx))
 		return nil, err
 	}
-	return &Listing{sc: sc, tx: tx, contentID: contentID}, nil
+	replacing := tag.RowsAffected() == 0
+	if replacing {
+		tag, err = tx.Exec(ctx, `update archives set status = 'listing', depth = $2
+			where content_id = $1 and depth < $2`, contentID, depth)
+		if err != nil || tag.RowsAffected() == 0 {
+			_ = tx.Rollback(context.WithoutCancel(ctx))
+			return nil, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `delete from members where archive_id = $1`, contentID); err != nil {
+		_ = tx.Rollback(context.WithoutCancel(ctx))
+		return nil, err
+	}
+	return &Listing{sc: sc, tx: tx, contentID: contentID, replacing: replacing}, nil
 }
 
 func (l *Listing) Add(ctx context.Context, m archive.Member) error {
@@ -131,11 +145,15 @@ func (l *Listing) flush(ctx context.Context) error {
 
 // Finish records how reading the archive went and commits its members.
 func (l *Listing) Finish(ctx context.Context, res archive.Result) error {
+	if l.replacing && res.Status != archive.Listed {
+		l.Abort(ctx)
+		return ctx.Err()
+	}
 	if err := l.flush(ctx); err != nil {
 		l.Abort(ctx)
 		return err
 	}
-	if _, err := l.tx.Exec(ctx, `update archives set format = $2, status = $3, detail = $4, members = $5
+	if _, err := l.tx.Exec(ctx, `update archives set format = $2, status = $3, detail = $4, members = $5, listed_at = clock_timestamp()
 		where content_id = $1`, l.contentID, res.Format, res.Status, cleanText(res.Detail), l.members); err != nil {
 		l.Abort(ctx)
 		return err
@@ -144,13 +162,17 @@ func (l *Listing) Finish(ctx context.Context, res archive.Result) error {
 		l.Abort(ctx)
 		return err
 	}
+	l.tx = nil
 	l.sc.Counts.Archives++
 	return nil
 }
 
-// Abort drops a listing that did not finish, leaving the archive to the next
-// scan.
+// Abort drops an unfinished listing, preserving any previously committed cache.
 func (l *Listing) Abort(ctx context.Context) {
+	if l.tx == nil {
+		return
+	}
 	_ = l.tx.Rollback(context.WithoutCancel(ctx))
+	l.tx = nil
 	l.sc.Counts.Members -= l.members
 }

@@ -42,6 +42,9 @@ func TestCLIParsesArguments(t *testing.T) {
 		{[]string{"config", "-volume", "Data"}, func(c cli) bool {
 			return c.Config.Volume == "Data"
 		}},
+		{[]string{"config", "--under", `E:\Backups`}, func(c cli) bool {
+			return c.Config.Under == `E:\Backups`
+		}},
 		{[]string{"search", "minecraft", "-ext=rar", "server", "-json"}, func(c cli) bool {
 			return reflect.DeepEqual(c.Search.Words, []string{"minecraft", "server"}) && c.Search.Ext == "rar" && c.Search.JSON
 		}},

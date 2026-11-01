@@ -49,6 +49,7 @@ type Options struct {
 	Log *slog.Logger
 
 	locate func(string) (disk.Volume, []string, error)
+	list   func(string) ([]disk.Entry, error)
 }
 
 type Progress struct {
@@ -151,6 +152,10 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
 		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
 		textsRead: map[int64]bool{}, log: log}
+	r.folders = config.NewFolders(mounted.Root, r.rules)
+	if r.o.list == nil {
+		r.o.list = disk.List
+	}
 	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20, PDFToText: o.Config.Text.PDFToText}
 	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
 		"root", cmp.Or(root, "/"), "no_hash", o.NoHash, "archive_depth", a.Depth, "unpack_max_bytes", a.UnpackMaxBytes,
@@ -180,6 +185,8 @@ type run struct {
 	o            Options
 	sc           *store.Scan
 	rules        config.Rules
+	folders      *config.Folders
+	archiveDepth int
 	mountRoot    string
 	dirs         int64
 	hashFiles    int64
@@ -263,7 +270,7 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 			return "failed", err
 		}
 	}
-	if r.archives.Depth > 0 {
+	if r.archiveDepth > 0 {
 		if err := r.step(ctx, "archives", "listing", &r.sc.Phases.Archives, r.listArchives); err != nil {
 			return "failed", err
 		}
@@ -326,8 +333,8 @@ type folderJob struct {
 }
 
 // ancestors records the volume root and every folder down to the scan root,
-// without listing them: a scan of E:\Files\Archive must not mark the rest of
-// E:\Files missing.
+// without reconciling their other entries: scanning E:\Files\Archive must not
+// mark the rest of E:\Files missing.
 func (r *run) ancestors(ctx context.Context, rel []string) (folderJob, error) {
 	var parent *store.Dir
 	p := r.mountRoot
@@ -352,6 +359,11 @@ func (r *run) ancestors(ctx context.Context, rel []string) (folderJob, error) {
 			return folderJob{}, err
 		}
 		parent = &dirs[0]
+		if i < len(rel) {
+			if _, err := r.folders.Load(parent.Path, nil); err != nil {
+				return folderJob{}, err
+			}
+		}
 	}
 	return folderJob{dir: *parent, os: p, lossy: lossy}, nil
 }
@@ -418,15 +430,25 @@ func (r *run) walk(ctx context.Context, start folderJob) error {
 // reason and leaves its catalogued children untouched.
 func (r *run) folder(ctx context.Context, job folderJob) ([]folderJob, error) {
 	dir := job.dir
-	entries, err := disk.List(job.os)
+	entries, err := r.o.list(job.os)
 	if err != nil {
 		if gone := r.volumeGone(); gone != nil {
 			return nil, gone
 		}
 		r.log.Warn("folder unreadable", "path", dir.Path, "err", err)
 		r.sc.Skip(dir.Path, "unreadable", "", err.Error())
+		// Listing a directory and reading its files can have different permissions.
+		r.folders.Block(dir.Path)
 		return nil, nil
 	}
+	rules := r.rulesFor(dir.Path)
+	if len(entries) > 0 {
+		rules, err = r.folders.Load(dir.Path, entries)
+		if err != nil {
+			return nil, err
+		}
+	}
+	r.archiveDepth = max(r.archiveDepth, rules.ArchiveDepth)
 	lowerDir := lowerComponents(dir.Path)
 	keep := map[string]bool{}
 	items := make([]store.Listed, 0, len(entries))
@@ -438,7 +460,7 @@ func (r *run) folder(ctx context.Context, job folderJob) ([]folderJob, error) {
 			repo = true
 		}
 		lower := slices.Concat(lowerDir, []string{strings.ToLower(e.Name)})
-		if excluded, rule := r.rules.Excluded(lower, e.Dir && !e.Link); excluded {
+		if excluded, rule := rules.Excluded(lower, e.Dir && !e.Link); excluded {
 			r.sc.Skip(childPath, "excluded", rule, "")
 			keep[e.Name] = true
 			continue
@@ -455,10 +477,10 @@ func (r *run) folder(ctx context.Context, job folderJob) ([]folderJob, error) {
 		case e.Remote:
 			l.HashState = "skipped"
 			r.sc.Skip(childPath, "remote", "", "bytes live elsewhere; reading would download them")
-		case r.rules.NameOnly(lower):
+		case rules.NameOnly(lower):
 			l.HashState = "skipped"
 			r.sc.Skip(childPath, "name_only", "", "")
-		case r.rules.HashMaxBytes > 0 && e.Size > r.rules.HashMaxBytes:
+		case rules.HashMaxBytes > 0 && e.Size > rules.HashMaxBytes:
 			l.HashState = "skipped"
 			r.sc.Skip(childPath, "too_big", "", fmt.Sprintf("%d bytes", e.Size))
 		}
@@ -523,13 +545,14 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 	// A file listed by an earlier scan was queued under the rules of that day.
 	// Exclusions and caps added since must still keep its bytes unread.
 	path := lowerComponents(p.Path)
-	if excluded, rule := r.rules.Excluded(path, false); excluded {
+	rules := r.rulesFor(p.Path)
+	if excluded, rule := rules.Excluded(path, false); excluded {
 		return r.sc.SkipHash(ctx, p, "excluded", rule, "")
 	}
-	if r.rules.NameOnly(path) {
+	if rules.NameOnly(path) {
 		return r.sc.SkipHash(ctx, p, "name_only", "", "")
 	}
-	if r.rules.HashMaxBytes > 0 && p.Size > r.rules.HashMaxBytes {
+	if rules.HashMaxBytes > 0 && p.Size > rules.HashMaxBytes {
 		return r.sc.SkipHash(ctx, p, "too_big", "", fmt.Sprintf("%d bytes", p.Size))
 	}
 	if p.Linked {
@@ -566,13 +589,13 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 // listing yet, in path order like hashing.
 func (r *run) listArchives(ctx context.Context) error {
 	var err error
-	if r.total, err = r.sc.ArchiveTotals(ctx); err != nil {
+	if r.total, err = r.sc.ArchiveTotals(ctx, r.archiveDepth); err != nil {
 		return err
 	}
 	r.done, r.seen = 0, map[int64]bool{}
 	r.progress(true)
 	return eachPage(ctx, func(ctx context.Context, after store.PendingArchive) ([]store.PendingArchive, error) {
-		return r.sc.NextArchives(ctx, after, 64)
+		return r.sc.NextArchives(ctx, after, 64, r.archiveDepth)
 	}, func(ctx context.Context, a store.PendingArchive) error {
 		r.count(a.ContentID)
 		return r.listArchive(ctx, a)
@@ -581,14 +604,15 @@ func (r *run) listArchives(ctx context.Context) error {
 
 func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err error) {
 	// Hashed under older rules; the ones in force now may forbid reading it.
-	if r.rules.SkipContent(a.Path) {
+	rules := r.rulesFor(a.Path)
+	if rules.SkipContent(a.Path) || rules.ArchiveDepth == 0 {
 		r.log.Debug("archive left unread by the rules", "path", a.Path)
 		return nil
 	}
-	l, err := r.sc.StartListing(ctx, a.ContentID)
+	l, err := r.sc.StartListing(ctx, a.ContentID, rules.ArchiveDepth)
 	if err != nil || l == nil {
 		if l == nil && err == nil {
-			r.log.Debug("archive listed by another scan meanwhile", "path", a.Path)
+			r.log.Debug("archive cache already reaches requested depth", "path", a.Path)
 		}
 		return err
 	}
@@ -627,7 +651,9 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	started, members := time.Now(), r.sc.Counts.Members
 	var skips []archive.Skip
 	opener := archiveCopies{r: r, w: w, ctx: ctx, source: source, digest: a.Digest, size: a.Size}
-	res, err := archive.List(ctx, opener.source, opener.open, r.archives,
+	options := r.archives
+	options.Depth = rules.ArchiveDepth
+	res, err := archive.List(ctx, opener.source, opener.open, options,
 		func(m archive.Member) error {
 			r.progress(false)
 			return l.Add(ctx, m)
@@ -707,7 +733,7 @@ func (r *run) readTexts(ctx context.Context) error {
 
 func (r *run) readText(ctx context.Context, p store.PendingText) (err error) {
 	// Hashed under older rules; the ones in force now may forbid reading it.
-	if r.rules.SkipContent(p.Path) {
+	if r.rulesFor(p.Path).SkipContent(p.Path) {
 		r.log.Debug("document left unread by the rules", "path", p.Path)
 		return nil
 	}

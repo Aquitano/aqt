@@ -77,7 +77,7 @@ func (c *archiveCopies) open(path string) (archive.Handle, error) {
 		return nil, c.failure
 	}
 	rel = "/" + filepath.ToSlash(rel)
-	if c.r.rules.SkipContent(rel) {
+	if c.r.rulesFor(rel).SkipContent(rel) {
 		c.failure = fmt.Errorf("archive part is excluded by current rules: %s", rel)
 		return nil, c.failure
 	}

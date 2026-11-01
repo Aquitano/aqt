@@ -139,7 +139,7 @@ func TestRebuildContentWaitsForListingsAndCancelsAtomically(t *testing.T) {
 	}
 	defer sc.Finish(context.Background(), "complete", nil)
 	id := pgschematest.QueryInt(t, dsn, `select content_id from entries where path='/a.txt'`)
-	listing, err := sc.StartListing(t.Context(), id)
+	listing, err := sc.StartListing(t.Context(), id, 1)
 	if err != nil || listing == nil {
 		t.Fatalf("listing: %v", err)
 	}

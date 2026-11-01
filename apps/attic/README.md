@@ -216,6 +216,41 @@ exclude = ["/Games/"]
 
 `archives.depth = 0` disables archive listings. `unpack_max_bytes` limits each nested archive. `text.max_bytes` and `metadata.max_bytes` bound their source files. `text.pdftotext` selects the Poppler binary; if unavailable, PDF parser failures remain failures. `ai.max_bytes` bounds a verified enrichment copy. `ai.token_parameter` also accepts `max_completion_tokens`. Install Tesseract language data for each language in `ocr_lang`, such as `deu+eng`.
 
+### Configure a folder and its children
+
+Place `.attic.toml` in a disk's root for rules that apply across that disk, or inside a folder for rules below it. Scans discover these files automatically. A scan started inside a subtree also reads the files in its ancestors, up to the volume root.
+
+To keep hashes and metadata without listing archive contents, save this as `E:\Backups\.attic.toml`:
+
+```toml
+[archives]
+depth = 0
+```
+
+ZIP, 7z, RAR and tar files below `E:\Backups` stay catalogued with their names, paths, sizes, dates and hashes. Hashing still reads each archive's bytes. The archive phase does not open these archives or list their members. Document text and embedded metadata extraction continue for their supported file types.
+
+A deeper file can override the inherited depth. In `E:\Backups\Selected\.attic.toml`, set `depth = 1` under `[archives]` to list archives in that subtree without opening nested archives.
+
+Inspect the settings before scanning with `attic config --under E:\Backups\Selected`. It lists the contributing folder files, effective archive depth and pattern sources. This command needs a mounted Windows volume but no catalogue connection. Add `--volume <id>` when the main configuration selects rules by catalogue volume ID.
+
+Folder files also accept `exclude` and `name_only`:
+
+```toml
+exclude = ["/Cache/"]
+name_only = ["*.key"]
+
+[archives]
+depth = 0
+```
+
+Patterns are relative to the folder containing the file. `/Cache/` selects that folder's direct child; `**/Cache/` selects any depth. Folder rules follow the global and volume rules, from the volume root down. Later matching patterns win, including `!pattern`. An excluded directory is not visited, so a file inside it cannot re-include the directory.
+
+`name_only` keeps filesystem details without hashing, text extraction or embedded metadata extraction. `archives.depth = 0` keeps those other operations enabled. Folder files accept only `exclude`, `name_only` and `archives.depth`; machine settings such as `temp`, tools and AI providers stay in the main configuration. Invalid, unreadable or oversized folder files stop the scan. The size limit is 64 KiB, and links and cloud placeholders are refused.
+
+Folder files control scans. Existing catalogue results remain searchable, including archive members recorded before a rule changed or through another copy of the same content. Other commands continue to use the main configuration.
+
+A deeper archive policy upgrades a shallower cached listing, including when identical copies have different folder policies. Failed upgrades keep the previous listing. Existing catalogues do not record their earlier listing depths, so the migration leaves their listings unchanged. Use `attic scan E:\Backups --rebuild-content` to refresh those older listings at the selected depth. Unreadable directories leave catalogue history intact, and files below them receive no content processing while their folder policies are unresolved.
+
 ## Develop
 
 ```sh
