@@ -89,6 +89,18 @@ test("database deadlines cancel slow statements and leave connections usable", a
   );
 });
 
+test("exhausted database resources return 503", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const db = yield* Db;
+      const response = yield* db
+        .execute(sql`do $$ begin raise exception using errcode = 'disk_full'; end $$`)
+        .pipe(databaseFailure);
+      expect(response).toMatchObject({ status: 503 });
+    }).pipe(Effect.provide(database("30000"))),
+  );
+});
+
 test("database diagnostics exclude query text, parameters and server error detail", async () => {
   const logs: Array<string> = [];
   const sentinel = "private-transcript-marker";

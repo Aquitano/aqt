@@ -5,8 +5,11 @@ import { SqlError } from "effect/sql/SqlError";
 
 import { failureSummary } from "./db/errors.ts";
 
-// Deadlines and lost connections are the database being unavailable, not the request being wrong.
+// Deadlines, lost connections and exhausted server resources (SQLSTATE class 53) are the database being
+// unavailable, not the request being wrong.
 const unavailable = new Set(["StatementTimeoutError", "ConnectionError"]);
+const isUnavailable = ({ reason, sqlState }: ReturnType<typeof failureSummary>) =>
+  unavailable.has(reason) || sqlState?.startsWith("53") === true;
 
 const isDatabaseError = Schema.is(Schema.Union([EffectDrizzleQueryError, SqlError]));
 export const databaseFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
@@ -16,7 +19,7 @@ export const databaseFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       return Effect.logError("database request failed", summary).pipe(
         Effect.as(
           HttpServerResponse.empty({
-            status: unavailable.has(summary.reason) ? 503 : 500,
+            status: isUnavailable(summary) ? 503 : 500,
           }),
         ),
       );
