@@ -143,3 +143,49 @@ func TestLookupFoldKeepsDirectoryLastAccess(t *testing.T) {
 		}
 	}
 }
+
+func TestHoldKeepsWritersOutAndRestoresAccessTime(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "video.mp4")
+	if err := os.WriteFile(path, []byte("frames"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Hold(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w, err := os.OpenFile(path, os.O_WRONLY, 0); err == nil {
+		w.Close()
+		t.Fatal("a writer opened a held file")
+	}
+	// What another program's read does: the access time moves, the change time stays.
+	other, err := openShared(path, windows.FILE_WRITE_ATTRIBUTES, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := fileBasicInfo{LastAccessTime: f.times.LastAccessTime + int64(48*time.Hour/100), ChangeTime: f.times.ChangeTime}
+	err = windows.SetFileInformationByHandle(other, windows.FileBasicInfo, (*byte)(unsafe.Pointer(&read)), uint32(unsafe.Sizeof(read)))
+	windows.CloseHandle(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Restore(); err != nil {
+		t.Fatal(err)
+	}
+	var now fileBasicInfo
+	if err := basicInfo(windows.Handle(f.Fd()), &now); err != nil {
+		t.Fatal(err)
+	}
+	if now.LastAccessTime != f.times.LastAccessTime || now.ChangeTime != f.times.ChangeTime {
+		t.Errorf("times after restore = %+v, want %+v", now, f.times)
+	}
+	f.Close()
+
+	w, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if _, err := Hold(path); !errors.Is(err, ErrInUse) {
+		t.Fatalf("Hold while a writer has it open = %v, want ErrInUse", err)
+	}
+}

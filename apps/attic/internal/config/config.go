@@ -76,7 +76,7 @@ type AI struct {
 // archives are listed, nested ones up to 4 GiB, and documents up to 64 MiB
 // are read.
 func Default() Config {
-	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}, Text: Text{MaxBytes: 64 << 20, PDFToText: "pdftotext"}, Metadata: Metadata{Enabled: true, ExifTool: "exiftool", MaxBytes: 1 << 30}, AI: AI{Endpoint: "http://localhost:11434/v1", MaxBytes: 64 << 20, TimeoutSeconds: 300, MaxTokens: 4096, TokenParameter: "max_tokens", OCRLang: "eng", OCRMaxPages: 20, Tesseract: "tesseract", PDFToPPM: "pdftoppm", Codex: "codex"}}
+	return Config{Archives: Archives{Depth: 2, UnpackMaxBytes: 4 << 30}, Text: Text{MaxBytes: 64 << 20, PDFToText: "pdftotext"}, Metadata: Metadata{Enabled: true, ExifTool: "exiftool"}, AI: AI{Endpoint: "http://localhost:11434/v1", MaxBytes: 64 << 20, TimeoutSeconds: 300, MaxTokens: 4096, TokenParameter: "max_tokens", OCRLang: "eng", OCRMaxPages: 20, Tesseract: "tesseract", PDFToPPM: "pdftoppm", Codex: "codex"}}
 }
 
 // Volume holds patterns anchored at one volume's root, selected by attic's

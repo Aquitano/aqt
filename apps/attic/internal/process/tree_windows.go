@@ -12,16 +12,16 @@ import (
 
 // Start suspended so a launcher cannot spawn children before joining the job.
 // Closing the job also stops children whose launcher has already exited.
-func runTree(cmd *exec.Cmd) error {
+func startTree(cmd *exec.Cmd) (wait func() error, err error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer windows.CloseHandle(job)
 	var limits windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION
 	limits.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
 	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), uint32(unsafe.Sizeof(limits))); err != nil {
-		return err
+		windows.CloseHandle(job)
+		return nil, err
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_SUSPENDED}
 	cmd.Cancel = func() error {
@@ -30,14 +30,19 @@ func runTree(cmd *exec.Cmd) error {
 		return errors.Join(windows.TerminateJobObject(job, 1), cmd.Process.Kill())
 	}
 	if err := cmd.Start(); err != nil {
-		return err
+		windows.CloseHandle(job)
+		return nil, err
 	}
 	if err := joinAndResume(job, uint32(cmd.Process.Pid)); err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
-		return err
+		windows.CloseHandle(job)
+		return nil, err
 	}
-	return cmd.Wait()
+	return func() error {
+		defer windows.CloseHandle(job)
+		return cmd.Wait()
+	}, nil
 }
 
 func joinAndResume(job windows.Handle, pid uint32) error {

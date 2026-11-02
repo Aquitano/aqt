@@ -150,8 +150,9 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 		textMax = math.MaxInt64
 	}
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
-		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
-		textsRead: map[int64]bool{}, log: log}
+		changeTimes: slices.Contains([]string{"NTFS", "REFS"}, strings.ToUpper(vol.FS)),
+		archives:    archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
+		textsRead:   map[int64]bool{}, log: log}
 	r.folders = config.NewFolders(mounted.Root, r.rules)
 	if r.o.list == nil {
 		r.o.list = disk.List
@@ -189,6 +190,9 @@ type run struct {
 	archiveDepth int
 	archiveTried map[archiveAttempt]bool
 	mountRoot    string
+	// changeTimes says the file system moves a file's change time on every
+	// write, which makes the catalogue's stamp a reliable check.
+	changeTimes  bool
 	dirs         int64
 	hashFiles    int64
 	hashBytes    int64
@@ -613,7 +617,7 @@ func (r *run) listArchives(ctx context.Context) error {
 	}, r.afterItem)
 }
 
-func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err error) {
+func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
 	rules := r.rulesFor(a.Path)
 	if rules.SkipContent(a.Path) || rules.ArchiveDepth == 0 {
@@ -637,7 +641,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	f, err := disk.Open(source)
 	if err != nil {
 		l.Abort(ctx)
-		return r.copyFailure(ctx, a.Path, err)
+		return r.readFailure(ctx, a.Path, err)
 	}
 	info, err := f.Stat()
 	var possible bool
@@ -647,7 +651,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	err = errors.Join(err, f.Close())
 	if err != nil {
 		l.Abort(ctx)
-		return r.copyFailure(ctx, a.Path, err)
+		return r.readFailure(ctx, a.Path, err)
 	}
 	if !possible {
 		l.Abort(ctx)
@@ -657,15 +661,9 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 		r.sc.Skip(a.Path, archive.NotArchive, "", "")
 		return nil
 	}
-	w, err := scratch.New(r.o.Config.Temp, r.log)
-	if err != nil {
-		l.Abort(ctx)
-		return err
-	}
-	defer func() { err = errors.Join(err, w.Close()) }()
 	started, members := time.Now(), r.sc.Counts.Members
 	var skips []archive.Skip
-	opener := archiveCopies{r: r, w: w, ctx: ctx, source: source, digest: a.Digest, size: a.Size}
+	opener := archiveFiles{r: r, ctx: ctx, source: source, stamp: a.Stamp}
 	options := r.archives
 	options.Depth = rules.ArchiveDepth
 	res, err := archive.List(ctx, opener.source, opener.open, options,
@@ -680,7 +678,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	}
 	if opener.failure != nil {
 		l.Abort(ctx)
-		return r.copyFailure(ctx, a.Path, opener.failure)
+		return r.readFailure(ctx, a.Path, opener.failure)
 	}
 	if err == nil && res.Status != archive.Listed {
 		// A disk unplugged mid-read looks like a damaged archive.
@@ -753,7 +751,7 @@ func (r *run) readTexts(ctx context.Context) error {
 	}, r.afterItem)
 }
 
-func (r *run) readText(ctx context.Context, p store.PendingText) (err error) {
+func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
 	if r.rulesFor(p.Path).SkipContent(p.Path) {
 		r.log.Debug("document left unread by the rules", "path", p.Path)
@@ -769,18 +767,15 @@ func (r *run) readText(ctx context.Context, p store.PendingText) (err error) {
 		r.sc.Skip(p.Path, "too_big", "", "over text.max_bytes")
 		return nil
 	}
-	w, err := scratch.New(r.o.Config.Temp, r.log)
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, w.Close()) }()
 	started := time.Now()
-	copied, err := w.Copy(ctx, r.osPath(p.Path), p.Digest, max(1, p.Size))
+	source := r.osPath(p.Path)
+	f, err := r.hold(ctx, source, p.Stamp)
 	if err != nil {
-		return r.copyFailure(ctx, p.Path, err)
+		return r.readFailure(ctx, p.Path, err)
 	}
 	r.readErr = nil
-	res := extract.File(ctx, copied, p.Name, "", r.text)
+	res := extract.File(ctx, source, p.Name, "", r.text)
+	r.release(f)
 	took := time.Since(started)
 	if err := ctx.Err(); err != nil {
 		return err

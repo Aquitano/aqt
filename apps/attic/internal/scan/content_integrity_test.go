@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
-	"github.com/aquitano/aqt/apps/attic/internal/scratch"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
@@ -223,48 +221,27 @@ func TestMultipartArchivesVerifySiblingsAndPreserveNames(t *testing.T) {
 	}
 }
 
-func TestArchiveSiblingCopiesAreRemovedOnClose(t *testing.T) {
-	st, _ := storetest.New(t)
-	root := t.TempDir()
-	write(t, root, "first.rar", "first")
-	write(t, root, "second.rar", "second")
-	first := scanAt(t, st, root, testVolume)
-	sc, err := st.StartScan(t.Context(), first.Volume, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sc.Finish(context.Background(), "complete", nil)
-	w, err := scratch.New(t.TempDir(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer w.Close()
-	r := &run{sc: sc, mountRoot: root, log: slog.New(slog.DiscardHandler)}
-	c := archiveCopies{r: r, w: w, ctx: t.Context(), source: filepath.Join(root, "first.rar")}
-	f, err := c.open(filepath.Join(root, "second.rar"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(t, root, "second.rar", "mutated")
-	data := make([]byte, len("second"))
-	if _, err := f.ReadAt(data, 0); err != nil || string(data) != "second" {
-		t.Fatalf("snapshot changed: %q, %v", data, err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	files, err := os.ReadDir(w.Path)
-	if err != nil || len(files) != 1 || c.failure != nil {
-		t.Fatalf("closed copies remain: %v, %v, %v", files, err, c.failure)
-	}
-}
-
 func TestScanRejectsRebuildWithoutHashing(t *testing.T) {
 	_, err := Run(t.Context(), nil, Options{NoHash: true, RebuildContent: true})
 	if err == nil {
 		t.Fatal("rebuild without hashing accepted")
+	}
+}
+
+func TestFileSystemWithoutChangeTimesRehashesBeforeReading(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "a.txt", "original words")
+	scanAt(t, st, root, testVolume)
+	// A digest that no longer describes the file, as a same-size rewrite that
+	// kept its modified time would leave on exFAT.
+	pgschematest.QueryInt(t, dsn, `with stale as (update contents set blake3 = decode(repeat('ab', 32), 'hex') returning 1) select count(*) from stale`)
+	pgschematest.QueryInt(t, dsn, `with gone as (delete from texts returning 1) select count(*) from gone`)
+	res := scanAt(t, st, root, testVolume)
+	if res.Counts.Texts != 0 {
+		t.Fatalf("read text under a stale digest: %+v", res.Counts)
+	}
+	if skips, err := st.Skips(t.Context(), res.ScanID, "changed", "", 10); err != nil || len(skips) != 1 {
+		t.Fatalf("changed skips: %+v, %v", skips, err)
 	}
 }

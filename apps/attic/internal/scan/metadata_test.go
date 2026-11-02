@@ -48,8 +48,8 @@ func TestMetadataScanDeduplicatesAndSearches(t *testing.T) {
 	binary := requireExifTool(t)
 	st, dsn := storetest.New(t)
 	root := t.TempDir()
-	pngFile(t, root, "one.png")
-	data, err := os.ReadFile(filepath.Join(root, "one.png"))
+	pngFile(t, root, "foto über.png")
+	data, err := os.ReadFile(filepath.Join(root, "foto über.png"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestMetadataScanDeduplicatesAndSearches(t *testing.T) {
 	if second.Counts.Metadata != 0 {
 		t.Fatalf("unchanged content reread: %+v", second.Counts)
 	}
-	hit := find(t, st, "one.png")
+	hit := find(t, st, "foto über.png")
 	d, err := st.Metadata(context.Background(), hit.ID, "")
 	if err != nil || d.Status != "ok" || d.Tags["PNG:ImageWidth"] != float64(23) {
 		t.Fatalf("metadata: %+v, %v", d, err)

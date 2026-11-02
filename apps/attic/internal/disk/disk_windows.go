@@ -100,11 +100,14 @@ const (
 // needs attribute-write access. Write-protected media refuses that access, and
 // the open falls back to a plain one there.
 func open(path string, access, flags uint32) (windows.Handle, error) {
+	return openShared(path, access, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, flags)
+}
+
+func openShared(path string, access, share, flags uint32) (windows.Handle, error) {
 	p, err := windows.UTF16PtrFromString(longPath(path))
 	if err != nil {
 		return windows.InvalidHandle, err
 	}
-	share := uint32(windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE | windows.FILE_SHARE_DELETE)
 	h, err := windows.CreateFile(p, access|windows.FILE_WRITE_ATTRIBUTES, share, nil, windows.OPEN_EXISTING, flags, 0)
 	if err == nil {
 		keep := windows.Filetime{LowDateTime: 0xFFFFFFFF, HighDateTime: 0xFFFFFFFF}
@@ -135,6 +138,53 @@ func Open(path string) (*os.File, error) {
 		return nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}
 	return os.NewFile(uintptr(h), path), nil
+}
+
+// Held is a file that no other program can write to until it is closed, and
+// what the file system said about it when it was opened.
+type Held struct {
+	*os.File
+	Entry Entry
+	times fileBasicInfo
+}
+
+// Hold shares the file for reading only, so Windows refuses any program that
+// has it open for writing or tries to open it for writing while it is held.
+func Hold(path string) (*Held, error) {
+	h, err := openShared(path, windows.FILE_READ_DATA|windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE, windows.FILE_SHARE_READ, 0)
+	if err != nil {
+		if errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
+			err = fmt.Errorf("%w: %w", ErrInUse, err)
+		}
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	e, basic, err := statHandle(h)
+	if err != nil {
+		windows.CloseHandle(h)
+		return nil, &os.PathError{Op: "stat", Path: path, Err: err}
+	}
+	e.Name = filepath.Base(path)
+	return &Held{File: os.NewFile(uintptr(h), path), Entry: e, times: basic}, nil
+}
+
+// Restore puts back the last-access time another program's read moved.
+// Setting a time moves the change time, so that goes back to the held value
+// too; holding the file kept anyone from writing to it in between. A change
+// time that moved for another reason is left alone.
+func (f *Held) Restore() error {
+	h := windows.Handle(f.Fd())
+	var now fileBasicInfo
+	if err := basicInfo(h, &now); err != nil {
+		return &os.PathError{Op: "stat", Path: f.Name(), Err: err}
+	}
+	if now.LastAccessTime == f.times.LastAccessTime || now.ChangeTime != f.times.ChangeTime {
+		return nil
+	}
+	set := fileBasicInfo{LastAccessTime: f.times.LastAccessTime, ChangeTime: f.times.ChangeTime}
+	if err := windows.SetFileInformationByHandle(h, windows.FileBasicInfo, (*byte)(unsafe.Pointer(&set)), uint32(unsafe.Sizeof(set))); err != nil {
+		return &os.PathError{Op: "restore times", Path: f.Name(), Err: err}
+	}
+	return nil
 }
 
 // Move renames a file within one volume and fails when to exists. os.Rename
@@ -256,20 +306,31 @@ func Stat(path string) (Entry, error) {
 		return Entry{}, &os.PathError{Op: "open", Path: path, Err: err}
 	}
 	defer windows.CloseHandle(h)
-	var bh windows.ByHandleFileInformation
-	if err := windows.GetFileInformationByHandle(h, &bh); err != nil {
+	e, _, err := statHandle(h)
+	if err != nil {
 		return Entry{}, &os.PathError{Op: "stat", Path: path, Err: err}
 	}
+	e.Name = filepath.Base(path)
+	return e, nil
+}
+
+func statHandle(h windows.Handle) (Entry, fileBasicInfo, error) {
+	var bh windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(h, &bh); err != nil {
+		return Entry{}, fileBasicInfo{}, err
+	}
 	var basic fileBasicInfo
-	if err := windows.GetFileInformationByHandleEx(h, windows.FileBasicInfo,
-		(*byte)(unsafe.Pointer(&basic)), uint32(unsafe.Sizeof(basic))); err != nil {
-		return Entry{}, &os.PathError{Op: "stat", Path: path, Err: err}
+	if err := basicInfo(h, &basic); err != nil {
+		return Entry{}, fileBasicInfo{}, err
 	}
 	e := entry(nil, bh.FileAttributes, int64(bh.FileSizeHigh)<<32|int64(bh.FileSizeLow),
 		basic.CreationTime, basic.LastWriteTime, basic.LastAccessTime, basic.ChangeTime)
-	e.Name = filepath.Base(path)
 	e.FileID = uint64(bh.FileIndexHigh)<<32 | uint64(bh.FileIndexLow)
-	return e, nil
+	return e, basic, nil
+}
+
+func basicInfo(h windows.Handle, basic *fileBasicInfo) error {
+	return windows.GetFileInformationByHandleEx(h, windows.FileBasicInfo, (*byte)(unsafe.Pointer(basic)), uint32(unsafe.Sizeof(*basic)))
 }
 
 // Locate resolves path to its volume and to the path's components below the

@@ -1,12 +1,12 @@
 package scan
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -15,29 +15,39 @@ import (
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
+// TestMain doubles as a fake ExifTool in -stay_open mode that answers a file
+// holding "poison" with broken JSON.
 func TestMain(m *testing.M) {
-	if os.Getenv("ATTIC_SCAN_METADATA_HELPER") == "1" {
-		paths := os.Args[slices.Index(os.Args, "--")+1:]
-		rows := make([]map[string]any, 0, len(paths))
-		for _, path := range paths {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(2)
-			}
-			if strings.Contains(string(data), "poison") {
-				fmt.Print("broken JSON")
-				os.Exit(0)
-			}
-			rows = append(rows, map[string]any{"SourceFile": path, "PNG:ImageWidth": 23})
-		}
-		_ = json.NewEncoder(os.Stdout).Encode(rows)
-		os.Exit(0)
+	if os.Getenv("ATTIC_SCAN_METADATA_HELPER") == "" {
+		os.Exit(m.Run())
 	}
-	os.Exit(m.Run())
+	in := bufio.NewScanner(os.Stdin)
+	var path string
+	for in.Scan() {
+		n, ok := strings.CutPrefix(in.Text(), "-execute")
+		if !ok {
+			path = in.Text()
+			continue
+		}
+		data, err := os.ReadFile(path)
+		switch {
+		case err != nil:
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		case strings.Contains(string(data), "poison"):
+			fmt.Println("broken JSON")
+		default:
+			_ = json.NewEncoder(os.Stdout).Encode([]map[string]any{{"SourceFile": path, "PNG:ImageWidth": 23}})
+		}
+		fmt.Printf("{ready%s}\n", n)
+	}
+	if in.Err() != nil {
+		os.Exit(3)
+	}
+	os.Exit(0)
 }
 
-func TestMetadataBadBatchDoesNotStarveLaterFiles(t *testing.T) {
+func TestMetadataToolFailureDoesNotStarveLaterFiles(t *testing.T) {
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

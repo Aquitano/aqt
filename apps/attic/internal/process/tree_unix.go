@@ -10,7 +10,7 @@ import (
 )
 
 // A private process group keeps launcher children inside the same lifetime.
-func runTree(cmd *exec.Cmd) error {
+func startTree(cmd *exec.Cmd) (wait func() error, err error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	kill := func() error {
 		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
@@ -21,8 +21,10 @@ func runTree(cmd *exec.Cmd) error {
 	}
 	cmd.Cancel = kill
 	if err := cmd.Start(); err != nil {
-		return err
+		return nil, err
 	}
-	defer func() { _ = kill() }()
-	return cmd.Wait()
+	return func() error {
+		defer func() { _ = kill() }()
+		return cmd.Wait()
+	}, nil
 }

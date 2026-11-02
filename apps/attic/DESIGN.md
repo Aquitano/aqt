@@ -36,15 +36,19 @@ Verification requires an explicit subtree and resolves its mounted volume withou
 
 During a maintenance run, Windows rechecks the mounted fingerprint before each file so a removed or replaced disk is not treated as the selected copy. This adds work for small files but keeps the identity check on every read. Reports can be retained outside the catalogue; no persistent verification status or scheduler is maintained by Attic.
 
-## Derived results must describe verified bytes
+## Derived results describe the hashed bytes
 
 Archive listings, document text and metadata belong to content. Once a result exists, copies on other disks reuse it. This makes attaching a result to the wrong digest a persistent catalogue error.
 
-The scanner verifies source bytes against the expected digest before extracting content-derived results. Readers and external tools use stable temporary copies. Changed files, failed reads and size limits leave work eligible for a later scan. A repeatable parser failure can be stored as a result of the verified content.
+The scanner reads the original file, not a copy. It opens the file sharing it for reading only, so Windows refuses any writer until the read ends. It extracts only when the file's size, modified time, change time and file ID still match the catalogue entry. A rescan trusts the same fields to keep a digest without reading the file, so a result is as reliable as the digest it belongs to. NTFS and ReFS move the change time on every write and copy tools cannot set it. FAT and exFAT have no change time, so a same-size replacement with a preserved modified time would pass the check there; on those file systems the scanner hashes the held file again and compares the digest before extracting. That costs a second read on those disks and nowhere else.
 
-`scan --rebuild-content` discards archive listings and document text selected through present files below the scan root. It repairs results produced before verification was enforced. The reset affects all copies sharing that content, and keeps metadata and enrichment results. Current folder policies determine which results are regenerated. Depth-zero copies do not regenerate archive listings.
+Earlier versions copied each file to scratch and verified the copy's BLAKE3 digest first. A 50 GB archive cost a second full read and a 50 GB write to list a few megabytes of index, and metadata skipped files over 1 GiB. `verify` remains the way to reread files against their digests.
 
-Temporary copies and nested archives use private `aqt-attic/scan-*` workspaces under the configured `temp` directory. Windows checks that scratch is off the source volume. File locks distinguish abandoned workspaces from active readers. Cleanup failures leave files available for a later cleanup attempt.
+External readers, ExifTool and pdftotext, open the path while the scanner holds the file. ExifTool runs in `-stay_open` mode for the whole metadata phase and receives one file per request, so each file is locked against writers only for its own read. A timeout, a broken answer or a crashed process ends that ExifTool, and the next file starts a fresh one. When Windows updates last-access times their reads move it; the scanner puts the access time back, with the change time that setting it would move. Changed files, files open for writing elsewhere, failed reads and size limits leave work eligible for a later scan. A repeatable parser failure can be stored as a result of the content.
+
+`scan --rebuild-content` discards archive listings and document text selected through present files below the scan root. It repairs results produced before scans checked the bytes they read. The reset affects all copies sharing that content, and keeps metadata and enrichment results. Current folder policies determine which results are regenerated. Depth-zero copies do not regenerate archive listings.
+
+Nested archives use private `aqt-attic/scan-*` workspaces under the configured `temp` directory. Windows checks that scratch is off the source volume. File locks distinguish abandoned workspaces from active readers. Cleanup failures leave files available for a later cleanup attempt.
 
 Archive members carry names, paths, sizes, timestamps and CRC32 where available. They are not independently hashed. A nested archive adds another `::` path component. Depth and unpack limits bound traversal. Multipart RAR listings need their sibling volumes; a missing part remains retryable. Archive listings commit as a unit so interruption cannot preserve a partial transaction.
 

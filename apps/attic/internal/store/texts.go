@@ -9,8 +9,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
-
-	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
 
 // PendingText is a hashed document below the scan root whose content has no
@@ -21,7 +19,7 @@ type PendingText struct {
 	Name      string
 	ContentID int64
 	Size      int64
-	Digest    disk.Digest
+	Stamp     Stamp
 }
 
 // pendingTextWhere selects documents by extension below an upper path bound;
@@ -48,7 +46,7 @@ func (sc *Scan) NextTexts(ctx context.Context, after PendingText, exts []string,
 	if after.ID != 0 {
 		lower = after.Path
 	}
-	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, e.name, e.content_id, c.size_bytes, c.blake3`+pendingTextWhere+`
+	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, e.name, e.content_id, c.size_bytes, `+stampColumns+pendingTextWhere+`
 		  and (e.path collate "C", e.id) > ($4, $5)
 		order by e.path collate "C", e.id limit $6`,
 		sc.Volume.ID, exts, upper, lower, after.ID, limit)
@@ -57,9 +55,7 @@ func (sc *Scan) NextTexts(ctx context.Context, after PendingText, exts []string,
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PendingText, error) {
 		var p PendingText
-		var digest []byte
-		err := r.Scan(&p.ID, &p.Path, &p.Name, &p.ContentID, &p.Size, &digest)
-		copy(p.Digest[:], digest)
+		err := r.Scan(append([]any{&p.ID, &p.Path, &p.Name, &p.ContentID, &p.Size}, p.Stamp.fields()...)...)
 		return p, err
 	})
 }
