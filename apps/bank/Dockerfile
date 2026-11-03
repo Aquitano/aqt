@@ -5,7 +5,7 @@
 # reachable from a tailnet, the process serving it should have as little around
 # it as possible.
 
-FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 WORKDIR /src/apps/bank
 
 # The context is the repository root, because bank builds against
@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}"
 # The image the OCR worker runs from (the `ocr` compose profile). It carries
 # tesseract and poppler — a C++ image stack and a libc — which is exactly why
 # they are not in the image that listens on a port.
-FROM debian:13-slim@sha256:62bd423aeee912639ca8ee681c2b762cb3e25137e0a92b20be455898a9f034ad AS ocr
+FROM debian:13-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS ocr
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu poppler-utils \
@@ -48,7 +48,7 @@ CMD ["extract", "--ocr"]
 #
 # This stage is last, so `docker build -f apps/bank/Dockerfile .` from the
 # repository root produces the server image.
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99 AS server
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329 AS server
 
 COPY --from=build /out/bank /usr/local/bin/bank
 
