@@ -23,7 +23,7 @@
     "@aqt/gallery-db": "workspace:*",
     "@aqt/gallery-env": "workspace:*",
     "@aqt/gallery-layout": "workspace:*",
-    "@hono/mcp": "^0.3.2",
+    "@hono/mcp": "^0.3.5",
     "@hono/trpc-server": "^0.4.2",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@trpc/server": "catalog:",
