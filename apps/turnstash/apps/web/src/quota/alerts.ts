@@ -1,9 +1,9 @@
 import { quotaStateOf } from "@aqt/turnstash-analysis";
 import { providerLabels } from "@aqt/turnstash-api";
-import type { LimitsReport, ProviderId } from "@aqt/turnstash-api";
+import type { CurrentLimitsReport, ProviderId } from "@aqt/turnstash-api";
 
-import { weekdayTime } from "./format";
-import { openWindowOf, windowLabel } from "./limits-model";
+import { weekdayTime } from "../format";
+import { windowLabel } from "../limits-model";
 
 export interface QuotaAlertPreferences {
   readonly low: boolean;
@@ -27,16 +27,12 @@ const recent = (iso: string, nowMs: number, maxAge: number) => {
 };
 
 export const quotaAlertsOf = (
-  report: LimitsReport,
+  report: CurrentLimitsReport,
   preferences: QuotaAlertPreferences,
   nowMs: number,
 ): ReadonlyArray<QuotaAlert> => {
   if (!recent(report.generatedAt, nowMs, 10 * 60_000)) return [];
-  return report.providers.flatMap(({ provider, series }) => {
-    const windows = series.flatMap((item) => {
-      const open = openWindowOf(item);
-      return open === null ? [] : [open];
-    });
+  return report.providers.flatMap(({ provider, windows }) => {
     const blocked = windows.some(
       (open) => open.usedPercent >= 100 && Date.parse(open.resetsAt) > nowMs,
     );

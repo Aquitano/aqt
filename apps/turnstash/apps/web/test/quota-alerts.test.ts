@@ -1,9 +1,9 @@
-import type { LimitsReport, LimitWindow } from "@aqt/turnstash-api";
+import type { CurrentLimitsReport, LimitWindow } from "@aqt/turnstash-api";
 import { expect, test } from "vite-plus/test";
 
 import { hourMs } from "../src/limits-model";
-import { defaultPreferences } from "../src/quota-alert-storage";
-import { quotaAlertsOf } from "../src/quota-alerts";
+import { quotaAlertsOf } from "../src/quota/alerts";
+import { defaultPreferences } from "../src/quota/storage";
 
 const now = Date.UTC(2026, 10, 5, 12);
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -28,14 +28,12 @@ const windowOf = (patch: Partial<LimitWindow> = {}): LimitWindow => ({
   ],
   ...patch,
 });
-const reportOf = (...windows: ReadonlyArray<LimitWindow>): LimitsReport => ({
+const reportOf = (...windows: ReadonlyArray<LimitWindow>): CurrentLimitsReport => ({
   generatedAt: iso(now),
   providers: [
     {
       provider: "claude",
-      plan: null,
-      hits: [],
-      series: windows.map((window) => ({ windowMinutes: window.windowMinutes, windows: [window] })),
+      windows,
     },
   ],
 });

@@ -1,6 +1,6 @@
 import { Option, Schema } from "effect";
 
-import type { QuotaAlert, QuotaAlertPreferences } from "./quota-alerts";
+import type { QuotaAlert, QuotaAlertPreferences } from "./alerts";
 
 export const preferencesKey = "turnstash_quota_alerts_v1";
 export const dismissedKey = "turnstash_quota_dismissed_v1";

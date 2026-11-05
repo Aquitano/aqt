@@ -1,6 +1,15 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { ReactNode } from "react";
 
+import type { QuotaAlert, QuotaAlertPreferences } from "./alerts";
 import {
   dismissedKey,
   preferencesKey,
@@ -8,31 +17,33 @@ import {
   readReceipts,
   rememberAlert,
   savePreferences,
-} from "./quota-alert-storage";
-import type { QuotaAlert, QuotaAlertPreferences } from "./quota-alerts";
+} from "./storage";
 
 const useSettings = () => {
   const [preferences, setPreferences] = useState(readPreferences);
+  const currentPreferences = useRef(preferences);
   const [dismissed, setDismissed] = useState(() => readReceipts(dismissedKey, Date.now()));
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   useEffect(() => {
     const sync = (event: StorageEvent) => {
-      if (event.key === preferencesKey || event.key === null) setPreferences(readPreferences());
+      if (event.key === preferencesKey || event.key === null) {
+        const next = readPreferences();
+        currentPreferences.current = next;
+        setPreferences(next);
+      }
       if (event.key === dismissedKey || event.key === null)
         setDismissed(readReceipts(dismissedKey, Date.now()));
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
   }, []);
-  const choose = useCallback(
-    (patch: Partial<QuotaAlertPreferences>) => {
-      const next = { ...preferences, ...patch };
-      savePreferences(next);
-      setPreferences(next);
-      setDeliveryError(null);
-    },
-    [preferences],
-  );
+  const choose = useCallback((patch: Partial<QuotaAlertPreferences>) => {
+    const next = { ...currentPreferences.current, ...patch };
+    currentPreferences.current = next;
+    savePreferences(next);
+    setPreferences(next);
+    setDeliveryError(null);
+  }, []);
   const dismiss = useCallback((alert: QuotaAlert) => {
     setDismissed(rememberAlert(dismissedKey, alert, Date.now()));
   }, []);

@@ -9,7 +9,7 @@ import { PageHead } from "./components/Page";
 import { Segmented } from "./components/Segmented";
 import { type DayRange, isPeriodId, type PeriodId, periodRange, periods, ymd } from "./period";
 import { isProvider, providerOptions } from "./providers";
-import { machinesQuery, rangeFilter } from "./queries";
+import { machineRosterQuery, rangeFilter } from "./queries";
 
 interface Selection {
   readonly period: PeriodId;
@@ -143,7 +143,7 @@ export const FilterBar = ({
 }) => {
   const filters = useFilters();
   const { period, provider, setPeriod, setProvider } = selection ?? filters;
-  const machines = useQuery(machinesQuery());
+  const machines = useQuery(machineRosterQuery());
   return (
     <div className="flex flex-col gap-3.5">
       <PageHead title={title} note={note} />

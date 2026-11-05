@@ -174,6 +174,9 @@ export const ProjectRow = Schema.Struct({
 });
 export type ProjectRow = typeof ProjectRow.Type;
 
+export const MachineRosterEntry = Schema.Struct({ id: Uuid, name: Schema.String });
+export type MachineRosterEntry = typeof MachineRosterEntry.Type;
+
 export const MachineSummary = Schema.Struct({
   id: Uuid,
   name: Schema.String,
@@ -679,6 +682,29 @@ export const LimitsReport = Schema.Struct({
   providers: Schema.Array(ProviderLimits),
 });
 export type LimitsReport = typeof LimitsReport.Type;
+
+// Current quota reads omit costs and history. Points retain at least the last hour and its preceding anchor.
+export const CurrentLimitWindow = Schema.Struct({
+  windowMinutes: LimitWindow.fields.windowMinutes,
+  startsAt: LimitWindow.fields.startsAt,
+  resetsAt: LimitWindow.fields.resetsAt,
+  endedAt: LimitWindow.fields.endedAt,
+  outcome: LimitWindow.fields.outcome,
+  firstObservedAt: LimitWindow.fields.firstObservedAt,
+  lastObservedAt: LimitWindow.fields.lastObservedAt,
+  firstUsedPercent: LimitWindow.fields.firstUsedPercent,
+  usedPercent: LimitWindow.fields.usedPercent,
+  points: LimitWindow.fields.points,
+});
+export type CurrentLimitWindow = typeof CurrentLimitWindow.Type;
+
+export const CurrentLimitsReport = Schema.Struct({
+  generatedAt: Iso,
+  providers: Schema.Array(
+    Schema.Struct({ provider: ProviderId, windows: Schema.Array(CurrentLimitWindow) }),
+  ),
+});
+export type CurrentLimitsReport = typeof CurrentLimitsReport.Type;
 
 export const LimitDrainQuery = Schema.Struct({
   provider: ProviderId,

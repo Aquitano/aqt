@@ -39,8 +39,8 @@ import { useEffect, useRef, useState } from "react";
 import { readToken, writeToken } from "../api";
 import { FiltersProvider } from "../filters";
 import { int } from "../format";
-import { dashboardSessionQuery, healthQuery, machinesQuery } from "../queries";
-import { QuotaAlertProvider } from "../quota-alert-context";
+import { dashboardSessionQuery, healthQuery, machineRosterQuery } from "../queries";
+import { QuotaAlertProvider } from "../quota/context";
 import { TokenTotalProvider } from "../token-total";
 import { Pending, RequestFailure } from "./Async";
 import { QuotaAlerts } from "./QuotaAlerts";
@@ -86,7 +86,7 @@ const CollapseHandle = () => {
 
 const Navigation = () => {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const machines = useQuery(machinesQuery());
+  const machines = useQuery(machineRosterQuery());
   const health = useQuery(healthQuery());
   const { isMobile, setOpenMobile } = useSidebar();
   return (
@@ -266,8 +266,14 @@ const Dashboard = () => {
   if (signedOut) return <SignIn />;
   return (
     <SidebarProvider>
+      <a
+        href="#main-content"
+        className="sr-only z-50 rounded-md bg-background px-4 py-2 text-sm font-medium text-foreground ring-2 ring-ring focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+      >
+        Skip to content
+      </a>
       <Navigation />
-      <SidebarInset className="min-w-0">
+      <SidebarInset id="main-content" tabIndex={-1} className="min-w-0">
         <TopBar />
         <RepricingNotice />
         <QuotaAlerts />

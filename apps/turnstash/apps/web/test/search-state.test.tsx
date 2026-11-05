@@ -7,6 +7,7 @@ import {
   decodeUrlSearch,
   highlightSegments,
   parseConversationSearch,
+  parseConversationListSearch,
   parseSearchState,
   parseLimitsSearch,
   type SearchState,
@@ -101,4 +102,25 @@ test("drain links retain the selected provider and interval and reject invalid r
   expect(parseLimitsSearch({ windows: { codex: -1, claude: 300, unknown: 300 } }).windows).toEqual({
     claude: 300,
   });
+});
+
+test("conversation-list links retain submitted title and exact project filters", () => {
+  const state = { q: "fix a+b & login", projectKey: "C:/project / &?#" };
+  expect(
+    parseConversationListSearch(decodeUrlSearch(defaultParseSearch(defaultStringifySearch(state)))),
+  ).toEqual(state);
+  expect(parseConversationListSearch({ q: "  login  ", projectKey: " leading-space" })).toEqual({
+    q: "login",
+    projectKey: " leading-space",
+  });
+  expect(
+    parseConversationListSearch(decodeUrlSearch(defaultParseSearch("?q=123&projectKey=true"))),
+  ).toEqual({ q: "123", projectKey: "true" });
+  expect(parseConversationListSearch({ q: " ", projectKey: "" })).toEqual({});
+  expect(parseConversationListSearch({ q: ["nested"], projectKey: { value: "nested" } })).toEqual(
+    {},
+  );
+  expect(parseConversationListSearch({ q: "x".repeat(1025), projectKey: "nul\u0000key" })).toEqual(
+    {},
+  );
 });

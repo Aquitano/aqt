@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 
+import type { QuotaAlert } from "../src/quota/alerts";
+import { notifyQuotaAlerts } from "../src/quota/notifications";
 import {
   defaultPreferences,
   dismissedKey,
@@ -9,9 +11,7 @@ import {
   readReceipts,
   rememberAlert,
   savePreferences,
-} from "../src/quota-alert-storage";
-import type { QuotaAlert } from "../src/quota-alerts";
-import { notifyQuotaAlerts } from "../src/quota-notifications";
+} from "../src/quota/storage";
 
 const now = Date.UTC(2026, 10, 5, 12);
 const alertOf = (id: string): QuotaAlert => ({

@@ -11,6 +11,7 @@ import { absurd } from "effect/Function";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 
+import { isUnauthorized } from "../api";
 import { compact, dateTime, int, usd } from "../format";
 import { messagePagesQuery } from "../queries";
 import {
@@ -547,10 +548,41 @@ const Thread = ({
   }, [hasNextPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
 
   if (pages.isPending) return <Pending />;
-  if (pages.isError) return <RequestFailure error={pages.error} />;
+  const unauthorized = pages.isError && isUnauthorized(pages.error);
+  if (pages.isError && (pages.data === undefined || unauthorized))
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <RequestFailure error={pages.error} />
+        {!unauthorized && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={pages.isFetching}
+            onClick={() => void pages.refetch()}
+          >
+            Retry loading messages
+          </Button>
+        )}
+      </div>
+    );
 
   return (
     <>
+      {pages.isError && (
+        <div className="flex flex-col items-start gap-2">
+          <RequestFailure error={pages.error} stale />
+          {!pages.isFetchNextPageError && !pages.isFetchPreviousPageError && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pages.isFetching}
+              onClick={() => void pages.refetch()}
+            >
+              Retry refreshing messages
+            </Button>
+          )}
+        </div>
+      )}
       {pages.hasPreviousPage && (
         <div className="pt-3">
           <Button
@@ -560,7 +592,9 @@ const Thread = ({
             onClick={() => void pages.fetchPreviousPage()}
           >
             {pages.isFetchingPreviousPage && <Spinner data-icon="inline-start" />}
-            Load earlier messages
+            {pages.isFetchPreviousPageError
+              ? "Retry loading earlier messages"
+              : "Load earlier messages"}
           </Button>
         </div>
       )}

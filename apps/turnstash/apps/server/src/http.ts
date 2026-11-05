@@ -25,6 +25,7 @@ import {
   getRequest,
   listConversations,
 } from "./conversations.ts";
+import { currentLimitsReport } from "./current-limits.ts";
 import { Db } from "./db/client.ts";
 import { dirtyConversations, pricingCatalogs } from "./db/schema.ts";
 import { applyCommitBatch, repositoryTasks } from "./git.ts";
@@ -38,6 +39,7 @@ import {
   dailyStats,
   machineDetail,
   machineSummaries,
+  machineRoster,
   overallStats,
   projectDetail,
   projectRows,
@@ -131,6 +133,7 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
     .handle("analysis", ({ query }) => computeAnalysis(query).pipe(databaseFailure))
     .handle("cacheBreaks", ({ query }) => cacheBreaks(query).pipe(databaseFailure))
     .handle("limits", ({ query }) => limitsReport(query).pipe(databaseFailure))
+    .handle("currentLimits", () => currentLimitsReport().pipe(databaseFailure))
     .handle("limitDrain", ({ query }) => limitDrain(query).pipe(databaseFailure))
     .handle("listConversations", ({ query }) => listConversations(query).pipe(databaseFailure))
     .handle("getConversation", ({ params }) => getConversation(params.id).pipe(databaseFailure))
@@ -141,6 +144,7 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
     .handle("getRequest", ({ params }) => getRequest(params.id).pipe(databaseFailure))
     .handle("search", ({ query }) => search(query).pipe(databaseFailure))
     .handle("listMachines", () => machineSummaries({}).pipe(databaseFailure))
+    .handle("machineRoster", () => machineRoster().pipe(databaseFailure))
     .handle("getMachine", ({ params, query }) =>
       machineDetail(params.id, query).pipe(databaseFailure),
     )

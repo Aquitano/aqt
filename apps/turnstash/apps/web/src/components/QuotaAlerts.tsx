@@ -5,16 +5,19 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { BellIcon, XIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { limitsQuery } from "../queries";
-import { useQuotaAlertSettings } from "../quota-alert-context";
-import { quotaAlertsOf } from "../quota-alerts";
-import { notifyQuotaAlerts } from "../quota-notifications";
+import { currentLimitsQuery } from "../queries";
+import { quotaAlertsOf } from "../quota/alerts";
+import { useQuotaAlertSettings } from "../quota/context";
+import { notifyQuotaAlerts } from "../quota/notifications";
 
 const ActiveQuotaAlerts = () => {
   const { preferences, dismissed, dismiss, deliveryError, setDeliveryError } =
     useQuotaAlertSettings();
   const [nowMs, setNowMs] = useState(Date.now);
-  const report = useQuery({ ...limitsQuery({}), refetchIntervalInBackground: preferences.desktop });
+  const report = useQuery({
+    ...currentLimitsQuery(),
+    refetchIntervalInBackground: preferences.desktop,
+  });
   const navigate = useNavigate();
   useEffect(() => {
     const tick = () => setNowMs(Date.now());

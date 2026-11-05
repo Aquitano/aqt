@@ -194,6 +194,14 @@ export const subscriptionValues = Effect.fn("Stats.subscriptionValues")(function
 
 const withoutMachine = ({ machineId: _machineId, ...rest }: StatsFilter): StatsFilter => rest;
 
+export const machineRoster = Effect.fn("Stats.machineRoster")(function* () {
+  const db = yield* Db;
+  return yield* db
+    .select({ id: machines.id, name: machines.name })
+    .from(machines)
+    .orderBy(machines.name);
+});
+
 export const machineSummaries = Effect.fn("Stats.machines")(function* (filter: StatsFilter) {
   const db = yield* Db;
   const rows = yield* db.select().from(machines).orderBy(machines.name);

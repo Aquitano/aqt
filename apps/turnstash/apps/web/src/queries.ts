@@ -85,6 +85,13 @@ export const limitsQuery = (query: LimitsQuery) =>
     refetchInterval: 5 * 60_000,
   });
 
+export const currentLimitsQuery = () =>
+  queryOptions({
+    queryKey: [...queryKeys.limits, "current"],
+    queryFn: () => Effect.runPromise(api.read.currentLimits()),
+    refetchInterval: 5 * 60_000,
+  });
+
 export const limitDrainQuery = (query: LimitDrainQuery) =>
   queryOptions({
     queryKey: [...queryKeys.limitDrain, query],
@@ -184,6 +191,12 @@ export const searchQuery = (query: SearchQuery) =>
     queryKey: [...queryKeys.search, query],
     queryFn: () => Effect.runPromise(api.read.search({ query })),
     enabled: query.q.trim().length > 0,
+  });
+
+export const machineRosterQuery = () =>
+  queryOptions({
+    queryKey: [...queryKeys.machines, "roster"],
+    queryFn: () => Effect.runPromise(api.read.machineRoster()),
   });
 
 export const machinesQuery = () =>
