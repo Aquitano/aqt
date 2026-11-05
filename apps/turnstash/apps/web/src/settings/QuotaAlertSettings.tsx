@@ -110,6 +110,14 @@ export const QuotaAlertSettings = () => {
                       : "Your browser will ask for permission when you enable notifications.")}
           </p>
         </div>
+        <div className="border-t pt-4">
+          <h3 className="text-sm font-medium">OpenObserve and other OTLP backends</h3>
+          <p className="mt-2 text-xs text-muted-foreground">
+            For alerts with the dashboard closed, enable OTLP metrics on the Turnstash server and
+            configure quota rules and notification destinations in OpenObserve. These browser
+            switches do not control server metrics or OpenObserve alerts.
+          </p>
+        </div>
       </div>
     </Section>
   );
