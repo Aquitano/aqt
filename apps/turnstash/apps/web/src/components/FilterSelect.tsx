@@ -7,6 +7,8 @@ import {
 } from "@aqt/ui/components/select";
 import { cn } from "cn";
 
+import { quietControl } from "./Segmented";
+
 export interface FilterOption {
   readonly value: string;
   readonly label: string;
@@ -39,7 +41,7 @@ export const FilterSelect = ({
       value={value ?? anyValue}
       onValueChange={(next) => onChange(next === null || next === anyValue ? null : next)}
     >
-      <SelectTrigger size="sm" aria-label={label} className={cn("w-40", className)}>
+      <SelectTrigger size="sm" aria-label={label} className={cn("w-40", quietControl, className)}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

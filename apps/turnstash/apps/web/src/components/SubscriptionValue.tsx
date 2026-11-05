@@ -1,5 +1,5 @@
 import { providerLabels } from "@aqt/turnstash-api";
-import type { PlanCost, SubscriptionValue } from "@aqt/turnstash-api";
+import type { PlanCost, ProviderId, SubscriptionValue } from "@aqt/turnstash-api";
 import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 
 import { moneyList, usd } from "../format";
@@ -15,9 +15,12 @@ const usdOnly = (costs: ReadonlyArray<PlanCost>): number | null => {
 
 export const SubscriptionValueTable = ({
   rows,
+  expired,
 }: {
   readonly rows: ReadonlyArray<SubscriptionValue>;
+  readonly expired?: ReadonlyMap<ProviderId, ReadonlyArray<PlanCost>> | undefined;
 }) => {
+  const showExpired = rows.some((row) => (expired?.get(row.provider) ?? []).length > 0);
   const totalApi = rows.reduce((sum, row) => sum + row.apiUsd, 0);
   return (
     <Section
@@ -32,6 +35,7 @@ export const SubscriptionValueTable = ({
             <Th numeric>API-equivalent</Th>
             <Th numeric>Value</Th>
             <Th numeric>Saved</Th>
+            {showExpired && <Th numeric>Expired unused</Th>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -56,6 +60,7 @@ export const SubscriptionValueTable = ({
                     <Td numeric>{usd(row.apiUsd - planUsd)}</Td>
                   </>
                 )}
+                {showExpired && <Td numeric>{moneyList(expired?.get(row.provider) ?? [])}</Td>}
               </TableRow>
             );
           })}

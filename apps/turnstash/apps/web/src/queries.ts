@@ -1,5 +1,7 @@
 import type {
   ConversationListQuery,
+  LimitDrainQuery,
+  LimitsQuery,
   MessageQuery,
   SearchQuery,
   StatsFilter,
@@ -20,6 +22,9 @@ export const queryKeys = {
   bookmarks: ["bookmarks"],
   health: ["health"],
   analysis: ["analysis"],
+  cacheBreaks: ["cache-breaks"],
+  limits: ["limits"],
+  limitDrain: ["limit-drain"],
   stats: ["stats"],
   conversationPages: ["conversation-pages"],
   messages: ["messages"],
@@ -65,6 +70,25 @@ export const analysisQuery = (filter: StatsFilter) =>
   queryOptions({
     queryKey: [...queryKeys.analysis, filter],
     queryFn: () => Effect.runPromise(api.read.analysis({ query: filter })),
+  });
+
+export const cacheBreaksQuery = (filter: StatsFilter) =>
+  queryOptions({
+    queryKey: [...queryKeys.cacheBreaks, filter],
+    queryFn: () => Effect.runPromise(api.read.cacheBreaks({ query: filter })),
+  });
+
+export const limitsQuery = (query: LimitsQuery) =>
+  queryOptions({
+    queryKey: [...queryKeys.limits, query],
+    queryFn: () => Effect.runPromise(api.read.limits({ query })),
+    refetchInterval: 5 * 60_000,
+  });
+
+export const limitDrainQuery = (query: LimitDrainQuery) =>
+  queryOptions({
+    queryKey: [...queryKeys.limitDrain, query],
+    queryFn: () => Effect.runPromise(api.read.limitDrain({ query })),
   });
 
 export const statsQuery = (filter: StatsFilter) =>

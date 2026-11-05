@@ -1,4 +1,4 @@
-import type { Overall, Stats, StatsDaily } from "@aqt/turnstash-api";
+import type { Overall, PlanCost, ProviderId, Stats, StatsDaily } from "@aqt/turnstash-api";
 import {
   Empty,
   EmptyContent,
@@ -7,12 +7,13 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@aqt/ui/components/empty";
+import { cn } from "cn";
 import { ChartColumnIcon } from "lucide-react";
 
 import { ConversationsTable } from "./ConversationsTable";
 import { DailyChart } from "./DailyChart";
 import { Heatmap } from "./Heatmap";
-import { Section } from "./Section";
+import { Section, surface } from "./Section";
 import { SpendFlow } from "./SpendFlow";
 import { StatTiles } from "./StatTiles";
 import { SubscriptionValueTable } from "./SubscriptionValue";
@@ -25,6 +26,7 @@ export const StatsView = ({
   hideProjects = false,
   hideMachines = false,
   showSubscriptions = false,
+  expired,
 }: {
   readonly stats: Stats;
   readonly previous: Overall | null;
@@ -32,6 +34,7 @@ export const StatsView = ({
   readonly hideProjects?: boolean;
   readonly hideMachines?: boolean;
   readonly showSubscriptions?: boolean;
+  readonly expired?: ReadonlyMap<ProviderId, ReadonlyArray<PlanCost>>;
 }) => {
   if (stats.overall.conversations === 0) {
     return (
@@ -56,18 +59,20 @@ export const StatsView = ({
 
   return (
     <>
-      <StatTiles
-        overall={stats.overall}
-        previous={previous}
-        daily={stats.daily}
-        range={stats.range}
-        subscriptions={stats.subscriptions}
-      />
-      <DailyChart daily={stats.daily} />
+      <section className={cn(surface, "flex flex-col gap-5 p-4 sm:p-6")}>
+        <StatTiles
+          overall={stats.overall}
+          previous={previous}
+          daily={stats.daily}
+          range={stats.range}
+          subscriptions={stats.subscriptions}
+        />
+        <DailyChart daily={stats.daily} />
+      </section>
       {showSubscriptions && stats.subscriptions.length > 0 && (
-        <SubscriptionValueTable rows={stats.subscriptions} />
+        <SubscriptionValueTable rows={stats.subscriptions} expired={expired} />
       )}
-      <div className="grid grid-cols-1 gap-x-10 gap-y-9 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {!hideProjects && stats.byProject.length > 0 && <ProjectsTable rows={stats.byProject} />}
         {stats.byModel.length > 0 && <ModelsTable rows={stats.byModel} />}
       </div>
@@ -79,7 +84,7 @@ export const StatsView = ({
           <ConversationsTable rows={stats.topConversations} showShare />
         </Section>
       )}
-      <div className="grid grid-cols-1 gap-x-10 gap-y-9 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {stats.byProvider.length > 0 && <ProvidersTable rows={stats.byProvider} />}
         {!hideMachines && stats.byMachine.length > 0 && (
           <MachinesTable

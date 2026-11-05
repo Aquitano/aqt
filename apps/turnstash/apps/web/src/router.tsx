@@ -5,6 +5,7 @@ import { AnalysisPage } from "./routes/AnalysisPage";
 import { BookmarksPage } from "./routes/BookmarksPage";
 import { ConversationPage } from "./routes/ConversationPage";
 import { ConversationsPage } from "./routes/ConversationsPage";
+import { LimitsPage } from "./routes/LimitsPage";
 import { MachinePage } from "./routes/MachinePage";
 import { MachinesPage } from "./routes/MachinesPage";
 import { OverviewPage } from "./routes/OverviewPage";
@@ -18,6 +19,7 @@ const getParentRoute = () => rootRoute;
 
 const routeTree = rootRoute.addChildren([
   createRoute({ getParentRoute, path: "/", component: OverviewPage }),
+  createRoute({ getParentRoute, path: "/limits", component: LimitsPage }),
   createRoute({ getParentRoute, path: "/analysis", component: AnalysisPage }),
   createRoute({ getParentRoute, path: "/bookmarks", component: BookmarksPage }),
   createRoute({ getParentRoute, path: "/conversations", component: ConversationsPage }),
