@@ -1,8 +1,9 @@
+import { quotaStateOf } from "@aqt/turnstash-analysis";
 import { providerLabels } from "@aqt/turnstash-api";
 import type { LimitsReport, ProviderId } from "@aqt/turnstash-api";
 
 import { weekdayTime } from "./format";
-import { burnPerHour, hourMs, openWindowOf, projectLimit, windowLabel } from "./limits-model";
+import { openWindowOf, windowLabel } from "./limits-model";
 
 export interface QuotaAlertPreferences {
   readonly low: boolean;
@@ -41,31 +42,27 @@ export const quotaAlertsOf = (
     );
     return windows.flatMap((open): Array<QuotaAlert> => {
       const resetsAtMs = Date.parse(open.resetsAt);
-      if (resetsAtMs <= nowMs || !recent(open.lastObservedAt, nowMs, 30 * 60_000)) return [];
-      const remaining = 100 - open.usedPercent;
-      const canProject =
-        open.points.length > 0 &&
-        Date.parse(open.lastObservedAt) - Date.parse(open.firstObservedAt) > hourMs / 4;
-      const projection = projectLimit({
-        open,
-        windowMinutes: open.windowMinutes,
+      const state = quotaStateOf(
+        {
+          startsAtMs: Date.parse(open.startsAt),
+          resetsAtMs,
+          endedAtMs: Date.parse(open.endedAt),
+          outcome: open.outcome,
+          firstObservedAtMs: Date.parse(open.firstObservedAt),
+          lastObservedAtMs: Date.parse(open.lastObservedAt),
+          firstUsedPercent: open.firstUsedPercent,
+          usedPercent: open.usedPercent,
+          points: open.points.map((point) => ({
+            atMs: Date.parse(point.at),
+            usedPercent: point.usedPercent,
+          })),
+        },
         nowMs,
-        burn: burnPerHour(open, "1h", nowMs),
-        untilMs: resetsAtMs,
-      });
-      const runningOut =
-        canProject && projection.emptyAtMs !== null && projection.emptyAtMs <= nowMs + hourMs;
+        blocked,
+      );
+      const remaining = state.remainingPercent;
       const kind =
-        preferences.low && (remaining <= 10 || runningOut)
-          ? "low"
-          : preferences.unused &&
-              !blocked &&
-              canProject &&
-              resetsAtMs <= nowMs + hourMs &&
-              projection.remainingAtReset !== null &&
-              projection.remainingAtReset >= 20
-            ? "unused"
-            : null;
+        preferences.low && state.low ? "low" : preferences.unused && state.unused ? "unused" : null;
       if (kind === null) return [];
       const label = `${providerLabels[provider]} ${windowLabel(open.windowMinutes).toLowerCase()} quota`;
       return [
@@ -78,8 +75,8 @@ export const quotaAlertsOf = (
           title: `${label} ${kind === "unused" ? "expires soon" : remaining <= 0 ? "is exhausted" : "is running low"}`,
           description:
             kind === "unused"
-              ? `About ${Math.round(projection.remainingAtReset ?? 0)}% may expire unused at ${weekdayTime(resetsAtMs)}, at the last hour's pace.`
-              : `${remaining > 0 && remaining < 1 ? "<1" : Math.round(remaining)}% left. ${runningOut && remaining > 10 ? "At the last hour's pace, it may run out within an hour. " : ""}Resets ${weekdayTime(resetsAtMs)}.`,
+              ? `About ${Math.round(state.remainingAtReset)}% may expire unused at ${weekdayTime(resetsAtMs)}, at the last hour's pace.`
+              : `${remaining > 0 && remaining < 1 ? "<1" : Math.round(remaining)}% left. ${state.runningOut && remaining > 10 ? "At the last hour's pace, it may run out within an hour. " : ""}Resets ${weekdayTime(resetsAtMs)}.`,
         },
       ];
     });

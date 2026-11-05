@@ -9,6 +9,7 @@ import { DashboardRoutes } from "./dashboard-auth.ts";
 import { DbLive, PgLive, runMigrations } from "./db/client.ts";
 import { ApiLive } from "./http.ts";
 import { callbackPath, OpenIdLive } from "./openid.ts";
+import { QuotaSamplerLive } from "./quota-telemetry.ts";
 import { normalizersLayer } from "./registry.ts";
 import { GaugeSamplerLive, TelemetryLive } from "./telemetry.ts";
 import { ensureBundledCatalog } from "./valuation.ts";
@@ -41,7 +42,13 @@ const ServerLive = Layer.unwrap(
   ),
 );
 
-const MainLive = Layer.mergeAll(ServerLive, WorkerLive, PricingRefreshLive, GaugeSamplerLive).pipe(
+const MainLive = Layer.mergeAll(
+  ServerLive,
+  WorkerLive,
+  PricingRefreshLive,
+  GaugeSamplerLive,
+  QuotaSamplerLive,
+).pipe(
   Layer.provide(Bootstrap),
   Layer.provide(OpenIdLive),
   Layer.provide(Layer.mergeAll(DbLive, BunHttpClient.layer, normalizersLayer(normalizers))),
