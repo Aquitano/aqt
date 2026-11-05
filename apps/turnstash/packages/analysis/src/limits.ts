@@ -26,6 +26,7 @@ export interface BuiltLimitWindow {
 }
 
 interface Draft {
+  readonly order: number;
   resetsAtMs: number;
   lastObservedAtMs: number;
   readonly points: Array<LimitWindowPoint>;
@@ -39,21 +40,47 @@ export const limitWindowsOf = (
   nowMs: number,
 ): ReadonlyArray<BuiltLimitWindow> => {
   const drafts: Array<Draft> = [];
+  const byReset = new Map<number, Set<Draft>>();
+  const indexReset = (draft: Draft) => {
+    const key = Math.floor(draft.resetsAtMs / limitResetToleranceMs);
+    const bucket = byReset.get(key) ?? new Set<Draft>();
+    bucket.add(draft);
+    byReset.set(key, bucket);
+  };
   const ordered = observations.toSorted((a, b) => a.observedAtMs - b.observedAtMs);
   for (const { observedAtMs, usedPercent, resetsAtMs } of ordered) {
     if (observedAtMs > resetsAtMs + limitResetToleranceMs) continue;
-    const draft = drafts.find(
-      (candidate) => Math.abs(candidate.resetsAtMs - resetsAtMs) < limitResetToleranceMs,
-    );
+    const key = Math.floor(resetsAtMs / limitResetToleranceMs);
+    let draft: Draft | undefined;
+    for (let neighbor = key - 1; neighbor <= key + 1; neighbor += 1) {
+      const bucket = byReset.get(neighbor);
+      if (bucket === undefined) continue;
+      for (const candidate of bucket)
+        if (
+          (draft === undefined || candidate.order < draft.order) &&
+          Math.abs(candidate.resetsAtMs - resetsAtMs) < limitResetToleranceMs
+        )
+          draft = candidate;
+    }
     if (draft === undefined) {
-      drafts.push({
+      const created = {
+        order: drafts.length,
         resetsAtMs,
         lastObservedAtMs: observedAtMs,
         points: [{ atMs: observedAtMs, usedPercent }],
-      });
+      };
+      drafts.push(created);
+      indexReset(created);
       continue;
     }
+    const previousKey = Math.floor(draft.resetsAtMs / limitResetToleranceMs);
     draft.resetsAtMs = resetsAtMs;
+    if (previousKey !== key) {
+      const previous = byReset.get(previousKey);
+      previous?.delete(draft);
+      if (previous?.size === 0) byReset.delete(previousKey);
+      indexReset(draft);
+    }
     draft.lastObservedAtMs = observedAtMs;
     const high = draft.points.at(-1)?.usedPercent ?? 0;
     if (usedPercent > high) draft.points.push({ atMs: observedAtMs, usedPercent });

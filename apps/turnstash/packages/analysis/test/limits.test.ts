@@ -1,3 +1,4 @@
+import { limitResetToleranceMs } from "@aqt/turnstash-core";
 import { expect, test } from "vite-plus/test";
 
 import { collapseLimitHits, limitWindowsOf } from "../src/limits.ts";
@@ -75,5 +76,24 @@ test("limit hits within half an hour of each other collapse into one marker", ()
     [start, 3],
     [start + 200 * 60_000, 1],
     [start + 205 * 60_000, 1],
+  ]);
+});
+
+test("reset indexing preserves the first match as a window moves between tolerance buckets", () => {
+  const reset = start + 7 * day;
+  const windows = limitWindowsOf(
+    week,
+    [
+      reading(0, 10, reset),
+      reading(1, 20, reset + 1.5 * limitResetToleranceMs),
+      reading(2, 30, reset + 0.75 * limitResetToleranceMs),
+      reading(3, 40, reset + 1.1 * limitResetToleranceMs),
+      reading(4, 50, reset + 0.2 * limitResetToleranceMs),
+    ],
+    start + day,
+  );
+  expect(windows.map((window) => window.points.map((point) => point.usedPercent))).toEqual([
+    [10, 30, 40, 50],
+    [20],
   ]);
 });

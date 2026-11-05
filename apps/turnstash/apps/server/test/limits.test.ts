@@ -1,6 +1,7 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 
 import { MachineId, type ProviderId } from "@aqt/turnstash-core";
+import { eq } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { cacheBreaks } from "../src/analysis.ts";
@@ -250,21 +251,27 @@ test("cache expiry uses the preceding write tier and leaves ambiguous reads unkn
   );
 });
 
-test("history reports retain current window points for current burn estimates", async () => {
+test("history reports retain current points and skip unrelated intervening windows", async () => {
   await runTest(
     Effect.gen(function* () {
       yield* applyLimitBatch({
         machineId,
         readings: [
+          reading(-24 * 300, 10, after(-24 * 294)),
+          reading(-24 * 150, 20, after(-24 * 144)),
           reading(24 * 20 - 2, 10, after(24 * 21)),
           reading(24 * 20 - 1, 50, after(24 * 21)),
         ],
       });
       const report = yield* limitsReport({
-        from: after(-24 * 30).toISOString(),
-        to: after(-24 * 20).toISOString(),
+        from: after(-24 * 300).toISOString(),
+        to: after(-24 * 290).toISOString(),
       });
-      expect(report.providers[0]?.series[0]?.windows[0]?.points).toHaveLength(2);
+      const windows = report.providers[0]?.series[0]?.windows ?? [];
+      expect(windows).toHaveLength(2);
+      expect(windows[0]?.points).toHaveLength(1);
+      expect(windows[1]?.points).toHaveLength(2);
+      expect(windows[1]?.outcome).toBe("open");
     }),
   );
 });
@@ -337,6 +344,34 @@ test("expired values use overlapping windows and stay stable across historical q
       expect(historicalWindow?.expiredValue[0]?.amount).toBeCloseTo(
         monthlyProration(plan, { from: after(-24 * 144), to: after(-24 * 144 + 3) }) * 0.5,
       );
+    }),
+  );
+});
+
+test("drain groups missing and literal unknown project keys into one destination", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      const db = yield* Db;
+      const missing = yield* seedConversation("codex", "missing", [{ hours: 1, costUsd: 3 }]);
+      const named = yield* seedConversation("codex", "named", [{ hours: 2, costUsd: 7 }]);
+      yield* db
+        .update(conversations)
+        .set({ projectKey: null, projectPath: null })
+        .where(eq(conversations.id, missing));
+      yield* db
+        .update(conversations)
+        .set({ projectKey: "unknown", projectPath: "/home/dev/unknown" })
+        .where(eq(conversations.id, named));
+      const drain = yield* limitDrain({
+        provider: "codex",
+        from: after(0).toISOString(),
+        to: after(3).toISOString(),
+      });
+      expect(drain.projects).toEqual([
+        { projectKey: "unknown", projectPath: "/home/dev/unknown", requests: 2, costUsd: 10 },
+      ]);
+      expect(drain.requests).toBe(2);
+      expect(drain.costUsd).toBe(10);
     }),
   );
 });

@@ -92,6 +92,7 @@ const Navigation = () => {
       <SidebarHeader className="px-3 pt-3 pb-1">
         <Link
           to="/"
+          aria-label="Turnstash overview"
           onClick={() => {
             if (isMobile) setOpenMobile(false);
           }}

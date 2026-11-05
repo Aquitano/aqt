@@ -9,8 +9,8 @@ import type {
   PlanCost,
   ProviderLimits,
 } from "@aqt/turnstash-api";
-import type { LimitBatch, ProviderId } from "@aqt/turnstash-core";
-import { asc, count, desc, eq, gte, or, sql } from "drizzle-orm";
+import { limitResetToleranceMs, type LimitBatch, type ProviderId } from "@aqt/turnstash-core";
+import { and, asc, count, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { Array as Arr, Clock, Effect } from "effect";
 
 import { Db } from "./db/client.ts";
@@ -186,9 +186,11 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
   const [longest] = yield* db
     .select({ minutes: sql<number>`coalesce(max(${limitSamples.windowMinutes}), 0)::int` })
     .from(limitSamples);
-  const since = new Date(
-    Math.min(nowMs - historyDays * dayMs, spanFromMs) - (longest?.minutes ?? 0) * 60_000,
-  );
+  const contextMs = (longest?.minutes ?? 0) * 60_000;
+  const recentSince = new Date(nowMs - historyDays * dayMs - contextMs);
+  const since = new Date(Math.min(nowMs - historyDays * dayMs, spanFromMs) - contextMs);
+  const until =
+    span.to === null ? undefined : new Date(spanToMs + contextMs + limitResetToleranceMs);
 
   const samples = yield* db
     .select({
@@ -200,7 +202,15 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
       plan: limitSamples.plan,
     })
     .from(limitSamples)
-    .where(or(gte(limitSamples.observedAt, since), gte(limitSamples.resetsAt, since)))
+    .where(
+      or(
+        and(
+          or(gte(limitSamples.observedAt, since), gte(limitSamples.resetsAt, since)),
+          until === undefined ? undefined : lte(limitSamples.observedAt, until),
+        ),
+        or(gte(limitSamples.observedAt, recentSince), gte(limitSamples.resetsAt, recentSince)),
+      ),
+    )
     .orderBy(asc(limitSamples.observedAt));
   const hits = yield* db
     .select({
@@ -210,7 +220,15 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
       message: limitHits.message,
     })
     .from(limitHits)
-    .where(gte(limitHits.occurredAt, since));
+    .where(
+      or(
+        and(
+          gte(limitHits.occurredAt, since),
+          until === undefined ? undefined : lte(limitHits.occurredAt, until),
+        ),
+        gte(limitHits.occurredAt, recentSince),
+      ),
+    );
   const plans = yield* db.select().from(subscriptionPlans);
 
   const providers = [...new Set([...samples, ...hits].map((row) => row.provider))].toSorted();
@@ -329,9 +347,11 @@ export const limitDrain = Effect.fn("Limits.drain")(function* (query: LimitDrain
     .groupBy(conversations.id)
     .orderBy(desc(cost))
     .limit(conversationLimit);
+  const projectKey =
+    sql<string>`coalesce(${conversations.projectKey}, ${unknownProject})`.inlineParams();
   const projectRows = yield* db
     .select({
-      projectKey: conversations.projectKey,
+      projectKey,
       projectPath: sql<string | null>`max(${conversations.projectPath})`,
       requests,
       costUsd: cost,
@@ -340,7 +360,7 @@ export const limitDrain = Effect.fn("Limits.drain")(function* (query: LimitDrain
     .innerJoin(conversations, eq(conversations.id, modelRequests.conversationId))
     .leftJoin(valuations, activeValuation)
     .where(where)
-    .groupBy(conversations.projectKey)
+    .groupBy(projectKey)
     .orderBy(desc(cost));
   const drain: LimitDrain = {
     costUsd: Arr.reduce(projectRows, 0, (total, row) => total + number(row.costUsd)),
@@ -353,7 +373,7 @@ export const limitDrain = Effect.fn("Limits.drain")(function* (query: LimitDrain
       costUsd: number(row.costUsd),
     })),
     projects: projectRows.map((row) => ({
-      projectKey: row.projectKey ?? unknownProject,
+      projectKey: row.projectKey,
       projectPath: row.projectPath,
       requests: row.requests,
       costUsd: number(row.costUsd),
