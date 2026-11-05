@@ -40,8 +40,10 @@ import { readToken, writeToken } from "../api";
 import { FiltersProvider } from "../filters";
 import { int } from "../format";
 import { dashboardSessionQuery, healthQuery, machinesQuery } from "../queries";
+import { QuotaAlertProvider } from "../quota-alert-context";
 import { TokenTotalProvider } from "../token-total";
 import { Pending, RequestFailure } from "./Async";
+import { QuotaAlerts } from "./QuotaAlerts";
 import { SecretInput } from "./SecretInput";
 
 const navGroups = [
@@ -268,6 +270,7 @@ const Dashboard = () => {
       <SidebarInset className="min-w-0">
         <TopBar />
         <RepricingNotice />
+        <QuotaAlerts />
         <Outlet />
       </SidebarInset>
     </SidebarProvider>
@@ -276,10 +279,12 @@ const Dashboard = () => {
 
 export const Layout = () => (
   <TokenTotalProvider>
-    <FiltersProvider>
-      <div className="flex min-h-screen flex-col">
-        <Dashboard />
-      </div>
-    </FiltersProvider>
+    <QuotaAlertProvider>
+      <FiltersProvider>
+        <div className="flex min-h-screen flex-col">
+          <Dashboard />
+        </div>
+      </FiltersProvider>
+    </QuotaAlertProvider>
   </TokenTotalProvider>
 );

@@ -58,6 +58,12 @@ The Limits page shows how much of each subscription window is left, when it rese
 
 Upgrading bumps the Codex and Claude parser versions, so the worker re-normalizes those conversations at startup to fill in limit history.
 
+### Quota alerts
+
+In Settings, under Display, opt in to warnings when quota is at or below 10%, is projected to run out within an hour before reset, or may reset within an hour with at least 20% unused. Both alert types default off. Forecasts use the last hour's pace and require more than 15 minutes of observations; readings older than 30 minutes do not trigger alerts.
+
+Alerts appear throughout the dashboard. Desktop notifications are a separate opt-in and require browser permission. Turnstash must remain open, and background tabs may be delayed by the browser. Preferences and dismissals are saved in this browser. Each alert type sends at most one desktop notification per quota window across tabs when storage is available. There is no server-side delivery.
+
 ## Agent
 
 Install [Bun](https://bun.sh/docs/installation) 1.4.2 or newer and [GitHub CLI](https://cli.github.com/) on each machine that collects transcripts. Run the agent as the same OS user who runs your coding tools. Authenticate with an account that can access the private repository, then download the newest agent release, check it and install it:
