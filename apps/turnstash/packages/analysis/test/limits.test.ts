@@ -85,10 +85,10 @@ test("reset indexing preserves the first match as a window moves between toleran
     week,
     [
       reading(0, 10, reset),
-      reading(1, 20, reset + 1.5 * limitResetToleranceMs),
-      reading(2, 30, reset + 0.75 * limitResetToleranceMs),
-      reading(3, 40, reset + 1.1 * limitResetToleranceMs),
-      reading(4, 50, reset + 0.2 * limitResetToleranceMs),
+      reading(1 / 60, 20, reset + 1.5 * limitResetToleranceMs),
+      reading(2 / 60, 30, reset + 0.75 * limitResetToleranceMs),
+      reading(3 / 60, 40, reset + 1.1 * limitResetToleranceMs),
+      reading(4 / 60, 50, reset + 0.2 * limitResetToleranceMs),
     ],
     start + day,
   );
@@ -110,8 +110,33 @@ test("a late cached reading cannot replace the newer active window", () => {
       outcome,
       usedPercent,
     })),
-  ).toEqual([
-    { resetsAtMs: start + 5 * day, outcome: "replaced", usedPercent: 80 },
-    { resetsAtMs: start + 10 * day, outcome: "open", usedPercent: 5 },
-  ]);
+  ).toEqual([{ resetsAtMs: start + 10 * day, outcome: "open", usedPercent: 5 }]);
+});
+
+test("replacement boundaries discard cached rises and retain the last valid flat reading", () => {
+  const [replaced, reset] = limitWindowsOf(
+    week,
+    [
+      reading(0, 10, start + 5 * day),
+      reading(1, 30, start + 5 * day),
+      reading(2, 30, start + 5 * day),
+      reading(72, 5, start + 10 * day),
+      reading(72, 60, start + 5 * day),
+      reading(96, 80, start + 5 * day),
+    ],
+    start + 11 * day,
+  );
+  expect(replaced).toMatchObject({
+    outcome: "replaced",
+    endedAtMs: start + 3 * day,
+    firstObservedAtMs: start,
+    lastObservedAtMs: start + 2 * hour,
+    usedPercent: 30,
+    points: [
+      { atMs: start, usedPercent: 10 },
+      { atMs: start + hour, usedPercent: 30 },
+    ],
+  });
+  expect(reset?.startsAtMs).toBe(replaced?.endedAtMs);
+  expect(reset?.outcome).toBe("reset");
 });

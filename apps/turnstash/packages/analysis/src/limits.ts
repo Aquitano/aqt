@@ -28,8 +28,7 @@ export interface BuiltLimitWindow {
 interface Draft {
   readonly order: number;
   resetsAtMs: number;
-  lastObservedAtMs: number;
-  readonly points: Array<LimitWindowPoint>;
+  readonly observations: Array<LimitObservation>;
 }
 
 // A window's usage only rises, and concurrent sessions report older values late, so a reading counts only when it
@@ -48,7 +47,8 @@ export const limitWindowsOf = (
     byReset.set(key, bucket);
   };
   const ordered = observations.toSorted((a, b) => a.observedAtMs - b.observedAtMs);
-  for (const { observedAtMs, usedPercent, resetsAtMs } of ordered) {
+  for (const observation of ordered) {
+    const { observedAtMs, resetsAtMs } = observation;
     if (observedAtMs > resetsAtMs + limitResetToleranceMs) continue;
     const key = Math.floor(resetsAtMs / limitResetToleranceMs);
     let draft: Draft | undefined;
@@ -66,8 +66,7 @@ export const limitWindowsOf = (
       const created = {
         order: drafts.length,
         resetsAtMs,
-        lastObservedAtMs: observedAtMs,
-        points: [{ atMs: observedAtMs, usedPercent }],
+        observations: [observation],
       };
       drafts.push(created);
       indexReset(created);
@@ -81,31 +80,40 @@ export const limitWindowsOf = (
       if (previous?.size === 0) byReset.delete(previousKey);
       indexReset(draft);
     }
-    draft.lastObservedAtMs = observedAtMs;
-    const high = draft.points.at(-1)?.usedPercent ?? 0;
-    if (usedPercent > high) draft.points.push({ atMs: observedAtMs, usedPercent });
+    draft.observations.push(observation);
   }
   const windowMs = windowMinutes * 60_000;
   const chronological = drafts.toSorted((a, b) => a.resetsAtMs - b.resetsAtMs);
   return chronological.flatMap((draft, index) => {
-    const [first] = draft.points;
-    const last = draft.points.at(-1);
-    if (first === undefined || last === undefined) return [];
     const next = chronological[index + 1];
     const nextStartsAtMs = next === undefined ? undefined : next.resetsAtMs - windowMs;
     const replaced =
       nextStartsAtMs !== undefined && nextStartsAtMs < draft.resetsAtMs - limitResetToleranceMs;
+    const endedAtMs = replaced ? nextStartsAtMs : draft.resetsAtMs;
+    const observations = replaced
+      ? draft.observations.filter((observation) => observation.observedAtMs < endedAtMs)
+      : draft.observations;
+    const [first] = observations;
+    const last = observations.at(-1);
+    if (first === undefined || last === undefined) return [];
+    let usedPercent = first.usedPercent;
+    const points = [{ atMs: first.observedAtMs, usedPercent }];
+    for (const observation of observations) {
+      if (observation.usedPercent <= usedPercent) continue;
+      usedPercent = observation.usedPercent;
+      points.push({ atMs: observation.observedAtMs, usedPercent });
+    }
     return [
       {
         startsAtMs: draft.resetsAtMs - windowMs,
         resetsAtMs: draft.resetsAtMs,
-        endedAtMs: replaced ? Math.max(nextStartsAtMs, last.atMs) : draft.resetsAtMs,
+        endedAtMs,
         outcome: replaced ? "replaced" : draft.resetsAtMs > nowMs ? "open" : "reset",
-        firstObservedAtMs: first.atMs,
-        lastObservedAtMs: Math.max(draft.lastObservedAtMs, last.atMs),
+        firstObservedAtMs: first.observedAtMs,
+        lastObservedAtMs: last.observedAtMs,
         firstUsedPercent: first.usedPercent,
-        usedPercent: last.usedPercent,
-        points: draft.points,
+        usedPercent,
+        points,
       },
     ];
   });

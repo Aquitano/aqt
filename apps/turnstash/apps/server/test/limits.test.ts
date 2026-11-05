@@ -375,3 +375,54 @@ test("drain groups missing and literal unknown project keys into one destination
     }),
   );
 });
+
+test("late cached readings cannot steal expiry allocation or add spend to a replaced window", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      const db = yield* Db;
+      const [plan] = yield* db
+        .insert(subscriptionPlans)
+        .values({
+          provider: "codex",
+          name: "Plan",
+          monthlyPrice: "300",
+          currency: "USD",
+          startedOn: "2020-01-01",
+        })
+        .returning();
+      if (plan === undefined) return yield* Effect.die("no plan");
+      yield* seedConversation("codex", "replacement", [
+        { hours: 0, costUsd: 1 },
+        { hours: 1, costUsd: 2 },
+        { hours: 2, costUsd: 3 },
+        { hours: 3, costUsd: 20 },
+        { hours: 73, costUsd: 11 },
+      ]);
+      yield* applyLimitBatch({
+        machineId,
+        readings: [
+          reading(0, 10, after(120)),
+          reading(1, 30, after(120)),
+          reading(2, 30, after(120)),
+          reading(72, 5, after(240)),
+          reading(96, 80, after(120)),
+          reading(120, 20, after(240)),
+        ],
+      });
+      const report = yield* limitsReport({
+        from: after(-48).toISOString(),
+        to: after(264).toISOString(),
+      });
+      const [replaced, reset] = report.providers[0]?.series[0]?.windows ?? [];
+      expect(replaced?.endedAt).toBe(after(72).toISOString());
+      expect(replaced?.lastObservedAt).toBe(after(2).toISOString());
+      expect(replaced?.costUsd).toBeCloseTo(6);
+      expect(replaced?.costPerPercentUsd).toBeCloseTo(0.25);
+      expect(replaced?.points.map((point) => point.usedPercent)).toEqual([10, 30]);
+      expect(reset?.costUsd).toBeCloseTo(11);
+      expect(reset?.expiredValue[0]?.amount).toBeCloseTo(
+        monthlyProration(plan, { from: after(72), to: after(240) }) * 0.8,
+      );
+    }),
+  );
+});
