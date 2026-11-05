@@ -631,7 +631,8 @@ export type LimitPoint = typeof LimitPoint.Type;
 export const LimitOutcome = Schema.Literals(["open", "reset", "replaced"]);
 export type LimitOutcome = typeof LimitOutcome.Type;
 
-// Points are filled only for windows inside the requested span; the rest carry their totals. Cost covers the
+// Points are included for windows overlapping the requested span and all open windows, which support current
+// burn estimates while browsing history. Other windows carry totals only. Cost covers the
 // requests between the window's first and last reading, the stretch its percentages describe.
 export const LimitWindow = Schema.Struct({
   windowMinutes: Schema.Natural,

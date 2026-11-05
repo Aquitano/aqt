@@ -259,8 +259,7 @@ export interface DrainBurst {
 
 const burstGapMs = 45 * 60_000;
 
-// A reading appears with each request, so usage sits right before the reading that shows it. After a long quiet
-// stretch only the end of that stretch counts.
+// Usage rose after the earlier reading and by the later one. Encode that interval as [from, to).
 export const drainBurstsOf = (windows: ReadonlyArray<LimitWindow>): ReadonlyArray<DrainBurst> => {
   const bursts: Array<DrainBurst> = [];
   for (const window of windows) {
@@ -273,10 +272,10 @@ export const drainBurstsOf = (windows: ReadonlyArray<LimitWindow>): ReadonlyArra
       const afterMs = atMs(after.at);
       const drop = after.usedPercent - before.usedPercent;
       if (latest !== null && afterMs - latest.toMs <= burstGapMs) {
-        latest = { fromMs: latest.fromMs, toMs: afterMs, drop: latest.drop + drop };
+        latest = { fromMs: latest.fromMs, toMs: afterMs + 1, drop: latest.drop + drop };
         bursts[bursts.length - 1] = latest;
       } else {
-        latest = { fromMs: Math.max(beforeMs, afterMs - burstGapMs), toMs: afterMs, drop };
+        latest = { fromMs: beforeMs + 1, toMs: afterMs + 1, drop };
         bursts.push(latest);
       }
     }
@@ -293,23 +292,25 @@ export const drainBucketsOf = (
   windows: ReadonlyArray<LimitWindow>,
   span: LimitSpan,
   bucketMs: number,
+  nowMs: number,
 ): ReadonlyArray<DrainBucket> => {
+  const endMs = Math.min(span.toMs, nowMs);
   const buckets = new Map<number, number>();
-  for (let t = span.fromMs; t < span.toMs; t += bucketMs) buckets.set(t, 0);
+  for (let t = span.fromMs; t < endMs; t += bucketMs) buckets.set(t, 0);
   for (const window of windows) {
     for (let index = 1; index < window.points.length; index += 1) {
       const before = window.points[index - 1];
       const after = window.points[index];
       if (before === undefined || after === undefined) continue;
       const tMs = atMs(after.at);
-      if (tMs < span.fromMs || tMs >= span.toMs) continue;
+      if (tMs < span.fromMs || tMs >= endMs) continue;
       const bucket = span.fromMs + Math.floor((tMs - span.fromMs) / bucketMs) * bucketMs;
       buckets.set(bucket, (buckets.get(bucket) ?? 0) + after.usedPercent - before.usedPercent);
     }
   }
   return [...buckets].map(([t, drop]) => ({
     t,
-    rate: drop / (Math.min(bucketMs, span.toMs - t) / hourMs),
+    rate: drop / (Math.min(bucketMs, span.toMs - t, Math.max(endMs - t, hourMs)) / hourMs),
   }));
 };
 

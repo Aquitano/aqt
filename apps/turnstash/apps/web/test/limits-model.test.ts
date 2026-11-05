@@ -143,7 +143,7 @@ test("a closed window jumps back to full where it ended", () => {
   expect(rows.at(-1)?.recorded).toBe(100);
 });
 
-test("readings close together form one burst, and a quiet gap only counts its end", () => {
+test("readings close together form one burst, and sparse gaps keep their full attribution interval", () => {
   const bursts = drainBurstsOf([
     windowOf([
       [0, 0],
@@ -153,8 +153,8 @@ test("readings close together form one burst, and a quiet gap only counts its en
     ]),
   ]);
   expect(bursts).toEqual([
-    { fromMs: start, toMs: start + 0.5 * hourMs, drop: 25 },
-    { fromMs: start + 10 * hourMs - 0.75 * hourMs, toMs: start + 10 * hourMs, drop: 5 },
+    { fromMs: start + 1, toMs: start + 0.5 * hourMs + 1, drop: 25 },
+    { fromMs: start + 0.5 * hourMs + 1, toMs: start + 10 * hourMs + 1, drop: 5 },
   ]);
 });
 
@@ -248,10 +248,55 @@ test("drain buckets normalize a final partial interval by its actual duration", 
     [6.5, 24],
     [7, 30],
   ]);
-  expect(drainBucketsOf([window], { fromMs: start, toMs: start + 7 * hourMs }, 6 * hourMs)).toEqual(
-    [
-      { t: start, rate: 2 },
-      { t: start + 6 * hourMs, rate: 12 },
-    ],
-  );
+  expect(
+    drainBucketsOf(
+      [window],
+      { fromMs: start, toMs: start + 7 * hourMs },
+      6 * hourMs,
+      start + 7 * hourMs,
+    ),
+  ).toEqual([
+    { t: start, rate: 2 },
+    { t: start + 6 * hourMs, rate: 12 },
+  ]);
+  expect(
+    drainBucketsOf(
+      [window],
+      { fromMs: start, toMs: start + 6.5 * hourMs },
+      6 * hourMs,
+      start + 7 * hourMs,
+    ).at(-1),
+  ).toEqual({ t: start + 6 * hourMs, rate: 12 });
+});
+
+test("an ongoing drain bucket uses elapsed time with a one-hour minimum and emits no future buckets", () => {
+  const window = windowOf([
+    [0, 0],
+    [6, 6],
+    [6.5, 12],
+  ]);
+  expect(
+    drainBucketsOf(
+      [window],
+      { fromMs: start, toMs: start + 24 * hourMs },
+      6 * hourMs,
+      start + 7 * hourMs,
+    ),
+  ).toEqual([
+    { t: start, rate: 0 },
+    { t: start + 6 * hourMs, rate: 12 },
+  ]);
+  expect(
+    drainBucketsOf(
+      [
+        windowOf([
+          [0, 0],
+          [6 + 0.5 / 60, 5],
+        ]),
+      ],
+      { fromMs: start, toMs: start + 24 * hourMs },
+      6 * hourMs,
+      start + (6 + 2 / 60) * hourMs,
+    ).at(-1),
+  ).toEqual({ t: start + 6 * hourMs, rate: 5 });
 });

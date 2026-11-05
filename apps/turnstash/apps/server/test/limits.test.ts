@@ -190,7 +190,8 @@ test("drain attributes only the requests inside the selected span", async () => 
     Effect.gen(function* () {
       yield* seedConversation("codex", "inside", [
         { hours: 1, costUsd: 3 },
-        { hours: 9, costUsd: 100 },
+        { hours: 3, costUsd: 100 },
+        { hours: 3 + 0.5 / 60, costUsd: 100 },
       ]);
       yield* seedConversation("codex", "also-inside", [{ hours: 2, costUsd: 1 }]);
       const drain = yield* limitDrain({
@@ -263,6 +264,22 @@ test("history reports retain current window points for current burn estimates", 
         to: after(-24 * 20).toISOString(),
       });
       expect(report.providers[0]?.series[0]?.windows[0]?.points).toHaveLength(2);
+    }),
+  );
+});
+
+test("historical windows include readings before the requested start", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* applyLimitBatch({ machineId, readings: [reading(-24 * 150, 40, after(-24 * 144))] });
+      const report = yield* limitsReport({
+        from: after(-24 * 145).toISOString(),
+        to: after(-24 * 140).toISOString(),
+      });
+      const window = report.providers[0]?.series[0]?.windows[0];
+      expect(window?.outcome).toBe("reset");
+      expect(window?.usedPercent).toBe(40);
+      expect(window?.points).toHaveLength(1);
     }),
   );
 });

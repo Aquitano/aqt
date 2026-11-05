@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import { Async } from "../components/Async";
+import { Async, Pending, RequestFailure } from "../components/Async";
 import { LimitsStrip } from "../components/LimitsStrip";
 import { Page } from "../components/Page";
 import { StatsView } from "../components/StatsView";
@@ -32,6 +32,8 @@ export const OverviewPage = () => {
   return (
     <Page>
       <FilterBar title="Overview" note={stats.data?.range === null ? "all time" : undefined} />
+      {stats.isSuccess && limits.isPending && <Pending />}
+      {!stats.isError && limits.isError && <RequestFailure error={limits.error} />}
       <LimitsStrip providers={limits.data?.providers ?? []} />
       <Async query={stats}>
         {(data) => (
@@ -41,7 +43,9 @@ export const OverviewPage = () => {
             calendar={calendar.data ?? null}
             hideMachines={filters.machineId !== null}
             showSubscriptions
-            {...(limits.isPlaceholderData || limits.data === undefined ? {} : { expired })}
+            {...(limits.isError || limits.isPlaceholderData || limits.data === undefined
+              ? {}
+              : { expired })}
           />
         )}
       </Async>

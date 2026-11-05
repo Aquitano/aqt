@@ -92,6 +92,9 @@ const Navigation = () => {
       <SidebarHeader className="px-3 pt-3 pb-1">
         <Link
           to="/"
+          onClick={() => {
+            if (isMobile) setOpenMobile(false);
+          }}
           className="flex h-8 items-center gap-2 overflow-hidden text-base font-semibold tracking-tight outline-none"
         >
           <FlameIcon className="size-4.5 shrink-0 fill-primary text-primary" />

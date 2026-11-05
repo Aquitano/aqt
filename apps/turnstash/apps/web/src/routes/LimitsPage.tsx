@@ -6,7 +6,7 @@ import {
   type ProviderId,
   type ProviderLimits,
 } from "@aqt/turnstash-api";
-import { Button } from "@aqt/ui/components/button";
+import { Button, buttonVariants } from "@aqt/ui/components/button";
 import {
   Empty,
   EmptyContent,
@@ -112,7 +112,7 @@ const DrainDetails = ({
     limitDrainQuery({
       provider,
       from: new Date(selection.fromMs).toISOString(),
-      to: new Date(selection.toMs + 60_000).toISOString(),
+      to: new Date(selection.toMs).toISOString(),
     }),
   );
   return (
@@ -280,7 +280,7 @@ const LimitCard = ({
     stepMs: short ? 15 * 60_000 : hourMs,
   });
   const bucketMs = (short ? 3 : 6) * hourMs;
-  const buckets = drainBucketsOf(series.windows, span, bucketMs);
+  const buckets = drainBucketsOf(series.windows, span, bucketMs, nowMs);
   const bursts = drainBurstsOf(series.windows).filter(
     (burst) => burst.toMs >= span.fromMs && burst.fromMs <= span.toMs,
   );
@@ -444,6 +444,12 @@ const LimitCard = ({
             : "Select a bar or choose a time range below"}
         </span>
       </div>
+
+      {view === "drain" && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Live rates use a minimum one-hour average.
+        </p>
+      )}
 
       {bursts.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -631,13 +637,20 @@ export const LimitsPage = () => {
       to: "/limits",
       search: {
         ...state,
-        ...("week" in patch || "provider" in patch
+        ...("provider" in patch
           ? { selectionProvider: undefined, from: undefined, to: undefined }
           : {}),
         ...patch,
       },
       resetScroll: false,
     });
+  const historySearch = (week: number | undefined): LimitsSearch => ({
+    ...state,
+    week,
+    selectionProvider: undefined,
+    from: undefined,
+    to: undefined,
+  });
   const page = spanFor(10_080, weekOffset, anchorMs);
   const report = useQuery({
     ...limitsQuery({
@@ -670,33 +683,45 @@ export const LimitsPage = () => {
           <span className="mr-1.5 text-[13px] text-muted-foreground">
             {dayLabel(page.fromMs)} to {dayLabel(page.toMs)}
           </span>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="Previous week"
+          <Link
+            to="/limits"
+            search={historySearch(weekOffset - 1)}
+            resetScroll={false}
             disabled={weekOffset <= -5200}
-            onClick={() => update({ week: weekOffset - 1 })}
+            aria-label="Previous week"
+            className={cn(
+              buttonVariants({ size: "icon-sm", variant: "ghost" }),
+              "aria-disabled:pointer-events-none aria-disabled:opacity-50",
+            )}
           >
             <ChevronLeftIcon />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className={quietControl}
+          </Link>
+          <Link
+            to="/limits"
+            search={historySearch(undefined)}
+            resetScroll={false}
             disabled={weekOffset === 0}
-            onClick={() => update({ week: undefined })}
+            className={cn(
+              buttonVariants({ size: "sm", variant: "ghost" }),
+              quietControl,
+              "aria-disabled:pointer-events-none aria-disabled:opacity-50",
+            )}
           >
             Today
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label="Next week"
+          </Link>
+          <Link
+            to="/limits"
+            search={historySearch(weekOffset + 1)}
+            resetScroll={false}
             disabled={weekOffset >= 0}
-            onClick={() => update({ week: weekOffset + 1 })}
+            aria-label="Next week"
+            className={cn(
+              buttonVariants({ size: "icon-sm", variant: "ghost" }),
+              "aria-disabled:pointer-events-none aria-disabled:opacity-50",
+            )}
           >
             <ChevronRightIcon />
-          </Button>
+          </Link>
         </div>
       </div>
       <Async query={report}>

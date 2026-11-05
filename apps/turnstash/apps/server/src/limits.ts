@@ -10,7 +10,7 @@ import type {
   ProviderLimits,
 } from "@aqt/turnstash-api";
 import type { LimitBatch, ProviderId } from "@aqt/turnstash-core";
-import { asc, count, desc, eq, gte, sql } from "drizzle-orm";
+import { asc, count, desc, eq, gte, or, sql } from "drizzle-orm";
 import { Array as Arr, Clock, Effect } from "effect";
 
 import { Db } from "./db/client.ts";
@@ -147,7 +147,7 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
       plan: limitSamples.plan,
     })
     .from(limitSamples)
-    .where(gte(limitSamples.observedAt, since))
+    .where(or(gte(limitSamples.observedAt, since), gte(limitSamples.resetsAt, since)))
     .orderBy(asc(limitSamples.observedAt));
   const hits = yield* db
     .select({
@@ -177,13 +177,13 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
       ).map((built): LocatedWindow => ({ provider, windowMinutes, built })),
     );
   });
+  const longestByProvider = new Map<ProviderId, number>();
+  for (const { provider, windowMinutes } of located)
+    longestByProvider.set(provider, Math.max(longestByProvider.get(provider) ?? 0, windowMinutes));
   const costs = yield* windowCosts(located);
   const views = located.map(({ provider, windowMinutes, built }, index) => {
     const cost = costs.get(index) ?? { costUsd: 0, deltaCostUsd: 0, requests: 0 };
     const rose = built.usedPercent - built.firstUsedPercent;
-    const longest = Math.max(
-      ...located.filter((other) => other.provider === provider).map((o) => o.windowMinutes),
-    );
     const inSpan = built.endedAtMs >= spanFromMs && built.startsAtMs < spanToMs;
     const view: LimitWindow = {
       windowMinutes,
@@ -201,7 +201,7 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
         rose >= minimumPercentForRate && cost.deltaCostUsd > 0 ? cost.deltaCostUsd / rose : null,
       // An early reset grants new quota, so only a window that ran to its reset lost what was left.
       expiredValue:
-        built.outcome === "reset" && windowMinutes === longest
+        built.outcome === "reset" && windowMinutes === longestByProvider.get(provider)
           ? expiredValueOf(
               built,
               plans.filter((plan) => plan.provider === provider),

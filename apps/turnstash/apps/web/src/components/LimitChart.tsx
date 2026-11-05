@@ -350,7 +350,7 @@ export const DrainChart = ({
           const row: unknown = payload?.[0]?.payload;
           if (!active || !isBucket(row)) return null;
           return (
-            <Pill>{`${dayTime(row.t)} to ${dayTime(Math.min(row.t + bucketMs, span.toMs))} · ${row.rate.toFixed(1)}%/h drained`}</Pill>
+            <Pill>{`${dayTime(row.t)} to ${dayTime(Math.min(row.t + bucketMs, span.toMs, nowMs))} · ${row.rate.toFixed(1)}%/h drained`}</Pill>
           );
         }}
       />
