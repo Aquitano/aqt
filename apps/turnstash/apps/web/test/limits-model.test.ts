@@ -7,6 +7,7 @@ import {
   dayMs,
   dayTicksOf,
   drainBurstsOf,
+  drainBucketsOf,
   hourMs,
   paceOf,
   spanFor,
@@ -237,4 +238,20 @@ test("daily chart ticks stay at local midnight across a DST change", () => {
   } finally {
     vi.unstubAllEnvs();
   }
+});
+
+test("drain buckets normalize a final partial interval by its actual duration", () => {
+  const window = windowOf([
+    [0, 0],
+    [2, 12],
+    [6, 18],
+    [6.5, 24],
+    [7, 30],
+  ]);
+  expect(drainBucketsOf([window], { fromMs: start, toMs: start + 7 * hourMs }, 6 * hourMs)).toEqual(
+    [
+      { t: start, rate: 2 },
+      { t: start + 6 * hourMs, rate: 12 },
+    ],
+  );
 });

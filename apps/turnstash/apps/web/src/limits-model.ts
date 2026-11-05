@@ -307,8 +307,10 @@ export const drainBucketsOf = (
       buckets.set(bucket, (buckets.get(bucket) ?? 0) + after.usedPercent - before.usedPercent);
     }
   }
-  const hours = bucketMs / hourMs;
-  return [...buckets].map(([t, drop]) => ({ t, rate: drop / hours }));
+  return [...buckets].map(([t, drop]) => ({
+    t,
+    rate: drop / (Math.min(bucketMs, span.toMs - t) / hourMs),
+  }));
 };
 
 export const latestCostPerPercent = (series: LimitSeries): number | null =>
@@ -370,6 +372,6 @@ export const useFirstOf = (providers: ReadonlyArray<ProviderLimits>): UseFirst |
     })
     .toSorted((a, b) => a.resetsAtMs - b.resetsAtMs);
   const [first, then] = open;
-  if (first === undefined || then === undefined || first.remaining < usefulRemaining) return null;
+  if (first === undefined || then === undefined) return null;
   return { ...first, thenProvider: then.provider, thenResetsAtMs: then.resetsAtMs };
 };
