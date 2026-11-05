@@ -26,6 +26,8 @@ import {
   conversationTurns,
   conversations,
   dirtyConversations,
+  limitHits,
+  limitSamples,
   messages,
   modelRequests,
   sourceRecords,
@@ -440,6 +442,46 @@ const replaceTurns = Effect.fn("Normalize.replaceTurns")(function* (
   }
 });
 
+const replaceLimits = Effect.fn("Normalize.replaceLimits")(function* (
+  conversationId: string,
+  provider: ProviderId,
+  normalized: NormalizedConversation,
+) {
+  const db = yield* Db;
+  yield* db.delete(limitSamples).where(eq(limitSamples.conversationId, conversationId));
+  for (const batch of Arr.chunksOf(normalized.limitSamples ?? [], 500)) {
+    yield* db
+      .insert(limitSamples)
+      .values(
+        batch.map((sample) => ({
+          provider,
+          conversationId,
+          windowMinutes: sample.windowMinutes,
+          observedAt: new Date(sample.observedAt),
+          usedPercent: sample.usedPercent,
+          resetsAt: new Date(sample.resetsAt),
+          plan: scrubOptional(sample.plan),
+        })),
+      )
+      .onConflictDoNothing();
+  }
+  yield* db.delete(limitHits).where(eq(limitHits.conversationId, conversationId));
+  for (const batch of Arr.chunksOf(normalized.limitHits ?? [], 500)) {
+    yield* db
+      .insert(limitHits)
+      .values(
+        batch.map((hit) => ({
+          provider,
+          conversationId,
+          occurredAt: new Date(hit.occurredAt),
+          windowMinutes: hit.windowMinutes ?? null,
+          message: scrubText(hit.message),
+        })),
+      )
+      .onConflictDoNothing();
+  }
+});
+
 const upsertConversation = Effect.fn("Normalize.upsertConversation")(function* (
   provider: ProviderId,
   normalized: NormalizedConversation,
@@ -459,6 +501,7 @@ const upsertConversation = Effect.fn("Normalize.upsertConversation")(function* (
   yield* replaceToolExecutions(conversationId, normalized);
   yield* replaceRequests(conversationId, provider, normalized);
   yield* replaceTurns(conversationId, normalized, analysis);
+  yield* replaceLimits(conversationId, provider, normalized);
   return conversationId;
 });
 

@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
-import { ContentHash, IsoTimestamp } from "./records.ts";
+import { ProviderId } from "./provider.ts";
+import { ContentHash, IsoTimestamp, MachineId } from "./records.ts";
 
 export const Role = Schema.Literals(["user", "assistant", "system", "tool"]);
 export type Role = typeof Role.Type;
@@ -118,6 +119,45 @@ export const NormalizedRequest = Schema.Struct({
 });
 export type NormalizedRequest = typeof NormalizedRequest.Type;
 
+const Percent = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
+
+export const WindowMinutes = Schema.Int.check(Schema.isGreaterThan(0));
+
+// One reading of a plan limit, as the provider reported it at that moment.
+export const LimitSample = Schema.Struct({
+  windowMinutes: WindowMinutes,
+  observedAt: IsoTimestamp,
+  usedPercent: Percent,
+  resetsAt: IsoTimestamp,
+  plan: Schema.optionalKey(Schema.String),
+});
+export type LimitSample = typeof LimitSample.Type;
+
+// Providers recompute a window's reset time on every reading, so one window's resetsAt varies by seconds.
+export const limitResetToleranceMs = 10 * 60_000;
+
+export const sameLimitWindow = (a: string, b: string): boolean =>
+  Math.abs(Date.parse(a) - Date.parse(b)) < limitResetToleranceMs;
+
+export const LimitHit = Schema.Struct({
+  occurredAt: IsoTimestamp,
+  windowMinutes: Schema.optionalKey(WindowMinutes),
+  message: Schema.String,
+});
+export type LimitHit = typeof LimitHit.Type;
+
+export const LimitReading = Schema.Struct({ provider: ProviderId, ...LimitSample.fields });
+export type LimitReading = typeof LimitReading.Type;
+
+export const LimitBatch = Schema.Struct({
+  machineId: MachineId,
+  readings: Schema.Array(LimitReading).check(Schema.isMaxLength(50)),
+});
+export type LimitBatch = typeof LimitBatch.Type;
+
+export const LimitBatchResult = Schema.Struct({ accepted: Schema.Natural });
+export type LimitBatchResult = typeof LimitBatchResult.Type;
+
 export const NormalizedConversation = Schema.Struct({
   conversationKey: Schema.String,
   parentConversationKey: Schema.optionalKey(Schema.String),
@@ -130,6 +170,8 @@ export const NormalizedConversation = Schema.Struct({
   messages: Schema.Array(NormalizedMessage),
   toolExecutions: Schema.Array(NormalizedToolExecution),
   requests: Schema.Array(NormalizedRequest),
+  limitSamples: Schema.optionalKey(Schema.Array(LimitSample)),
+  limitHits: Schema.optionalKey(Schema.Array(LimitHit)),
 });
 export type NormalizedConversation = typeof NormalizedConversation.Type;
 

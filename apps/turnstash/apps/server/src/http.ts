@@ -14,7 +14,7 @@ import {
   listTokens,
   updatePlan,
 } from "./admin.ts";
-import { computeAnalysis } from "./analysis.ts";
+import { cacheBreaks, computeAnalysis } from "./analysis.ts";
 import { getBlob } from "./blobs.ts";
 import { createBookmark, deleteBookmark, listBookmarks, updateBookmark } from "./bookmarks.ts";
 import { serverVersion } from "./config.ts";
@@ -30,6 +30,7 @@ import { dirtyConversations, pricingCatalogs } from "./db/schema.ts";
 import { applyCommitBatch, repositoryTasks } from "./git.ts";
 import { databaseFailure } from "./http-errors.ts";
 import { applyBatch, tombstonesSince } from "./ingest.ts";
+import { applyLimitBatch, limitDrain, limitsReport } from "./limits.ts";
 import { exportMarkdown } from "./markdown-export.ts";
 import { search } from "./search.ts";
 import {
@@ -109,6 +110,12 @@ const IngestLive = HttpApiBuilder.group(Api, "ingest", (handlers) =>
         Effect.flatMap((actor) => applyCommitBatch(actor.machineId, payload)),
         databaseFailure,
       ),
+    )
+    .handle("pushLimits", ({ payload }) =>
+      ownMachine(payload.machineId).pipe(
+        Effect.flatMap(() => applyLimitBatch(payload)),
+        databaseFailure,
+      ),
     ),
 );
 
@@ -122,6 +129,9 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
     .handle("statsOverall", ({ query }) => overallStats(query).pipe(databaseFailure))
     .handle("statsDaily", ({ query }) => dailyStats(query).pipe(databaseFailure))
     .handle("analysis", ({ query }) => computeAnalysis(query).pipe(databaseFailure))
+    .handle("cacheBreaks", ({ query }) => cacheBreaks(query).pipe(databaseFailure))
+    .handle("limits", ({ query }) => limitsReport(query).pipe(databaseFailure))
+    .handle("limitDrain", ({ query }) => limitDrain(query).pipe(databaseFailure))
     .handle("listConversations", ({ query }) => listConversations(query).pipe(databaseFailure))
     .handle("getConversation", ({ params }) => getConversation(params.id).pipe(databaseFailure))
     .handle("getMessages", ({ params, query }) =>

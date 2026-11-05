@@ -6,6 +6,7 @@ import {
   jsonCount as count,
   jsonObject as asObject,
   jsonString as asString,
+  type LimitHit,
   parseJsonObject,
   storedBlobOf,
   streamPartsOf,
@@ -208,6 +209,12 @@ const titleOf = (text: string): string => {
   return line.length > 120 ? line.slice(0, 120) : line;
 };
 
+const limitWindowOf = (text: string): number | undefined => {
+  if (/session limit|5-hour limit/i.test(text)) return 300;
+  if (/weekly limit/i.test(text)) return 10_080;
+  return undefined;
+};
+
 const normalize = (
   conversationKey: string,
   records: ReadonlyArray<SourceRecordRow>,
@@ -225,6 +232,7 @@ const normalize = (
   let clientVersion: string | undefined;
   let aiTitle: string | undefined;
   let customTitle: string | undefined;
+  const limitHits: Array<LimitHit> = [];
 
   for (const entry of orderedEntries(records)) {
     const { record } = entry;
@@ -262,6 +270,15 @@ const normalize = (
     if (type === "assistant") {
       const message = asObject(record["message"]);
       if (message === undefined) continue;
+      if (record["isApiErrorMessage"] === true && record["error"] === "rate_limit") {
+        const text = textOfContent(message["content"]) ?? "Usage limit reached";
+        const windowMinutes = limitWindowOf(text);
+        limitHits.push({
+          occurredAt: createdAt,
+          message: text,
+          ...(windowMinutes === undefined ? {} : { windowMinutes }),
+        });
+      }
       const messageKey = asString(message["id"]) ?? fallbackKey;
       const blockIndex = record["apiBlockIndex"];
       const blockKey = `b:${messageKey}#${typeof blockIndex === "number" ? blockIndex : (uuid ?? fallbackKey)}`;
@@ -458,12 +475,13 @@ const normalize = (
     messages: normalizedMessages,
     toolExecutions,
     requests: [...groups.values()].flatMap(requestsOf),
+    ...(limitHits.length === 0 ? {} : { limitHits }),
   };
 };
 
 export const claudeNormalizer: Normalizer = {
   id: "claude",
-  parserVersion: 3,
+  parserVersion: 4,
   conversationKeyOf,
   normalize,
 };

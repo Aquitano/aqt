@@ -34,6 +34,16 @@ const configDirs = (host: HostEnv): ReadonlyArray<string> => {
   return [joinPath(host, host.home, ".claude")];
 };
 
+// Claude Code keeps its account state beside the default config directory, and inside an overridden one.
+export const claudeStateFiles = (host: HostEnv): ReadonlyArray<string> => {
+  const defaultConfigDir = joinPath(host, host.home, ".claude");
+  return configDirs(host).map((dir) =>
+    dir === defaultConfigDir
+      ? joinPath(host, host.home, ".claude.json")
+      : joinPath(host, dir, ".claude.json"),
+  );
+};
+
 const packagesDirectory = "Packages";
 const msixSessionsPath = "LocalCache/Roaming/Claude/local-agent-mode-sessions";
 

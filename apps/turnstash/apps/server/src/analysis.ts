@@ -1,6 +1,8 @@
 import type {
   AllocationRow,
   Analysis,
+  CacheBreak,
+  CacheBreakReport,
   CategoryRow,
   ModelComparisonRow,
   StatsFilter,
@@ -18,7 +20,7 @@ import {
   modelRequests,
   valuations,
 } from "./db/schema.ts";
-import { activeCost, activeValuation, number, requestConditions } from "./filters.ts";
+import { activeCost, activeValuation, dateWindow, number, requestConditions } from "./filters.ts";
 
 // Every request in the filter lands in exactly one bucket: its turn, or "unattributed" when it has no turn.
 const turnCosts = (filter: StatsFilter) => sql`
@@ -56,6 +58,111 @@ const allocationRows = (rows: ReadonlyArray<AllocationRaw>): Array<AllocationRow
     turns: number(row.turns),
     estimatedCostUsd: number(row.cost_usd),
   }));
+
+// A rewrite this small is ordinary growth at the end of a conversation's cached prefix.
+const minimumRewriteTokens = 20_000;
+const cacheBreakRowLimit = 40;
+const lookbackMs = 86_400_000;
+
+// A request that rewrites most of what the previous request of its conversation had cached. Only its cost to
+// write counts, because reading the same tokens would have cost about a tenth of it. The earlier day stays in
+// the scan so the first request of the period still has a predecessor.
+const cacheBreakRows = (filter: StatsFilter) => {
+  const from = dateWindow(filter).from;
+  const scanned =
+    from === null
+      ? filter
+      : { ...filter, from: new Date(from.getTime() - lookbackMs).toISOString() };
+  const written = sql`(${modelRequests.cacheWriteTokens} + ${modelRequests.cacheWrite1hTokens})`;
+  const cached = sql`(${modelRequests.cacheReadTokens} + ${written})`;
+  return sql`
+    WITH ordered AS (
+      SELECT ${modelRequests.id} AS id, ${modelRequests.conversationId} AS conversation_id,
+        ${modelRequests.messageKey} AS message_key, ${modelRequests.provider} AS provider,
+        ${modelRequests.modelId} AS model_id, ${modelRequests.requestedAt} AS requested_at,
+        ${modelRequests.cacheReadTokens} AS cache_read_tokens, ${written} AS written,
+        ${modelRequests.cacheWrite1hTokens} AS written_1h,
+        lag(${modelRequests.requestedAt}) OVER turn AS previous_at,
+        lag(${cached}) OVER turn AS previous_cached
+      FROM ${modelRequests}
+      JOIN ${conversations} ON ${conversations.id} = ${modelRequests.conversationId}
+      WHERE ${requestConditions(scanned) ?? sql`true`}
+      WINDOW turn AS (PARTITION BY ${modelRequests.conversationId} ORDER BY ${modelRequests.requestedAt}, ${modelRequests.id})
+    )
+    SELECT o.id, o.conversation_id, ${conversations.title} AS title, o.message_key, o.provider, o.model_id,
+      o.requested_at, o.cache_read_tokens, o.written,
+      extract(epoch FROM o.requested_at - o.previous_at) / 60 AS idle_minutes,
+      extract(epoch FROM o.requested_at - o.previous_at) / 60 <= (CASE WHEN o.written_1h > 0 THEN 60 ELSE 5 END) AS within_lifetime,
+      coalesce((${valuations.breakdown} ->> 'cacheWriteUsd')::numeric, 0) + coalesce((${valuations.breakdown} ->> 'cacheWrite1hUsd')::numeric, 0) AS rewrite_cost
+    FROM ordered AS o
+    JOIN ${conversations} ON ${conversations.id} = o.conversation_id
+    LEFT JOIN ${valuations} ON ${valuations.requestId} = o.id AND ${valuations.active}
+    WHERE o.written >= ${minimumRewriteTokens}
+      AND o.cache_read_tokens < o.written * 0.1
+      AND o.written >= o.previous_cached * 0.5
+      AND o.previous_cached >= ${minimumRewriteTokens}
+      ${from === null ? sql`` : sql`AND o.requested_at >= ${from.toISOString()}::timestamptz`}`;
+};
+
+type CacheBreakRaw = {
+  readonly id: string;
+  readonly conversation_id: string;
+  readonly title: string | null;
+  readonly message_key: string | null;
+  readonly provider: CacheBreak["provider"];
+  readonly model_id: string;
+  readonly requested_at: Date | string;
+  readonly cache_read_tokens: number;
+  readonly written: number;
+  readonly idle_minutes: string | number;
+  readonly within_lifetime: boolean;
+  readonly rewrite_cost: string | number;
+};
+
+export const cacheBreaks = Effect.fn("Analysis.cacheBreaks")(function* (filter: StatsFilter) {
+  const db = yield* Db;
+  const matches = cacheBreakRows(filter);
+  const [totals] = yield* db.execute<{
+    readonly breaks: number;
+    readonly within_lifetime: number;
+    readonly rewrite_cost: string;
+    readonly written: string;
+  }>(
+    sql`
+    WITH matches AS (${matches})
+    SELECT count(*)::int AS breaks, count(*) FILTER (WHERE within_lifetime)::int AS within_lifetime,
+      coalesce(sum(rewrite_cost), 0)::text AS rewrite_cost, coalesce(sum(written), 0)::text AS written
+    FROM matches`,
+    "objects",
+  );
+  const rows = yield* db.execute<CacheBreakRaw>(
+    sql`
+    WITH matches AS (${matches})
+    SELECT * FROM matches ORDER BY within_lifetime DESC, rewrite_cost DESC LIMIT ${cacheBreakRowLimit}`,
+    "objects",
+  );
+  const report: CacheBreakReport = {
+    breaks: number(totals?.breaks),
+    withinLifetime: number(totals?.within_lifetime),
+    rewriteCostUsd: number(totals?.rewrite_cost),
+    writtenTokens: number(totals?.written),
+    rows: rows.map((row): CacheBreak => ({
+      requestId: row.id,
+      conversationId: row.conversation_id,
+      conversationTitle: row.title,
+      messageKey: row.message_key,
+      provider: row.provider,
+      modelId: row.model_id,
+      requestedAt: new Date(row.requested_at).toISOString(),
+      idleMinutes: number(row.idle_minutes),
+      withinLifetime: row.within_lifetime,
+      cacheWriteTokens: number(row.written),
+      cacheReadTokens: number(row.cache_read_tokens),
+      rewriteCostUsd: number(row.rewrite_cost),
+    })),
+  };
+  return report;
+});
 
 export const computeAnalysis = Effect.fn("Analysis.compute")(function* (filter: StatsFilter) {
   const db = yield* Db;

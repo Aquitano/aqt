@@ -6,7 +6,9 @@ import {
   jsonCount,
   jsonNumber as numberOf,
   jsonString as stringOf,
+  type LimitSample,
   parseJsonObject,
+  sameLimitWindow,
   storedBlobOf,
   textOfParts,
   type MessagePart,
@@ -33,6 +35,29 @@ const natural = (value: number): number => (value > 0 ? Math.trunc(value) : 0);
 
 const isoOf = (value: Schema.Json | undefined): string | undefined =>
   isoTimestampOf(stringOf(value));
+
+const limitSampleOf = (
+  window: Schema.Json | undefined,
+  observedAt: string,
+  plan: string | undefined,
+): LimitSample | undefined => {
+  if (!isObject(window)) return undefined;
+  const usedPercent = numberOf(window["used_percent"]);
+  const windowMinutes = numberOf(window["window_minutes"]);
+  const resetsAtSeconds = numberOf(window["resets_at"]);
+  if (usedPercent === undefined || windowMinutes === undefined || resetsAtSeconds === undefined)
+    return undefined;
+  if (!Number.isInteger(windowMinutes) || windowMinutes <= 0) return undefined;
+  const resetsAt = isoTimestampOf(resetsAtSeconds * 1000);
+  if (resetsAt === undefined) return undefined;
+  return {
+    windowMinutes,
+    observedAt,
+    usedPercent: Math.min(100, Math.max(0, usedPercent)),
+    resetsAt,
+    ...(plan === undefined ? {} : { plan }),
+  };
+};
 
 interface Envelope {
   readonly streamId: string;
@@ -289,6 +314,8 @@ const normalize = (
   let previousInfo: string | undefined;
   let previousTotals: Schema.JsonObject | undefined;
   let previousTotalTokens: number | null = null;
+  const limitSamples: Array<LimitSample> = [];
+  const latestLimit = new Map<number, LimitSample>();
 
   const pushMessage = (
     base: string,
@@ -428,6 +455,29 @@ const normalize = (
     }
   };
 
+  // Every token count repeats the limits, and only a change adds anything.
+  const handleRateLimits = (envelope: Envelope, at: string) => {
+    if (replayCutoff !== undefined && Date.parse(at) < replayCutoff) return;
+    const limits = envelope.payload["rate_limits"];
+    if (!isObject(limits)) return;
+    const limitId = stringOf(limits["limit_id"]);
+    if (limitId !== undefined && limitId !== "codex") return;
+    const plan = stringOf(limits["plan_type"]);
+    for (const window of [limits["primary"], limits["secondary"]]) {
+      const sample = limitSampleOf(window, at, plan);
+      if (sample === undefined) continue;
+      const latest = latestLimit.get(sample.windowMinutes);
+      if (
+        latest !== undefined &&
+        latest.usedPercent === sample.usedPercent &&
+        sameLimitWindow(latest.resetsAt, sample.resetsAt)
+      )
+        continue;
+      latestLimit.set(sample.windowMinutes, sample);
+      limitSamples.push(sample);
+    }
+  };
+
   const handleTokenCount = (envelope: Envelope, at: string) => {
     const info = envelope.payload["info"];
     if (!isObject(info)) return;
@@ -477,8 +527,9 @@ const normalize = (
           const settings = envelope.payload["thread_settings"];
           settingsModel =
             (isObject(settings) ? stringOf(settings["model"]) : undefined) ?? settingsModel;
-        } else if (kind === "token_count" && !hasUsageRecords) {
-          handleTokenCount(envelope, at);
+        } else if (kind === "token_count") {
+          handleRateLimits(envelope, at);
+          if (!hasUsageRecords) handleTokenCount(envelope, at);
         }
         break;
       }
@@ -517,6 +568,7 @@ const normalize = (
     messages,
     toolExecutions,
     requests,
+    ...(limitSamples.length === 0 ? {} : { limitSamples }),
   };
 };
 
@@ -543,7 +595,7 @@ const trim = (_streamId: StreamId, payload: string): string => {
 
 export const codexNormalizer: Normalizer = {
   id: "codex",
-  parserVersion: 4,
+  parserVersion: 5,
   conversationKeyOf: (streamId) => {
     const uuid = rolloutUuid.exec(streamId)?.[1];
     return uuid === undefined ? Option.none() : Option.some(uuid.toLowerCase());

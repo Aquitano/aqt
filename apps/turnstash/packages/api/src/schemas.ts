@@ -616,3 +616,122 @@ export const Health = Schema.Struct({
   repricing: Schema.NullOr(Repricing),
 });
 export type Health = typeof Health.Type;
+
+const Percent = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 100 }));
+
+export const LimitsQuery = Schema.Struct({
+  from: Schema.optionalKey(DateBoundary),
+  to: Schema.optionalKey(DateBoundary),
+});
+export type LimitsQuery = typeof LimitsQuery.Type;
+
+export const LimitPoint = Schema.Struct({ at: Iso, usedPercent: Percent });
+export type LimitPoint = typeof LimitPoint.Type;
+
+export const LimitOutcome = Schema.Literals(["open", "reset", "replaced"]);
+export type LimitOutcome = typeof LimitOutcome.Type;
+
+// Points are filled only for windows inside the requested span; the rest carry their totals. Cost covers the
+// requests between the window's first and last reading, the stretch its percentages describe.
+export const LimitWindow = Schema.Struct({
+  windowMinutes: Schema.Natural,
+  startsAt: Iso,
+  resetsAt: Iso,
+  endedAt: Iso,
+  outcome: LimitOutcome,
+  firstObservedAt: Iso,
+  lastObservedAt: Iso,
+  firstUsedPercent: Percent,
+  usedPercent: Percent,
+  costUsd: Money,
+  requests: Schema.Natural,
+  costPerPercentUsd: Schema.NullOr(Money),
+  expiredValue: Schema.Array(PlanCost),
+  points: Schema.Array(LimitPoint),
+});
+export type LimitWindow = typeof LimitWindow.Type;
+
+export const LimitSeries = Schema.Struct({
+  windowMinutes: Schema.Natural,
+  windows: Schema.Array(LimitWindow),
+});
+export type LimitSeries = typeof LimitSeries.Type;
+
+export const LimitHitMarker = Schema.Struct({
+  at: Iso,
+  windowMinutes: Schema.NullOr(Schema.Natural),
+  message: Schema.String,
+  count: Schema.Natural,
+});
+export type LimitHitMarker = typeof LimitHitMarker.Type;
+
+export const ProviderLimits = Schema.Struct({
+  provider: ProviderId,
+  plan: Schema.NullOr(Schema.String),
+  series: Schema.Array(LimitSeries),
+  hits: Schema.Array(LimitHitMarker),
+});
+export type ProviderLimits = typeof ProviderLimits.Type;
+
+export const LimitsReport = Schema.Struct({
+  generatedAt: Iso,
+  providers: Schema.Array(ProviderLimits),
+});
+export type LimitsReport = typeof LimitsReport.Type;
+
+export const LimitDrainQuery = Schema.Struct({
+  provider: ProviderId,
+  from: DateBoundary,
+  to: DateBoundary,
+});
+export type LimitDrainQuery = typeof LimitDrainQuery.Type;
+
+export const LimitDrainConversation = Schema.Struct({
+  id: Uuid,
+  title: Schema.NullOr(Schema.String),
+  projectKey: Schema.NullOr(Schema.String),
+  requests: Schema.Natural,
+  costUsd: Money,
+});
+export type LimitDrainConversation = typeof LimitDrainConversation.Type;
+
+export const LimitDrainProject = Schema.Struct({
+  projectKey: Schema.String,
+  projectPath: Schema.NullOr(Schema.String),
+  requests: Schema.Natural,
+  costUsd: Money,
+});
+export type LimitDrainProject = typeof LimitDrainProject.Type;
+
+export const LimitDrain = Schema.Struct({
+  costUsd: Money,
+  requests: Schema.Natural,
+  conversations: Schema.Array(LimitDrainConversation),
+  projects: Schema.Array(LimitDrainProject),
+});
+export type LimitDrain = typeof LimitDrain.Type;
+
+export const CacheBreak = Schema.Struct({
+  requestId: Uuid,
+  conversationId: Uuid,
+  conversationTitle: Schema.NullOr(Schema.String),
+  messageKey: Schema.NullOr(Schema.String),
+  provider: ProviderId,
+  modelId: Schema.String,
+  requestedAt: Iso,
+  idleMinutes: Schema.Finite,
+  withinLifetime: Schema.Boolean,
+  cacheWriteTokens: Schema.Natural,
+  cacheReadTokens: Schema.Natural,
+  rewriteCostUsd: Money,
+});
+export type CacheBreak = typeof CacheBreak.Type;
+
+export const CacheBreakReport = Schema.Struct({
+  breaks: Schema.Natural,
+  withinLifetime: Schema.Natural,
+  rewriteCostUsd: Money,
+  writtenTokens: Schema.Natural,
+  rows: Schema.Array(CacheBreak),
+});
+export type CacheBreakReport = typeof CacheBreakReport.Type;

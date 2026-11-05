@@ -17,6 +17,7 @@ import {
   boolean,
   bytea,
   date,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -27,6 +28,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -322,6 +324,49 @@ export const subscriptionPlans = pgTable("subscription_plans", {
   startedOn: date("started_on").notNull(),
   endedOn: date("ended_on"),
 });
+
+// A reading from a transcript belongs to its conversation and is rebuilt with it. A reading the agent took
+// directly has no conversation.
+export const limitSamples = pgTable(
+  "limit_samples",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    provider: text("provider").$type<ProviderId>().notNull(),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "cascade",
+    }),
+    windowMinutes: integer("window_minutes").notNull(),
+    observedAt: timestamptz("observed_at").notNull(),
+    usedPercent: doublePrecision("used_percent").notNull(),
+    resetsAt: timestamptz("resets_at").notNull(),
+    plan: text("plan"),
+  },
+  (table) => [
+    unique("limit_samples_identity")
+      .on(table.provider, table.conversationId, table.windowMinutes, table.observedAt)
+      .nullsNotDistinct(),
+    index("limit_samples_series").on(table.provider, table.windowMinutes, table.observedAt),
+    index("limit_samples_conversation").on(table.conversationId),
+  ],
+);
+
+export const limitHits = pgTable(
+  "limit_hits",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    provider: text("provider").$type<ProviderId>().notNull(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    occurredAt: timestamptz("occurred_at").notNull(),
+    windowMinutes: integer("window_minutes"),
+    message: text("message").notNull(),
+  },
+  (table) => [
+    uniqueIndex("limit_hits_identity").on(table.conversationId, table.occurredAt),
+    index("limit_hits_time").on(table.provider, table.occurredAt),
+  ],
+);
 
 export const tombstones = pgTable(
   "tombstones",
