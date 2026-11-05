@@ -11,7 +11,7 @@ const decodeField = Schema.decodeUnknownOption(Schema.String);
 
 const localTime = (ms: number) => {
   const date = new Date(ms);
-  return new Date(ms - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  return new Date(ms - date.getTimezoneOffset() * 60_000).toISOString().slice(0, -1);
 };
 
 export const DrainRange = ({
@@ -28,8 +28,9 @@ export const DrainRange = ({
   const id = useId();
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setError(null), [selection?.fromMs, selection?.toMs]);
-  const end = Math.min(span.toMs, nowMs);
-  const clamp = (ms: number) => Math.min(end, Math.max(span.fromMs, ms));
+  const start = Math.min(span.fromMs, selection?.fromMs ?? span.fromMs);
+  const end = Math.min(nowMs, Math.max(span.toMs, selection?.toMs ?? span.toMs));
+  const clamp = (ms: number) => Math.min(end, Math.max(start, ms));
   return (
     <details className="mt-3 text-xs">
       <summary className="w-fit cursor-pointer rounded-sm text-muted-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring">
@@ -49,10 +50,12 @@ export const DrainRange = ({
             !Number.isFinite(fromMs) ||
             !Number.isFinite(toMs) ||
             fromMs >= toMs ||
-            fromMs < span.fromMs ||
-            toMs > end
+            fromMs < start ||
+            toMs > end ||
+            toMs <= span.fromMs ||
+            fromMs >= span.toMs
           ) {
-            setError("Choose an end after the start, within the displayed history.");
+            setError("Choose an end after the start, overlapping the displayed chart.");
             return;
           }
           setError(null);
@@ -66,8 +69,9 @@ export const DrainRange = ({
               id={`${id}-from`}
               name="from"
               type="datetime-local"
+              step="0.001"
               required
-              min={localTime(span.fromMs)}
+              min={localTime(start)}
               max={localTime(end)}
               defaultValue={localTime(clamp(selection?.fromMs ?? end - hourMs))}
             />
@@ -78,8 +82,9 @@ export const DrainRange = ({
               id={`${id}-to`}
               name="to"
               type="datetime-local"
+              step="0.001"
               required
-              min={localTime(span.fromMs)}
+              min={localTime(start)}
               max={localTime(end)}
               defaultValue={localTime(clamp(selection?.toMs ?? end))}
             />

@@ -95,7 +95,7 @@ const Navigation = () => {
           onClick={() => {
             if (isMobile) setOpenMobile(false);
           }}
-          className="flex h-8 items-center gap-2 overflow-hidden text-base font-semibold tracking-tight outline-none"
+          className="flex h-8 items-center gap-2 overflow-hidden rounded-md text-base font-semibold tracking-tight outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           <FlameIcon className="size-4.5 shrink-0 fill-primary text-primary" />
           <span className="group-data-[collapsible=icon]:hidden">turnstash</span>

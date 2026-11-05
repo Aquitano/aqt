@@ -8,6 +8,7 @@ import {
   dayTicksOf,
   drainBurstsOf,
   drainBucketsOf,
+  drainSelectionOf,
   hourMs,
   paceOf,
   spanFor,
@@ -188,6 +189,18 @@ test("use first names the limit that resets first, unless it is nearly gone", ()
   expect(useFirstOf([limitsOf("claude", later), limitsOf("codex", spent)])).toBeNull();
 });
 
+test("a retired longer window does not hide the provider's current short window", () => {
+  const short = windowOf([[0, 20]]);
+  const limits = limitsOf("claude", { ...short, outcome: "reset", resetsAt: iso(start - dayMs) });
+  const later = { ...short, resetsAt: iso(start + 8 * dayMs) };
+  expect(
+    useFirstOf([
+      { ...limits, series: [...limits.series, { windowMinutes: 300, windows: [short] }] },
+      limitsOf("codex", later),
+    ])?.provider,
+  ).toBe("claude");
+});
+
 test("recent burn uses only the observed part of a young window", () => {
   const window = windowOf([
     [0, 0],
@@ -255,7 +268,7 @@ test("drain buckets normalize a final partial interval by its actual duration", 
       6 * hourMs,
       start + 7 * hourMs,
     ),
-  ).toEqual([
+  ).toMatchObject([
     { t: start, rate: 2 },
     { t: start + 6 * hourMs, rate: 12 },
   ]);
@@ -266,7 +279,7 @@ test("drain buckets normalize a final partial interval by its actual duration", 
       6 * hourMs,
       start + 7 * hourMs,
     ).at(-1),
-  ).toEqual({ t: start + 6 * hourMs, rate: 12 });
+  ).toMatchObject({ t: start + 6 * hourMs, rate: 12 });
 });
 
 test("an ongoing drain bucket uses elapsed time with a one-hour minimum and emits no future buckets", () => {
@@ -282,7 +295,7 @@ test("an ongoing drain bucket uses elapsed time with a one-hour minimum and emit
       6 * hourMs,
       start + 7 * hourMs,
     ),
-  ).toEqual([
+  ).toMatchObject([
     { t: start, rate: 0 },
     { t: start + 6 * hourMs, rate: 12 },
   ]);
@@ -298,5 +311,36 @@ test("an ongoing drain bucket uses elapsed time with a one-hour minimum and emit
       6 * hourMs,
       start + (6 + 2 / 60) * hourMs,
     ).at(-1),
-  ).toEqual({ t: start + 6 * hourMs, rate: 5 });
+  ).toMatchObject({ t: start + 6 * hourMs, rate: 5 });
+});
+
+test("drain bars retain the full contributing intervals across bucket and chart boundaries", () => {
+  const window = windowOf([
+    [-3, 0],
+    [0.5, 10],
+    [7, 30],
+  ]);
+  const buckets = drainBucketsOf(
+    [window],
+    { fromMs: start, toMs: start + 12 * hourMs },
+    6 * hourMs,
+    start + 12 * hourMs,
+  );
+  expect(buckets.map((bucket) => bucket.attribution)).toEqual([
+    { fromMs: start - 3 * hourMs + 1, toMs: start + 0.5 * hourMs + 1 },
+    { fromMs: start + 0.5 * hourMs + 1, toMs: start + 7 * hourMs + 1 },
+  ]);
+});
+
+test("drain inspection preserves intervals crossing the chart while excluding future time", () => {
+  const span = { fromMs: start, toMs: start + hourMs };
+  const range = { fromMs: start - hourMs, toMs: start + 2 * hourMs };
+  expect(drainSelectionOf(range, span, start + 3 * hourMs)).toEqual(range);
+  expect(drainSelectionOf(range, span, start + 1.5 * hourMs)).toEqual({
+    ...range,
+    toMs: start + 1.5 * hourMs,
+  });
+  expect(
+    drainSelectionOf({ fromMs: start - 2 * hourMs, toMs: start }, span, start + hourMs),
+  ).toBeNull();
 });

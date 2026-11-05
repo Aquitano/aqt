@@ -38,6 +38,7 @@ import { Page, PageHead } from "../components/Page";
 import { ProviderIcon } from "../components/ProviderIcon";
 import { Section, surface } from "../components/Section";
 import { quietControl, Segmented } from "../components/Segmented";
+import { useCollapse } from "../components/Tables";
 import { UseFirstLine } from "../components/UseFirstLine";
 import { useFilters } from "../filters";
 import { dayTime, int, moneyList, relativeTime, usd, weekdayTime } from "../format";
@@ -48,12 +49,14 @@ import {
   dayMs,
   drainBucketsOf,
   drainBurstsOf,
+  drainSelectionOf,
   futureFactors,
   type FutureUsage,
   type LimitSpan,
   hourMs,
   latestCostPerPercent,
   openWindowOf,
+  primarySeriesOf,
   paceOf,
   projectLimit,
   spanFor,
@@ -136,8 +139,8 @@ const DrainDetails = ({
       {drain.data !== undefined &&
         (drain.data.requests === 0 ? (
           <p className="text-muted-foreground">
-            No recorded requests here. The usage came from a machine or app Turnstash does not
-            collect.
+            No recorded requests in this interval. Usage readings may include requests that have not
+            been collected.
           </p>
         ) : (
           <div className="grid gap-x-8 gap-y-3 lg:grid-cols-[3fr_2fr]">
@@ -214,7 +217,8 @@ const LimitCard = ({
       resetScroll: false,
     });
   const series: LimitSeries | undefined =
-    limits.series.find((candidate) => candidate.windowMinutes === minutes) ?? limits.series[0];
+    limits.series.find((candidate) => candidate.windowMinutes === minutes) ??
+    primarySeriesOf(limits.series);
   const color = providerColor(limits.provider);
   const name = providerLabels[limits.provider];
 
@@ -239,25 +243,24 @@ const LimitCard = ({
   const open = openWindowOf(series);
   const remaining = open === null ? 100 : 100 - open.usedPercent;
   const span = spanFor(series.windowMinutes, weekOffset, anchorMs);
-  const selection =
+  const selection = drainSelectionOf(
     state.selectionProvider === limits.provider &&
-    state.from !== undefined &&
-    state.to !== undefined &&
-    state.from >= span.fromMs &&
-    state.to <= Math.min(span.toMs, nowMs)
+      state.from !== undefined &&
+      state.to !== undefined
       ? { fromMs: state.from, toMs: state.to }
-      : null;
+      : null,
+    span,
+    nowMs,
+  );
   const setSelection = (range: LimitSelection | null) => {
-    const from = range === null ? undefined : Math.max(span.fromMs, range.fromMs);
-    const to = range === null ? undefined : Math.min(span.toMs, nowMs, range.toMs);
-    const valid = from !== undefined && to !== undefined && from < to;
+    const selected = drainSelectionOf(range, span, nowMs);
     void navigate({
       to: "/limits",
       search: {
         ...state,
-        selectionProvider: valid ? limits.provider : undefined,
-        from: valid ? from : undefined,
-        to: valid ? to : undefined,
+        selectionProvider: selected === null ? undefined : limits.provider,
+        from: selected?.fromMs,
+        to: selected?.toMs,
       },
       resetScroll: false,
     });
@@ -282,7 +285,7 @@ const LimitCard = ({
   const bucketMs = (short ? 3 : 6) * hourMs;
   const buckets = drainBucketsOf(series.windows, span, bucketMs, nowMs);
   const bursts = drainBurstsOf(series.windows).filter(
-    (burst) => burst.toMs >= span.fromMs && burst.fromMs <= span.toMs,
+    (burst) => burst.toMs > span.fromMs && burst.fromMs < Math.min(span.toMs, nowMs),
   );
   const pace = paceOf(open, nowMs);
   const costPerPercent = latestCostPerPercent(series);
@@ -447,6 +450,7 @@ const LimitCard = ({
 
       {view === "drain" && (
         <p className="mt-2 text-xs text-muted-foreground">
+          Bars group reported increases. Request details cover the full interval between readings.
           Live rates use a minimum one-hour average.
         </p>
       )}
@@ -476,6 +480,13 @@ const LimitCard = ({
         selection={selection}
         onSelect={setSelection}
       />
+
+      {selection !== null && (selection.fromMs < span.fromMs || selection.toMs > span.toMs) && (
+        <p className="mt-3 text-xs text-muted-foreground">
+          This observation interval extends beyond the chart. Request details include the full
+          interval.
+        </p>
+      )}
 
       {selection !== null && (
         <DrainDetails
@@ -510,7 +521,8 @@ const WindowLedger = ({
 }) => {
   const rows = providers
     .flatMap((limits) =>
-      (limits.series[0]?.windows ?? [])
+      limits.series
+        .flatMap((series) => series.windows)
         .filter(
           (window) =>
             window.outcome !== "open" &&
@@ -519,8 +531,8 @@ const WindowLedger = ({
         )
         .map((window) => ({ provider: limits.provider, window })),
     )
-    .toSorted((a, b) => Date.parse(b.window.endedAt) - Date.parse(a.window.endedAt))
-    .slice(0, 16);
+    .toSorted((a, b) => Date.parse(b.window.endedAt) - Date.parse(a.window.endedAt));
+  const collapse = useCollapse(rows);
   if (rows.length === 0) return null;
   const expired = new Map<string, number>();
   for (const { window } of rows)
@@ -532,7 +544,7 @@ const WindowLedger = ({
       title="How each window ended"
       note={
         expiredTotal.length > 0
-          ? `${moneyList(expiredTotal)} of plan cost expired unused`
+          ? `${moneyList(expiredTotal)} of plan cost expired unused across all rows, counted once on the longest active window`
           : "quota left when each window closed"
       }
     >
@@ -549,13 +561,19 @@ const WindowLedger = ({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map(({ provider, window }) => (
-            <TableRow key={`${provider}:${window.startsAt}`}>
+          {collapse.shown.map(({ provider, window }) => (
+            <TableRow key={`${provider}:${window.windowMinutes}:${window.resetsAt}`}>
               <Td className="whitespace-nowrap">
                 <span className="inline-flex items-center gap-2">
                   <ProviderIcon provider={provider} className="size-3.5" />
                   <span className="sr-only">{providerLabels[provider]} </span>
-                  {dayLabel(Date.parse(window.startsAt))} to {dayLabel(Date.parse(window.endedAt))}
+                  <span>
+                    {windowLabel(window.windowMinutes)}
+                    <span className="block text-xs text-muted-foreground">
+                      {dayTime(Date.parse(window.startsAt))} to{" "}
+                      {dayTime(Date.parse(window.endedAt))}
+                    </span>
+                  </span>
                 </span>
               </Td>
               <Td numeric>{percent(window.usedPercent)}</Td>
@@ -574,6 +592,7 @@ const WindowLedger = ({
           ))}
         </TableBody>
       </DataTable>
+      {collapse.toggle}
     </Section>
   );
 };

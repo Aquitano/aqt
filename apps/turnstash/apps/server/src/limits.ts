@@ -107,17 +107,65 @@ const windowCosts = Effect.fn("Limits.windowCosts")(function* (
   return costs;
 });
 
+interface ChargeableSpan {
+  fromMs: number;
+  toMs: number;
+}
+
+// Each moment of plan cost belongs to the longest window active at that time.
+const chargeableSpansOf = (windows: ReadonlyArray<LocatedWindow>) => {
+  const spans = new Map<LocatedWindow, Array<ChargeableSpan>>();
+  for (const provider of new Set(windows.map((window) => window.provider))) {
+    const events = windows
+      .filter(
+        (window) =>
+          window.provider === provider && window.built.startsAtMs < window.built.endedAtMs,
+      )
+      .flatMap((window) => [
+        { atMs: window.built.startsAtMs, window, start: true },
+        { atMs: window.built.endedAtMs, window, start: false },
+      ])
+      .toSorted((a, b) => a.atMs - b.atMs);
+    const active = new Set<LocatedWindow>();
+    let previousAtMs: number | undefined;
+    for (const event of events) {
+      if (previousAtMs !== undefined && previousAtMs < event.atMs) {
+        let owner: LocatedWindow | undefined;
+        for (const window of active)
+          if (owner === undefined || window.windowMinutes > owner.windowMinutes) owner = window;
+        if (owner !== undefined) {
+          const owned = spans.get(owner) ?? [];
+          const last = owned.at(-1);
+          if (last?.toMs === previousAtMs) last.toMs = event.atMs;
+          else owned.push({ fromMs: previousAtMs, toMs: event.atMs });
+          spans.set(owner, owned);
+        }
+      }
+      if (event.start) active.add(event.window);
+      else active.delete(event.window);
+      previousAtMs = event.atMs;
+    }
+  }
+  return spans;
+};
+
 const expiredValueOf = (
   built: BuiltLimitWindow,
   plans: ReadonlyArray<typeof subscriptionPlans.$inferSelect>,
+  spans: ReadonlyArray<ChargeableSpan>,
 ): ReadonlyArray<PlanCost> => {
   const unused = (100 - built.usedPercent) / 100;
   const amounts = new Map<string, number>();
   for (const plan of plans) {
-    const share = monthlyProration(plan, {
-      from: new Date(built.startsAtMs),
-      to: new Date(built.resetsAtMs),
-    });
+    const share = spans.reduce(
+      (total, span) =>
+        total +
+        monthlyProration(plan, {
+          from: new Date(span.fromMs),
+          to: new Date(span.toMs),
+        }),
+      0,
+    );
     if (share > 0) amounts.set(plan.currency, (amounts.get(plan.currency) ?? 0) + share * unused);
   }
   return [...amounts].map(([currency, amount]) => ({ currency, amount }));
@@ -135,7 +183,12 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
   const span = dateWindow(query);
   const spanFromMs = span.from?.getTime() ?? nowMs - defaultSpanDays * dayMs;
   const spanToMs = span.to?.getTime() ?? Number.POSITIVE_INFINITY;
-  const since = new Date(Math.min(nowMs - historyDays * dayMs, spanFromMs));
+  const [longest] = yield* db
+    .select({ minutes: sql<number>`coalesce(max(${limitSamples.windowMinutes}), 0)::int` })
+    .from(limitSamples);
+  const since = new Date(
+    Math.min(nowMs - historyDays * dayMs, spanFromMs) - (longest?.minutes ?? 0) * 60_000,
+  );
 
   const samples = yield* db
     .select({
@@ -177,11 +230,10 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
       ).map((built): LocatedWindow => ({ provider, windowMinutes, built })),
     );
   });
-  const longestByProvider = new Map<ProviderId, number>();
-  for (const { provider, windowMinutes } of located)
-    longestByProvider.set(provider, Math.max(longestByProvider.get(provider) ?? 0, windowMinutes));
+  const chargeable = chargeableSpansOf(located);
   const costs = yield* windowCosts(located);
-  const views = located.map(({ provider, windowMinutes, built }, index) => {
+  const views = located.map((window, index) => {
+    const { provider, windowMinutes, built } = window;
     const cost = costs.get(index) ?? { costUsd: 0, deltaCostUsd: 0, requests: 0 };
     const rose = built.usedPercent - built.firstUsedPercent;
     const inSpan = built.endedAtMs >= spanFromMs && built.startsAtMs < spanToMs;
@@ -201,10 +253,11 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
         rose >= minimumPercentForRate && cost.deltaCostUsd > 0 ? cost.deltaCostUsd / rose : null,
       // An early reset grants new quota, so only a window that ran to its reset lost what was left.
       expiredValue:
-        built.outcome === "reset" && windowMinutes === longestByProvider.get(provider)
+        built.outcome === "reset"
           ? expiredValueOf(
               built,
               plans.filter((plan) => plan.provider === provider),
+              chargeable.get(window) ?? [],
             )
           : [],
       points:

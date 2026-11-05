@@ -51,6 +51,9 @@ export const spanFor = (windowMinutes: number, weekOffset: number, nowMs: number
 export const openWindowOf = (series: LimitSeries): LimitWindow | null =>
   series.windows.findLast((window) => window.outcome === "open") ?? null;
 
+export const primarySeriesOf = (series: ReadonlyArray<LimitSeries>): LimitSeries | undefined =>
+  series.find((candidate) => openWindowOf(candidate) !== null) ?? series[0];
+
 const usedAt = (window: LimitWindow, ms: number): number => {
   let used = window.firstUsedPercent;
   for (const point of window.points) {
@@ -283,9 +286,21 @@ export const drainBurstsOf = (windows: ReadonlyArray<LimitWindow>): ReadonlyArra
   return bursts.toSorted((a, b) => b.drop - a.drop);
 };
 
+export const drainSelectionOf = (
+  range: LimitSpan | null,
+  span: LimitSpan,
+  nowMs: number,
+): LimitSpan | null => {
+  if (range === null) return null;
+  const fromMs = Math.max(0, range.fromMs);
+  const toMs = Math.min(nowMs, range.toMs);
+  return fromMs < toMs && fromMs < span.toMs && toMs > span.fromMs ? { fromMs, toMs } : null;
+};
+
 export interface DrainBucket {
   readonly t: number;
   readonly rate: number;
+  readonly attribution: LimitSpan | null;
 }
 
 export const drainBucketsOf = (
@@ -295,8 +310,9 @@ export const drainBucketsOf = (
   nowMs: number,
 ): ReadonlyArray<DrainBucket> => {
   const endMs = Math.min(span.toMs, nowMs);
-  const buckets = new Map<number, number>();
-  for (let t = span.fromMs; t < endMs; t += bucketMs) buckets.set(t, 0);
+  const buckets = new Map<number, { drop: number; attribution: LimitSpan | null }>();
+  for (let t = span.fromMs; t < endMs; t += bucketMs)
+    buckets.set(t, { drop: 0, attribution: null });
   for (const window of windows) {
     for (let index = 1; index < window.points.length; index += 1) {
       const before = window.points[index - 1];
@@ -304,13 +320,20 @@ export const drainBucketsOf = (
       if (before === undefined || after === undefined) continue;
       const tMs = atMs(after.at);
       if (tMs < span.fromMs || tMs >= endMs) continue;
-      const bucket = span.fromMs + Math.floor((tMs - span.fromMs) / bucketMs) * bucketMs;
-      buckets.set(bucket, (buckets.get(bucket) ?? 0) + after.usedPercent - before.usedPercent);
+      const t = span.fromMs + Math.floor((tMs - span.fromMs) / bucketMs) * bucketMs;
+      const bucket = buckets.get(t);
+      if (bucket === undefined) continue;
+      bucket.drop += after.usedPercent - before.usedPercent;
+      bucket.attribution = {
+        fromMs: Math.min(bucket.attribution?.fromMs ?? Infinity, atMs(before.at) + 1),
+        toMs: Math.max(bucket.attribution?.toMs ?? 0, tMs + 1),
+      };
     }
   }
-  return [...buckets].map(([t, drop]) => ({
+  return [...buckets].map(([t, { drop, attribution }]) => ({
     t,
     rate: drop / (Math.min(bucketMs, span.toMs - t, Math.max(endMs - t, hourMs)) / hourMs),
+    attribution,
   }));
 };
 
@@ -359,7 +382,7 @@ export const useFirstOf = (providers: ReadonlyArray<ProviderLimits>): UseFirst |
         })
       )
         return [];
-      const longest = limits.series.at(0);
+      const longest = primarySeriesOf(limits.series);
       const window = longest === undefined ? null : openWindowOf(longest);
       return window === null
         ? []

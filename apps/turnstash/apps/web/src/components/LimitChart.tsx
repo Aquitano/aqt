@@ -225,8 +225,8 @@ export const RemainingChart = ({
         />
         {shaded !== null && (
           <ReferenceArea
-            x1={shaded.fromMs}
-            x2={shaded.toMs}
+            x1={Math.max(span.fromMs, shaded.fromMs)}
+            x2={Math.min(span.toMs, shaded.toMs)}
             fill="var(--foreground)"
             fillOpacity={0.08}
             stroke="none"
@@ -321,8 +321,8 @@ export const DrainChart = ({
       onClick={(state) => {
         if (state.activeTooltipIndex == null) return;
         const bucket = buckets[Number(state.activeTooltipIndex)];
-        if (bucket !== undefined && bucket.rate > 0)
-          onSelect({ fromMs: bucket.t, toMs: bucket.t + bucketMs });
+        if (bucket !== undefined && bucket.rate > 0 && bucket.attribution !== null)
+          onSelect(bucket.attribution);
       }}
     >
       <CartesianGrid stroke="var(--border)" />

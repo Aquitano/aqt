@@ -3,13 +3,13 @@ import { Link } from "@tanstack/react-router";
 import { cn } from "cn";
 
 import { weekdayTime } from "../format";
-import { openWindowOf, windowLabel } from "../limits-model";
+import { openWindowOf, primarySeriesOf, windowLabel } from "../limits-model";
 import { ProviderIcon } from "./ProviderIcon";
 import { surface } from "./Section";
 import { UseFirstLine } from "./UseFirstLine";
 
 const Meter = ({ limits }: { readonly limits: ProviderLimits }) => {
-  const series = limits.series[0];
+  const series = primarySeriesOf(limits.series);
   const open = series === undefined ? null : openWindowOf(series);
   const left = open === null ? 100 : 100 - open.usedPercent;
   return (

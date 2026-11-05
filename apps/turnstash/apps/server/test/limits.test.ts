@@ -14,6 +14,7 @@ import {
   valuations,
 } from "../src/db/schema.ts";
 import { applyLimitBatch, limitDrain, limitsReport } from "../src/limits.ts";
+import { monthlyProration } from "../src/stats.ts";
 import { ensureBundledCatalog } from "../src/valuation.ts";
 import { runTest } from "./support.ts";
 
@@ -280,6 +281,62 @@ test("historical windows include readings before the requested start", async () 
       expect(window?.outcome).toBe("reset");
       expect(window?.usedPercent).toBe(40);
       expect(window?.points).toHaveLength(1);
+    }),
+  );
+});
+
+test("expired values use overlapping windows and stay stable across historical query ranges", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      const db = yield* Db;
+      const [plan] = yield* db
+        .insert(subscriptionPlans)
+        .values({
+          provider: "codex",
+          name: "Plan",
+          monthlyPrice: "300",
+          currency: "USD",
+          startedOn: "2020-01-01",
+        })
+        .returning();
+      if (plan === undefined) return yield* Effect.die("no plan");
+      yield* applyLimitBatch({
+        machineId,
+        readings: [
+          reading(-24 * 150, 40, after(-24 * 144)),
+          { ...reading(-24 * 144 + 1, 50, after(-24 * 144 + 3)), windowMinutes: 300 },
+          reading(1, 20, after(24 * 7)),
+          { ...reading(11, 50, after(15)), windowMinutes: 300 },
+          { ...reading(169, 50, after(172)), windowMinutes: 300 },
+          { ...reading(201, 50, after(205)), windowMinutes: 300 },
+        ],
+      });
+      const recent = yield* limitsReport({ from: after(170).toISOString() });
+      const allTime = yield* limitsReport({ from: new Date(0).toISOString() });
+      const shortOf = (report: typeof recent) =>
+        report.providers[0]?.series.find((series) => series.windowMinutes === 300)?.windows ?? [];
+      const short = shortOf(recent);
+      for (const window of short)
+        expect(
+          shortOf(allTime).find((other) => other.resetsAt === window.resetsAt)?.expiredValue,
+        ).toEqual(window.expiredValue);
+      expect(short[0]?.expiredValue).toEqual([]);
+      expect(short[1]?.expiredValue[0]?.amount).toBeCloseTo(
+        monthlyProration(plan, { from: after(168), to: after(172) }) * 0.5,
+      );
+      expect(short[2]?.expiredValue[0]?.amount).toBeCloseTo(
+        monthlyProration(plan, { from: after(200), to: after(205) }) * 0.5,
+      );
+      expect(short[2]?.expiredValue[0]?.amount).toBeGreaterThan(0);
+      const historical = yield* limitsReport({
+        from: after(-24 * 144 + 1).toISOString(),
+        to: after(-24 * 144 + 4).toISOString(),
+      });
+      const historicalWindow = shortOf(historical)[0];
+      expect(historicalWindow?.expiredValue).toEqual(shortOf(allTime)[0]?.expiredValue);
+      expect(historicalWindow?.expiredValue[0]?.amount).toBeCloseTo(
+        monthlyProration(plan, { from: after(-24 * 144), to: after(-24 * 144 + 3) }) * 0.5,
+      );
     }),
   );
 });
