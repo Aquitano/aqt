@@ -97,3 +97,21 @@ test("reset indexing preserves the first match as a window moves between toleran
     [20],
   ]);
 });
+
+test("a late cached reading cannot replace the newer active window", () => {
+  const windows = limitWindowsOf(
+    week,
+    [reading(72, 5, start + 10 * day), reading(72 + 1 / 60, 80, start + 5 * day)],
+    start + 73 * hour,
+  );
+  expect(
+    windows.map(({ resetsAtMs, outcome, usedPercent }) => ({
+      resetsAtMs,
+      outcome,
+      usedPercent,
+    })),
+  ).toEqual([
+    { resetsAtMs: start + 5 * day, outcome: "replaced", usedPercent: 80 },
+    { resetsAtMs: start + 10 * day, outcome: "open", usedPercent: 5 },
+  ]);
+});

@@ -345,7 +345,9 @@ export const limitSamples = pgTable(
     unique("limit_samples_identity")
       .on(table.provider, table.conversationId, table.windowMinutes, table.observedAt)
       .nullsNotDistinct(),
-    index("limit_samples_series").on(table.provider, table.windowMinutes, table.observedAt),
+    index("limit_samples_window").on(table.windowMinutes),
+    index("limit_samples_observed").on(table.observedAt),
+    index("limit_samples_reset").on(table.resetsAt),
     index("limit_samples_conversation").on(table.conversationId),
   ],
 );
@@ -364,7 +366,7 @@ export const limitHits = pgTable(
   },
   (table) => [
     uniqueIndex("limit_hits_identity").on(table.conversationId, table.occurredAt),
-    index("limit_hits_time").on(table.provider, table.occurredAt),
+    index("limit_hits_time").on(table.occurredAt),
   ],
 );
 

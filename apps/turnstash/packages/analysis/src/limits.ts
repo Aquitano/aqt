@@ -86,11 +86,12 @@ export const limitWindowsOf = (
     if (usedPercent > high) draft.points.push({ atMs: observedAtMs, usedPercent });
   }
   const windowMs = windowMinutes * 60_000;
-  return drafts.flatMap((draft, index) => {
+  const chronological = drafts.toSorted((a, b) => a.resetsAtMs - b.resetsAtMs);
+  return chronological.flatMap((draft, index) => {
     const [first] = draft.points;
     const last = draft.points.at(-1);
     if (first === undefined || last === undefined) return [];
-    const next = drafts[index + 1];
+    const next = chronological[index + 1];
     const nextStartsAtMs = next === undefined ? undefined : next.resetsAtMs - windowMs;
     const replaced =
       nextStartsAtMs !== undefined && nextStartsAtMs < draft.resetsAtMs - limitResetToleranceMs;

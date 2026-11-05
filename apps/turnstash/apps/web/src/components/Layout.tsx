@@ -102,7 +102,7 @@ const Navigation = () => {
           <span className="group-data-[collapsible=icon]:hidden">turnstash</span>
         </Link>
       </SidebarHeader>
-      <SidebarContent className="gap-0 pt-2">
+      <SidebarContent role="navigation" aria-label="Main" className="gap-0 pt-2">
         {navGroups.map((group) => (
           <SidebarGroup key={group[0].to} className="py-1.5">
             <SidebarGroupContent>

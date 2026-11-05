@@ -205,10 +205,15 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
     .where(
       or(
         and(
-          or(gte(limitSamples.observedAt, since), gte(limitSamples.resetsAt, since)),
+          gte(limitSamples.observedAt, since),
           until === undefined ? undefined : lte(limitSamples.observedAt, until),
         ),
-        or(gte(limitSamples.observedAt, recentSince), gte(limitSamples.resetsAt, recentSince)),
+        and(
+          gte(limitSamples.resetsAt, since),
+          until === undefined ? undefined : lte(limitSamples.resetsAt, until),
+        ),
+        gte(limitSamples.observedAt, recentSince),
+        gte(limitSamples.resetsAt, recentSince),
       ),
     )
     .orderBy(asc(limitSamples.observedAt));
