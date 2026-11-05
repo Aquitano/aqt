@@ -81,7 +81,8 @@ const cacheBreakRows = (filter: StatsFilter) => {
         ${modelRequests.messageKey} AS message_key, ${modelRequests.provider} AS provider,
         ${modelRequests.modelId} AS model_id, ${modelRequests.requestedAt} AS requested_at,
         ${modelRequests.cacheReadTokens} AS cache_read_tokens, ${written} AS written,
-        ${modelRequests.cacheWrite1hTokens} AS written_1h,
+        lag(CASE WHEN ${modelRequests.cacheWrite1hTokens} > 0 AND ${modelRequests.cacheWriteTokens} = 0 THEN 60
+          WHEN ${modelRequests.cacheReadTokens} = 0 AND ${modelRequests.cacheWrite1hTokens} = 0 THEN 5 ELSE NULL END) OVER turn AS previous_lifetime,
         lag(${modelRequests.requestedAt}) OVER turn AS previous_at,
         lag(${cached}) OVER turn AS previous_cached
       FROM ${modelRequests}
@@ -92,7 +93,9 @@ const cacheBreakRows = (filter: StatsFilter) => {
     SELECT o.id, o.conversation_id, ${conversations.title} AS title, o.message_key, o.provider, o.model_id,
       o.requested_at, o.cache_read_tokens, o.written,
       extract(epoch FROM o.requested_at - o.previous_at) / 60 AS idle_minutes,
-      extract(epoch FROM o.requested_at - o.previous_at) / 60 <= (CASE WHEN o.written_1h > 0 THEN 60 ELSE 5 END) AS within_lifetime,
+      CASE WHEN o.requested_at - o.previous_at <= interval '5 minutes' THEN true
+        WHEN o.requested_at - o.previous_at > interval '60 minutes' THEN false
+        ELSE extract(epoch FROM o.requested_at - o.previous_at) / 60 <= o.previous_lifetime END AS within_lifetime,
       coalesce((${valuations.breakdown} ->> 'cacheWriteUsd')::numeric, 0) + coalesce((${valuations.breakdown} ->> 'cacheWrite1hUsd')::numeric, 0) AS rewrite_cost
     FROM ordered AS o
     JOIN ${conversations} ON ${conversations.id} = o.conversation_id
@@ -115,7 +118,7 @@ type CacheBreakRaw = {
   readonly cache_read_tokens: number;
   readonly written: number;
   readonly idle_minutes: string | number;
-  readonly within_lifetime: boolean;
+  readonly within_lifetime: boolean | null;
   readonly rewrite_cost: string | number;
 };
 
@@ -125,12 +128,14 @@ export const cacheBreaks = Effect.fn("Analysis.cacheBreaks")(function* (filter: 
   const [totals] = yield* db.execute<{
     readonly breaks: number;
     readonly within_lifetime: number;
+    readonly unknown_lifetime: number;
     readonly rewrite_cost: string;
     readonly written: string;
   }>(
     sql`
     WITH matches AS (${matches})
     SELECT count(*)::int AS breaks, count(*) FILTER (WHERE within_lifetime)::int AS within_lifetime,
+      count(*) FILTER (WHERE within_lifetime IS NULL)::int AS unknown_lifetime,
       coalesce(sum(rewrite_cost), 0)::text AS rewrite_cost, coalesce(sum(written), 0)::text AS written
     FROM matches`,
     "objects",
@@ -138,12 +143,13 @@ export const cacheBreaks = Effect.fn("Analysis.cacheBreaks")(function* (filter: 
   const rows = yield* db.execute<CacheBreakRaw>(
     sql`
     WITH matches AS (${matches})
-    SELECT * FROM matches ORDER BY within_lifetime DESC, rewrite_cost DESC LIMIT ${cacheBreakRowLimit}`,
+    SELECT * FROM matches ORDER BY rewrite_cost DESC, requested_at ASC LIMIT ${cacheBreakRowLimit}`,
     "objects",
   );
   const report: CacheBreakReport = {
     breaks: number(totals?.breaks),
     withinLifetime: number(totals?.within_lifetime),
+    unknownLifetime: number(totals?.unknown_lifetime),
     rewriteCostUsd: number(totals?.rewrite_cost),
     writtenTokens: number(totals?.written),
     rows: rows.map((row): CacheBreak => ({

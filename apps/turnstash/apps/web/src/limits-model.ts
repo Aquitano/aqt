@@ -28,16 +28,24 @@ export interface LimitSpan {
   readonly toMs: number;
 }
 
-const startOfDay = (ms: number) => new Date(ms).setHours(0, 0, 0, 0);
+export const dayTicksOf = (span: LimitSpan): ReadonlyArray<number> => {
+  const ticks: Array<number> = [];
+  const date = new Date(span.fromMs);
+  for (; date.getTime() <= span.toMs; date.setDate(date.getDate() + 1)) ticks.push(date.getTime());
+  return ticks;
+};
 
-// A week of history and of future around a weekly limit; two days back and one ahead around a shorter one.
-// Pages move by a week, so the short view stays inside what a page of the weekly view has loaded.
+// Pages move by a week. Short-window charts use contiguous weeks within the longer query span.
 export const spanFor = (windowMinutes: number, weekOffset: number, nowMs: number): LimitSpan => {
-  const shift = weekOffset * 7 * dayMs;
-  const today = startOfDay(nowMs + shift);
+  const day = (offset: number) => {
+    const date = new Date(nowMs);
+    date.setHours(0, 0, 0, 0);
+    date.setDate(date.getDate() + weekOffset * 7 + offset);
+    return date.getTime();
+  };
   return windowMinutes >= 7 * 24 * 60
-    ? { fromMs: today - 8 * dayMs, toMs: today + 6 * dayMs }
-    : { fromMs: today - 2 * dayMs, toMs: today + dayMs };
+    ? { fromMs: day(-8), toMs: day(6) }
+    : { fromMs: day(-6), toMs: day(1) };
 };
 
 export const openWindowOf = (series: LimitSeries): LimitWindow | null =>
@@ -59,7 +67,8 @@ export const burnPerHour = (window: LimitWindow | null, mode: BurnMode, nowMs: n
     const hours = (nowMs - atMs(window.firstObservedAt)) / hourMs;
     return hours > 0.25 ? risen / hours : 0;
   }
-  const hours = burnHours[mode];
+  const hours = Math.min(burnHours[mode], (nowMs - atMs(window.firstObservedAt)) / hourMs);
+  if (hours <= 0.25) return 0;
   return Math.max(0, window.usedPercent - usedAt(window, nowMs - hours * hourMs)) / hours;
 };
 
@@ -124,7 +133,8 @@ export const projectLimit = ({
   const windowMs = windowMinutes * 60_000;
   const left = 100 - open.usedPercent;
   const firstResetMs = atMs(open.resetsAt);
-  const firstZeroMs = burn > 0 ? nowMs + (left / burn) * hourMs : Number.POSITIVE_INFINITY;
+  const firstZeroMs =
+    left <= 0 ? nowMs : burn > 0 ? nowMs + (left / burn) * hourMs : Number.POSITIVE_INFINITY;
   const emptyAtMs = firstZeroMs < firstResetMs ? firstZeroMs : null;
   const remainingAtReset =
     emptyAtMs === null ? Math.max(0, left - (burn * (firstResetMs - nowMs)) / hourMs) : 0;
@@ -174,15 +184,6 @@ const recordedMarks = (windows: ReadonlyArray<LimitWindow>, nowMs: number) => {
   return { marks: marks.toSorted((a, b) => a.tMs - b.tMs), jumps };
 };
 
-const remainingOn = (marks: ReadonlyArray<ChartMark>, tMs: number): number | null => {
-  let remaining: number | null = null;
-  for (const mark of marks) {
-    if (mark.tMs > tMs) break;
-    remaining = mark.remaining;
-  }
-  return remaining;
-};
-
 const projectedOn = (points: ReadonlyArray<ChartMark>, tMs: number): number | null => {
   for (let index = 1; index < points.length; index += 1) {
     const before = points[index - 1];
@@ -220,10 +221,18 @@ export const chartRowsOf = ({
   const recordedTimes = [...grid, ...marks.map((mark) => mark.tMs), nowMs].filter(
     (tMs) => inSpan(tMs) && tMs <= nowMs && tMs >= firstRecorded,
   );
-  for (const tMs of new Set(recordedTimes)) {
+  let markIndex = 0;
+  let remaining: number | null = null;
+  for (const tMs of [...new Set(recordedTimes)].toSorted((a, b) => a - b)) {
+    while (markIndex < marks.length) {
+      const mark = marks[markIndex];
+      if (mark === undefined || mark.tMs > tMs) break;
+      remaining = mark.remaining;
+      markIndex += 1;
+    }
     rows.push({
       t: tMs,
-      recorded: remainingOn(marks, tMs),
+      recorded: remaining,
       projected: tMs === nowMs ? (projection.points[0]?.remaining ?? null) : null,
     });
   }
@@ -340,6 +349,13 @@ const usefulRemaining = 5;
 export const useFirstOf = (providers: ReadonlyArray<ProviderLimits>): UseFirst | null => {
   const open = providers
     .flatMap((limits) => {
+      if (
+        limits.series.some((series) => {
+          const current = openWindowOf(series);
+          return current !== null && 100 - current.usedPercent < usefulRemaining;
+        })
+      )
+        return [];
       const longest = limits.series.at(0);
       const window = longest === undefined ? null : openWindowOf(longest);
       return window === null

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { Async } from "../components/Async";
 import { LimitsStrip } from "../components/LimitsStrip";
@@ -19,8 +19,11 @@ export const OverviewPage = () => {
     dailyQuery({ ...filters.stats, ...rangeFilter(heatmapRange(filters.today)) }),
   );
 
-  const limits = useQuery(limitsQuery({}));
   const bounds = filters.range === null ? null : dateBounds(filters.range);
+  const limits = useQuery({
+    ...limitsQuery(bounds ?? { from: new Date(0).toISOString() }),
+    placeholderData: keepPreviousData,
+  });
   const expired = expiredByProvider(
     limits.data?.providers ?? [],
     bounds === null ? null : { fromMs: Date.parse(bounds.from), toMs: Date.parse(bounds.to) },
@@ -38,7 +41,7 @@ export const OverviewPage = () => {
             calendar={calendar.data ?? null}
             hideMachines={filters.machineId !== null}
             showSubscriptions
-            expired={expired}
+            {...(limits.isPlaceholderData || limits.data === undefined ? {} : { expired })}
           />
         )}
       </Async>

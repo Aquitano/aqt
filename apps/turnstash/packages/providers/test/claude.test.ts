@@ -13,6 +13,7 @@ import * as BunServices from "@effect/platform-bun/BunServices";
 import { Effect, Option } from "effect";
 
 import { claudeNormalizer, claudeSource } from "../src/claude/index.ts";
+import { claudeStateFiles } from "../src/claude/source.ts";
 import { jsonlRows } from "./support.ts";
 
 const fixtures = join(import.meta.dir, "fixtures", "claude");
@@ -375,5 +376,16 @@ test("a rate limit error becomes a limit hit that names its window", () => {
   expect(conversation?.limitHits?.map((hit) => [hit.occurredAt, hit.windowMinutes])).toEqual([
     ["2026-10-05T12:23:01.000Z", 300],
     ["2026-10-05T12:23:02.000Z", 10_080],
+  ]);
+});
+
+test("Claude state follows explicit overrides even when they name the default directory", () => {
+  expect(claudeStateFiles(host({}))).toEqual(["/home/dev/.claude.json"]);
+  expect(claudeStateFiles(host({ env: { CLAUDE_CONFIG_DIR: "~/.claude" } }))).toEqual([
+    "/home/dev/.claude/.claude.json",
+  ]);
+  expect(claudeStateFiles(host({ env: { CLAUDE_CONFIG_DIRS: "~/.claude:/opt/claude" } }))).toEqual([
+    "/home/dev/.claude/.claude.json",
+    "/opt/claude/.claude.json",
   ]);
 });

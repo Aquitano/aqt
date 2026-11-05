@@ -15,10 +15,10 @@ import {
   YAxis,
 } from "recharts";
 
-import { clockTime, dayTime } from "../format";
+import { dayTime } from "../format";
 import {
   type ChartRow,
-  dayMs,
+  dayTicksOf,
   type DrainBucket,
   type DrainBurst,
   hourMs,
@@ -39,22 +39,12 @@ const config = {
   rate: { label: "Drain" },
 } satisfies ChartConfig;
 
-const axisTicks = (span: LimitSpan): ReadonlyArray<number> => {
-  const ticks: Array<number> = [];
-  const short = span.toMs - span.fromMs <= 4 * dayMs;
-  const step = short ? 6 * hourMs : dayMs;
-  for (let t = span.fromMs; t <= span.toMs; t += step) ticks.push(t);
-  return ticks;
-};
-
-const tickLabel = (span: LimitSpan) => (value: number) =>
-  span.toMs - span.fromMs <= 4 * dayMs
-    ? clockTime(value)
-    : new Date(value).toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+const tickLabel = (value: number) =>
+  new Date(value).toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
 
 const Pill = ({ children }: { readonly children: string }) => (
   <div className="flex justify-end pr-1.5">
-    <div className="rounded-md bg-popover px-2 py-1 text-xs whitespace-nowrap text-popover-foreground shadow-sm ring-1 ring-foreground/8">
+    <div className="max-w-full rounded-md bg-popover px-2 py-1 text-right text-xs text-popover-foreground shadow-sm ring-1 ring-foreground/8">
       {children}
     </div>
   </div>
@@ -128,6 +118,7 @@ export const RemainingChart = ({
   const [drag, setDrag] = useState<LimitSelection | null>(null);
   const showNow = nowMs >= span.fromMs && nowMs <= span.toMs;
   const timeOf = (state: { readonly activeTooltipIndex?: unknown }) => {
+    if (state.activeTooltipIndex == null) return null;
     const row = rows[Number(state.activeTooltipIndex)];
     return row === undefined ? null : Math.min(row.t, nowMs);
   };
@@ -145,6 +136,7 @@ export const RemainingChart = ({
     onSelect(closest !== undefined && near(closest) < 2 * hourMs ? closest : null);
   };
   const shaded = drag ?? selection;
+  const visibleJumps = [...jumps, ...projection.jumps].filter((jump) => Math.round(jump.gain) >= 1);
   return (
     <ChartContainer
       config={config}
@@ -181,8 +173,8 @@ export const RemainingChart = ({
           dataKey="t"
           type="number"
           domain={[span.fromMs, span.toMs]}
-          ticks={[...axisTicks(span)]}
-          tickFormatter={tickLabel(span)}
+          ticks={[...dayTicksOf(span)]}
+          tickFormatter={tickLabel}
           tickLine={false}
           axisLine={false}
           tickMargin={8}
@@ -241,7 +233,7 @@ export const RemainingChart = ({
           />
         )}
         {showNow && <ReferenceLine x={nowMs} stroke="var(--muted-foreground)" label={nowLabel} />}
-        {[...jumps, ...projection.jumps].map((jump) => (
+        {visibleJumps.map((jump) => (
           <ReferenceDot
             key={jump.tMs}
             x={jump.tMs}
@@ -250,6 +242,7 @@ export const RemainingChart = ({
             ifOverflow="visible"
             label={{
               value: `+${Math.round(jump.gain)}%`,
+              className: visibleJumps.length > 7 ? "hidden lg:block" : "",
               // Beside the jump rather than above it when the "Now" label already sits there.
               position:
                 showNow && Math.abs(jump.tMs - nowMs) < (span.toMs - span.fromMs) * 0.04
@@ -269,25 +262,27 @@ export const RemainingChart = ({
             shape={<HitMark message={hit.message} />}
           />
         ))}
-        {projection.emptyAtMs !== null && projection.emptyAtMs <= span.toMs && (
-          <ReferenceDot
-            x={projection.emptyAtMs}
-            y={0}
-            r={4.5}
-            fill="var(--card)"
-            stroke="var(--foreground)"
-            strokeWidth={2}
-            ifOverflow="visible"
-            label={{
-              value: `Empty ${dayTime(projection.emptyAtMs)}`,
-              position: "top",
-              offset: 10,
-              fill: "var(--foreground)",
-              fontSize: 11,
-              fontWeight: 500,
-            }}
-          />
-        )}
+        {projection.emptyAtMs !== null &&
+          projection.emptyAtMs > nowMs &&
+          projection.emptyAtMs <= span.toMs && (
+            <ReferenceDot
+              x={projection.emptyAtMs}
+              y={0}
+              r={4.5}
+              fill="var(--card)"
+              stroke="var(--foreground)"
+              strokeWidth={2}
+              ifOverflow="visible"
+              label={{
+                value: `Empty ${dayTime(projection.emptyAtMs)}`,
+                position: "top",
+                offset: 10,
+                fill: "var(--foreground)",
+                fontSize: 11,
+                fontWeight: 500,
+              }}
+            />
+          )}
       </AreaChart>
     </ChartContainer>
   );
@@ -324,6 +319,7 @@ export const DrainChart = ({
       margin={margin}
       barCategoryGap={1}
       onClick={(state) => {
+        if (state.activeTooltipIndex == null) return;
         const bucket = buckets[Number(state.activeTooltipIndex)];
         if (bucket !== undefined && bucket.rate > 0)
           onSelect({ fromMs: bucket.t, toMs: bucket.t + bucketMs });
@@ -331,11 +327,11 @@ export const DrainChart = ({
     >
       <CartesianGrid stroke="var(--border)" />
       <XAxis
-        dataKey="t"
+        dataKey={(row: DrainBucket) => row.t + Math.min(bucketMs, span.toMs - row.t) / 2}
         type="number"
-        domain={[span.fromMs - bucketMs / 2, span.toMs]}
-        ticks={[...axisTicks(span)]}
-        tickFormatter={tickLabel(span)}
+        domain={[span.fromMs, span.toMs]}
+        ticks={[...dayTicksOf(span)]}
+        tickFormatter={tickLabel}
         tickLine={false}
         axisLine={false}
         tickMargin={8}
@@ -345,7 +341,7 @@ export const DrainChart = ({
         tickFormatter={(value: number) => `${value}%/h`}
         tickLine={false}
         axisLine={false}
-        width={42}
+        width={64}
       />
       <ChartTooltip
         {...pinnedTooltip}
@@ -353,7 +349,9 @@ export const DrainChart = ({
         content={({ active, payload }) => {
           const row: unknown = payload?.[0]?.payload;
           if (!active || !isBucket(row)) return null;
-          return <Pill>{`${dayTime(row.t)} · ${row.rate.toFixed(1)}%/h drained`}</Pill>;
+          return (
+            <Pill>{`${dayTime(row.t)} to ${dayTime(Math.min(row.t + bucketMs, span.toMs))} · ${row.rate.toFixed(1)}%/h drained`}</Pill>
+          );
         }}
       />
       <Bar dataKey="rate" fill={color} radius={[3, 3, 0, 0]} isAnimationActive={false}>
@@ -362,7 +360,8 @@ export const DrainChart = ({
             key={bucket.t}
             cursor={bucket.rate > 0 ? "pointer" : "default"}
             fillOpacity={
-              selection === null || (bucket.t >= selection.fromMs && bucket.t < selection.toMs)
+              selection === null ||
+              (bucket.t < selection.toMs && bucket.t + bucketMs > selection.fromMs)
                 ? 1
                 : 0.35
             }

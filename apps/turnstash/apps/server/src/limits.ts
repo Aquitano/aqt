@@ -71,15 +71,25 @@ const windowCosts = Effect.fn("Limits.windowCosts")(function* (
   windows: ReadonlyArray<LocatedWindow>,
 ) {
   const db = yield* Db;
-  const costs = new Map<number, { readonly costUsd: number; readonly requests: number }>();
+  const costs = new Map<
+    number,
+    { readonly costUsd: number; readonly deltaCostUsd: number; readonly requests: number }
+  >();
   if (windows.length === 0) return costs;
   const spans = windows.map(
     ({ provider, built }, index) =>
       sql`(${index}::int, ${provider}::text, ${iso(built.firstObservedAtMs)}::timestamptz, ${iso(built.lastObservedAtMs)}::timestamptz)`,
   );
-  const rows = yield* db.execute<{ index: number; cost_usd: string; requests: number }>(
+  const rows = yield* db.execute<{
+    index: number;
+    cost_usd: string;
+    delta_cost_usd: string;
+    requests: number;
+  }>(
     sql`
-    SELECT span.index, ${activeCost}::text AS cost_usd, count(${modelRequests.id})::int AS requests
+    SELECT span.index, ${activeCost}::text AS cost_usd,
+      coalesce(sum(${valuations.costUsd}) FILTER (WHERE ${modelRequests.requestedAt} > span.first_at), 0)::text AS delta_cost_usd,
+      count(${modelRequests.id})::int AS requests
     FROM (VALUES ${sql.join(spans, sql`, `)}) AS span(index, provider, first_at, last_at)
     JOIN ${modelRequests} ON ${modelRequests.provider} = span.provider
       AND ${modelRequests.requestedAt} >= span.first_at
@@ -89,7 +99,11 @@ const windowCosts = Effect.fn("Limits.windowCosts")(function* (
     "objects",
   );
   for (const row of rows)
-    costs.set(row.index, { costUsd: number(row.cost_usd), requests: number(row.requests) });
+    costs.set(row.index, {
+      costUsd: number(row.cost_usd),
+      deltaCostUsd: number(row.delta_cost_usd),
+      requests: number(row.requests),
+    });
   return costs;
 });
 
@@ -165,7 +179,7 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
   });
   const costs = yield* windowCosts(located);
   const views = located.map(({ provider, windowMinutes, built }, index) => {
-    const cost = costs.get(index) ?? { costUsd: 0, requests: 0 };
+    const cost = costs.get(index) ?? { costUsd: 0, deltaCostUsd: 0, requests: 0 };
     const rose = built.usedPercent - built.firstUsedPercent;
     const longest = Math.max(
       ...located.filter((other) => other.provider === provider).map((o) => o.windowMinutes),
@@ -184,7 +198,7 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
       costUsd: cost.costUsd,
       requests: cost.requests,
       costPerPercentUsd:
-        rose >= minimumPercentForRate && cost.costUsd > 0 ? cost.costUsd / rose : null,
+        rose >= minimumPercentForRate && cost.deltaCostUsd > 0 ? cost.deltaCostUsd / rose : null,
       // An early reset grants new quota, so only a window that ran to its reset lost what was left.
       expiredValue:
         built.outcome === "reset" && windowMinutes === longest
@@ -193,9 +207,10 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
               plans.filter((plan) => plan.provider === provider),
             )
           : [],
-      points: inSpan
-        ? built.points.map((point) => ({ at: iso(point.atMs), usedPercent: point.usedPercent }))
-        : [],
+      points:
+        inSpan || built.outcome === "open"
+          ? built.points.map((point) => ({ at: iso(point.atMs), usedPercent: point.usedPercent }))
+          : [],
     };
     return { provider, windowMinutes, view };
   });

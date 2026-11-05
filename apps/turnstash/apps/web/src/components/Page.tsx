@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 
 export const Page = ({ children }: { readonly children: ReactNode }) => (
-  <main className="mx-auto flex w-full max-w-320 min-w-0 flex-1 flex-col gap-5 px-4 pt-4 pb-12 sm:px-8">
+  <div className="mx-auto flex w-full max-w-320 min-w-0 flex-1 flex-col gap-5 px-4 pt-4 pb-12 sm:px-8">
     {children}
-  </main>
+  </div>
 );
 
 // Conversation titles are often a pasted prompt, so the heading stops at two lines.

@@ -720,7 +720,7 @@ export const CacheBreak = Schema.Struct({
   modelId: Schema.String,
   requestedAt: Iso,
   idleMinutes: Schema.Finite,
-  withinLifetime: Schema.Boolean,
+  withinLifetime: Schema.NullOr(Schema.Boolean),
   cacheWriteTokens: Schema.Natural,
   cacheReadTokens: Schema.Natural,
   rewriteCostUsd: Money,
@@ -730,6 +730,7 @@ export type CacheBreak = typeof CacheBreak.Type;
 export const CacheBreakReport = Schema.Struct({
   breaks: Schema.Natural,
   withinLifetime: Schema.Natural,
+  unknownLifetime: Schema.Natural,
   rewriteCostUsd: Money,
   writtenTokens: Schema.Natural,
   rows: Schema.Array(CacheBreak),

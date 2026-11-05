@@ -315,7 +315,7 @@ const normalize = (
   let previousTotals: Schema.JsonObject | undefined;
   let previousTotalTokens: number | null = null;
   const limitSamples: Array<LimitSample> = [];
-  const latestLimit = new Map<number, LimitSample>();
+  const latestLimit = new Map<number, { first: LimitSample; lastIndex: number }>();
 
   const pushMessage = (
     base: string,
@@ -455,7 +455,7 @@ const normalize = (
     }
   };
 
-  // Every token count repeats the limits, and only a change adds anything.
+  // Keep the endpoints of unchanged runs so freshness survives deduplication.
   const handleRateLimits = (envelope: Envelope, at: string) => {
     if (replayCutoff !== undefined && Date.parse(at) < replayCutoff) return;
     const limits = envelope.payload["rate_limits"];
@@ -469,11 +469,19 @@ const normalize = (
       const latest = latestLimit.get(sample.windowMinutes);
       if (
         latest !== undefined &&
-        latest.usedPercent === sample.usedPercent &&
-        sameLimitWindow(latest.resetsAt, sample.resetsAt)
-      )
+        latest.first.usedPercent === sample.usedPercent &&
+        latest.first.plan === sample.plan &&
+        sameLimitWindow(latest.first.resetsAt, sample.resetsAt)
+      ) {
+        if (limitSamples[latest.lastIndex] === latest.first) {
+          latest.lastIndex = limitSamples.length;
+          limitSamples.push(sample);
+        } else {
+          limitSamples[latest.lastIndex] = sample;
+        }
         continue;
-      latestLimit.set(sample.windowMinutes, sample);
+      }
+      latestLimit.set(sample.windowMinutes, { first: sample, lastIndex: limitSamples.length });
       limitSamples.push(sample);
     }
   };
@@ -595,7 +603,7 @@ const trim = (_streamId: StreamId, payload: string): string => {
 
 export const codexNormalizer: Normalizer = {
   id: "codex",
-  parserVersion: 5,
+  parserVersion: 6,
   conversationKeyOf: (streamId) => {
     const uuid = rolloutUuid.exec(streamId)?.[1];
     return uuid === undefined ? Option.none() : Option.some(uuid.toLowerCase());

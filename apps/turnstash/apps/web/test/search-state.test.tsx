@@ -8,6 +8,7 @@ import {
   highlightSegments,
   parseConversationSearch,
   parseSearchState,
+  parseLimitsSearch,
   type SearchState,
 } from "../src/search-state";
 
@@ -60,4 +61,44 @@ test("query highlights use literal text and escape transcript markup", () => {
     </pre>,
   );
   expect(html).toContain("<mark>a+b</mark>");
+});
+
+test("limits links preserve history and controls and reject invalid selections", () => {
+  expect(
+    parseLimitsSearch({ provider: "codex", week: -12, view: "drain", burn: "3h", future: "half" }),
+  ).toEqual({ provider: "codex", week: -12, view: "drain", burn: "3h", future: "half" });
+  expect(
+    parseLimitsSearch({
+      provider: "unknown",
+      week: 1,
+      view: "unknown",
+      burn: "unknown",
+      future: "unknown",
+    }),
+  ).toEqual({
+    provider: undefined,
+
+    week: undefined,
+    view: undefined,
+    burn: undefined,
+    future: undefined,
+  });
+  expect(parseLimitsSearch({ week: -1.5 }).week).toBeUndefined();
+});
+
+test("drain links retain the selected provider and interval and reject invalid ranges", () => {
+  const selected = {
+    windows: { codex: 300, claude: 10080 },
+    selectionProvider: "codex",
+    from: 1_700_000_000_000,
+    to: 1_700_003_600_000,
+  };
+  expect(
+    parseLimitsSearch(decodeUrlSearch(defaultParseSearch(defaultStringifySearch(selected)))),
+  ).toMatchObject(selected);
+  expect(parseLimitsSearch({ ...selected, to: selected.from }).from).toBeUndefined();
+  expect(parseLimitsSearch({ ...selected, selectionProvider: "unknown" }).from).toBeUndefined();
+  expect(parseLimitsSearch({ windows: { codex: -1, claude: 300, unknown: 300 } }).windows).toEqual({
+    claude: 300,
+  });
 });

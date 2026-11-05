@@ -21,7 +21,7 @@ export const CacheBreaks = ({ report }: { readonly report: CacheBreakReport }) =
       note={
         report.breaks === 0
           ? "no conversation rewrote its cache in this period"
-          : `${int(report.breaks)} rewrites cost ${usd(report.rewriteCostUsd)}, ${int(report.withinLifetime)} while the cache was still alive`
+          : `${int(report.breaks)} ${report.breaks === 1 ? "rewrite" : "rewrites"} cost ${usd(report.rewriteCostUsd)}, ${int(report.withinLifetime)} while alive, ${int(report.breaks - report.withinLifetime - report.unknownLifetime)} after expiry${report.unknownLifetime > 0 ? `, ${int(report.unknownLifetime)} with unknown lifetime` : ""}`
       }
     >
       {report.breaks === 0 ? (
@@ -61,7 +61,11 @@ export const CacheBreaks = ({ report }: { readonly report: CacheBreakReport }) =
                   </PrimaryTd>
                   <Td title={row.requestedAt}>{dateTime(row.requestedAt)}</Td>
                   <Td>
-                    {row.withinLifetime ? "Still alive, " : "Expired, "}
+                    {row.withinLifetime === null
+                      ? "Lifetime unknown, "
+                      : row.withinLifetime
+                        ? "Still alive, "
+                        : "Expired, "}
                     <span className="text-muted-foreground">{idleText(row)}</span>
                   </Td>
                   <Td numeric title={int(row.cacheWriteTokens)}>

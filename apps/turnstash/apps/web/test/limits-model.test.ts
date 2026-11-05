@@ -1,13 +1,15 @@
 import type { LimitWindow, ProviderLimits } from "@aqt/turnstash-api";
-import { expect, test } from "vite-plus/test";
+import { expect, test, vi } from "vite-plus/test";
 
 import {
   burnPerHour,
   chartRowsOf,
   dayMs,
+  dayTicksOf,
   drainBurstsOf,
   hourMs,
   paceOf,
+  spanFor,
   projectLimit,
   useFirstOf,
 } from "../src/limits-model";
@@ -173,6 +175,66 @@ test("use first names the limit that resets first, unless it is nearly gone", ()
     thenResetsAtMs: start + 4 * dayMs,
   });
   expect(useFirstOf([limitsOf("codex", soon)])).toBeNull();
+  const blocked = limitsOf("codex", soon);
+  const short = {
+    windowMinutes: 300,
+    windows: [{ ...soon, windowMinutes: 300, usedPercent: 100 }],
+  };
+  expect(
+    useFirstOf([limitsOf("claude", later), { ...blocked, series: [...blocked.series, short] }]),
+  ).toBeNull();
   const spent = { ...soon, usedPercent: 98 };
   expect(useFirstOf([limitsOf("claude", later), limitsOf("codex", spent)])).toBeNull();
+});
+
+test("recent burn uses only the observed part of a young window", () => {
+  const window = windowOf([
+    [0, 0],
+    [1, 10],
+  ]);
+  for (const mode of ["1h", "3h", "6h"] as const) {
+    expect(burnPerHour(window, mode, start + hourMs)).toBeCloseTo(10);
+    expect(burnPerHour(window, mode, start + hourMs / 4)).toBe(0);
+  }
+});
+
+test("short-window history pages are contiguous and fit inside the requested span", () => {
+  for (const week of [0, -1, -2]) {
+    const short = spanFor(300, week, start);
+    const earlier = spanFor(300, week - 1, start);
+    const loaded = spanFor(10_080, week, start);
+    expect(earlier.toMs).toBe(short.fromMs);
+    expect(short.fromMs).toBeGreaterThanOrEqual(loaded.fromMs);
+    expect(short.toMs).toBeLessThanOrEqual(loaded.toMs);
+  }
+});
+
+test("an exhausted window is empty now even with no future burn", () => {
+  for (const burn of [0, 10]) {
+    const nowMs = start + hourMs;
+    const projection = projectLimit({
+      open: windowOf([[0, 100]]),
+      windowMinutes: 10_080,
+      nowMs,
+      burn,
+      untilMs: start + 8 * dayMs,
+    });
+    expect(projection.emptyAtMs).toBe(nowMs);
+    expect(projection.remainingAtReset).toBe(0);
+  }
+});
+
+test("daily chart ticks stay at local midnight across a DST change", () => {
+  vi.stubEnv("TZ", "Europe/Berlin");
+  try {
+    const ticks = dayTicksOf({
+      fromMs: new Date(2026, 9, 24).getTime(),
+      toMs: new Date(2026, 9, 27).getTime(),
+    });
+    expect(ticks.map((ms) => new Date(ms).getDate())).toEqual([24, 25, 26, 27]);
+    expect(ticks.map((ms) => new Date(ms).getHours())).toEqual([0, 0, 0, 0]);
+    expect((ticks[2] ?? 0) - (ticks[1] ?? 0)).toBe(25 * hourMs);
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });

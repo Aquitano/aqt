@@ -35,6 +35,8 @@ export const TestLayer = (overrides: Partial<Record<keyof typeof normalizers, No
 export type TestServices = Db | Normalizers | ServerConfig;
 
 const tables = [
+  "limit_samples",
+  "limit_hits",
   "bookmarks",
   "dashboard_sessions",
   "commit_links",

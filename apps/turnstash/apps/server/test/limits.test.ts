@@ -30,6 +30,7 @@ interface SeededRequest {
   readonly costUsd: number;
   readonly cacheReadTokens?: number;
   readonly cacheWriteTokens?: number;
+  readonly cacheWrite1hTokens?: number;
   readonly cacheWriteUsd?: number;
 }
 
@@ -70,7 +71,7 @@ const seedConversation = Effect.fn("test.seedConversation")(function* (
         inputTokens: 1,
         cacheReadTokens: request.cacheReadTokens ?? 0,
         cacheWriteTokens: request.cacheWriteTokens ?? 0,
-        cacheWrite1hTokens: 0,
+        cacheWrite1hTokens: request.cacheWrite1hTokens ?? 0,
         outputTokens: 1,
         reasoningTokens: 0,
         usageBasis: "reported" as const,
@@ -138,7 +139,7 @@ test("the report prices each window and values only quota that expired at its re
       expect(replaced?.outcome).toBe("replaced");
       expect(replaced?.expiredValue).toEqual([]);
       expect(replaced?.costUsd).toBeCloseTo(10);
-      expect(replaced?.costPerPercentUsd).toBeCloseTo(0.5);
+      expect(replaced?.costPerPercentUsd).toBeCloseTo(0.3);
       expect(reset?.outcome).toBe("reset");
       expect(reset?.usedPercent).toBe(1);
       const [expired] = reset?.expiredValue ?? [];
@@ -223,6 +224,45 @@ test("a cache break is a request rewriting what the previous request had cached"
       expect(report.rewriteCostUsd).toBeCloseTo(3);
       expect(report.rows.map((row) => row.withinLifetime)).toEqual([true, false]);
       expect(report.rows[1]?.idleMinutes).toBeCloseTo(294);
+    }),
+  );
+});
+
+test("cache expiry uses the preceding write tier and leaves ambiguous reads unknown", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* seedConversation("claude", "ttl-switch", [
+        { hours: 0, costUsd: 1, cacheWriteTokens: 100_000 },
+        { hours: 0.5, costUsd: 1, cacheWrite1hTokens: 100_000 },
+        { hours: 0.6, costUsd: 1, cacheReadTokens: 90_000, cacheWrite1hTokens: 10_000 },
+        { hours: 1, costUsd: 1, cacheWriteTokens: 100_000 },
+        { hours: 1.01, costUsd: 1, cacheReadTokens: 100_000 },
+        { hours: 1.5, costUsd: 1, cacheWriteTokens: 100_000 },
+      ]);
+      const report = yield* cacheBreaks({});
+      expect(report.breaks).toBe(3);
+      expect(report.unknownLifetime).toBe(1);
+      expect(report.withinLifetime).toBe(1);
+      expect(report.rows.map((row) => row.withinLifetime)).toEqual([false, true, null]);
+    }),
+  );
+});
+
+test("history reports retain current window points for current burn estimates", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* applyLimitBatch({
+        machineId,
+        readings: [
+          reading(24 * 20 - 2, 10, after(24 * 21)),
+          reading(24 * 20 - 1, 50, after(24 * 21)),
+        ],
+      });
+      const report = yield* limitsReport({
+        from: after(-24 * 30).toISOString(),
+        to: after(-24 * 20).toISOString(),
+      });
+      expect(report.providers[0]?.series[0]?.windows[0]?.points).toHaveLength(2);
     }),
   );
 });

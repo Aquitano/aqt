@@ -109,7 +109,7 @@ export const AnalysisPage = () => {
           <>
             <CategoryTable analysis={data} />
             <ModelBehaviour rows={data.byModel} />
-            {breaks.data !== undefined && <CacheBreaks report={breaks.data} />}
+            <Async query={breaks}>{(report) => <CacheBreaks report={report} />}</Async>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <AllocationTable
                 title="By tool"

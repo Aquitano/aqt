@@ -3,10 +3,10 @@ import { Link } from "@tanstack/react-router";
 import { cn } from "cn";
 
 import { weekdayTime } from "../format";
-import { openWindowOf } from "../limits-model";
-import { UseFirstLine } from "../routes/LimitsPage";
+import { openWindowOf, windowLabel } from "../limits-model";
 import { ProviderIcon } from "./ProviderIcon";
 import { surface } from "./Section";
+import { UseFirstLine } from "./UseFirstLine";
 
 const Meter = ({ limits }: { readonly limits: ProviderLimits }) => {
   const series = limits.series[0];
@@ -31,9 +31,10 @@ const Meter = ({ limits }: { readonly limits: ProviderLimits }) => {
         />
       </span>
       <span className="text-xs text-muted-foreground">
+        {series !== undefined && `${windowLabel(series.windowMinutes)}, `}
         {open === null
-          ? "Next window starts on first use"
-          : `Resets ${weekdayTime(Date.parse(open.resetsAt))}`}
+          ? "next window starts on first use"
+          : `resets ${weekdayTime(Date.parse(open.resetsAt))}`}
       </span>
     </Link>
   );

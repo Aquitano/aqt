@@ -430,7 +430,7 @@ test("trimming drops encrypted reasoning and events that repeat a response item,
   for (const row of otherEvents) expect(kept).toContain(row.payload);
 });
 
-test("rate limits become one sample per change, per window, with reset jitter ignored", () => {
+test("rate limits preserve the endpoints of unchanged readings, with reset jitter ignored", () => {
   const stream = StreamId.make(
     "machine-a/jsonl/sessions/2026/09/20/rollout-2026-09-20T10-58-17-00000000-0000-7000-0000-00000000eeee.jsonl",
   );
@@ -478,6 +478,8 @@ test("rate limits become one sample per change, per window, with reset jitter ig
 ${tokenCount(20, 10, 1_790_500_000, 50)}
 ${tokenCount(21, 10, 1_790_500_004, 50)}
 ${tokenCount(22, 11, 1_790_500_002, 50)}
+${tokenCount(23, 11, 1_790_500_002, 50)}
+${tokenCount(24, 11, 1_790_500_002, 50)}
 ${other}
 `,
     "2026-09-21T00:00:00.000Z",
@@ -492,6 +494,9 @@ ${other}
   ).toEqual([
     [10_080, 10, "2026-09-20T10:58:20.000Z", "prolite"],
     [300, 50, "2026-09-20T10:58:20.000Z", "prolite"],
+    [10_080, 10, "2026-09-20T10:58:21.000Z", "prolite"],
+    [300, 50, "2026-09-20T10:58:24.000Z", "prolite"],
     [10_080, 11, "2026-09-20T10:58:22.000Z", "prolite"],
+    [10_080, 11, "2026-09-20T10:58:24.000Z", "prolite"],
   ]);
 });

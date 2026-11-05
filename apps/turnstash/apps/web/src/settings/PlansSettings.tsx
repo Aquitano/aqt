@@ -43,6 +43,7 @@ import { plansQuery, queryKeys } from "../queries";
 const customPlan = "custom";
 const planDependentQueries = [
   queryKeys.plans,
+  queryKeys.limits,
   queryKeys.stats,
   queryKeys.project,
   queryKeys.machine,
