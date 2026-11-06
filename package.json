@@ -54,6 +54,7 @@
     "vite-plus": "catalog:"
   },
   "overrides": {
+    "@effect/platform-node-shared": "4.1.1",
     "@tanstack/query-core": "5.104.3",
     "postcss-selector-parser": "^7.1.6",
     "vite": "catalog:"

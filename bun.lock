@@ -465,6 +465,7 @@
     },
   },
   "overrides": {
+    "@effect/platform-node-shared": "4.1.1",
     "@tanstack/query-core": "5.104.3",
     "postcss-selector-parser": "^7.1.6",
     "vite": "catalog:",
@@ -652,7 +653,7 @@
 
     "@effect/platform-bun": ["@effect/platform-bun@4.1.1", "", { "dependencies": { "@effect/platform-node-shared": "^4.1.1" }, "peerDependencies": { "effect": "^4.1.1" } }, "sha512-//p0xPsbvuRfcO+cvq5JqVzR0TLUUS5yNC40xbZ08JNiszg5IxypAgrpKswKpjs2lYvybxdw5DSyVcEWW33Cbg=="],
 
-    "@effect/platform-node-shared": ["@effect/platform-node-shared@4.1.2", "", { "dependencies": { "@types/ws": "^8.18.2", "ws": "^8.22.1" }, "peerDependencies": { "effect": "^4.1.2" } }, "sha512-wSwl9A/G1hcVvF8nLI+YfB3EyOIDvWS6+lsTZBkmgDnPBL7m8YWZF+1HD+mdEsb52SUGfukip46Q3gRwSdk3QA=="],
+    "@effect/platform-node-shared": ["@effect/platform-node-shared@4.1.1", "", { "dependencies": { "@types/ws": "^8.18.2", "ws": "^8.22.0" }, "peerDependencies": { "effect": "^4.1.1" } }, "sha512-29zdEDs3i5W+t92+mWTFNSfzSHsTpZMcFZ9k4lkkz4tETlC1m4lRwjdjieJtvQ/bKHMnYrCtZwizsBFSf3L5Yg=="],
 
     "@effect/sql-pg": ["@effect/sql-pg@4.1.1", "", { "peerDependencies": { "effect": "^4.1.1" } }, "sha512-NiCzHPTFyI85/fbRdGhQgSa3QpuvByqVv8QaENSBuCFavvuWemIdSbWpKPQXESXU3yYq6PUR0KHY8fFfmWrXlA=="],
 
