@@ -35,6 +35,7 @@ import {
   LimitDrainQuery,
   LimitsQuery,
   LimitsReport,
+  LimitsOverview,
   CurrentLimitsReport,
   MarkdownExport,
   MarkdownExportInput,
@@ -47,6 +48,7 @@ import {
   Iso,
   MachineDetail,
   MachineSummary,
+  MachineRosterEntry,
   MessagePage,
   MessageQuery,
   NulFreeString,
@@ -220,6 +222,12 @@ export const readGroup = HttpApiGroup.make("read")
     }),
   )
   .add(HttpApiEndpoint.get("limits", "/limits", { query: LimitsQuery, success: LimitsReport }))
+  .add(
+    HttpApiEndpoint.get("limitsOverview", "/limits/overview", {
+      query: LimitsQuery,
+      success: LimitsOverview,
+    }),
+  )
   .add(HttpApiEndpoint.get("currentLimits", "/limits/current", { success: CurrentLimitsReport }))
   .add(
     HttpApiEndpoint.get("limitDrain", "/limits/drain", {
@@ -264,6 +272,11 @@ export const readGroup = HttpApiGroup.make("read")
   )
   .add(HttpApiEndpoint.get("search", "/search", { query: SearchQuery, success: SearchResult }))
   .add(HttpApiEndpoint.get("listMachines", "/machines", { success: Schema.Array(MachineSummary) }))
+  .add(
+    HttpApiEndpoint.get("machineRoster", "/machines/roster", {
+      success: Schema.Array(MachineRosterEntry),
+    }),
+  )
   .add(
     HttpApiEndpoint.get("getMachine", "/machines/:id", {
       params: { id: Uuid },

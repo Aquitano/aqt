@@ -1,8 +1,8 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 
 import { MachineId, type ProviderId } from "@aqt/turnstash-core";
-import { eq } from "drizzle-orm";
-import { Effect } from "effect";
+import { eq, sql } from "drizzle-orm";
+import { Clock, Effect } from "effect";
 
 import { cacheBreaks } from "../src/analysis.ts";
 import { Db } from "../src/db/client.ts";
@@ -14,7 +14,7 @@ import {
   subscriptionPlans,
   valuations,
 } from "../src/db/schema.ts";
-import { applyLimitBatch, limitDrain, limitsReport } from "../src/limits.ts";
+import { applyLimitBatch, limitDrain, limitsReport, limitsOverview } from "../src/limits.ts";
 import { monthlyProration } from "../src/stats.ts";
 import { ensureBundledCatalog } from "../src/valuation.ts";
 import { runTest } from "./support.ts";
@@ -422,6 +422,110 @@ test("late cached readings cannot steal expiry allocation or add spend to a repl
       expect(reset?.costUsd).toBeCloseTo(11);
       expect(reset?.expiredValue[0]?.amount).toBeCloseTo(
         monthlyProration(plan, { from: after(72), to: after(240) }) * 0.8,
+      );
+    }),
+  );
+});
+
+test("Overview keeps current and inactive meters with the full report's period expiry totals", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      const db = yield* Db;
+      const now = yield* Clock.currentTimeMillis;
+      yield* db.insert(subscriptionPlans).values([
+        {
+          provider: "codex",
+          name: "Pro",
+          monthlyPrice: "200",
+          currency: "USD",
+          startedOn: "2020-01-01",
+        },
+        {
+          provider: "claude",
+          name: "Max",
+          monthlyPrice: "100",
+          currency: "EUR",
+          startedOn: "2020-01-01",
+        },
+      ]);
+      yield* applyLimitBatch({
+        machineId,
+        readings: [
+          reading(1, 10, after(168)),
+          reading(2, 30, after(168)),
+          reading(170, 10, after(336)),
+          reading(171, 40, after(336)),
+          { ...reading(1, 50, after(5)), windowMinutes: 300 },
+          { ...reading(6, 60, after(10)), provider: "claude", windowMinutes: 300 },
+          {
+            provider: "codex",
+            windowMinutes: 300,
+            observedAt: new Date(now - hour).toISOString(),
+            resetsAt: new Date(now + 4 * hour).toISOString(),
+            usedPercent: 20,
+          },
+        ],
+      });
+      const full = yield* limitsReport({ from: new Date(0).toISOString() });
+      for (const range of [
+        { from: new Date(0).toISOString() },
+        { from: after(168).toISOString(), to: after(336).toISOString() },
+      ]) {
+        const overview = yield* limitsOverview(range);
+        for (const provider of overview.providers) {
+          const original = full.providers.find((entry) => entry.provider === provider.provider);
+          const totals = new Map<string, number>();
+          for (const series of original?.series ?? [])
+            for (const window of series.windows) {
+              if (window.resetsAt < range.from || ("to" in range && window.resetsAt >= range.to))
+                continue;
+              for (const { currency, amount } of window.expiredValue)
+                totals.set(currency, (totals.get(currency) ?? 0) + amount);
+            }
+          expect(provider.expiredValue).toEqual(
+            [...totals].map(([currency, amount]) => ({ currency, amount })),
+          );
+          expect(provider.series).toEqual(
+            (original?.series ?? []).map((series) => ({
+              windowMinutes: series.windowMinutes,
+              windows: series.windows
+                .slice(-1)
+                .map(({ outcome, usedPercent, resetsAt }) => ({ outcome, usedPercent, resetsAt })),
+            })),
+          );
+        }
+        expect(
+          overview.providers.find((entry) => entry.provider === "claude")?.series[0]?.windows[0]
+            ?.outcome,
+        ).toBe("reset");
+        expect(
+          overview.providers
+            .find((entry) => entry.provider === "codex")
+            ?.series.find((series) => series.windowMinutes === 300)?.windows[0]?.outcome,
+        ).toBe("open");
+        expect(JSON.stringify(overview)).not.toContain('"points"');
+        expect(JSON.stringify(overview)).not.toContain('"costUsd"');
+      }
+    }),
+  );
+});
+
+test("Overview needs neither request costs nor limit-hit history", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      const db = yield* Db;
+      yield* applyLimitBatch({ machineId, readings: [reading(1, 25, after(168))] });
+      yield* db.transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx.execute(sql`ALTER TABLE model_requests RENAME TO unavailable_requests`);
+          yield* tx.execute(sql`ALTER TABLE limit_hits RENAME TO unavailable_hits`);
+          const overview = yield* limitsOverview({ from: new Date(0).toISOString() }).pipe(
+            Effect.provideService(Db, tx),
+          );
+          expect(overview.providers[0]?.series[0]?.windows[0]?.usedPercent).toBe(25);
+          yield* tx.execute(sql`ALTER TABLE unavailable_hits RENAME TO limit_hits`);
+          yield* tx.execute(sql`ALTER TABLE unavailable_requests RENAME TO model_requests`);
+        }),
       );
     }),
   );

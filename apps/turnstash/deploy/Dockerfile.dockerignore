@@ -15,6 +15,9 @@
 !apps/turnstash
 **/node_modules
 **/dist
+**/build
+**/coverage
+**/.vite
 **/.env
 **/.env.*
 **/*.log
@@ -22,3 +25,4 @@
 apps/turnstash/.scratch-verify
 apps/turnstash/.notes
 apps/turnstash/docs
+apps/turnstash/apps/server/web-dist

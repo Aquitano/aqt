@@ -4,21 +4,27 @@ import { FetchHttpClient, HttpClient, HttpClientError, HttpClientRequest } from 
 import { HttpApiClient } from "effect/http-api";
 
 const tokenKey = "cb_token";
+let memoryToken = "";
+let tokenWriteFailed = false;
 
 export const readToken = (): string => {
+  if (tokenWriteFailed) return memoryToken;
   try {
-    return localStorage.getItem(tokenKey) ?? "";
+    memoryToken = localStorage.getItem(tokenKey) ?? "";
   } catch {
-    return "";
+    return memoryToken;
   }
+  return memoryToken;
 };
 
 export const writeToken = (token: string): void => {
+  memoryToken = token;
   try {
     if (token === "") localStorage.removeItem(tokenKey);
     else localStorage.setItem(tokenKey, token);
+    tokenWriteFailed = false;
   } catch {
-    // A blocked storage means the token lives for this page load only.
+    tokenWriteFailed = true;
   }
 };
 
@@ -36,7 +42,7 @@ const responseStatus = (error: Error): number | undefined =>
   HttpClientError.isHttpClientError(error) ? error.response?.status : undefined;
 
 export const isUnauthorized = (error: Error): boolean =>
-  error instanceof Unauthorized || responseStatus(error) === 401;
+  error instanceof Unauthorized || responseStatus(error) === 401 || responseStatus(error) === 403;
 
 export const failureMessage = (error: Error): string =>
   Match.value(error).pipe(

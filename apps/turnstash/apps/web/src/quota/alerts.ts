@@ -2,8 +2,8 @@ import { quotaStateOf } from "@aqt/turnstash-analysis";
 import { providerLabels } from "@aqt/turnstash-api";
 import type { CurrentLimitsReport, ProviderId } from "@aqt/turnstash-api";
 
-import { weekdayTime } from "./format";
-import { windowLabel } from "./limits-model";
+import { weekdayTime } from "../format";
+import { windowLabel } from "../limits-model";
 
 export interface QuotaAlertPreferences {
   readonly low: boolean;

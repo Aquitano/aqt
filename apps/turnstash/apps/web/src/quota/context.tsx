@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
+import type { QuotaAlert, QuotaAlertPreferences } from "./alerts";
 import {
   dismissedKey,
   preferencesKey,
@@ -16,8 +17,7 @@ import {
   readReceipts,
   dismissQuotaAlert,
   savePreferences,
-} from "./quota-alert-storage";
-import type { QuotaAlert, QuotaAlertPreferences } from "./quota-alerts";
+} from "./storage";
 
 const useSettings = () => {
   const [preferences, setPreferences] = useState(readPreferences);

@@ -37,6 +37,27 @@ export const parseSearchState = (search: typeof UrlSearch.Type): SearchState => 
   };
 };
 
+export interface ConversationListSearch {
+  readonly q?: string | undefined;
+  readonly projectKey?: string | undefined;
+}
+
+export const parseConversationListSearch = (
+  search: typeof UrlSearch.Type,
+): ConversationListSearch => {
+  const q = stringValue(search.q)?.trim();
+  const projectKey = stringValue(search.projectKey);
+  return {
+    ...(q === undefined || q === "" || q.length > 1024 || q.includes("\u0000") ? {} : { q }),
+    ...(projectKey === undefined ||
+    projectKey === "" ||
+    projectKey.length > 4096 ||
+    projectKey.includes("\u0000")
+      ? {}
+      : { projectKey }),
+  };
+};
+
 export interface ConversationSearch {
   readonly message?: string;
   readonly q?: string;

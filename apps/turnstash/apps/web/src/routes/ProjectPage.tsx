@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 
-import { Async } from "../components/Async";
+import { isUnauthorized } from "../api";
+import { Async, RequestFailure } from "../components/Async";
 import { CommitList } from "../components/CommitList";
 import { Page } from "../components/Page";
 import { Section } from "../components/Section";
@@ -15,6 +16,13 @@ export const ProjectPage = () => {
   const filters = useFilters();
   const detail = useQuery(projectQuery(key, filters.range, filters.timeZone));
   const previous = usePreviousOverall(filters.range, { projectKey: key });
+
+  if (detail.isError && isUnauthorized(detail.error))
+    return (
+      <Page>
+        <RequestFailure error={detail.error} />
+      </Page>
+    );
 
   return (
     <Page>

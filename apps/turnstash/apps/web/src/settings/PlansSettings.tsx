@@ -30,6 +30,7 @@ import type { ComponentProps, ReactElement, ReactNode } from "react";
 
 import { api } from "../api";
 import { Async, RequestFailure } from "../components/Async";
+import { ConfirmAction } from "../components/ConfirmAction";
 import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { Section } from "../components/Section";
@@ -577,15 +578,22 @@ const ProviderTimeline = ({
                     >
                       {(done) => <EditPeriodForm plan={row.plan} onSaved={done} />}
                     </PlanDialog>
-                    <Button
-                      size="icon-xs"
-                      variant="destructive"
-                      aria-label={`Delete ${label}`}
+                    <ConfirmAction
+                      trigger={
+                        <Button
+                          size="icon-xs"
+                          variant="destructive"
+                          aria-label={`Delete ${label}`}
+                        />
+                      }
                       disabled={deleting}
-                      onClick={() => remove.mutate(row.plan.id)}
+                      title={`Delete ${label}?`}
+                      description="This removes the saved plan period and changes subscription cost totals. It does not cancel your provider subscription."
+                      actionLabel="Delete plan period"
+                      onConfirm={() => remove.mutate(row.plan.id)}
                     >
                       {deleting ? <Spinner /> : <Trash2Icon />}
-                    </Button>
+                    </ConfirmAction>
                   </div>
                 </Td>
               </TableRow>

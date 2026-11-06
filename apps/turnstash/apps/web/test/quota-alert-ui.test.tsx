@@ -10,8 +10,8 @@ import { afterEach, expect, test, vi } from "vite-plus/test";
 
 import { QuotaAlerts } from "../src/components/QuotaAlerts";
 import { currentLimitsQuery } from "../src/queries";
-import { QuotaAlertProvider, useQuotaAlertSettings } from "../src/quota-alert-context";
-import { preferencesKey } from "../src/quota-alert-storage";
+import { QuotaAlertProvider, useQuotaAlertSettings } from "../src/quota/context";
+import { preferencesKey } from "../src/quota/storage";
 
 afterEach(() => vi.unstubAllGlobals());
 

@@ -4,12 +4,13 @@ import { Option, Schema } from "effect";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { isUnauthorized } from "./api";
 import { FilterSelect } from "./components/FilterSelect";
 import { PageHead } from "./components/Page";
 import { Segmented } from "./components/Segmented";
 import { type DayRange, isPeriodId, type PeriodId, periodRange, periods, ymd } from "./period";
 import { isProvider, providerOptions } from "./providers";
-import { machinesQuery, rangeFilter } from "./queries";
+import { machineRosterQuery, rangeFilter } from "./queries";
 
 interface Selection {
   readonly period: PeriodId;
@@ -143,7 +144,7 @@ export const FilterBar = ({
 }) => {
   const filters = useFilters();
   const { period, provider, setPeriod, setProvider } = selection ?? filters;
-  const machines = useQuery(machinesQuery());
+  const machines = useQuery(machineRosterQuery());
   return (
     <div className="flex flex-col gap-3.5">
       <PageHead title={title} note={note} />
@@ -168,7 +169,10 @@ export const FilterBar = ({
             label="Machine"
             anyLabel="All machines"
             value={filters.machineId}
-            options={(machines.data ?? []).map((machine) => ({
+            options={(machines.isError && isUnauthorized(machines.error)
+              ? []
+              : (machines.data ?? [])
+            ).map((machine) => ({
               value: machine.id,
               label: machine.name,
             }))}

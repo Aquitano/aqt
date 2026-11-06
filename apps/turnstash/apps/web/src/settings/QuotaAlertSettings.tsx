@@ -10,8 +10,8 @@ import { Switch } from "@aqt/ui/components/switch";
 import { useState } from "react";
 
 import { Section } from "../components/Section";
-import { useQuotaAlertSettings } from "../quota-alert-context";
-import { desktopNotificationsAvailable } from "../quota-notifications";
+import { useQuotaAlertSettings } from "../quota/context";
+import { desktopNotificationsAvailable } from "../quota/notifications";
 
 export const QuotaAlertSettings = () => {
   const { preferences, choose, deliveryError } = useQuotaAlertSettings();

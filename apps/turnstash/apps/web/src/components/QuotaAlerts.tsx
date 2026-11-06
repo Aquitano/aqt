@@ -6,10 +6,10 @@ import { BellIcon, XIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { currentLimitsQuery } from "../queries";
-import { useQuotaAlertSettings } from "../quota-alert-context";
-import { receiptMatchesAlert } from "../quota-alert-storage";
-import { quotaAlertsOf } from "../quota-alerts";
-import { notifyQuotaAlerts } from "../quota-notifications";
+import { quotaAlertsOf } from "../quota/alerts";
+import { useQuotaAlertSettings } from "../quota/context";
+import { notifyQuotaAlerts } from "../quota/notifications";
+import { receiptMatchesAlert } from "../quota/storage";
 
 const ActiveQuotaAlerts = () => {
   const { preferences, dismissed, dismiss, deliveryError, setDeliveryError } =

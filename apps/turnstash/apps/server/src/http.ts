@@ -31,7 +31,7 @@ import { dirtyConversations, pricingCatalogs } from "./db/schema.ts";
 import { applyCommitBatch, repositoryTasks } from "./git.ts";
 import { databaseFailure } from "./http-errors.ts";
 import { applyBatch, tombstonesSince } from "./ingest.ts";
-import { applyLimitBatch, limitDrain, limitsReport } from "./limits.ts";
+import { applyLimitBatch, limitDrain, limitsReport, limitsOverview } from "./limits.ts";
 import { exportMarkdown } from "./markdown-export.ts";
 import { search } from "./search.ts";
 import {
@@ -39,6 +39,7 @@ import {
   dailyStats,
   machineDetail,
   machineSummaries,
+  machineRoster,
   overallStats,
   projectDetail,
   projectRows,
@@ -131,8 +132,9 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
     .handle("statsDaily", ({ query }) => dailyStats(query).pipe(databaseFailure))
     .handle("analysis", ({ query }) => computeAnalysis(query).pipe(databaseFailure))
     .handle("cacheBreaks", ({ query }) => cacheBreaks(query).pipe(databaseFailure))
-    .handle("currentLimits", () => currentLimitsReport().pipe(databaseFailure))
     .handle("limits", ({ query }) => limitsReport(query).pipe(databaseFailure))
+    .handle("limitsOverview", ({ query }) => limitsOverview(query).pipe(databaseFailure))
+    .handle("currentLimits", () => currentLimitsReport().pipe(databaseFailure))
     .handle("limitDrain", ({ query }) => limitDrain(query).pipe(databaseFailure))
     .handle("listConversations", ({ query }) => listConversations(query).pipe(databaseFailure))
     .handle("getConversation", ({ params }) => getConversation(params.id).pipe(databaseFailure))
@@ -143,6 +145,7 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
     .handle("getRequest", ({ params }) => getRequest(params.id).pipe(databaseFailure))
     .handle("search", ({ query }) => search(query).pipe(databaseFailure))
     .handle("listMachines", () => machineSummaries({}).pipe(databaseFailure))
+    .handle("machineRoster", () => machineRoster().pipe(databaseFailure))
     .handle("getMachine", ({ params, query }) =>
       machineDetail(params.id, query).pipe(databaseFailure),
     )

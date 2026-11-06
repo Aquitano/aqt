@@ -81,6 +81,7 @@ jobs:
           bun pm --cwd apps/turnstash/apps/agent pack --filename "$PWD/dist/turnstash.tgz"
           cp apps/turnstash/apps/agent/dist/turnstash.js dist/turnstash.js
           package_test_dir=$(mktemp -d)
+          trap 'rm -rf "$package_test_dir"' EXIT
           printf '{"private":true,"dependencies":{"@aqt/turnstash":"file:%s/dist/turnstash.tgz"}}\n' "$PWD" > "$package_test_dir/package.json"
           bun install --cwd "$package_test_dir" --offline
           TURNSTASH_CONFIG_DIR="$package_test_dir/config" TURNSTASH_STATE_DIR="$package_test_dir/state" "$package_test_dir/node_modules/.bin/turnstash" --help

@@ -1,6 +1,6 @@
 import { Option, Schema } from "effect";
 
-import type { QuotaAlert, QuotaAlertPreferences } from "./quota-alerts";
+import type { QuotaAlert, QuotaAlertPreferences } from "./alerts";
 
 export const preferencesKey = "turnstash_quota_alerts_v1";
 export const dismissedKey = "turnstash_quota_dismissed_v1";
@@ -43,25 +43,29 @@ export const defaultPreferences: QuotaAlertPreferences = {
   desktop: false,
 };
 let memoryPreferences = defaultPreferences;
+let preferencesWriteFailed = false;
 const memoryReceipts = new Map<string, ReadonlyArray<typeof Receipt.Type>>();
 
 export const readPreferences = (): QuotaAlertPreferences => {
+  if (preferencesWriteFailed) return memoryPreferences;
   try {
-    return Option.getOrElse(
+    memoryPreferences = Option.getOrElse(
       decodePreferences(localStorage.getItem(preferencesKey)),
       () => defaultPreferences,
     );
   } catch {
     return memoryPreferences;
   }
+  return memoryPreferences;
 };
 
 export const savePreferences = (preferences: QuotaAlertPreferences) => {
   memoryPreferences = preferences;
   try {
     localStorage.setItem(preferencesKey, JSON.stringify(preferences));
+    preferencesWriteFailed = false;
   } catch {
-    // Blocked storage still permits alerts for this page load.
+    preferencesWriteFailed = true;
   }
 };
 

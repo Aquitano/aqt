@@ -6,6 +6,7 @@ import type {
   LimitWindow,
   LimitsQuery,
   LimitsReport,
+  LimitsOverview,
   PlanCost,
   ProviderLimits,
 } from "@aqt/turnstash-api";
@@ -177,7 +178,7 @@ const planLabel = (raw: string): string =>
     .replace(/_/g, " ")
     .replace(/^prolite$/, "pro lite");
 
-export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQuery) {
+const limitHistory = Effect.fn("Limits.history")(function* (query: LimitsQuery) {
   const db = yield* Db;
   const nowMs = yield* Clock.currentTimeMillis;
   const span = dateWindow(query);
@@ -217,6 +218,66 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
       ),
     )
     .orderBy(asc(limitSamples.observedAt));
+  const plans = yield* db.select().from(subscriptionPlans);
+
+  const providers = [...new Set(samples.map((row) => row.provider))].toSorted();
+  const located = providers.flatMap((provider) => {
+    const own = samples.filter((sample) => sample.provider === provider);
+    return [...new Set(own.map((sample) => sample.windowMinutes))].flatMap((windowMinutes) =>
+      limitWindowsOf(
+        windowMinutes,
+        own
+          .filter((sample) => sample.windowMinutes === windowMinutes)
+          .map((sample) => ({
+            observedAtMs: sample.observedAt.getTime(),
+            usedPercent: sample.usedPercent,
+            resetsAtMs: sample.resetsAt.getTime(),
+          })),
+        nowMs,
+      ).map((built): LocatedWindow => ({ provider, windowMinutes, built })),
+    );
+  });
+  return {
+    nowMs,
+    spanFromMs,
+    spanToMs,
+    since,
+    until,
+    recentSince,
+    samples,
+    providers,
+    located,
+    plans,
+  };
+});
+
+// An early reset grants new quota, so only a window that ran to its reset lost what was left.
+const expiredValuesOf = (
+  located: ReadonlyArray<LocatedWindow>,
+  plans: ReadonlyArray<typeof subscriptionPlans.$inferSelect>,
+) => {
+  const chargeable = chargeableSpansOf(located);
+  return new Map(
+    located.map(
+      (window) =>
+        [
+          window,
+          window.built.outcome === "reset"
+            ? expiredValueOf(
+                window.built,
+                plans.filter((plan) => plan.provider === window.provider),
+                chargeable.get(window) ?? [],
+              )
+            : [],
+        ] as const,
+    ),
+  );
+};
+
+export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQuery) {
+  const db = yield* Db;
+  const { nowMs, spanFromMs, spanToMs, since, until, recentSince, samples, located, plans } =
+    yield* limitHistory(query);
   const hits = yield* db
     .select({
       provider: limitHits.provider,
@@ -234,26 +295,8 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
         gte(limitHits.occurredAt, recentSince),
       ),
     );
-  const plans = yield* db.select().from(subscriptionPlans);
-
   const providers = [...new Set([...samples, ...hits].map((row) => row.provider))].toSorted();
-  const located = providers.flatMap((provider) => {
-    const own = samples.filter((sample) => sample.provider === provider);
-    return [...new Set(own.map((sample) => sample.windowMinutes))].flatMap((windowMinutes) =>
-      limitWindowsOf(
-        windowMinutes,
-        own
-          .filter((sample) => sample.windowMinutes === windowMinutes)
-          .map((sample) => ({
-            observedAtMs: sample.observedAt.getTime(),
-            usedPercent: sample.usedPercent,
-            resetsAtMs: sample.resetsAt.getTime(),
-          })),
-        nowMs,
-      ).map((built): LocatedWindow => ({ provider, windowMinutes, built })),
-    );
-  });
-  const chargeable = chargeableSpansOf(located);
+  const expired = expiredValuesOf(located, plans);
   const costs = yield* windowCosts(located);
   const views = located.map((window, index) => {
     const { provider, windowMinutes, built } = window;
@@ -274,15 +317,7 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
       requests: cost.requests,
       costPerPercentUsd:
         rose >= minimumPercentForRate && cost.deltaCostUsd > 0 ? cost.deltaCostUsd / rose : null,
-      // An early reset grants new quota, so only a window that ran to its reset lost what was left.
-      expiredValue:
-        built.outcome === "reset"
-          ? expiredValueOf(
-              built,
-              plans.filter((plan) => plan.provider === provider),
-              chargeable.get(window) ?? [],
-            )
-          : [],
+      expiredValue: expired.get(window) ?? [],
       points:
         inSpan || built.outcome === "open"
           ? built.points.map((point) => ({ at: iso(point.atMs), usedPercent: point.usedPercent }))
@@ -328,6 +363,41 @@ export const limitsReport = Effect.fn("Limits.report")(function* (query: LimitsQ
     }),
   };
   return report;
+});
+
+export const limitsOverview = Effect.fn("Limits.overview")(function* (query: LimitsQuery) {
+  const { nowMs, spanFromMs, spanToMs, providers, located, plans } = yield* limitHistory(query);
+  const expired = expiredValuesOf(located, plans);
+  return {
+    generatedAt: iso(nowMs),
+    providers: providers.map((provider) => {
+      const own = located.filter((window) => window.provider === provider);
+      const latest = new Map<number, BuiltLimitWindow>();
+      const totals = new Map<string, number>();
+      for (const window of own) {
+        latest.set(window.windowMinutes, window.built);
+        if (window.built.resetsAtMs < spanFromMs || window.built.resetsAtMs >= spanToMs) continue;
+        for (const { currency, amount } of expired.get(window) ?? [])
+          totals.set(currency, (totals.get(currency) ?? 0) + amount);
+      }
+      return {
+        provider,
+        series: [...latest]
+          .toSorted(([a], [b]) => b - a)
+          .map(([windowMinutes, window]) => ({
+            windowMinutes,
+            windows: [
+              {
+                outcome: window.outcome,
+                usedPercent: window.usedPercent,
+                resetsAt: iso(window.resetsAtMs),
+              },
+            ],
+          })),
+        expiredValue: [...totals].map(([currency, amount]) => ({ currency, amount })),
+      };
+    }),
+  } satisfies LimitsOverview;
 });
 
 const conversationLimit = 12;

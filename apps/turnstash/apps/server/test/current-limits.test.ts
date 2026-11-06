@@ -5,7 +5,8 @@ import { Clock, Effect } from "effect";
 
 import { currentLimitWindows, currentLimitsReport } from "../src/current-limits.ts";
 import { Db } from "../src/db/client.ts";
-import { limitSamples } from "../src/db/schema.ts";
+import { limitSamples, machines } from "../src/db/schema.ts";
+import { machineRoster } from "../src/stats.ts";
 import { runTest } from "./support.ts";
 
 setDefaultTimeout(30_000);
@@ -73,16 +74,26 @@ test("current quota reads omit history and preserve the burn anchor for a clock 
   );
 });
 
-test("global quota reads do not depend on request or valuation aggregates", async () => {
+test("global quota and machine reads do not depend on request or valuation aggregates", async () => {
   await runTest(
     Effect.gen(function* () {
       const db = yield* Db;
+      const alpha = crypto.randomUUID();
+      const zeta = crypto.randomUUID();
+      yield* db.insert(machines).values([
+        { id: zeta, name: "Zeta", os: "linux", arch: "x64", tokenHash: zeta },
+        { id: alpha, name: "Alpha", os: "linux", arch: "x64", tokenHash: alpha },
+      ]);
       yield* db.transaction((tx) =>
         Effect.gen(function* () {
           yield* tx.execute(sql`ALTER TABLE model_requests RENAME TO unavailable_requests`);
           expect(
             (yield* currentLimitsReport().pipe(Effect.provideService(Db, tx))).providers,
           ).toEqual([]);
+          expect(yield* machineRoster().pipe(Effect.provideService(Db, tx))).toEqual([
+            { id: alpha, name: "Alpha" },
+            { id: zeta, name: "Zeta" },
+          ]);
           yield* tx.execute(sql`ALTER TABLE unavailable_requests RENAME TO model_requests`);
         }),
       );

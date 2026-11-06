@@ -1,4 +1,9 @@
-import type { LimitSeries, LimitWindow, ProviderId, ProviderLimits } from "@aqt/turnstash-api";
+import type {
+  LimitSeries,
+  LimitWindow,
+  ProviderId,
+  ProviderLimitsSummary,
+} from "@aqt/turnstash-api";
 
 export const hourMs = 3_600_000;
 export const dayMs = 24 * hourMs;
@@ -48,11 +53,15 @@ export const spanFor = (windowMinutes: number, weekOffset: number, nowMs: number
     : { fromMs: day(-6), toMs: day(1) };
 };
 
-export const openWindowOf = (series: LimitSeries): LimitWindow | null =>
-  series.windows.findLast((window) => window.outcome === "open") ?? null;
+export const openWindowOf = <Window extends Pick<LimitWindow, "outcome">>(series: {
+  readonly windows: ReadonlyArray<Window>;
+}): Window | null => series.windows.findLast((window) => window.outcome === "open") ?? null;
 
-export const primarySeriesOf = (series: ReadonlyArray<LimitSeries>): LimitSeries | undefined =>
-  series.find((candidate) => openWindowOf(candidate) !== null) ?? series[0];
+export const primarySeriesOf = <
+  Series extends { readonly windows: ReadonlyArray<Pick<LimitWindow, "outcome">> },
+>(
+  series: ReadonlyArray<Series>,
+): Series | undefined => series.find((candidate) => openWindowOf(candidate) !== null) ?? series[0];
 
 const usedAt = (window: LimitWindow, ms: number): number => {
   let used = window.firstUsedPercent;
@@ -340,27 +349,6 @@ export const drainBucketsOf = (
 export const latestCostPerPercent = (series: LimitSeries): number | null =>
   series.windows.findLast((window) => window.costPerPercentUsd !== null)?.costPerPercentUsd ?? null;
 
-export const expiredByProvider = (
-  providers: ReadonlyArray<ProviderLimits>,
-  range: { readonly fromMs: number; readonly toMs: number } | null,
-) =>
-  new Map(
-    providers.map((limits) => {
-      const totals = new Map<string, number>();
-      for (const series of limits.series)
-        for (const window of series.windows) {
-          const resetMs = atMs(window.resetsAt);
-          if (range !== null && (resetMs < range.fromMs || resetMs >= range.toMs)) continue;
-          for (const { currency, amount } of window.expiredValue)
-            totals.set(currency, (totals.get(currency) ?? 0) + amount);
-        }
-      return [
-        limits.provider,
-        [...totals].map(([currency, amount]) => ({ currency, amount })),
-      ] as const;
-    }),
-  );
-
 export interface UseFirst {
   readonly provider: ProviderId;
   readonly remaining: number;
@@ -372,7 +360,9 @@ export interface UseFirst {
 const usefulRemaining = 5;
 
 // The manual form of soonest-reset-first routing: what expires first is what to spend first.
-export const useFirstOf = (providers: ReadonlyArray<ProviderLimits>): UseFirst | null => {
+export const useFirstOf = (
+  providers: ReadonlyArray<Pick<ProviderLimitsSummary, "provider" | "series">>,
+): UseFirst | null => {
   const open = providers
     .flatMap((limits) => {
       if (

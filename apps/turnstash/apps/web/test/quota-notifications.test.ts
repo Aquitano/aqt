@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 
+import type { QuotaAlert } from "../src/quota/alerts";
+import { notifyQuotaAlerts } from "../src/quota/notifications";
 import {
   defaultPreferences,
   dismissQuotaAlert,
@@ -10,9 +12,7 @@ import {
   readReceipts,
   rememberAlert,
   savePreferences,
-} from "../src/quota-alert-storage";
-import type { QuotaAlert } from "../src/quota-alerts";
-import { notifyQuotaAlerts } from "../src/quota-notifications";
+} from "../src/quota/storage";
 
 const now = Date.UTC(2026, 10, 5, 12);
 const alertOf = (id: string): QuotaAlert => ({
@@ -66,6 +66,8 @@ beforeEach(() => {
     getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value),
   });
+  savePreferences(defaultPreferences);
+  storage.delete(preferencesKey);
   readReceipts(notifiedKey, now + 2 * 86_400_000);
   readReceipts(dismissedKey, now + 2 * 86_400_000);
 });
@@ -83,6 +85,28 @@ test("missing and invalid preferences default off; saved opt-ins round trip", ()
   const preferences = { low: true, unused: false, desktop: true };
   savePreferences(preferences);
   expect(readPreferences()).toEqual(preferences);
+});
+
+test("failed preference writes survive reads until persistence succeeds again", () => {
+  savePreferences(defaultPreferences);
+  const preferences = { low: true, unused: true, desktop: false };
+  let writesFail = true;
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      if (writesFail) throw new Error("Storage full");
+      storage.set(key, value);
+    },
+  });
+  savePreferences(preferences);
+  expect(readPreferences()).toEqual(preferences);
+  expect(JSON.parse(storage.get(preferencesKey) ?? "null")).toEqual(defaultPreferences);
+  writesFail = false;
+  savePreferences(preferences);
+  storage.set(preferencesKey, JSON.stringify({ ...preferences, unused: false }));
+  expect(readPreferences()).toEqual({ ...preferences, unused: false });
+  storage.delete(preferencesKey);
+  expect(readPreferences()).toEqual(defaultPreferences);
 });
 
 test("concurrent notification attempts deliver once, and clicking opens the selected limit", async () => {
@@ -173,9 +197,9 @@ test("older readings and reset drift do not deliver a previously notified or dis
 
 test("separate tabs serialize dismissals and keep both receipts after reload", async () => {
   vi.resetModules();
-  const firstTab = await import("../src/quota-alert-storage");
+  const firstTab = await import("../src/quota/storage");
   vi.resetModules();
-  const secondTab = await import("../src/quota-alert-storage");
+  const secondTab = await import("../src/quota/storage");
   const request = vi.spyOn(navigator.locks, "request");
   await Promise.all([
     firstTab.dismissQuotaAlert(alertOf("first-dismissal")),
@@ -183,7 +207,7 @@ test("separate tabs serialize dismissals and keep both receipts after reload", a
   ]);
   expect(request).toHaveBeenCalledTimes(2);
   vi.resetModules();
-  const reloaded = await import("../src/quota-alert-storage");
+  const reloaded = await import("../src/quota/storage");
   expect(reloaded.readReceipts(dismissedKey, now).map((receipt) => receipt.id)).toEqual([
     "first-dismissal",
     "second-dismissal",

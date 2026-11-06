@@ -2,8 +2,8 @@ import type { CurrentLimitsReport, LimitWindow } from "@aqt/turnstash-api";
 import { expect, test } from "vite-plus/test";
 
 import { hourMs } from "../src/limits-model";
-import { defaultPreferences, receiptMatchesAlert } from "../src/quota-alert-storage";
-import { quotaAlertsOf } from "../src/quota-alerts";
+import { quotaAlertsOf } from "../src/quota/alerts";
+import { defaultPreferences, receiptMatchesAlert } from "../src/quota/storage";
 
 const now = Date.UTC(2026, 10, 5, 12);
 const iso = (ms: number) => new Date(ms).toISOString();

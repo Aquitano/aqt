@@ -1,11 +1,11 @@
+import type { QuotaAlert } from "./alerts";
 import {
   dismissedKey,
   notifiedKey,
   readReceipts,
   receiptMatchesAlert,
   rememberAlert,
-} from "./quota-alert-storage";
-import type { QuotaAlert } from "./quota-alerts";
+} from "./storage";
 
 export const desktopNotificationsAvailable = () =>
   globalThis.isSecureContext && "Notification" in globalThis && "locks" in navigator;

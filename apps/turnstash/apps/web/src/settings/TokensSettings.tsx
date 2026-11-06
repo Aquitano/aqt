@@ -14,6 +14,7 @@ import { useId, useState } from "react";
 
 import { api } from "../api";
 import { Async, RequestFailure } from "../components/Async";
+import { ConfirmAction } from "../components/ConfirmAction";
 import { CopyField } from "../components/CopyField";
 import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
 import { Section } from "../components/Section";
@@ -138,15 +139,22 @@ export const TokensSettings = () => {
                       <Td>{dateTime(token.createdAt)}</Td>
                       <Td>{relativeTime(token.lastUsedAt)}</Td>
                       <Td numeric>
-                        <Button
-                          size="icon-xs"
-                          variant="destructive"
-                          aria-label={`Delete ${token.name}`}
+                        <ConfirmAction
+                          trigger={
+                            <Button
+                              size="icon-xs"
+                              variant="destructive"
+                              aria-label={`Revoke ${token.name}`}
+                            />
+                          }
                           disabled={deleting}
-                          onClick={() => remove.mutate(token.id)}
+                          title={`Revoke ${token.name}?`}
+                          description="Clients using this token will lose access immediately. This cannot be undone."
+                          actionLabel="Revoke token"
+                          onConfirm={() => remove.mutate(token.id)}
                         >
                           {deleting ? <Spinner /> : <Trash2Icon />}
-                        </Button>
+                        </ConfirmAction>
                       </Td>
                     </TableRow>
                   );

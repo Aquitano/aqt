@@ -1,13 +1,13 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
+import { isUnauthorized } from "../api";
 import { Async, Pending, RequestFailure } from "../components/Async";
 import { LimitsStrip } from "../components/LimitsStrip";
 import { Page } from "../components/Page";
 import { StatsView } from "../components/StatsView";
 import { FilterBar, useFilters } from "../filters";
-import { expiredByProvider } from "../limits-model";
 import { dateBounds, heatmapRange } from "../period";
-import { dailyQuery, limitsQuery, rangeFilter, statsQuery } from "../queries";
+import { dailyQuery, limitsOverviewQuery, rangeFilter, statsQuery } from "../queries";
 import { usePreviousOverall } from "../trend";
 
 export const OverviewPage = () => {
@@ -21,19 +21,37 @@ export const OverviewPage = () => {
 
   const bounds = filters.range === null ? null : dateBounds(filters.range);
   const limits = useQuery({
-    ...limitsQuery(bounds ?? { from: new Date(0).toISOString() }),
+    ...limitsOverviewQuery(bounds ?? { from: new Date(0).toISOString() }),
     placeholderData: keepPreviousData,
   });
-  const expired = expiredByProvider(
-    limits.data?.providers ?? [],
-    bounds === null ? null : { fromMs: Date.parse(bounds.from), toMs: Date.parse(bounds.to) },
+  const unauthorized = [stats, limits, calendar].flatMap((query) =>
+    query.isError && isUnauthorized(query.error) ? [query.error] : [],
+  )[0];
+  if (unauthorized !== undefined)
+    return (
+      <Page>
+        <FilterBar title="Overview" />
+        <RequestFailure error={unauthorized} />
+      </Page>
+    );
+  const expired = new Map(
+    (limits.data?.providers ?? []).map((provider) => [provider.provider, provider.expiredValue]),
   );
 
   return (
     <Page>
       <FilterBar title="Overview" note={stats.data?.range === null ? "all time" : undefined} />
       {stats.isSuccess && limits.isPending && <Pending />}
-      {!stats.isError && limits.isError && <RequestFailure error={limits.error} />}
+      {!stats.isError && limits.isError && (
+        <RequestFailure
+          error={limits.error}
+          stale={limits.data !== undefined}
+          onRetry={() => {
+            void limits.refetch();
+          }}
+          retrying={limits.isFetching}
+        />
+      )}
       <LimitsStrip providers={limits.data?.providers ?? []} />
       <Async query={stats}>
         {(data) => (

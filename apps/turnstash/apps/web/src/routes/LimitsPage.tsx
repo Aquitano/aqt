@@ -30,7 +30,8 @@ import { cn } from "cn";
 import { ChevronLeftIcon, ChevronRightIcon, GaugeIcon, XIcon } from "lucide-react";
 import { type ReactNode } from "react";
 
-import { Async, Pending, RequestFailure } from "../components/Async";
+import { isUnauthorized } from "../api";
+import { Async } from "../components/Async";
 import { DataTable, Td, Th } from "../components/DataTable";
 import { DrainRange } from "../components/DrainRange";
 import { DrainChart, type LimitSelection, RemainingChart } from "../components/LimitChart";
@@ -123,7 +124,7 @@ const DrainDetails = ({
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="font-medium" aria-live="polite" aria-atomic="true">
           {dayTime(selection.fromMs)} to {dayTime(selection.toMs)}
-          {drain.data !== undefined && (
+          {drain.data !== undefined && !(drain.isError && isUnauthorized(drain.error)) && (
             <span className="ml-2 font-normal text-muted-foreground">
               {usd(drain.data.costUsd)} at API rates, {int(drain.data.requests)}{" "}
               {drain.data.requests === 1 ? "request" : "requests"}
@@ -134,50 +135,51 @@ const DrainDetails = ({
           <XIcon />
         </Button>
       </div>
-      {drain.isPending && <Pending />}
-      {drain.isError && <RequestFailure error={drain.error} />}
-      {drain.data !== undefined &&
-        (drain.data.requests === 0 ? (
-          <p className="text-muted-foreground">
-            No recorded requests in this interval. Usage readings may include requests that have not
-            been collected.
-          </p>
-        ) : (
-          <div className="grid gap-x-8 gap-y-3 lg:grid-cols-[3fr_2fr]">
-            <ul className="flex min-w-0 flex-col gap-1">
-              {drain.data.conversations.map((row) => (
-                <li key={row.id} className="flex items-baseline justify-between gap-3">
-                  <Link
-                    to="/conversations/$id"
-                    params={{ id: row.id }}
-                    className="min-w-0 truncate underline-offset-2 outline-none hover:underline focus-visible:underline"
+      <Async query={drain}>
+        {(data) =>
+          data.requests === 0 ? (
+            <p className="text-muted-foreground">
+              No recorded requests in this interval. Usage readings may include requests that have
+              not been collected.
+            </p>
+          ) : (
+            <div className="grid gap-x-8 gap-y-3 lg:grid-cols-[3fr_2fr]">
+              <ul className="flex min-w-0 flex-col gap-1">
+                {data.conversations.map((row) => (
+                  <li key={row.id} className="flex items-baseline justify-between gap-3">
+                    <Link
+                      to="/conversations/$id"
+                      params={{ id: row.id }}
+                      className="min-w-0 truncate underline-offset-2 outline-none hover:underline focus-visible:underline"
+                    >
+                      {row.title ?? row.projectKey ?? "Untitled conversation"}
+                    </Link>
+                    <span className="shrink-0 text-muted-foreground">{usd(row.costUsd)}</span>
+                  </li>
+                ))}
+              </ul>
+              <ul className="flex min-w-0 flex-col gap-1">
+                {data.projects.slice(0, 8).map((row) => (
+                  <li
+                    key={row.projectKey}
+                    className="flex items-baseline justify-between gap-3"
+                    title={row.projectPath ?? undefined}
                   >
-                    {row.title ?? row.projectKey ?? "Untitled conversation"}
-                  </Link>
-                  <span className="shrink-0 text-muted-foreground">{usd(row.costUsd)}</span>
-                </li>
-              ))}
-            </ul>
-            <ul className="flex min-w-0 flex-col gap-1">
-              {drain.data.projects.slice(0, 8).map((row) => (
-                <li
-                  key={row.projectKey}
-                  className="flex items-baseline justify-between gap-3"
-                  title={row.projectPath ?? undefined}
-                >
-                  <Link
-                    to="/projects/$key"
-                    params={{ key: row.projectKey }}
-                    className="min-w-0 truncate underline-offset-2 outline-none hover:underline focus-visible:underline"
-                  >
-                    {row.projectKey}
-                  </Link>
-                  <span className="shrink-0 text-muted-foreground">{usd(row.costUsd)}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+                    <Link
+                      to="/projects/$key"
+                      params={{ key: row.projectKey }}
+                      className="min-w-0 truncate underline-offset-2 outline-none hover:underline focus-visible:underline"
+                    >
+                      {row.projectKey}
+                    </Link>
+                    <span className="shrink-0 text-muted-foreground">{usd(row.costUsd)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )
+        }
+      </Async>
     </div>
   );
 };

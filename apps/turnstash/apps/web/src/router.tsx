@@ -1,20 +1,16 @@
-import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+} from "@tanstack/react-router";
 
+import { Pending } from "./components/Async";
 import { Layout } from "./components/Layout";
-import { AnalysisPage } from "./routes/AnalysisPage";
-import { BookmarksPage } from "./routes/BookmarksPage";
-import { ConversationPage } from "./routes/ConversationPage";
-import { ConversationsPage } from "./routes/ConversationsPage";
-import { LimitsPage } from "./routes/LimitsPage";
-import { MachinePage } from "./routes/MachinePage";
-import { MachinesPage } from "./routes/MachinesPage";
-import { OverviewPage } from "./routes/OverviewPage";
-import { ProjectPage } from "./routes/ProjectPage";
-import { SearchPage } from "./routes/SearchPage";
-import { SettingsPage } from "./routes/SettingsPage";
 import {
   decodeUrlSearch,
   parseConversationSearch,
+  parseConversationListSearch,
   parseLimitsSearch,
   parseSearchState,
 } from "./search-state";
@@ -23,35 +19,72 @@ const rootRoute = createRootRoute({ component: Layout });
 const getParentRoute = () => rootRoute;
 
 const routeTree = rootRoute.addChildren([
-  createRoute({ getParentRoute, path: "/", component: OverviewPage }),
+  createRoute({
+    getParentRoute,
+    path: "/",
+    component: lazyRouteComponent(() => import("./routes/OverviewPage"), "OverviewPage"),
+  }),
   createRoute({
     getParentRoute,
     path: "/limits",
-    component: LimitsPage,
+    component: lazyRouteComponent(() => import("./routes/LimitsPage"), "LimitsPage"),
     validateSearch: (search) => parseLimitsSearch(decodeUrlSearch(search)),
   }),
-  createRoute({ getParentRoute, path: "/analysis", component: AnalysisPage }),
-  createRoute({ getParentRoute, path: "/bookmarks", component: BookmarksPage }),
-  createRoute({ getParentRoute, path: "/conversations", component: ConversationsPage }),
+  createRoute({
+    getParentRoute,
+    path: "/analysis",
+    component: lazyRouteComponent(() => import("./routes/AnalysisPage"), "AnalysisPage"),
+  }),
+  createRoute({
+    getParentRoute,
+    path: "/bookmarks",
+    component: lazyRouteComponent(() => import("./routes/BookmarksPage"), "BookmarksPage"),
+  }),
+  createRoute({
+    getParentRoute,
+    path: "/conversations",
+    validateSearch: (search) => parseConversationListSearch(decodeUrlSearch(search)),
+    component: lazyRouteComponent(() => import("./routes/ConversationsPage"), "ConversationsPage"),
+  }),
   createRoute({
     getParentRoute,
     path: "/conversations/$id",
-    component: ConversationPage,
+    component: lazyRouteComponent(() => import("./routes/ConversationPage"), "ConversationPage"),
     validateSearch: (search) => parseConversationSearch(decodeUrlSearch(search)),
   }),
   createRoute({
     getParentRoute,
     path: "/search",
-    component: SearchPage,
+    component: lazyRouteComponent(() => import("./routes/SearchPage"), "SearchPage"),
     validateSearch: (search) => parseSearchState(decodeUrlSearch(search)),
   }),
-  createRoute({ getParentRoute, path: "/machines", component: MachinesPage }),
-  createRoute({ getParentRoute, path: "/machines/$id", component: MachinePage }),
-  createRoute({ getParentRoute, path: "/projects/$key", component: ProjectPage }),
-  createRoute({ getParentRoute, path: "/settings", component: SettingsPage }),
+  createRoute({
+    getParentRoute,
+    path: "/machines",
+    component: lazyRouteComponent(() => import("./routes/MachinesPage"), "MachinesPage"),
+  }),
+  createRoute({
+    getParentRoute,
+    path: "/machines/$id",
+    component: lazyRouteComponent(() => import("./routes/MachinePage"), "MachinePage"),
+  }),
+  createRoute({
+    getParentRoute,
+    path: "/projects/$key",
+    component: lazyRouteComponent(() => import("./routes/ProjectPage"), "ProjectPage"),
+  }),
+  createRoute({
+    getParentRoute,
+    path: "/settings",
+    component: lazyRouteComponent(() => import("./routes/SettingsPage"), "SettingsPage"),
+  }),
 ]);
 
-export const router = createRouter({ routeTree, defaultPreload: "intent" });
+export const router = createRouter({
+  routeTree,
+  defaultPreload: "intent",
+  defaultPendingComponent: Pending,
+});
 
 declare module "@tanstack/react-router" {
   interface Register {
