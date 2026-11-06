@@ -65,6 +65,24 @@ func TestPDFFallback(t *testing.T) {
 	}
 }
 
+func TestPDFToTextSkipsParser(t *testing.T) {
+	path := write(t, "document.pdf", onePagePDF(t, []byte("q Q")))
+	for _, text := range []string{"recovered text", ""} {
+		tool := fakeBin(t, "pdftotext", `printf '`+text+`'`)
+		res := PDFToText(t.Context(), path, Options{PDFToText: tool, MaxChars: 9, Open: func(string) (Handle, error) {
+			t.Fatal("external fallback opened the in-process parser")
+			return nil, nil
+		}})
+		if text == "" {
+			if res.Status != StatusNeedsOCR {
+				t.Fatalf("empty fallback: %+v", res)
+			}
+		} else if res.Status != StatusOK || res.Text != "recovered" || !res.Truncated {
+			t.Fatalf("fallback: %+v", res)
+		}
+	}
+}
+
 func TestNormalize(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"  hello   world \n\n next ", "hello world next"},

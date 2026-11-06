@@ -45,6 +45,18 @@ func pdfResult(ctx context.Context, f io.ReaderAt, size int64, path string, o Op
 	return run("ocr-pdf", o, func() (string, bool, error) { return ocrPDF(ctx, path, o) })
 }
 
+// PDFToText runs the configured external reader without repeating PDF parsing.
+func PDFToText(ctx context.Context, path string, o Options) Result {
+	o = o.withDefaults()
+	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
+	defer cancel()
+	res := run("pdf", o, func() (string, bool, error) { return pdfToText(ctx, path, o) })
+	if res.Status == StatusEmpty {
+		res.Status = StatusNeedsOCR
+	}
+	return res
+}
+
 func pdfToText(ctx context.Context, path string, o Options) (string, bool, error) {
 	cmd := exec.CommandContext(ctx, o.PDFToText, path, "-")
 	stdout := ocrBuffer{left: 4 * max(o.MaxChars+1, 1)}

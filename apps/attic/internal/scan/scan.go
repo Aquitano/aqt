@@ -795,7 +795,7 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 		if err != nil {
 			return r.readFailure(ctx, p.Path, err)
 		}
-		res = extract.File(ctx, path, p.Name, "", r.text)
+		res = extract.PDFToText(ctx, path, r.text)
 		r.closeScratch(w)
 	}
 	took := time.Since(started)
