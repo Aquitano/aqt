@@ -63,6 +63,9 @@ func TestVersionMigrationGivesHashedEntriesTheirCurrentVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from entries where hash_trusted`); n != 0 {
+		t.Fatalf("migration trusted %d legacy entries", n)
+	}
 
 	if n := pgschematest.QueryInt(t, dsn, `select count(*) from entry_versions`); n != 2 {
 		t.Fatalf("backfilled %d versions, want one for each hashed entry, missing ones included", n)

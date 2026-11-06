@@ -15,13 +15,10 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 )
 
-var errChanged = errors.New("file changed since it was hashed; the next scan hashes it again")
+var errChanged = errors.New("file does not match its catalogued hash or stamp")
 
-// hold opens a hashed file so that nothing can write to it while it is read,
-// and checks that it still looks as the catalogue saw it. What is read through
-// it then describes the bytes behind the entry's digest. Without a change time
-// to compare, as on FAT and exFAT, a same-size rewrite that kept its modified
-// time would pass, so there the file is hashed again through the held handle.
+// Legacy digests have no proven timestamp baseline. Verify them through the
+// held handle, as on file systems without reliable change times.
 func (r *run) hold(ctx context.Context, path string, stamp store.Stamp) (*disk.Held, error) {
 	f, err := disk.Hold(path)
 	if err != nil {
@@ -31,7 +28,7 @@ func (r *run) hold(ctx context.Context, path string, stamp store.Stamp) (*disk.H
 		f.Close()
 		return nil, errChanged
 	}
-	if r.changeTimes && stamp.Changed != nil {
+	if stamp.Trusted && r.changeTimes && stamp.Changed != nil {
 		return f, nil
 	}
 	same, err := f.Verify(ctx, stamp.Digest)

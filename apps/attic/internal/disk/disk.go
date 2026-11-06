@@ -85,6 +85,11 @@ func (f *Held) Verify(ctx context.Context, digest Digest) (bool, error) {
 	return got == digest, err
 }
 
+// Hash reads the held object, whose Entry supplies the digest's metadata baseline.
+func (f *Held) Hash(ctx context.Context) (Digest, int64, error) {
+	return hashReader(ctx, f.File)
+}
+
 func hashReader(ctx context.Context, r io.Reader) (Digest, int64, error) {
 	var d Digest
 	buffer := hashBuffers.Get().(*[1 << 20]byte)

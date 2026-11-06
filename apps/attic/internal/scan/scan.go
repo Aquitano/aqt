@@ -561,17 +561,29 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 	if rules.HashMaxBytes > 0 && p.Size > rules.HashMaxBytes {
 		return r.sc.SkipHash(ctx, p, "too_big", "", fmt.Sprintf("%d bytes", p.Size))
 	}
+	started := time.Now()
+	f, err := disk.Hold(r.osPath(p.Path))
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if gone := r.volumeGone(); gone != nil {
+			return gone
+		}
+		return r.sc.HashFailed(ctx, p, err)
+	}
+	defer r.release(f)
+	stamp := store.Stamp{Size: p.Size, Modified: p.Modified, Changed: p.Changed, FileID: p.PhysicalFileID}
+	if f.Entry.Dir || f.Entry.Link || f.Entry.Remote || !stamp.Matches(f.Entry) {
+		return r.readFailure(ctx, p.Path, errChanged)
+	}
 	if p.Linked {
-		e, err := disk.Stat(r.osPath(p.Path))
-		if err == nil {
-			reused, err := r.sc.ReuseContent(ctx, p, e)
-			if err != nil || reused {
-				return err
-			}
+		reused, err := r.sc.ReuseContent(ctx, p, f.Entry)
+		if err != nil || reused {
+			return err
 		}
 	}
-	started := time.Now()
-	digest, n, err := disk.Hash(ctx, r.osPath(p.Path))
+	digest, n, err := f.Hash(ctx)
 	took := time.Since(started)
 	switch {
 	case ctx.Err() != nil:

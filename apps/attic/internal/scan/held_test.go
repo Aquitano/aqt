@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -13,6 +14,33 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"lukechampine.com/blake3"
 )
+
+func TestTrustedHashKeepsTimestampFastPath(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "a.txt", "verified bytes")
+	path := filepath.Join(root, "a.txt")
+	e, err := disk.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	modified, changed := e.Modified.Truncate(time.Microsecond), e.Changed.Truncate(time.Microsecond)
+	stamp := store.Stamp{Size: e.Size, Modified: &modified, Changed: &changed, Digest: blake3.Sum256([]byte("verified bytes"))}
+	r := &run{changeTimes: true, log: slog.New(slog.DiscardHandler)}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if f, err := r.hold(ctx, path, stamp); !errors.Is(err, context.Canceled) {
+		if f != nil {
+			r.release(f)
+		}
+		t.Fatalf("legacy digest skipped verification: %v", err)
+	}
+	stamp.Trusted = true
+	f, err := r.hold(ctx, path, stamp)
+	if err != nil {
+		t.Fatalf("trusted digest reread the file: %v", err)
+	}
+	r.release(f)
+}
 
 func TestArchiveReopensReuseVerificationAndIndependentOffsets(t *testing.T) {
 	root := t.TempDir()

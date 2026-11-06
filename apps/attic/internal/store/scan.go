@@ -486,6 +486,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 			update entries set parent_id = $2, kind = $3, name = $4, path = $5, ext = $6, file_id = $7, size_bytes = $8,
 			       created_at = $9, modified_at = $10, accessed_at = $11, changed_at = $12, attributes = $13,
 			       content_id = case when $14 then null else content_id end, hash_state = $15,
+			       hash_trusted = case when $14 then false else hash_trusted end,
 			       missing_scan = null, updated_scan = $16, raw_name = $17, physical_file_id = $18
 			where id = $1`,
 			r.ID, parentID, l.Kind, l.Name, entryPath, ext(l.Kind, l.Name), nullID(l.FileID), l.Size, nullTime(l.Created),
@@ -753,6 +754,8 @@ type Pending struct {
 	Size int64
 
 	PhysicalFileID *int64
+	Modified       *time.Time
+	Changed        *time.Time
 	Linked         bool
 }
 
@@ -789,7 +792,7 @@ func (sc *Scan) NextPending(ctx context.Context, after Pending, limit int) ([]Pe
 		lower = after.Path
 	}
 	rows, err := sc.store.pool.Query(ctx, `
-		select id, path, size_bytes, physical_file_id,
+		select id, path, size_bytes, physical_file_id, modified_at, changed_at,
 		       exists(select 1 from entries link where link.volume_id = entries.volume_id
 		              and link.physical_file_id = entries.physical_file_id and link.id <> entries.id
 		              and link.kind = 'file' and link.missing_scan is null)
@@ -803,13 +806,13 @@ func (sc *Scan) NextPending(ctx context.Context, after Pending, limit int) ([]Pe
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Pending, error) {
 		var p Pending
-		err := r.Scan(&p.ID, &p.Path, &p.Size, &p.PhysicalFileID, &p.Linked)
+		err := r.Scan(&p.ID, &p.Path, &p.Size, &p.PhysicalFileID, &p.Modified, &p.Changed, &p.Linked)
 		return p, err
 	})
 }
 
-// SetContent queues a digest for a file. Batches flush at 64 files and before
-// Commit; each entry update still requires the size that was hashed.
+// SetContent queues a digest read through a held object matching p's stamp.
+// Batches flush at 64 files and before Commit; updates require the same stamp.
 //
 // Contents commit independently, so their locks never span later hashing.
 // Sorting digests keeps overlapping scans from taking those locks in opposite
@@ -878,12 +881,16 @@ func (sc *Scan) flushContents(ctx context.Context) error {
 	ids := make([]int64, len(sc.hashes))
 	contents := make([]int64, len(sc.hashes))
 	sizes := make([]int64, len(sc.hashes))
+	modified := make([]*time.Time, len(sc.hashes))
+	changed := make([]*time.Time, len(sc.hashes))
+	fileIDs := make([]*int64, len(sc.hashes))
 	for i, h := range sc.hashes {
 		id := contentIDs[h.digest]
 		if id == 0 {
 			return fmt.Errorf("resolve content %x: %w", h.digest[:8], pgx.ErrNoRows)
 		}
 		ids[i], contents[i], sizes[i] = h.file.ID, id, h.file.Size
+		modified[i], changed[i], fileIDs[i] = h.file.Modified, h.file.Changed, h.file.PhysicalFileID
 	}
 	tx, err := sc.begin(ctx)
 	if err != nil {
@@ -891,9 +898,12 @@ func (sc *Scan) flushContents(ctx context.Context) error {
 	}
 	var batch pgx.Batch
 	batch.Queue(`
-		update entries e set content_id = u.content_id, hash_state = 'done', updated_scan = $4
-		from unnest($1::bigint[], $2::bigint[], $3::bigint[]) as u(id, content_id, size)
-		where e.id = u.id and e.size_bytes = u.size returning e.id`, ids, contents, sizes, sc.ID)
+		update entries e set content_id = u.content_id, hash_state = 'done', hash_trusted = true, updated_scan = $4
+		from unnest($1::bigint[], $2::bigint[], $3::bigint[], $5::timestamptz[], $6::timestamptz[], $7::bigint[])
+		     as u(id, content_id, size, modified, changed, file_id)
+		where e.id = u.id and e.size_bytes = u.size
+		  and e.modified_at is not distinct from u.modified and e.changed_at is not distinct from u.changed
+		  and e.physical_file_id is not distinct from u.file_id returning e.id`, ids, contents, sizes, sc.ID, modified, changed, fileIDs)
 	sc.queueVersions(&batch, ids)
 	br := tx.SendBatch(ctx, &batch)
 	rows, _ = br.Query()

@@ -47,21 +47,21 @@ func (sc *Scan) RebuildContent(ctx context.Context) error {
 	return tx.Commit(ctx)
 }
 
-// Stamp is how the catalogue last saw a hashed file, and the digest it
-// recorded. A changed size, modified time, change time or physical ID resets
-// content before a listing updates these fields.
+// Stamp pairs current entry metadata with its digest. Trusted means that
+// digest was read through a held object matching this metadata.
 type Stamp struct {
 	Size     int64
 	Modified *time.Time
 	Changed  *time.Time
 	FileID   *int64
 	Digest   disk.Digest
+	Trusted  bool
 }
 
-const stampColumns = `e.size_bytes, e.modified_at, e.changed_at, e.physical_file_id, c.blake3`
+const stampColumns = `e.size_bytes, e.modified_at, e.changed_at, e.physical_file_id, c.blake3, e.hash_trusted`
 
 func (s *Stamp) fields() []any {
-	return []any{&s.Size, &s.Modified, &s.Changed, &s.FileID, (*digestColumn)(&s.Digest)}
+	return []any{&s.Size, &s.Modified, &s.Changed, &s.FileID, (*digestColumn)(&s.Digest), &s.Trusted}
 }
 
 type digestColumn disk.Digest

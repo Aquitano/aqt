@@ -175,8 +175,19 @@ func TestHardLinkReuseRejectsUnverifiedIdentityAndMetadata(t *testing.T) {
 		t.Fatalf("different volume reused=%v, %v", reused, err)
 	}
 	pgschematest.QueryInt(t, dsn, "update entries set volume_id=$2 where id=$1 returning id", pending[0].ID, volume.ID)
+	pgschematest.QueryInt(t, dsn, "update entries set hash_trusted=false where id=$1 returning id", pending[0].ID)
+	if reused, err := sc.ReuseContent(ctx, pending[1], observed); err != nil || reused {
+		t.Fatalf("legacy hardlink reused=%v, %v", reused, err)
+	}
+	pgschematest.QueryInt(t, dsn, "update entries set hash_trusted=true where id=$1 returning id", pending[0].ID)
 	if reused, err := sc.ReuseContent(ctx, pending[1], observed); err != nil || !reused {
 		t.Fatalf("verified hardlink reused=%v, %v", reused, err)
+	}
+	if err := sc.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if n := pgschematest.QueryInt(t, dsn, "select count(*) from entries where hash_trusted"); n != 2 {
+		t.Fatalf("trusted hardlink copies: %d", n)
 	}
 }
 
