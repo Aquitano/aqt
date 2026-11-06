@@ -6,15 +6,37 @@ import { currentLimitWindows } from "./current-limits.ts";
 import { failureSummary } from "./db/errors.ts";
 
 export const quotaMetrics = {
-  remaining: Metric.gauge("turnstash_quota_remaining_percent"),
-  projected: Metric.gauge("turnstash_quota_projected_remaining_percent"),
-  forecast: Metric.gauge("turnstash_quota_forecast_available"),
-  reset: Metric.gauge("turnstash_quota_resets_at_seconds"),
-  observed: Metric.gauge("turnstash_quota_observed_at_seconds"),
-  fresh: Metric.gauge("turnstash_quota_fresh"),
-  low: Metric.gauge("turnstash_quota_low"),
-  unused: Metric.gauge("turnstash_quota_unused"),
-  sampled: Metric.gauge("turnstash_quota_sampled_at_seconds"),
+  remaining: Metric.gauge("turnstash_quota_remaining_percent", {
+    description: "Quota remaining in the current subscription window, in percent.",
+  }),
+  projected: Metric.gauge("turnstash_quota_projected_remaining_percent", {
+    description:
+      "Projected quota remaining at reset, in percent; valid only when forecast_available is 1.",
+  }),
+  forecast: Metric.gauge("turnstash_quota_forecast_available", {
+    description:
+      "1 when the reading is fresh and there is enough history to project usage; otherwise 0.",
+  }),
+  reset: Metric.gauge("turnstash_quota_resets_at_seconds", {
+    description: "Current quota window reset time as Unix seconds.",
+  }),
+  observed: Metric.gauge("turnstash_quota_observed_at_seconds", {
+    description: "Latest provider quota observation time as Unix seconds.",
+  }),
+  fresh: Metric.gauge("turnstash_quota_fresh", {
+    description: "1 when the current window has a reading no older than 30 minutes; otherwise 0.",
+  }),
+  low: Metric.gauge("turnstash_quota_low", {
+    description:
+      "1 when fresh quota is at or below 10 percent, or is projected to run out within an hour before reset.",
+  }),
+  unused: Metric.gauge("turnstash_quota_unused", {
+    description:
+      "1 when fresh quota resets within an hour with at least 20 percent projected unused and no exhausted window.",
+  }),
+  sampled: Metric.gauge("turnstash_quota_sampled_at_seconds", {
+    description: "Latest successful quota sampler pass as Unix seconds.",
+  }),
 };
 
 export const makeQuotaSampler = Effect.sync(() => {

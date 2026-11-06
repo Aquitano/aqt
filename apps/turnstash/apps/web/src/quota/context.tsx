@@ -15,7 +15,7 @@ import {
   preferencesKey,
   readPreferences,
   readReceipts,
-  rememberAlert,
+  dismissQuotaAlert,
   savePreferences,
 } from "./storage";
 
@@ -44,8 +44,8 @@ const useSettings = () => {
     setPreferences(next);
     setDeliveryError(null);
   }, []);
-  const dismiss = useCallback((alert: QuotaAlert) => {
-    setDismissed(rememberAlert(dismissedKey, alert, Date.now()));
+  const dismiss = useCallback(async (alert: QuotaAlert) => {
+    setDismissed(await dismissQuotaAlert(alert));
   }, []);
   return useMemo(
     () => ({ preferences, choose, dismissed, dismiss, deliveryError, setDeliveryError }),

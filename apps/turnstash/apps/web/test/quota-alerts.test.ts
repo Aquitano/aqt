@@ -3,7 +3,7 @@ import { expect, test } from "vite-plus/test";
 
 import { hourMs } from "../src/limits-model";
 import { quotaAlertsOf } from "../src/quota/alerts";
-import { defaultPreferences } from "../src/quota/storage";
+import { defaultPreferences, receiptMatchesAlert } from "../src/quota/storage";
 
 const now = Date.UTC(2026, 10, 5, 12);
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -145,4 +145,36 @@ test("reset timestamp drift preserves an alert identity but a new window has a n
   const next = quotaAlertsOf(reportOf(windowOf({ firstObservedAt: iso(now) })), enabled, now)[0];
   expect(first?.id).toBe(drift?.id);
   expect(first?.id).not.toBe(next?.id);
+});
+
+test("a receipt matches expanded history but not a replacement window or another alert kind", () => {
+  const original = quotaAlertsOf(reportOf(windowOf()), enabled, now)[0];
+  if (original === undefined) throw new Error("Expected a low quota alert");
+  const receipt = {
+    id: original.id,
+    until: now + 86_400_000,
+    window: {
+      provider: original.provider,
+      minutes: original.windowMinutes,
+      kind: original.kind,
+      observedAt: original.firstObservedAtMs,
+    },
+  };
+  const earlier = quotaAlertsOf(
+    reportOf(
+      windowOf({
+        firstObservedAt: iso(now - 2 * hourMs),
+        resetsAt: iso(now + 2 * hourMs + 15 * 60_000),
+      }),
+    ),
+    enabled,
+    now,
+  )[0];
+  if (earlier === undefined) throw new Error("Expected a low quota alert after the older sync");
+  expect(earlier.id).not.toBe(original.id);
+  expect(receiptMatchesAlert(receipt, earlier)).toBe(true);
+  expect(
+    receiptMatchesAlert(receipt, { ...earlier, id: "replacement", firstObservedAtMs: now }),
+  ).toBe(false);
+  expect(receiptMatchesAlert(receipt, { ...earlier, kind: "unused" })).toBe(false);
 });

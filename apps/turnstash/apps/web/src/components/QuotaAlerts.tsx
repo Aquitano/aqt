@@ -9,6 +9,7 @@ import { currentLimitsQuery } from "../queries";
 import { quotaAlertsOf } from "../quota/alerts";
 import { useQuotaAlertSettings } from "../quota/context";
 import { notifyQuotaAlerts } from "../quota/notifications";
+import { receiptMatchesAlert } from "../quota/storage";
 
 const ActiveQuotaAlerts = () => {
   const { preferences, dismissed, dismiss, deliveryError, setDeliveryError } =
@@ -33,7 +34,9 @@ const ActiveQuotaAlerts = () => {
       report.isSuccess
         ? quotaAlertsOf(report.data, preferences, nowMs).filter(
             (alert) =>
-              !dismissed.some((receipt) => receipt.id === alert.id && receipt.until > nowMs),
+              !dismissed.some(
+                (receipt) => receiptMatchesAlert(receipt, alert) && receipt.until > nowMs,
+              ),
           )
         : [],
     [report.isSuccess, report.data, preferences, nowMs, dismissed],
@@ -62,8 +65,29 @@ const ActiveQuotaAlerts = () => {
     <div
       aria-live="polite"
       aria-relevant="additions"
-      className={alerts.length > 0 ? "flex flex-col gap-2 px-4 pt-4 sm:px-8" : undefined}
+      className={
+        alerts.length > 0 || report.isError ? "flex flex-col gap-2 px-4 pt-4 sm:px-8" : undefined
+      }
     >
+      {report.isError && (
+        <Alert variant="warning">
+          <BellIcon aria-hidden="true" />
+          <AlertTitle>Quota monitoring is unavailable</AlertTitle>
+          <AlertDescription>
+            Warnings will resume when Turnstash can read your current limits.
+          </AlertDescription>
+          <AlertAction>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={report.isFetching}
+              onClick={() => void report.refetch()}
+            >
+              {report.isFetching ? "Retrying…" : "Retry"}
+            </Button>
+          </AlertAction>
+        </Alert>
+      )}
       {alerts.map((alert) => (
         <Alert key={alert.id} role="group" variant={alert.kind === "low" ? "warning" : "default"}>
           <BellIcon aria-hidden="true" />
@@ -85,7 +109,7 @@ const ActiveQuotaAlerts = () => {
               variant="ghost"
               size="icon-sm"
               aria-label={`Dismiss ${alert.title}`}
-              onClick={() => dismiss(alert)}
+              onClick={() => void dismiss(alert)}
             >
               <XIcon aria-hidden="true" />
             </Button>

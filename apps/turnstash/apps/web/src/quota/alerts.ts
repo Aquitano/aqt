@@ -17,6 +17,8 @@ export interface QuotaAlert {
   readonly provider: ProviderId;
   readonly windowMinutes: number;
   readonly resetsAtMs: number;
+  readonly firstObservedAtMs: number;
+  readonly lastObservedAtMs: number;
   readonly title: string;
   readonly description: string;
 }
@@ -68,6 +70,8 @@ export const quotaAlertsOf = (
           provider,
           windowMinutes: open.windowMinutes,
           resetsAtMs,
+          firstObservedAtMs: Date.parse(open.firstObservedAt),
+          lastObservedAtMs: Date.parse(open.lastObservedAt),
           title: `${label} ${kind === "unused" ? "expires soon" : remaining <= 0 ? "is exhausted" : "is running low"}`,
           description:
             kind === "unused"
