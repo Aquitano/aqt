@@ -3,7 +3,7 @@
 # DATABASE_URL. Settings come from .env; see .env.example.
 services:
   db:
-    # pg_search 0.26.2, the same digest bank and its CI use.
+    # pg_search 0.26.4, the same digest bank and its CI use.
     image: paradedb/paradedb:v0.26.4-pg18@sha256:4abbafffb4e59e679821c5882faf91c494022bb3242fc73b789e753f43df1361
     environment:
       POSTGRES_USER: attic
