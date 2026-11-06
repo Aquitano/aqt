@@ -1,4 +1,4 @@
-import { providerLabels, type ProviderLimits } from "@aqt/turnstash-api";
+import { providerLabels } from "@aqt/turnstash-api";
 import { cn } from "cn";
 
 import { weekdayTime } from "../format";
@@ -11,7 +11,7 @@ export const UseFirstLine = ({
   providers,
   className,
 }: {
-  readonly providers: ReadonlyArray<ProviderLimits>;
+  readonly providers: Parameters<typeof useFirstOf>[0];
   readonly className?: string;
 }) => {
   const advice = useFirstOf(providers);

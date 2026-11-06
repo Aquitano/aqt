@@ -12,7 +12,7 @@ import { Spinner } from "@aqt/ui/components/spinner";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { isUnauthorized } from "../api";
 import { Pending, RequestFailure } from "../components/Async";
@@ -31,6 +31,9 @@ export const ConversationsPage = () => {
   const projectKey = state.projectKey ?? null;
   const q = state.q ?? "";
   const titleInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (titleInput.current !== null && titleInput.current.value !== q) titleInput.current.value = q;
+  }, [q]);
   const update = (patch: ConversationListSearch) =>
     void navigate({ to: "/conversations", search: { ...state, ...patch }, resetScroll: false });
   const projects = useQuery(projectsQuery(filters.range));
@@ -57,7 +60,10 @@ export const ConversationsPage = () => {
           value={projectKey}
           options={[
             ...new Set([
-              ...(projects.data ?? []).map((project) => project.projectKey),
+              ...(projects.isError && isUnauthorized(projects.error)
+                ? []
+                : (projects.data ?? [])
+              ).map((project) => project.projectKey),
               ...(projectKey === null ? [] : [projectKey]),
             ]),
           ].map((key) => ({ value: key, label: key }))}
@@ -71,7 +77,6 @@ export const ConversationsPage = () => {
           }}
         >
           <Input
-            key={q}
             ref={titleInput}
             name="q"
             aria-label="Title contains"

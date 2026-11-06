@@ -1,4 +1,4 @@
-import { providerLabels, type ProviderLimits } from "@aqt/turnstash-api";
+import { providerLabels, type ProviderLimitsSummary } from "@aqt/turnstash-api";
 import { Link } from "@tanstack/react-router";
 import { cn } from "cn";
 
@@ -8,7 +8,7 @@ import { ProviderIcon } from "./ProviderIcon";
 import { surface } from "./Section";
 import { UseFirstLine } from "./UseFirstLine";
 
-const Meter = ({ limits }: { readonly limits: ProviderLimits }) => {
+const Meter = ({ limits }: { readonly limits: ProviderLimitsSummary }) => {
   const series = primarySeriesOf(limits.series);
   const open = series === undefined ? null : openWindowOf(series);
   const left = open === null ? 100 : 100 - open.usedPercent;
@@ -43,7 +43,7 @@ const Meter = ({ limits }: { readonly limits: ProviderLimits }) => {
 export const LimitsStrip = ({
   providers,
 }: {
-  readonly providers: ReadonlyArray<ProviderLimits>;
+  readonly providers: ReadonlyArray<ProviderLimitsSummary>;
 }) => {
   const withReadings = providers.filter((limits) => limits.series.length > 0);
   if (withReadings.length === 0) return null;

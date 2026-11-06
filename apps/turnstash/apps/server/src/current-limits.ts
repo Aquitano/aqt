@@ -1,11 +1,7 @@
-import {
-  limitWindowsOf,
-  quotaObservationMaxAgeMs,
-  type LimitObservation,
-} from "@aqt/turnstash-analysis";
+import { limitWindowsOf, type LimitObservation } from "@aqt/turnstash-analysis";
 import type { CurrentLimitsReport } from "@aqt/turnstash-api";
 import { limitResetToleranceMs, providerIds, type ProviderId } from "@aqt/turnstash-core";
-import { asc, gte, or } from "drizzle-orm";
+import { and, eq, gt, gte, lt, or } from "drizzle-orm";
 import { Clock, Effect } from "effect";
 
 import { Db } from "./db/client.ts";
@@ -13,22 +9,47 @@ import { limitSamples } from "./db/schema.ts";
 
 export const currentLimitWindows = Effect.fn("Limits.currentWindows")(function* (nowMs: number) {
   const db = yield* Db;
-  const samples = yield* db
-    .select({
-      provider: limitSamples.provider,
-      windowMinutes: limitSamples.windowMinutes,
-      observedAt: limitSamples.observedAt,
-      resetsAt: limitSamples.resetsAt,
-      usedPercent: limitSamples.usedPercent,
-    })
+  const columns = {
+    provider: limitSamples.provider,
+    windowMinutes: limitSamples.windowMinutes,
+    observedAt: limitSamples.observedAt,
+    resetsAt: limitSamples.resetsAt,
+    usedPercent: limitSamples.usedPercent,
+  };
+  let batch = yield* db
+    .select(columns)
     .from(limitSamples)
-    .where(
-      or(
-        gte(limitSamples.resetsAt, new Date(nowMs - limitResetToleranceMs)),
-        gte(limitSamples.observedAt, new Date(nowMs - quotaObservationMaxAgeMs)),
-      ),
-    )
-    .orderBy(asc(limitSamples.observedAt));
+    .where(gte(limitSamples.resetsAt, new Date(nowMs - limitResetToleranceMs)));
+  const samples = [...batch];
+  // Reset jitter can form a chain longer than the tolerance. Follow its indexed predecessors
+  // until a gap proves that an earlier observation cannot belong to a current draft.
+  while (batch.length > 0) {
+    const earliest = new Map<string, (typeof batch)[number]>();
+    for (const sample of batch) {
+      const key = `${sample.provider}:${sample.windowMinutes}`;
+      const previous = earliest.get(key);
+      if (previous === undefined || sample.resetsAt < previous.resetsAt) earliest.set(key, sample);
+    }
+    batch = yield* db
+      .select(columns)
+      .from(limitSamples)
+      .where(
+        or(
+          ...[...earliest.values()].map((sample) =>
+            and(
+              eq(limitSamples.provider, sample.provider),
+              eq(limitSamples.windowMinutes, sample.windowMinutes),
+              gt(
+                limitSamples.resetsAt,
+                new Date(sample.resetsAt.getTime() - limitResetToleranceMs),
+              ),
+              lt(limitSamples.resetsAt, sample.resetsAt),
+            ),
+          ),
+        ),
+      );
+    samples.push(...batch);
+  }
   const groups = new Map<
     string,
     { provider: ProviderId; windowMinutes: number; observations: Array<LimitObservation> }

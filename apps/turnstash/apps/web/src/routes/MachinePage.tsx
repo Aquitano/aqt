@@ -5,7 +5,8 @@ import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 
-import { Async } from "../components/Async";
+import { isUnauthorized } from "../api";
+import { Async, RequestFailure } from "../components/Async";
 import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
 import { Page } from "../components/Page";
 import { Section } from "../components/Section";
@@ -56,6 +57,13 @@ export const MachinePage = () => {
   const filters = useFilters();
   const detail = useQuery(machineQuery(id, filters.range, filters.timeZone));
   const previous = usePreviousOverall(filters.range, { machineId: id });
+
+  if (detail.isError && isUnauthorized(detail.error))
+    return (
+      <Page>
+        <RequestFailure error={detail.error} />
+      </Page>
+    );
 
   return (
     <Page>

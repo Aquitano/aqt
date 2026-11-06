@@ -31,7 +31,7 @@ import { dirtyConversations, pricingCatalogs } from "./db/schema.ts";
 import { applyCommitBatch, repositoryTasks } from "./git.ts";
 import { databaseFailure } from "./http-errors.ts";
 import { applyBatch, tombstonesSince } from "./ingest.ts";
-import { applyLimitBatch, limitDrain, limitsReport } from "./limits.ts";
+import { applyLimitBatch, limitDrain, limitsReport, limitsOverview } from "./limits.ts";
 import { exportMarkdown } from "./markdown-export.ts";
 import { search } from "./search.ts";
 import {
@@ -133,6 +133,7 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
     .handle("analysis", ({ query }) => computeAnalysis(query).pipe(databaseFailure))
     .handle("cacheBreaks", ({ query }) => cacheBreaks(query).pipe(databaseFailure))
     .handle("limits", ({ query }) => limitsReport(query).pipe(databaseFailure))
+    .handle("limitsOverview", ({ query }) => limitsOverview(query).pipe(databaseFailure))
     .handle("currentLimits", () => currentLimitsReport().pipe(databaseFailure))
     .handle("limitDrain", ({ query }) => limitDrain(query).pipe(databaseFailure))
     .handle("listConversations", ({ query }) => listConversations(query).pipe(databaseFailure))

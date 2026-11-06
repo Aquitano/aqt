@@ -57,12 +57,19 @@ const EnrollDialog = () => {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
+    <Dialog
+      open={open}
+      disablePointerDismissal={enroll.isPending || enroll.data !== undefined}
+      onOpenChange={(next) => {
+        if (next) setOpen(true);
+        else if (!enroll.isPending) close();
+      }}
+    >
       <DialogTrigger render={<Button size="sm" />}>
         <PlusIcon data-icon="inline-start" />
         Enrol machine
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl" showCloseButton={!enroll.isPending}>
         <DialogHeader>
           <DialogTitle>Enrol a machine</DialogTitle>
         </DialogHeader>
@@ -117,7 +124,9 @@ const EnrollDialog = () => {
             </FieldGroup>
             {enroll.isError && <RequestFailure error={enroll.error} />}
             <DialogFooter>
-              <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+              <DialogClose disabled={enroll.isPending} render={<Button variant="outline" />}>
+                Cancel
+              </DialogClose>
               <Button type="submit" disabled={enroll.isPending || name.trim() === ""}>
                 {enroll.isPending && <Spinner data-icon="inline-start" />}
                 Enrol

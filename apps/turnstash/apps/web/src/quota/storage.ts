@@ -23,25 +23,29 @@ export const defaultPreferences: QuotaAlertPreferences = {
   desktop: false,
 };
 let memoryPreferences = defaultPreferences;
+let preferencesWriteFailed = false;
 const memoryReceipts = new Map<string, ReadonlyArray<typeof Receipt.Type>>();
 
 export const readPreferences = (): QuotaAlertPreferences => {
+  if (preferencesWriteFailed) return memoryPreferences;
   try {
-    return Option.getOrElse(
+    memoryPreferences = Option.getOrElse(
       decodePreferences(localStorage.getItem(preferencesKey)),
       () => defaultPreferences,
     );
   } catch {
     return memoryPreferences;
   }
+  return memoryPreferences;
 };
 
 export const savePreferences = (preferences: QuotaAlertPreferences) => {
   memoryPreferences = preferences;
   try {
     localStorage.setItem(preferencesKey, JSON.stringify(preferences));
+    preferencesWriteFailed = false;
   } catch {
-    // Blocked storage still permits alerts for this page load.
+    preferencesWriteFailed = true;
   }
 };
 

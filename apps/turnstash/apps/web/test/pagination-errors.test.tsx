@@ -1,5 +1,5 @@
-import { Unauthorized } from "@aqt/turnstash-api";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Unauthorized, type MessagePage } from "@aqt/turnstash-api";
+import { InfiniteQueryObserver, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vite-plus/test";
 
@@ -10,28 +10,49 @@ const conversationId = "00000000-0000-4000-8000-000000000001";
 
 test.each(["forward", "backward", "refresh", "unauthorized"] as const)(
   "shows appropriate transcript recovery controls after a %s failure",
-  (direction) => {
+  async (direction) => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, refetchOnMount: false } },
     });
     const options = messagePagesQuery(conversationId);
-    client.setQueryData(options.queryKey, {
-      pages: [{ items: [], toolExecutions: [], previousCursor: "earlier", nextCursor: "later" }],
-      pageParams: [{}],
+    let failRequest = false;
+    const page: MessagePage = {
+      items: [
+        {
+          id: "00000000-0000-4000-8000-000000000002",
+          messageKey: "loaded-message",
+          seq: 1,
+          role: "user",
+          parentMessageKey: null,
+          createdAt: "2026-11-05T00:00:00.000Z",
+          parts: [{ type: "text", text: "Already loaded transcript content" }],
+          requests: [],
+        },
+      ],
+      toolExecutions: [],
+      previousCursor: "earlier",
+      nextCursor: "later",
+    };
+    const observer = new InfiniteQueryObserver(client, {
+      ...options,
+      queryFn: async () => {
+        if (failRequest)
+          throw direction === "unauthorized"
+            ? new Unauthorized({ reason: "invalid" })
+            : new Error("Connection lost");
+        return page;
+      },
     });
-    const query = client.getQueryCache().find({ queryKey: options.queryKey });
-    if (query === undefined) throw new Error("Missing seeded query");
-    query.setState({
-      status: "error",
-      error:
-        direction === "unauthorized"
-          ? new Unauthorized({ reason: "invalid" })
-          : new Error("Connection lost"),
-      fetchMeta:
-        direction === "refresh" || direction === "unauthorized"
-          ? null
-          : { fetchMore: { direction } },
-    });
+    await observer.refetch();
+    failRequest = true;
+    const fetchPage = () => {
+      if (direction === "forward") return observer.fetchNextPage();
+      if (direction === "backward") return observer.fetchPreviousPage();
+      return observer.refetch();
+    };
+    const failed = await fetchPage();
+    expect(failed.isError).toBe(true);
+    expect(failed.data?.pages[0]?.items).toEqual(page.items);
     const html = renderToStaticMarkup(
       <QueryClientProvider client={client}>
         <MessageThread
@@ -58,6 +79,11 @@ test.each(["forward", "backward", "refresh", "unauthorized"] as const)(
       );
       if (direction === "refresh") expect(html).toContain("Retry refreshing messages");
     }
+    failRequest = false;
+    const recovered = await fetchPage();
+    expect(recovered.isSuccess).toBe(true);
+    expect(recovered.data?.pages[0]?.items).toEqual(page.items);
+    observer.destroy();
     client.clear();
   },
 );

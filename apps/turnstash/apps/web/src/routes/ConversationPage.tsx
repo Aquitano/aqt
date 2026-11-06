@@ -6,7 +6,8 @@ import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { CircleAlertIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
 
-import { Async } from "../components/Async";
+import { isUnauthorized } from "../api";
+import { Async, RequestFailure } from "../components/Async";
 import { BookmarkButton } from "../components/BookmarkButton";
 import { CommitList } from "../components/CommitList";
 import { conversationLabel } from "../components/ConversationsTable";
@@ -153,6 +154,13 @@ export const ConversationPage = () => {
   const search = useSearch({ from: "/conversations/$id" });
   const detail = useQuery(conversationQuery(id));
   const [inspecting, setInspecting] = useState<string | null>(null);
+
+  if (detail.isError && isUnauthorized(detail.error))
+    return (
+      <Page>
+        <RequestFailure error={detail.error} />
+      </Page>
+    );
 
   return (
     <Page>

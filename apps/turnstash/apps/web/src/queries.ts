@@ -1,3 +1,4 @@
+import { Unauthorized } from "@aqt/turnstash-api";
 import type {
   ConversationListQuery,
   LimitDrainQuery,
@@ -48,13 +49,17 @@ const DashboardSession = Schema.Struct({
   user: Schema.NullOr(Schema.Struct({ subject: Schema.String, name: Schema.String })),
 });
 
+const decodeDashboardSession = Schema.decodeUnknownSync(DashboardSession);
+
 export const dashboardSessionQuery = () =>
   queryOptions({
     queryKey: queryKeys.session,
     queryFn: async () => {
       const response = await fetch("/auth/session", { cache: "no-store" });
+      if (response.status === 401 || response.status === 403)
+        throw new Unauthorized({ reason: "invalid" });
       if (!response.ok) throw new Error("Could not check your sign-in. Reload to try again.");
-      return Schema.decodeUnknownSync(DashboardSession)(await response.json());
+      return decodeDashboardSession(await response.json());
     },
     staleTime: 60_000,
   });
@@ -82,6 +87,13 @@ export const limitsQuery = (query: LimitsQuery) =>
   queryOptions({
     queryKey: [...queryKeys.limits, query],
     queryFn: () => Effect.runPromise(api.read.limits({ query })),
+    refetchInterval: 5 * 60_000,
+  });
+
+export const limitsOverviewQuery = (query: LimitsQuery) =>
+  queryOptions({
+    queryKey: [...queryKeys.limits, "overview", query],
+    queryFn: () => Effect.runPromise(api.read.limitsOverview({ query })),
     refetchInterval: 5 * 60_000,
   });
 

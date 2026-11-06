@@ -16,6 +16,7 @@ import { useRef, useState } from "react";
 
 import { api } from "../api";
 import { Async, RequestFailure } from "../components/Async";
+import { ConfirmAction } from "../components/ConfirmAction";
 import { DataTable, PrimaryTd, Td, Th } from "../components/DataTable";
 import { Section } from "../components/Section";
 import { Segmented } from "../components/Segmented";
@@ -213,15 +214,22 @@ const RulesTable = ({
           <Td>{describe(row.rule)}</Td>
           <Td>{relativeTime(row.updatedAt)}</Td>
           <Td numeric>
-            <Button
-              size="icon-xs"
-              variant="destructive"
-              aria-label={`Delete rule for ${row.model}`}
+            <ConfirmAction
+              trigger={
+                <Button
+                  size="icon-xs"
+                  variant="destructive"
+                  aria-label={`Delete rule for ${row.model}`}
+                />
+              }
               disabled={deleting === row.model}
-              onClick={() => onDelete(row.model)}
+              title={`Delete pricing rule for ${row.model}?`}
+              description="This removes the pricing override and recalculates affected request costs using the remaining catalog rules."
+              actionLabel="Delete pricing rule"
+              onConfirm={() => onDelete(row.model)}
             >
               {deleting === row.model ? <Spinner /> : <Trash2Icon />}
-            </Button>
+            </ConfirmAction>
           </Td>
         </TableRow>
       ))}

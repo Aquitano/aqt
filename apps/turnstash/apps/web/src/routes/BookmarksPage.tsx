@@ -7,8 +7,9 @@ import { Effect } from "effect";
 import { useState } from "react";
 
 import { api } from "../api";
-import { Pending, RequestFailure } from "../components/Async";
+import { Async, RequestFailure } from "../components/Async";
 import { BookmarkNoteForm } from "../components/BookmarkNoteForm";
+import { ConfirmAction } from "../components/ConfirmAction";
 import { MarkdownExportButton } from "../components/MarkdownExportButton";
 import { Page, PageHead } from "../components/Page";
 import { Section } from "../components/Section";
@@ -85,15 +86,17 @@ const Bookmark = ({ bookmark }: { readonly bookmark: BookmarkView }) => {
             >
               Edit note
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
+            <ConfirmAction
+              trigger={<Button size="sm" variant="ghost" />}
               disabled={remove.isPending}
-              onClick={() => remove.mutate()}
+              title={`Delete bookmark for ${bookmark.conversationTitle ?? "Untitled conversation"}?`}
+              description="This removes the saved bookmark and its note. The conversation stays in your archive."
+              actionLabel="Delete bookmark"
+              onConfirm={() => remove.mutate()}
             >
               {remove.isPending && <Spinner data-icon="inline-start" />}
               Delete bookmark
-            </Button>
+            </ConfirmAction>
             {bookmark.available && (
               <MarkdownExportButton
                 conversationId={bookmark.conversationId}
@@ -123,27 +126,31 @@ export const BookmarksPage = () => {
     <Page>
       <PageHead title="Bookmarks" note="Saved conversations, turns and messages." />
       <Section title="Saved bookmarks">
-        {pages.isPending && <Pending />}
-        {pages.isError && <RequestFailure error={pages.error} />}
-        {pages.isSuccess && items.length === 0 && (
-          <p className="py-2 text-xs text-muted-foreground">
-            Open a conversation to save a bookmark with an optional note.
-          </p>
-        )}
-        {items.map((bookmark) => (
-          <Bookmark key={bookmark.id} bookmark={bookmark} />
-        ))}
-        {pages.hasNextPage && (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={pages.isFetchingNextPage}
-            onClick={() => void pages.fetchNextPage()}
-          >
-            {pages.isFetchingNextPage && <Spinner data-icon="inline-start" />}
-            Load more bookmarks
-          </Button>
-        )}
+        <Async query={pages}>
+          {() => (
+            <>
+              {items.length === 0 && (
+                <p className="py-2 text-xs text-muted-foreground">
+                  Open a conversation to save a bookmark with an optional note.
+                </p>
+              )}
+              {items.map((bookmark) => (
+                <Bookmark key={bookmark.id} bookmark={bookmark} />
+              ))}
+              {pages.hasNextPage && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={pages.isFetching}
+                  onClick={() => void pages.fetchNextPage()}
+                >
+                  {pages.isFetchingNextPage && <Spinner data-icon="inline-start" />}
+                  {pages.isFetchNextPageError ? "Retry loading bookmarks" : "Load more bookmarks"}
+                </Button>
+              )}
+            </>
+          )}
+        </Async>
       </Section>
     </Page>
   );

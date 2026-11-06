@@ -3,7 +3,7 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import { sql } from "drizzle-orm";
 import { Clock, Effect } from "effect";
 
-import { currentLimitsReport } from "../src/current-limits.ts";
+import { currentLimitWindows, currentLimitsReport } from "../src/current-limits.ts";
 import { Db } from "../src/db/client.ts";
 import { limitSamples, machines } from "../src/db/schema.ts";
 import { machineRoster } from "../src/stats.ts";
@@ -97,6 +97,37 @@ test("global quota and machine reads do not depend on request or valuation aggre
           yield* tx.execute(sql`ALTER TABLE unavailable_requests RENAME TO model_requests`);
         }),
       );
+    }),
+  );
+});
+
+test("reset drift preserves the original alert identity across polling cutoffs", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      const db = yield* Db;
+      const now = yield* Clock.currentTimeMillis;
+      yield* db.insert(limitSamples).values(
+        (
+          [
+            [-120, -11, 20],
+            [-40, -5, 50],
+            [-6, 1, 95],
+          ] as const
+        ).map(([observed, reset, usedPercent]) => ({
+          provider: "claude" as const,
+          windowMinutes: 300,
+          observedAt: new Date(now + observed * minute),
+          resetsAt: new Date(now + reset * minute),
+          usedPercent,
+        })),
+      );
+      for (const at of [now - 5 * minute, now]) {
+        const windows = yield* currentLimitWindows(at);
+        expect(windows).toHaveLength(1);
+        expect(windows[0]?.open.firstObservedAtMs).toBe(now - 120 * minute);
+        expect(windows[0]?.open.firstUsedPercent).toBe(20);
+        expect(windows[0]?.open.usedPercent).toBe(95);
+      }
     }),
   );
 });

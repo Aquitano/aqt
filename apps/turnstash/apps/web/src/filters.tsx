@@ -4,6 +4,7 @@ import { Option, Schema } from "effect";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import { isUnauthorized } from "./api";
 import { FilterSelect } from "./components/FilterSelect";
 import { PageHead } from "./components/Page";
 import { Segmented } from "./components/Segmented";
@@ -168,7 +169,10 @@ export const FilterBar = ({
             label="Machine"
             anyLabel="All machines"
             value={filters.machineId}
-            options={(machines.data ?? []).map((machine) => ({
+            options={(machines.isError && isUnauthorized(machines.error)
+              ? []
+              : (machines.data ?? [])
+            ).map((machine) => ({
               value: machine.id,
               label: machine.name,
             }))}

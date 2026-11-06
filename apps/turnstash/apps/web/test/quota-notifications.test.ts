@@ -63,6 +63,8 @@ beforeEach(() => {
     getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value),
   });
+  savePreferences(defaultPreferences);
+  storage.delete(preferencesKey);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -78,6 +80,28 @@ test("missing and invalid preferences default off; saved opt-ins round trip", ()
   const preferences = { low: true, unused: false, desktop: true };
   savePreferences(preferences);
   expect(readPreferences()).toEqual(preferences);
+});
+
+test("failed preference writes survive reads until persistence succeeds again", () => {
+  savePreferences(defaultPreferences);
+  const preferences = { low: true, unused: true, desktop: false };
+  let writesFail = true;
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      if (writesFail) throw new Error("Storage full");
+      storage.set(key, value);
+    },
+  });
+  savePreferences(preferences);
+  expect(readPreferences()).toEqual(preferences);
+  expect(JSON.parse(storage.get(preferencesKey) ?? "null")).toEqual(defaultPreferences);
+  writesFail = false;
+  savePreferences(preferences);
+  storage.set(preferencesKey, JSON.stringify({ ...preferences, unused: false }));
+  expect(readPreferences()).toEqual({ ...preferences, unused: false });
+  storage.delete(preferencesKey);
+  expect(readPreferences()).toEqual(defaultPreferences);
 });
 
 test("concurrent notification attempts deliver once, and clicking opens the selected limit", async () => {

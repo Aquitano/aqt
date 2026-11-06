@@ -16,9 +16,10 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
-import { Pending, RequestFailure } from "../components/Async";
+import { isUnauthorized } from "../api";
+import { Async } from "../components/Async";
 import { FilterSelect } from "../components/FilterSelect";
 import { Page } from "../components/Page";
 import { ProviderBadge } from "../components/ProviderBadge";
@@ -37,8 +38,11 @@ export const SearchPage = () => {
   const term = state.q ?? "";
   const period = state.period ?? "30d";
   const { today } = useFilters();
-  const [text, setText] = useState(term);
-  useEffect(() => setText(term), [term]);
+  const textInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (textInput.current !== null && textInput.current.value !== term)
+      textInput.current.value = term;
+  }, [term]);
   const update = (patch: Partial<SearchState>) =>
     void navigate({ to: "/search", search: { ...state, ...patch } });
   const projects = useQuery(projectsQuery(null));
@@ -73,7 +77,10 @@ export const SearchPage = () => {
           value={state.projectKey ?? null}
           options={[
             ...new Set([
-              ...(projects.data ?? []).map((project) => project.projectKey),
+              ...(projects.isError && isUnauthorized(projects.error)
+                ? []
+                : (projects.data ?? [])
+              ).map((project) => project.projectKey),
               ...(state.projectKey === undefined ? [] : [state.projectKey]),
             ]),
           ].map((projectKey) => ({ value: projectKey, label: projectKey }))}
@@ -92,15 +99,16 @@ export const SearchPage = () => {
           className="flex max-w-120 min-w-60 flex-1"
           onSubmit={(event) => {
             event.preventDefault();
-            update({ q: text.trim() });
+            update({ q: textInput.current?.value.trim() ?? "" });
           }}
         >
           <InputGroup className="h-8">
             <InputGroupInput
               aria-label="Search words"
               placeholder="Search every transcript"
-              value={text}
-              onChange={(event) => setText(event.target.value)}
+              ref={textInput}
+              name="q"
+              defaultValue={term}
             />
             <InputGroupAddon align="inline-end">
               <InputGroupButton type="submit">
@@ -125,37 +133,39 @@ export const SearchPage = () => {
           </EmptyHeader>
         </Empty>
       )}
-      {term !== "" && results.isPending && <Pending />}
-      {results.isError && <RequestFailure error={results.error} />}
-      {term !== "" && results.isSuccess && (
-        <Section title={`Results for ${term}`} note={`${results.data.hits.length} hits`}>
-          {results.data.hits.length === 0 && (
-            <p className="py-3 text-xs text-muted-foreground">
-              Nothing matched. Try fewer or different words.
-            </p>
-          )}
-          {results.data.hits.map((hit) => (
-            <div
-              className="flex flex-col gap-1.5 border-b py-3 last:border-b-0"
-              key={hit.messageId}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <Link
-                  to="/conversations/$id"
-                  params={{ id: hit.conversationId }}
-                  search={{ message: hit.messageKey, q: term }}
-                  className="font-medium underline-offset-2 outline-none hover:underline hover:decoration-primary focus-visible:underline"
+      {term !== "" && (
+        <Async query={results}>
+          {(data) => (
+            <Section title={`Results for ${term}`} note={`${data.hits.length} hits`}>
+              {data.hits.length === 0 && (
+                <p className="py-3 text-xs text-muted-foreground">
+                  Nothing matched. Try fewer or different words.
+                </p>
+              )}
+              {data.hits.map((hit) => (
+                <div
+                  className="flex flex-col gap-1.5 border-b py-3 last:border-b-0"
+                  key={hit.messageId}
                 >
-                  {hit.title ?? hit.projectKey ?? shortId(hit.conversationId, 12)}
-                </Link>
-                <ProviderBadge provider={hit.provider} />
-                <Badge variant="secondary">{hit.role}</Badge>
-                <span className="text-xs text-muted-foreground">{dateTime(hit.createdAt)}</span>
-              </div>
-              <Snippet text={hit.snippet} />
-            </div>
-          ))}
-        </Section>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      to="/conversations/$id"
+                      params={{ id: hit.conversationId }}
+                      search={{ message: hit.messageKey, q: term }}
+                      className="font-medium underline-offset-2 outline-none hover:underline hover:decoration-primary focus-visible:underline"
+                    >
+                      {hit.title ?? hit.projectKey ?? shortId(hit.conversationId, 12)}
+                    </Link>
+                    <ProviderBadge provider={hit.provider} />
+                    <Badge variant="secondary">{hit.role}</Badge>
+                    <span className="text-xs text-muted-foreground">{dateTime(hit.createdAt)}</span>
+                  </div>
+                  <Snippet text={hit.snippet} />
+                </div>
+              ))}
+            </Section>
+          )}
+        </Async>
       )}
     </Page>
   );
