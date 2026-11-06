@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -31,7 +32,13 @@ func TestFolderLookupRefreshesCachedRulesAndBlocksUnresolvedPolicies(t *testing.
 	if folders.For("/Backups/copy.zip").ArchiveDepth != 1 {
 		t.Fatal("cached lookup hid a deeper override")
 	}
+	if scopes := folders.ArchiveScopes(); !slices.Equal(scopes, []ArchiveScope{{Path: "/", Depth: 0}, {Path: "/backups", Depth: 1}}) {
+		t.Fatalf("sparse policy snapshot: %+v", scopes)
+	}
 	folders.Block("/Backups")
+	if scopes := folders.ArchiveScopes(); !slices.Equal(scopes, []ArchiveScope{{Path: "/", Depth: 0}, {Path: "/backups", Depth: 0}}) {
+		t.Fatalf("blocked policy snapshot: %+v", scopes)
+	}
 	if rules := folders.For("/Backups/copy.zip"); rules.ArchiveDepth != 0 || !rules.SkipContent("/Backups/copy.zip") {
 		t.Fatal("unresolved policy allowed content reads")
 	}
@@ -83,5 +90,27 @@ func TestFolderConfigRejectsInvalidOrMachineSettings(t *testing.T) {
 				t.Fatalf("invalid folder config: %v", err)
 			}
 		})
+	}
+}
+
+func TestFolderLookupFindsCaseVariantsAndRejectsDuplicates(t *testing.T) {
+	root := t.TempDir()
+	folders := NewFolders(root, Default().Rules("", ""))
+	upper := filepath.Join(root, ".ATTIC.TOML")
+	if err := os.WriteFile(upper, []byte("[archives]\ndepth = 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if rules, err := folders.Load("", nil); err != nil || rules.ArchiveDepth != 1 {
+		t.Fatalf("uppercase policy: %+v, %v", rules, err)
+	}
+	lower := filepath.Join(root, FolderFile)
+	if _, err := os.Lstat(lower); err == nil {
+		return
+	}
+	if err := os.WriteFile(lower, []byte("[archives]\ndepth = 2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := folders.Load("", nil); err == nil || !strings.Contains(err.Error(), "multiple") {
+		t.Fatalf("duplicate policies: %v", err)
 	}
 }

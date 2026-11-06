@@ -6,6 +6,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/aquitano/aqt/apps/attic/internal/archive"
+	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
 
@@ -21,35 +22,42 @@ type PendingArchive struct {
 }
 
 // pendingArchiveWhere matches the names archive.IsArchive accepts, below an
-// upper path bound at the requested depth; the callers add the lower one as $6.
+// upper path bound at each folder policy depth; callers add the lower one as $7.
 const pendingArchiveWhere = `
 	from entries e join contents c on c.id = e.content_id
 	left join archives a on a.content_id = e.content_id
+	cross join lateral (
+		select scope.depth from unnest($5::text[], $6::int[]) as scope(path, depth)
+		where scope.path = '/' or starts_with(lower(e.path), scope.path || '/')
+		order by length(scope.path) desc limit 1
+	) policy
 	where e.volume_id = $1 and e.kind = 'file' and e.hash_state = 'done' and e.missing_scan is null
 	  and (e.ext = any($2) or (e.ext = any($3) and lower(e.name) like ('%.tar.' || e.ext)))
-	  and (a.content_id is null or a.depth < $5)
+	  and policy.depth > 0 and (a.content_id is null or a.depth < policy.depth)
 	  and ($4 = '' or e.path collate "C" < $4)`
 
 // ArchiveTotals is the listing work left below the scan root, one per content.
-func (sc *Scan) ArchiveTotals(ctx context.Context, depth int) (int64, error) {
+func (sc *Scan) ArchiveTotals(ctx context.Context, scopes []config.ArchiveScope) (int64, error) {
 	lower, upper := sc.subtree()
+	paths, depths := archiveScopeArrays(scopes)
 	var n int64
-	err := sc.store.pool.QueryRow(ctx, `select count(distinct e.content_id)`+pendingArchiveWhere+` and e.path collate "C" > $6`,
-		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, depth, lower).Scan(&n)
+	err := sc.store.pool.QueryRow(ctx, `select count(distinct e.content_id)`+pendingArchiveWhere+` and e.path collate "C" > $7`,
+		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, paths, depths, lower).Scan(&n)
 	return n, err
 }
 
 // NextArchives returns up to limit archives after the given one, in path
 // order. A completed listing settles copies requesting no greater depth.
-func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit int, depth int) ([]PendingArchive, error) {
+func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit int, scopes []config.ArchiveScope) ([]PendingArchive, error) {
 	lower, upper := sc.subtree()
+	paths, depths := archiveScopeArrays(scopes)
 	if after.ID != 0 {
 		lower = after.Path
 	}
 	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, c.size_bytes, e.content_id, c.blake3, coalesce(a.depth, 0)`+pendingArchiveWhere+`
-		  and (e.path collate "C", e.id) > ($6, $7)
-		order by e.path collate "C", e.id limit $8`,
-		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, depth, lower, after.ID, limit)
+		  and (e.path collate "C", e.id) > ($7, $8)
+		order by e.path collate "C", e.id limit $9`,
+		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, paths, depths, lower, after.ID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +68,14 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 		copy(p.Digest[:], digest)
 		return p, err
 	})
+}
+
+func archiveScopeArrays(scopes []config.ArchiveScope) ([]string, []int) {
+	paths, depths := make([]string, len(scopes)), make([]int, len(scopes))
+	for i, scope := range scopes {
+		paths[i], depths[i] = scope.Path, scope.Depth
+	}
+	return paths, depths
 }
 
 // Listing writes one archive's members in a transaction of its own, so a

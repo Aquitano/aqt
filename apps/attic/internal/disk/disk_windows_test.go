@@ -94,3 +94,49 @@ func TestHashKeepsLastAccess(t *testing.T) {
 		t.Errorf("hashing moved last access from %s to %s", old, accessed["hashed.bin"])
 	}
 }
+
+func TestLookupFoldKeepsDirectoryLastAccess(t *testing.T) {
+	root := t.TempDir()
+	old := time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)
+	for _, name := range []string{"present", "absent", "control"} {
+		dir := filepath.Join(root, name)
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if name != "absent" {
+			if err := os.WriteFile(filepath.Join(dir, ".ATTIC.TOML"), []byte("policy"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.Chtimes(dir, old, old); err != nil {
+			t.Fatal(err)
+		}
+		if name == "control" {
+			if _, err := os.ReadDir(dir); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		entries, err := LookupFold(dir, ".attic.toml")
+		want := 0
+		if name == "present" {
+			want = 1
+		}
+		if err != nil || len(entries) != want {
+			t.Fatalf("%s lookup: %+v, %v", name, entries, err)
+		}
+	}
+	control, err := Stat(filepath.Join(root, "control"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if control.Accessed.Equal(old) {
+		t.Skip("this volume does not update directory last-access times")
+	}
+	for _, name := range []string{"present", "absent"} {
+		e, err := Stat(filepath.Join(root, name))
+		if err != nil || !e.Accessed.Equal(old) {
+			t.Errorf("%s lookup moved directory last access to %s: %v", name, e.Accessed, err)
+		}
+	}
+}

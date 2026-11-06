@@ -134,7 +134,7 @@ func List[F Handle](ctx context.Context, p string, open func(string) (F, error),
 	}
 	incomplete := false
 	l := lister{o: o, emit: emit, skip: func(s Skip) {
-		if s.Reason != "too_deep" {
+		if s.Reason != "too_deep" && s.Reason != NotArchive {
 			incomplete = true
 		}
 		skip(s)

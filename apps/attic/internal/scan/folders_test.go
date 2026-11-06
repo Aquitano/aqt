@@ -104,7 +104,7 @@ func TestUnreadableFolderDoesNotProcessQueuedContent(t *testing.T) {
 func TestFolderDepthUpgradesIdenticalArchiveCopies(t *testing.T) {
 	st, dsn := storetest.New(t)
 	root := t.TempDir()
-	data := zipOf(t, map[string]string{"nested.zip": zipOf(t, map[string]string{"deep.txt": "content"})})
+	data := zipOf(t, map[string]string{"fake.zip": "ordinary bytes", "nested.zip": zipOf(t, map[string]string{"deep.txt": "content"})})
 	write(t, root, "a/copy.zip", data)
 	write(t, root, "a/.attic.toml", "[archives]\ndepth = 1\n")
 	write(t, root, "b/copy.zip", data)
@@ -147,5 +147,65 @@ func TestSatisfiedFolderDepthSkipsArchiveTransaction(t *testing.T) {
 	r := run{rules: config.Default().Rules("", "")}
 	if err := r.listArchive(t.Context(), store.PendingArchive{Path: "/copy.zip", Depth: r.rules.ArchiveDepth}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestArchiveUpgradeDeduplicatesVerifiedAttemptsAtEachDepth(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	encrypted, err := os.ReadFile(filepath.Join("..", "archive", "testdata", "encrypted.7z"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := zipOf(t, map[string]string{"nested.zip": zipOf(t, map[string]string{"cached.txt": "cached", "closed.7z": string(encrypted)})})
+	for _, name := range []string{"a/first.zip", "a/second.zip", "b/copy.zip"} {
+		write(t, root, name, data)
+	}
+	scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Archives.Depth = 1 })
+	write(t, root, "a/.attic.toml", "[archives]\ndepth = 3\n")
+	write(t, root, "b/.attic.toml", "[archives]\ndepth = 2\n")
+	for i := range 2 {
+		res := scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Archives.Depth = 1 })
+		if skips, err := st.Skips(t.Context(), res.ScanID, "encrypted", "", 10); err != nil || len(skips) != 1 {
+			t.Fatalf("scan %d repeated a verified depth-3 attempt: %+v, %v", i, skips, err)
+		}
+		if pgschematest.QueryInt(t, dsn, `select depth from archives`) != 2 ||
+			pgschematest.QueryInt(t, dsn, `select count(*) from members where name='cached.txt'`) != 1 {
+			t.Fatal("failed depth-3 attempt prevented a valid depth-2 upgrade")
+		}
+	}
+}
+
+func TestArchiveUpgradeRetriesUnverifiedCopies(t *testing.T) {
+	for _, failure := range []string{"missing", "changed"} {
+		t.Run(failure, func(t *testing.T) {
+			st, dsn := storetest.New(t)
+			root := t.TempDir()
+			data := zipOf(t, map[string]string{"nested.zip": zipOf(t, map[string]string{"deep.txt": "content"})})
+			write(t, root, "a.zip", data)
+			write(t, root, "b.zip", data)
+			scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Archives.Depth = 1 })
+			changed := false
+			res := scanAt(t, st, root, testVolume, func(o *Options) {
+				o.Config.Archives.Depth = 2
+				o.Progress = func(p Progress) {
+					if p.Phase != "archives" || changed {
+						return
+					}
+					changed = true
+					if failure == "missing" {
+						if err := os.Remove(filepath.Join(root, "a.zip")); err != nil {
+							t.Fatal(err)
+						}
+					} else {
+						write(t, root, "a.zip", data[:len(data)-1]+"x")
+					}
+				}
+			})
+			if !changed || res.Counts.Archives != 1 || pgschematest.QueryInt(t, dsn, `select depth from archives`) != 2 ||
+				pgschematest.QueryInt(t, dsn, `select count(*) from members where name='deep.txt'`) != 1 {
+				t.Fatalf("unverified copy blocked a valid upgrade: changed %t, counts %+v", changed, res.Counts)
+			}
+		})
 	}
 }

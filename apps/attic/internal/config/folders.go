@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -75,7 +74,7 @@ func (f *Folders) Load(folder string, entries []disk.Entry) (Rules, error) {
 		if !info.Dir || info.Link || info.Remote {
 			return rules, fmt.Errorf("%s is not an ordinary local folder", dir)
 		}
-		entries, err = folderFiles(dir)
+		entries, err = disk.LookupFold(dir, FolderFile)
 		if err != nil {
 			return rules, err
 		}
@@ -113,27 +112,21 @@ func (f *Folders) Load(folder string, entries []disk.Entry) (Rules, error) {
 	return rules, nil
 }
 
-func folderFiles(dir string) ([]disk.Entry, error) {
-	f, err := os.Open(dir)
-	if err != nil {
-		return nil, err
+type ArchiveScope struct {
+	Path  string
+	Depth int
+}
+
+func (f *Folders) ArchiveScopes() []ArchiveScope {
+	scopes := make([]ArchiveScope, 0, len(f.rules)+1)
+	if _, ok := f.rules["/"]; !ok {
+		scopes = append(scopes, ArchiveScope{Path: "/", Depth: f.base.ArchiveDepth})
 	}
-	defer f.Close()
-	var entries []disk.Entry
-	for {
-		names, err := f.Readdirnames(128)
-		for _, name := range names {
-			if strings.EqualFold(name, FolderFile) {
-				entries = append(entries, disk.Entry{Name: name})
-			}
-		}
-		if errors.Is(err, io.EOF) {
-			return entries, nil
-		}
-		if err != nil {
-			return nil, err
-		}
+	for folder, rules := range f.rules {
+		scopes = append(scopes, ArchiveScope{Path: folder, Depth: rules.ArchiveDepth})
 	}
+	slices.SortFunc(scopes, func(a, b ArchiveScope) int { return strings.Compare(a.Path, b.Path) })
+	return scopes
 }
 
 func (r Rules) WithFolder(folder string, data []byte) (Rules, error) {

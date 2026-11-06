@@ -140,7 +140,7 @@ func TestListTellsWhyAnArchiveCannotBeRead(t *testing.T) {
 		if tc.status != Listed {
 			outer := zipOf(t, map[string][]byte{"nested.zip": tc.data})
 			res, _, skips := list(t, outer, Options{Depth: 2, Temp: t.TempDir()})
-			if res.Status != Listed || !res.Incomplete || len(skips) != 1 || skips[0].Reason != tc.status {
+			if res.Status != Listed || res.Incomplete != (tc.status != NotArchive) || len(skips) != 1 || skips[0].Reason != tc.status {
 				t.Errorf("nested %s: result %+v, skips %+v", tc.name, res, skips)
 			}
 		}

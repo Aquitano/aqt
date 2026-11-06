@@ -4,9 +4,11 @@ package disk
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -73,4 +75,28 @@ func fromInfo(name string, info fs.FileInfo) Entry {
 		e.Changed = changeTime(st)
 	}
 	return e
+}
+
+// LookupFold returns only names matching name without regard to case.
+func LookupFold(dir, name string) ([]Entry, error) {
+	f, err := os.Open(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var entries []Entry
+	for {
+		names, err := f.Readdirnames(128)
+		for _, found := range names {
+			if strings.EqualFold(found, name) {
+				entries = append(entries, Entry{Name: found})
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			return entries, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
 }

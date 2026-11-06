@@ -187,6 +187,7 @@ type run struct {
 	rules        config.Rules
 	folders      *config.Folders
 	archiveDepth int
+	archiveTried map[archiveAttempt]bool
 	mountRoot    string
 	dirs         int64
 	hashFiles    int64
@@ -585,17 +586,24 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 	return r.sc.SetContent(ctx, p, digest)
 }
 
+type archiveAttempt struct {
+	contentID int64
+	depth     int
+}
+
 // listArchives reads archives below the scan root whose cached listings do
 // not reach the requested depth, in path order like hashing.
 func (r *run) listArchives(ctx context.Context) error {
 	var err error
-	if r.total, err = r.sc.ArchiveTotals(ctx, r.archiveDepth); err != nil {
+	scopes := r.folders.ArchiveScopes()
+	r.archiveTried = map[archiveAttempt]bool{}
+	if r.total, err = r.sc.ArchiveTotals(ctx, scopes); err != nil {
 		return err
 	}
 	r.done, r.seen = 0, map[int64]bool{}
 	r.progress(true)
 	return eachPage(ctx, func(ctx context.Context, after store.PendingArchive) ([]store.PendingArchive, error) {
-		return r.sc.NextArchives(ctx, after, 64, r.archiveDepth)
+		return r.sc.NextArchives(ctx, after, 64, scopes)
 	}, func(ctx context.Context, a store.PendingArchive) error {
 		r.count(a.ContentID)
 		return r.listArchive(ctx, a)
@@ -609,7 +617,8 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 		r.log.Debug("archive left unread by the rules", "path", a.Path)
 		return nil
 	}
-	if a.Depth >= rules.ArchiveDepth {
+	attempt := archiveAttempt{contentID: a.ContentID, depth: rules.ArchiveDepth}
+	if a.Depth >= rules.ArchiveDepth || r.archiveTried[attempt] {
 		return nil
 	}
 	l, err := r.sc.StartListing(ctx, a.ContentID, rules.ArchiveDepth)
@@ -669,6 +678,12 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	if opener.failure != nil {
 		l.Abort(ctx)
 		return r.copyFailure(ctx, a.Path, opener.failure)
+	}
+	if opener.copied != "" {
+		if r.archiveTried == nil {
+			r.archiveTried = map[archiveAttempt]bool{}
+		}
+		r.archiveTried[attempt] = true
 	}
 	if err == nil && res.Status != archive.Listed {
 		// A disk unplugged mid-read looks like a damaged archive.
