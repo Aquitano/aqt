@@ -220,7 +220,7 @@ label = "Data"
 exclude = ["/Games/"]
 ```
 
-`archives.depth = 0` disables archive listings. `unpack_max_bytes` limits each nested archive. `text.max_bytes` bounds documents, which are read in full. `metadata.max_bytes` bounds the files given to ExifTool; it defaults to no limit, so large videos can need equally large temporary copies. `text.pdftotext` selects the Poppler binary; if unavailable, PDF parser failures remain failures. `ai.max_bytes` bounds a verified enrichment copy. `ai.token_parameter` also accepts `max_completion_tokens`. Install Tesseract language data for each language in `ocr_lang`, such as `deu+eng`.
+`archives.depth = 0` disables archive listings. `unpack_max_bytes` limits each nested archive. `text.max_bytes` limits the source file size eligible for text extraction. `metadata.max_bytes` bounds the files given to ExifTool; it defaults to no limit, so large videos can need equally large temporary copies. `text.pdftotext` selects the Poppler binary; if unavailable, PDF parser failures remain failures. `ai.max_bytes` bounds a verified enrichment copy. `ai.token_parameter` also accepts `max_completion_tokens`. Install Tesseract language data for each language in `ocr_lang`, such as `deu+eng`.
 
 ### Configure a folder and its children
 
