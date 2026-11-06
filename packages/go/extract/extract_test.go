@@ -81,6 +81,9 @@ func TestPDFToTextSkipsParser(t *testing.T) {
 			t.Fatalf("fallback: %+v", res)
 		}
 	}
+	if res := PDFToText(t.Context(), path, Options{PDFToText: "missing", MaxBytes: 1}); res.Status != StatusTooBig {
+		t.Fatalf("oversized PDF reached external reader: %+v", res)
+	}
 }
 
 func TestNormalize(t *testing.T) {
