@@ -17,10 +17,10 @@ const tabs = [
 
 export const SettingsPage = () => (
   <Page>
-    <Tabs defaultValue={tabs[0].value} className="gap-9">
+    <Tabs defaultValue={tabs[0].value} className="gap-5">
       <PageHead
         title="Settings"
-        note={
+        actions={
           <TabsList aria-label="Settings section">
             {tabs.map(({ value, label }) => (
               <TabsTrigger
@@ -35,7 +35,7 @@ export const SettingsPage = () => (
         }
       />
       {tabs.map(({ value, Panel }) => (
-        <TabsContent key={value} value={value} className="flex flex-col gap-9">
+        <TabsContent key={value} value={value} className="flex flex-col gap-5">
           <Panel />
         </TabsContent>
       ))}

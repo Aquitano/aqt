@@ -52,6 +52,12 @@ After a parser or model-alias correction, stop the server and run `bun run --cwd
 
 The server stores each raw record without copies of what other records hold: Codex keeps only the kind of an agent message or reasoning event, which repeat a response item, and drops encrypted reasoning, which only the Codex API can read. OpenCode and Cursor JSON columns are kept as parsed values rather than escaped text. A tool result's message part no longer copies the output its tool execution holds. Inline base64 images and documents, such as screenshots and PDFs, move out of the record into a `blobs` table, stored once per distinct file as binary. The record keeps the file's media type, size and sha256, and a conversation shows an image when you open it. A file is deleted with the last record that holds it. Reprocessing applies this to records stored earlier and removes OpenCode file store records whose row the same machine's OpenCode database sent. [Reprocess the archive](deploy/README.md#reprocess-the-archive) also describes how to return the freed space to the disk.
 
+## Plan limits
+
+The Limits page shows how much of each subscription window is left, when it resets, and where the usage went. Codex reports its limits in every transcript, so history comes from the archive. Claude Code keeps its current usage in `cachedUsageUtilization` in `~/.claude.json`; `turnstash sync` sends only the percentages, reset times and plan tier from it, and never reads an OAuth token. The server therefore holds no provider credentials. Usage is assumed to belong to one account per provider.
+
+Upgrading bumps the Codex and Claude parser versions, so the worker re-normalizes those conversations at startup to fill in limit history.
+
 ## Agent
 
 Install [Bun](https://bun.sh/docs/installation) 1.4.2 or newer and [GitHub CLI](https://cli.github.com/) on each machine that collects transcripts. Run the agent as the same OS user who runs your coding tools. Authenticate with an account that can access the private repository, then download the newest agent release, check it and install it:

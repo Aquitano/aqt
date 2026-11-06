@@ -11,7 +11,6 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { compact, usd } from "../format";
 import { withQuietDays } from "../period";
 import { chartRow } from "./ChartRow";
-import { Section } from "./Section";
 import { Segmented } from "./Segmented";
 
 type Metric = "cost" | "tokens" | "requests";
@@ -48,18 +47,19 @@ export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> })
   const days = withQuietDays(daily);
 
   return (
-    <Section
-      title="Daily activity"
-      action={<Segmented label="Metric" options={metricTabs} value={metric} onChange={setMetric} />}
-    >
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-[13px] text-muted-foreground">Daily activity</h3>
+        <Segmented label="Metric" options={metricTabs} value={metric} onChange={setMetric} />
+      </div>
       <ChartContainer
         config={chartConfig}
-        className="aspect-auto h-70 w-full pt-4"
+        className="aspect-auto h-60 w-full pt-3"
         role="img"
         aria-label="Daily totals for the selected period, one bar per day."
       >
         <BarChart data={days} margin={{ left: 0, right: 0 }}>
-          <CartesianGrid vertical={false} />
+          <CartesianGrid vertical={false} stroke="var(--border)" />
           <XAxis
             dataKey={(row: DayRow) => dayLabel(row.date)}
             tickLine={false}
@@ -88,6 +88,6 @@ export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> })
           ))}
         </BarChart>
       </ChartContainer>
-    </Section>
+    </div>
   );
 };

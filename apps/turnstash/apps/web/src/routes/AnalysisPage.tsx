@@ -3,6 +3,7 @@ import { TableBody, TableHeader, TableRow } from "@aqt/ui/components/table";
 import { useQuery } from "@tanstack/react-query";
 
 import { Async } from "../components/Async";
+import { CacheBreaks } from "../components/CacheBreaks";
 import { DataTable, Td, Th } from "../components/DataTable";
 import { ModelBehaviour } from "../components/ModelBehaviour";
 import { Page } from "../components/Page";
@@ -11,7 +12,7 @@ import { ShareCell, shareOf } from "../components/ShareCell";
 import { useCollapse } from "../components/Tables";
 import { FilterBar, useFilters } from "../filters";
 import { int, usd } from "../format";
-import { analysisQuery } from "../queries";
+import { analysisQuery, cacheBreaksQuery } from "../queries";
 
 const AllocationTable = ({
   title,
@@ -98,6 +99,7 @@ const CategoryTable = ({ analysis }: { readonly analysis: Analysis }) => {
 export const AnalysisPage = () => {
   const filters = useFilters();
   const analysis = useQuery(analysisQuery(filters.stats));
+  const breaks = useQuery(cacheBreaksQuery(filters.stats));
 
   return (
     <Page>
@@ -107,7 +109,8 @@ export const AnalysisPage = () => {
           <>
             <CategoryTable analysis={data} />
             <ModelBehaviour rows={data.byModel} />
-            <div className="grid grid-cols-1 gap-x-10 gap-y-9 lg:grid-cols-2">
+            <Async query={breaks}>{(report) => <CacheBreaks report={report} />}</Async>
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
               <AllocationTable
                 title="By tool"
                 rows={data.byTool}

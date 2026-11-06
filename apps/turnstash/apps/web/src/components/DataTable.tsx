@@ -23,7 +23,7 @@ export const Th = ({
 }: ComponentProps<typeof TableHead> & { readonly numeric?: boolean }) => (
   <TableHead
     className={cn(
-      "h-auto bg-background px-2 pt-2 pb-1.5 text-xs font-medium text-muted-foreground first:pl-0 last:pr-0 sm:sticky sm:top-12 sm:z-1",
+      "h-auto bg-card px-2 pt-2 pb-1.5 text-xs font-medium text-muted-foreground first:pl-0 last:pr-0 sm:sticky sm:top-12 sm:z-1",
       numeric && "text-right",
       className,
     )}

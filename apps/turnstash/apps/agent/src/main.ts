@@ -38,6 +38,7 @@ import {
   writeConfig,
 } from "./config.ts";
 import { type CommitSyncSummary, syncCommits } from "./git.ts";
+import { type LimitSyncSummary, syncLimits } from "./limits.ts";
 import { Providers, providersLayer } from "./providers.ts";
 import { apiClientFor, push, type PushSummary } from "./push.ts";
 import { currentTarget, installSchedule, uninstallSchedule } from "./schedule.ts";
@@ -139,6 +140,13 @@ const describeCommits = (summary: CommitSyncSummary): Summary => [
   describeLinked(summary),
   ...summary.errors.map((error) => `${mark.warn} git ${home(error.path)}: ${error.error}`),
 ];
+
+const describeLimits = ({ readings, accepted, error }: LimitSyncSummary): Summary =>
+  error !== null
+    ? [`${mark.warn} Could not send plan limits: ${error}`]
+    : readings === 0
+      ? ["No Claude plan limits on this machine"]
+      : [accepted === 0 ? "Claude plan limits unchanged" : "Sent Claude plan limits"];
 
 const describeConfigWritten = (headline: string) =>
   print([
@@ -275,6 +283,12 @@ const sync = Command.make(
           () => syncCommits(client, config.machineId),
           describeCommits,
         );
+        if (providers.includes("claude"))
+          yield* step(
+            "Reading plan limits",
+            () => syncLimits(client, config.machineId, host),
+            describeLimits,
+          );
       }),
     );
   }),

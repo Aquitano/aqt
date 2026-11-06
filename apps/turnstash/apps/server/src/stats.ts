@@ -115,7 +115,7 @@ const tokenTotals = (row?: {
   outputTokens: number(row?.outputTokens),
 });
 
-const monthlyProration = (
+export const monthlyProration = (
   plan: { monthlyPrice: string; startedOn: string; endedOn: string | null },
   window: { from: Date; to: Date },
 ): number => {

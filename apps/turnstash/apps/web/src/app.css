@@ -5,6 +5,9 @@
 :root {
   --brand: #c2510a;
   --brand-foreground: oklch(0.985 0 0);
+  --background: oklch(0.975 0.002 60);
+  --sidebar: var(--background);
+  --sidebar-accent: oklch(0.925 0.003 60);
   --heat: var(--primary);
   --heat-0: var(--muted);
   --heat-1: color-mix(in oklab, var(--heat) 34%, var(--background));
@@ -12,12 +15,40 @@
   --heat-3: color-mix(in oklab, var(--heat) 67%, var(--background));
   --heat-4: color-mix(in oklab, var(--heat) 84%, var(--background));
   --heat-5: var(--heat);
+  --provider-claude: #b4532f;
+  --provider-codex: #2f6fd0;
+  --provider-opencode: #0e8a7d;
+  --provider-cursor: #5b6470;
+  --provider-copilot: #7446d6;
+  --provider-gemini: #c2367f;
+  --provider-pi: #a8690d;
+  --provider-antigravity: #2e8a3f;
 }
 
-/* On a dark background the deep flame leaves the low heatmap steps near black, so the ramp tops out
-   at the bright one. */
+/* Near black with cards a step above it, tinted faintly toward the flame. */
 .dark {
+  --background: oklch(0.125 0.003 60);
+  --card: oklch(0.165 0.003 60);
+  --popover: oklch(0.2 0.004 60);
+  --muted: oklch(0.225 0.004 60);
+  --secondary: oklch(0.225 0.004 60);
+  --accent: oklch(0.285 0.005 60);
+  --muted-foreground: oklch(0.7 0.004 60);
+  --border: oklch(1 0 0 / 7%);
+  --sidebar: var(--background);
+  --sidebar-accent: oklch(0.205 0.004 60);
+  --sidebar-border: oklch(1 0 0 / 6%);
+  /* On a dark background the deep flame leaves the low heatmap steps near black, so the ramp tops out
+     at the bright one. */
   --heat: #f6821f;
+  --provider-claude: #e8825f;
+  --provider-codex: #7aa7f5;
+  --provider-opencode: #50c3b6;
+  --provider-cursor: #b6bdc7;
+  --provider-copilot: #a98bf0;
+  --provider-gemini: #e8649d;
+  --provider-pi: #eeb720;
+  --provider-antigravity: #6fcf7f;
 }
 
 @theme inline {
@@ -27,6 +58,14 @@
   --color-heat-3: var(--heat-3);
   --color-heat-4: var(--heat-4);
   --color-heat-5: var(--heat-5);
+  --color-provider-claude: var(--provider-claude);
+  --color-provider-codex: var(--provider-codex);
+  --color-provider-opencode: var(--provider-opencode);
+  --color-provider-cursor: var(--provider-cursor);
+  --color-provider-copilot: var(--provider-copilot);
+  --color-provider-gemini: var(--provider-gemini);
+  --color-provider-pi: var(--provider-pi);
+  --color-provider-antigravity: var(--provider-antigravity);
 }
 
 @layer base {

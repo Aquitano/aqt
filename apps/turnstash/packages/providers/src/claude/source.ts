@@ -23,7 +23,7 @@ const expandHome = (host: HostEnv, value: string) =>
       ? joinPath(host, host.home, value.slice(2))
       : value;
 
-const configDirs = (host: HostEnv): ReadonlyArray<string> => {
+const configOverrides = (host: HostEnv): ReadonlyArray<string> => {
   const entries = (host.env["CLAUDE_CONFIG_DIRS"] ?? "")
     .split(host.os === "win32" ? ";" : ":")
     .map((entry) => entry.trim())
@@ -31,7 +31,20 @@ const configDirs = (host: HostEnv): ReadonlyArray<string> => {
   if (entries.length > 0) return entries.map((entry) => expandHome(host, entry));
   const single = host.env["CLAUDE_CONFIG_DIR"]?.trim();
   if (single !== undefined && single.length > 0) return [expandHome(host, single)];
-  return [joinPath(host, host.home, ".claude")];
+  return [];
+};
+
+const configDirs = (host: HostEnv): ReadonlyArray<string> => {
+  const overrides = configOverrides(host);
+  return overrides.length > 0 ? overrides : [joinPath(host, host.home, ".claude")];
+};
+
+// Claude Code keeps its account state beside the default config directory, and inside an overridden one.
+export const claudeStateFiles = (host: HostEnv): ReadonlyArray<string> => {
+  const overrides = configOverrides(host);
+  return overrides.length === 0
+    ? [joinPath(host, host.home, ".claude.json")]
+    : overrides.map((dir) => joinPath(host, dir, ".claude.json"));
 };
 
 const packagesDirectory = "Packages";

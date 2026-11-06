@@ -7,6 +7,8 @@ import {
   IngestBatch,
   IngestResult,
   IsoDate,
+  LimitBatch,
+  LimitBatchResult,
   MachineId,
   RepositoryTask,
   Tombstone,
@@ -28,6 +30,11 @@ import {
   BookmarkNote,
   BookmarkPage,
   BookmarkView,
+  CacheBreakReport,
+  LimitDrain,
+  LimitDrainQuery,
+  LimitsQuery,
+  LimitsReport,
   MarkdownExport,
   MarkdownExportInput,
   ApiTokenCreated,
@@ -167,6 +174,13 @@ export const ingestGroup = HttpApiGroup.make("ingest")
       error: BadRequest,
     }),
   )
+  .add(
+    HttpApiEndpoint.post("pushLimits", "/limits", {
+      payload: LimitBatch,
+      success: LimitBatchResult,
+      error: BadRequest,
+    }),
+  )
   .prefix("/ingest")
   .middleware(MachineAuth);
 
@@ -198,6 +212,19 @@ export const readGroup = HttpApiGroup.make("read")
     HttpApiEndpoint.get("statsDaily", "/stats/daily", { query: StatsFilter, success: StatsDaily }),
   )
   .add(HttpApiEndpoint.get("analysis", "/analysis", { query: StatsFilter, success: Analysis }))
+  .add(
+    HttpApiEndpoint.get("cacheBreaks", "/analysis/cache-breaks", {
+      query: StatsFilter,
+      success: CacheBreakReport,
+    }),
+  )
+  .add(HttpApiEndpoint.get("limits", "/limits", { query: LimitsQuery, success: LimitsReport }))
+  .add(
+    HttpApiEndpoint.get("limitDrain", "/limits/drain", {
+      query: LimitDrainQuery,
+      success: LimitDrain,
+    }),
+  )
   .add(
     HttpApiEndpoint.get("listConversations", "/conversations", {
       query: ConversationListQuery,

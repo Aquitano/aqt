@@ -13,6 +13,7 @@ import * as BunServices from "@effect/platform-bun/BunServices";
 import { Effect, Option } from "effect";
 
 import { claudeNormalizer, claudeSource } from "../src/claude/index.ts";
+import { claudeStateFiles } from "../src/claude/source.ts";
 import { jsonlRows } from "./support.ts";
 
 const fixtures = join(import.meta.dir, "fixtures", "claude");
@@ -331,5 +332,60 @@ test("an image the agent sent without its data still records its size", () => {
   ]);
   expect(conversation?.messages.flatMap((message) => message.parts)).toEqual([
     { type: "image", mediaType: "image/png", bytes: 3000 },
+  ]);
+});
+
+test("a rate limit error becomes a limit hit that names its window", () => {
+  const session = "11111111-1111-4111-8111-111111111111";
+  const streamId = streamIdOf({
+    kind: "jsonl",
+    root: configRoot,
+    relativePath: `projects/p/${session}.jsonl`,
+  });
+  const assistant = (uuid: string, second: number, error: string, text: string) =>
+    JSON.stringify({
+      type: "assistant",
+      uuid,
+      sessionId: session,
+      timestamp: `2026-10-05T12:23:${String(second).padStart(2, "0")}.000Z`,
+      message: {
+        id: uuid,
+        model: "<synthetic>",
+        role: "assistant",
+        usage: { input_tokens: 0, output_tokens: 0 },
+        content: [{ type: "text", text }],
+      },
+      isApiErrorMessage: true,
+      error,
+    });
+  const rows = jsonlRows(
+    streamId,
+    [
+      assistant(
+        "a",
+        1,
+        "rate_limit",
+        "You've hit your session limit · resets 2:40pm (Europe/Berlin)",
+      ),
+      assistant("b", 2, "rate_limit", "You've hit your weekly limit · resets Nov 9"),
+      assistant("c", 3, "server_error", "API Error: 500"),
+    ].join("\n"),
+    "2026-10-06T00:00:00.000Z",
+  );
+  const conversation = claudeNormalizer.normalize(session, rows);
+  expect(conversation?.limitHits?.map((hit) => [hit.occurredAt, hit.windowMinutes])).toEqual([
+    ["2026-10-05T12:23:01.000Z", 300],
+    ["2026-10-05T12:23:02.000Z", 10_080],
+  ]);
+});
+
+test("Claude state follows explicit overrides even when they name the default directory", () => {
+  expect(claudeStateFiles(host({}))).toEqual(["/home/dev/.claude.json"]);
+  expect(claudeStateFiles(host({ env: { CLAUDE_CONFIG_DIR: "~/.claude" } }))).toEqual([
+    "/home/dev/.claude/.claude.json",
+  ]);
+  expect(claudeStateFiles(host({ env: { CLAUDE_CONFIG_DIRS: "~/.claude:/opt/claude" } }))).toEqual([
+    "/home/dev/.claude/.claude.json",
+    "/opt/claude/.claude.json",
   ]);
 });

@@ -1,0 +1,209 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "9fd7a04e-b32f-4998-b379-a22cdfe68d92",
+  "prevIds": [
+    "e9034843-abdb-4ff5-804a-07f66e6a7382"
+  ],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "limit_samples",
+        "limit_samples_series"
+      ],
+      "writes": [
+        "s|idx|public.limit_samples_series",
+        "n|idx|public.limit_samples_series",
+        "e|idx|public.limit_samples_series",
+        "n|rel|public.limit_samples_series"
+      ],
+      "reads": [
+        "e|tbl|public.limit_samples",
+        "n|sch|public",
+        "e|col|public.limit_samples.provider",
+        "e|col|public.limit_samples.window_minutes",
+        "e|col|public.limit_samples.observed_at"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "limit_hits",
+        "limit_hits_time"
+      ],
+      "writes": [
+        "s|idx|public.limit_hits_time",
+        "n|idx|public.limit_hits_time",
+        "e|idx|public.limit_hits_time",
+        "n|rel|public.limit_hits_time"
+      ],
+      "reads": [
+        "n|tbl|public.limit_hits",
+        "n|sch|public",
+        "n|col|public.limit_hits.occurred_at"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "6cdb7dc5e88a5b79"
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "limit_samples",
+        "limit_samples_window"
+      ],
+      "writes": [
+        "s|idx|public.limit_samples_window",
+        "n|idx|public.limit_samples_window",
+        "e|idx|public.limit_samples_window",
+        "n|rel|public.limit_samples_window"
+      ],
+      "reads": [
+        "n|tbl|public.limit_samples",
+        "n|sch|public",
+        "n|col|public.limit_samples.window_minutes"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "limit_samples",
+        "limit_samples_observed"
+      ],
+      "writes": [
+        "s|idx|public.limit_samples_observed",
+        "n|idx|public.limit_samples_observed",
+        "e|idx|public.limit_samples_observed",
+        "n|rel|public.limit_samples_observed"
+      ],
+      "reads": [
+        "n|tbl|public.limit_samples",
+        "n|sch|public",
+        "n|col|public.limit_samples.observed_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "limit_samples",
+        "limit_samples_reset"
+      ],
+      "writes": [
+        "s|idx|public.limit_samples_reset",
+        "n|idx|public.limit_samples_reset",
+        "e|idx|public.limit_samples_reset",
+        "n|rel|public.limit_samples_reset"
+      ],
+      "reads": [
+        "n|tbl|public.limit_samples",
+        "n|sch|public",
+        "n|col|public.limit_samples.resets_at"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "limit_samples",
+        "name": "limit_samples_window",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "window_minutes",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "limit_samples",
+        "name": "limit_samples_observed",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "observed_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "limit_samples",
+        "name": "limit_samples_reset",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "resets_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"limit_samples_series\"]"
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"limit_hits_time\"]",
+      "set": {
+        "columns": [
+          {
+            "value": "occurred_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ]
+      }
+    }
+  ]
+}

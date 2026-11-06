@@ -1,11 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import { Async } from "../components/Async";
+import { Async, Pending, RequestFailure } from "../components/Async";
+import { LimitsStrip } from "../components/LimitsStrip";
 import { Page } from "../components/Page";
 import { StatsView } from "../components/StatsView";
 import { FilterBar, useFilters } from "../filters";
-import { heatmapRange } from "../period";
-import { dailyQuery, rangeFilter, statsQuery } from "../queries";
+import { expiredByProvider } from "../limits-model";
+import { dateBounds, heatmapRange } from "../period";
+import { dailyQuery, limitsQuery, rangeFilter, statsQuery } from "../queries";
 import { usePreviousOverall } from "../trend";
 
 export const OverviewPage = () => {
@@ -17,9 +19,22 @@ export const OverviewPage = () => {
     dailyQuery({ ...filters.stats, ...rangeFilter(heatmapRange(filters.today)) }),
   );
 
+  const bounds = filters.range === null ? null : dateBounds(filters.range);
+  const limits = useQuery({
+    ...limitsQuery(bounds ?? { from: new Date(0).toISOString() }),
+    placeholderData: keepPreviousData,
+  });
+  const expired = expiredByProvider(
+    limits.data?.providers ?? [],
+    bounds === null ? null : { fromMs: Date.parse(bounds.from), toMs: Date.parse(bounds.to) },
+  );
+
   return (
     <Page>
       <FilterBar title="Overview" note={stats.data?.range === null ? "all time" : undefined} />
+      {stats.isSuccess && limits.isPending && <Pending />}
+      {!stats.isError && limits.isError && <RequestFailure error={limits.error} />}
+      <LimitsStrip providers={limits.data?.providers ?? []} />
       <Async query={stats}>
         {(data) => (
           <StatsView
@@ -28,6 +43,9 @@ export const OverviewPage = () => {
             calendar={calendar.data ?? null}
             hideMachines={filters.machineId !== null}
             showSubscriptions
+            {...(limits.isError || limits.isPlaceholderData || limits.data === undefined
+              ? {}
+              : { expired })}
           />
         )}
       </Async>

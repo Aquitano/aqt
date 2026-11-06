@@ -82,6 +82,16 @@ export const dateTime = (iso: string): string => {
   });
 };
 
+export const clockTime = (ms: number): string =>
+  new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+
+export const weekdayTime = (ms: number): string =>
+  `${new Date(ms).toLocaleDateString(undefined, { weekday: "short" })} ${clockTime(ms)}`;
+
+// Weekday and date together, because a two-week chart holds two of every weekday.
+export const dayTime = (ms: number): string =>
+  `${new Date(ms).toLocaleDateString(undefined, { weekday: "short", day: "numeric" })} ${clockTime(ms)}`;
+
 export const shortId = (id: string, keep = 8): string =>
   id.length <= keep + 2 ? id : `…${id.slice(-keep)}`;
 

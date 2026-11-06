@@ -12,6 +12,9 @@ export interface SegmentedOption<V extends string> {
   readonly label: string;
 }
 
+export const quietControl =
+  "rounded-lg border-transparent bg-muted/70 hover:bg-muted dark:bg-muted/70 dark:hover:bg-muted";
+
 // Phones get a select, as in shadcn's dashboard, because six periods in a row run off the screen.
 export const Segmented = <V extends string>({
   label,
@@ -27,10 +30,9 @@ export const Segmented = <V extends string>({
   <>
     <ToggleGroup
       aria-label={label}
-      variant="outline"
       size="sm"
       spacing={0}
-      className="max-sm:hidden"
+      className="gap-0.5 rounded-lg bg-muted/70 p-0.5 max-sm:hidden"
       value={[value]}
       onValueChange={([next]) => {
         const option = options.find((candidate) => candidate.value === next);
@@ -38,7 +40,11 @@ export const Segmented = <V extends string>({
       }}
     >
       {options.map((option) => (
-        <ToggleGroupItem key={option.value} value={option.value}>
+        <ToggleGroupItem
+          key={option.value}
+          value={option.value}
+          className="h-7 min-w-0 rounded-md! px-2.5! text-[13px] font-normal text-muted-foreground hover:bg-transparent hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
+        >
           {option.label}
         </ToggleGroupItem>
       ))}
@@ -50,7 +56,7 @@ export const Segmented = <V extends string>({
         if (next !== null) onChange(next);
       }}
     >
-      <SelectTrigger size="sm" aria-label={label} className="sm:hidden">
+      <SelectTrigger size="sm" aria-label={label} className={`sm:hidden ${quietControl}`}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

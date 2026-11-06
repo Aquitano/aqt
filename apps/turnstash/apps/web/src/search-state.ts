@@ -1,6 +1,7 @@
 import { MessageView, providerIds, type ProviderId } from "@aqt/turnstash-api";
 import { Option, Schema } from "effect";
 
+import type { BurnMode, FutureUsage } from "./limits-model";
 import { isPeriodId, type PeriodId } from "./period";
 
 export const roles = MessageView.fields.role.literals;
@@ -84,4 +85,50 @@ export const highlightSegments = (text: string, query: string) => {
   }
   if (start < text.length) segments.push({ text: text.slice(start), matched: false });
   return segments;
+};
+
+export interface LimitsSearch {
+  readonly windows?: Partial<Readonly<Record<ProviderId, number>>> | undefined;
+  readonly selectionProvider?: ProviderId | undefined;
+  readonly from?: number | undefined;
+  readonly to?: number | undefined;
+  readonly provider?: ProviderId | undefined;
+  readonly week?: number | undefined;
+  readonly view?: "remaining" | "drain" | undefined;
+  readonly burn?: BurnMode | undefined;
+  readonly future?: FutureUsage | undefined;
+}
+
+const decodeWindows = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Number));
+
+export const parseLimitsSearch = (search: typeof UrlSearch.Type): LimitsSearch => {
+  const week = Number(stringValue(search.week));
+  const rawWindows = Option.getOrUndefined(decodeWindows(search.windows));
+  const windows = Object.fromEntries(
+    providerIds.flatMap((provider) => {
+      const minutes = rawWindows?.[provider];
+      return minutes !== undefined && Number.isInteger(minutes) && minutes > 0 && minutes <= 525_600
+        ? [[provider, minutes] as const]
+        : [];
+    }),
+  );
+  const from = Number(stringValue(search.from));
+  const to = Number(stringValue(search.to));
+  const selectionProvider = providerIds.find((value) => value === search.selectionProvider);
+  const validSelection =
+    selectionProvider !== undefined &&
+    Number.isSafeInteger(from) &&
+    Number.isSafeInteger(to) &&
+    from >= 0 &&
+    to > from &&
+    to <= 8_640_000_000_000_000;
+  return {
+    provider: providerIds.find((value) => value === search.provider),
+    ...(Object.keys(windows).length > 0 ? { windows } : {}),
+    ...(validSelection ? { selectionProvider, from, to } : {}),
+    week: Number.isInteger(week) && week <= 0 && week >= -5200 ? week : undefined,
+    view: search.view === "drain" ? "drain" : undefined,
+    burn: (["window", "6h", "3h", "1h"] as const).find((value) => value === search.burn),
+    future: (["same", "half", "double", "none"] as const).find((value) => value === search.future),
+  };
 };

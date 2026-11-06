@@ -429,3 +429,74 @@ test("trimming drops encrypted reasoning and events that repeat a response item,
   );
   for (const row of otherEvents) expect(kept).toContain(row.payload);
 });
+
+test("rate limits preserve the endpoints of unchanged readings, with reset jitter ignored", () => {
+  const stream = StreamId.make(
+    "machine-a/jsonl/sessions/2026/09/20/rollout-2026-09-20T10-58-17-00000000-0000-7000-0000-00000000eeee.jsonl",
+  );
+  const tokenCount = (second: number, usedPercent: number, resetsAt: number, secondary?: number) =>
+    JSON.stringify({
+      timestamp: `2026-09-20T10:58:${String(second).padStart(2, "0")}.000Z`,
+      ordinal: second,
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: null,
+        rate_limits: {
+          limit_id: "codex",
+          plan_type: "prolite",
+          primary: { used_percent: usedPercent, window_minutes: 10_080, resets_at: resetsAt },
+          secondary:
+            secondary === undefined
+              ? null
+              : { used_percent: secondary, window_minutes: 300, resets_at: resetsAt },
+        },
+      },
+    });
+  const other = JSON.stringify({
+    timestamp: "2026-09-20T10:58:40.000Z",
+    ordinal: 40,
+    type: "event_msg",
+    payload: {
+      type: "token_count",
+      rate_limits: {
+        limit_id: "codex_other",
+        primary: { used_percent: 99, window_minutes: 10_080, resets_at: 1_790_500_000 },
+      },
+    },
+  });
+  const head = rolloutHead(`{"id":"00000000-0000-7000-0000-00000000eeee"}`);
+  const message = JSON.stringify({
+    timestamp: "2026-09-20T10:58:19.500Z",
+    ordinal: 2,
+    type: "response_item",
+    payload: { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+  });
+  const rows = jsonlRows(
+    stream,
+    `${head}${message}
+${tokenCount(20, 10, 1_790_500_000, 50)}
+${tokenCount(21, 10, 1_790_500_004, 50)}
+${tokenCount(22, 11, 1_790_500_002, 50)}
+${tokenCount(23, 11, 1_790_500_002, 50)}
+${tokenCount(24, 11, 1_790_500_002, 50)}
+${other}
+`,
+    "2026-09-21T00:00:00.000Z",
+  );
+  expect(
+    (normalized(rows).limitSamples ?? []).map((sample) => [
+      sample.windowMinutes,
+      sample.usedPercent,
+      sample.observedAt,
+      sample.plan,
+    ]),
+  ).toEqual([
+    [10_080, 10, "2026-09-20T10:58:20.000Z", "prolite"],
+    [300, 50, "2026-09-20T10:58:20.000Z", "prolite"],
+    [10_080, 10, "2026-09-20T10:58:21.000Z", "prolite"],
+    [300, 50, "2026-09-20T10:58:24.000Z", "prolite"],
+    [10_080, 11, "2026-09-20T10:58:22.000Z", "prolite"],
+    [10_080, 11, "2026-09-20T10:58:24.000Z", "prolite"],
+  ]);
+});

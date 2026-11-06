@@ -61,28 +61,17 @@ const Figure = ({
   label,
   value,
   sub,
-  lead = false,
 }: {
   readonly label: ReactNode;
   readonly value: ReactNode;
   readonly sub?: ReactNode;
-  readonly lead?: boolean;
 }) => (
-  <div className={cn("flex min-w-0 flex-col gap-0.5", lead && "max-sm:col-span-full")}>
-    <span
-      className={cn(
-        "flex flex-wrap items-baseline gap-2.5 leading-tight font-medium tracking-tight",
-        lead ? "text-4xl max-sm:text-3xl" : "text-2xl",
-      )}
-    >
+  <div className="flex min-w-0 flex-col gap-0.5">
+    <dt className="text-xs text-muted-foreground">{label}</dt>
+    <dd className="flex flex-wrap items-baseline gap-2 text-[15px] leading-snug font-medium">
       {value}
-    </span>
-    <span>{label}</span>
-    {sub !== undefined && (
-      <span className="text-xs text-muted-foreground [&_a]:text-foreground [&_a]:underline [&_a]:underline-offset-2 [&_a]:hover:decoration-primary">
-        {sub}
-      </span>
-    )}
+    </dd>
+    {sub !== undefined && <dd className="text-xs text-muted-foreground">{sub}</dd>}
   </div>
 );
 
@@ -115,64 +104,69 @@ export const StatTiles = ({
     ].join(", ");
 
   return (
-    <div className="grid grid-cols-2 gap-x-8 gap-y-4 border-y py-5 sm:grid-cols-[minmax(220px,1.4fr)_repeat(auto-fit,minmax(150px,1fr))]">
-      <Figure
-        lead
-        label="API-equivalent cost"
-        value={
-          <>
+    <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
+      <div className="min-w-0">
+        <h2 className="text-[15px] font-medium tracking-tight">API-equivalent cost</h2>
+        <p className="mt-1.5 flex flex-wrap items-baseline gap-2.5">
+          <span className="text-[44px] leading-none font-semibold tracking-tight">
             {usd(overall.costUsd)}
-            <Delta now={overall.costUsd} previous={previous === null ? null : previous.costUsd} />
-          </>
-        }
-        sub={
-          overall.unpricedRequests > 0 ? (
+          </span>
+          <Delta now={overall.costUsd} previous={previous === null ? null : previous.costUsd} />
+        </p>
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          {usd(perConversation)} per conversation
+          {overall.unpricedRequests > 0 && (
             <>
-              {usd(perConversation)} per conversation,{" "}
-              <Link to="/settings">{int(overall.unpricedRequests)} requests unpriced</Link>
+              ,{" "}
+              <Link
+                to="/settings"
+                className="text-foreground underline underline-offset-2 hover:decoration-primary"
+              >
+                {int(overall.unpricedRequests)} requests unpriced
+              </Link>
             </>
-          ) : (
-            `${usd(perConversation)} per conversation`
-          )
-        }
-      />
-      {subscriptions.length > 0 && (
+          )}
+        </p>
+      </div>
+      <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-7 gap-y-3 sm:grid-cols-3 lg:flex lg:flex-none lg:flex-wrap lg:justify-end">
+        {subscriptions.length > 0 && (
+          <Figure
+            label="Subscriptions"
+            value={moneyList(totalsByCurrency(subscriptions))}
+            sub="plan cost over this window"
+          />
+        )}
         <Figure
-          label="Subscriptions"
-          value={moneyList(totalsByCurrency(subscriptions))}
-          sub="plan cost over this window"
+          label="Conversations"
+          value={
+            <>
+              {int(overall.conversations)}
+              <Delta
+                now={overall.conversations}
+                previous={previous === null ? null : previous.conversations}
+              />
+            </>
+          }
+          sub={`${int(overall.requests)} requests`}
         />
-      )}
-      <Figure
-        label="Conversations"
-        value={
-          <>
-            {int(overall.conversations)}
-            <Delta
-              now={overall.conversations}
-              previous={previous === null ? null : previous.conversations}
-            />
-          </>
-        }
-        sub={`${int(overall.requests)} requests, ${int(overall.messages)} messages`}
-      />
-      <Figure
-        label="Tokens"
-        value={<span title={tokenBreakdown(int)}>{compact(tokens)}</span>}
-        sub={tokenBreakdown(compact)}
-      />
-      <Figure
-        label="Cache hit rate"
-        value={pct(cacheHitRate)}
-        sub={`${compact(overall.cacheReadTokens)} read, ${compact(overall.cacheWriteTokens)} written`}
-      />
-      {month !== null && (
         <Figure
-          label="Month to date"
-          value={usd(month.spent)}
-          sub={`on track for ${usd(month.projected)}, day ${month.dayOfMonth} of ${month.daysInMonth}`}
+          label="Tokens"
+          value={<span title={tokenBreakdown(int)}>{compact(tokens)}</span>}
+          sub={tokenBreakdown(compact)}
         />
-      )}
+        <Figure
+          label="Cache hit rate"
+          value={pct(cacheHitRate)}
+          sub={`${compact(overall.cacheWriteTokens)} written`}
+        />
+        {month !== null && (
+          <Figure
+            label="Month to date"
+            value={usd(month.spent)}
+            sub={`on track for ${usd(month.projected)}`}
+          />
+        )}
+      </dl>
     </div>
   );
 };
