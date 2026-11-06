@@ -48,7 +48,7 @@ export const currentLimitWindows = Effect.fn("Limits.currentWindows")(function* 
           ),
         ),
       );
-    samples.push(...batch);
+    for (const sample of batch) samples.push(sample);
   }
   const groups = new Map<
     string,
