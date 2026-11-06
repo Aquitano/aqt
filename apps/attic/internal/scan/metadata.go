@@ -54,19 +54,15 @@ func (r *run) readMetadata(ctx context.Context) error {
 	}
 }
 
-// readOneMetadata holds a file only while ExifTool reads it in place.
-// ExifTool reads only the parts that hold tags, so a large video costs a few
-// megabytes. A tool failure is a skip for the next scan to retry, never a
-// property of the content.
 func (r *run) readOneMetadata(ctx context.Context, exiftool *metadata.Reader, p store.ContentFile) (bool, error) {
 	r.current = p.Path
 	r.progress(false)
-	f, err := r.hold(ctx, r.osPath(p.Path), p.Stamp)
+	w, path, err := r.toolCopy(ctx, r.osPath(p.Path), p.Stamp, r.o.Config.Metadata.MaxBytes)
 	if err != nil {
 		return false, r.readFailure(ctx, p.Path, fmt.Errorf("metadata: %w", err))
 	}
-	result, err := exiftool.Read(ctx, f.Name())
-	r.release(f)
+	defer r.closeScratch(w)
+	result, err := exiftool.Read(ctx, path)
 	switch {
 	case ctx.Err() != nil:
 		return false, ctx.Err()

@@ -433,34 +433,9 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 	var reads []func(pgx.BatchResults) error
 	paths := make([]string, len(listed))
 	ids := make([]int64, len(listed))
-	var movedIDs, physicalIDs []int64
 	for i, l := range listed {
 		if parent != nil {
 			paths[i] = parentPath + "/" + l.Name
-		}
-		if r := matched[i]; r != nil && r.Path != paths[i] && l.Kind == "file" &&
-			l.physicalFileID != 0 && !sameTime(r.Changed, l.Changed) {
-			movedIDs = append(movedIDs, r.ID)
-			physicalIDs = append(physicalIDs, l.physicalFileID)
-		}
-	}
-	linked := map[int64]bool{}
-	if len(movedIDs) > 0 {
-		rows, err := tx.Query(ctx, `
-			select moved.id from unnest($2::bigint[], $3::bigint[]) as moved(id, physical_file_id)
-			where exists(select 1 from entries link
-			             where link.volume_id = $1 and link.physical_file_id = moved.physical_file_id
-			               and link.id <> moved.id and link.kind = 'file' and link.missing_scan is null)`,
-			sc.Volume.ID, movedIDs, physicalIDs)
-		if err != nil {
-			return nil, err
-		}
-		linkedIDs, err := pgx.CollectRows(rows, pgx.RowTo[int64])
-		if err != nil {
-			return nil, err
-		}
-		for _, id := range linkedIDs {
-			linked[id] = true
 		}
 	}
 	var fresh newRows
@@ -503,7 +478,7 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 		if !moved && unchanged(r, l, parentID) {
 			continue
 		}
-		reset, state := contentAfter(r, l, moved, linked[r.ID])
+		reset, state := contentAfter(r, l)
 		if reset && r.Kind == "file" {
 			replaced = append(replaced, r.ID)
 		}
@@ -704,16 +679,13 @@ func unchanged(r *entryRow, l Listed, parentID *int64) bool {
 		sameTime(r.Changed, l.Changed) && hashStateAfter(r.HashState, l.HashState) == r.HashState
 }
 
-// contentAfter decides whether a changed entry keeps its content. Size or
-// modified time changing means new bytes. A change time that moved while the
-// entry stayed put does too: some writers restore the modified time. NTFS also
-// changes that time on a move, so single-file moves keep their content. Hard
-// links must be verified because another path may already know newer bytes.
-func contentAfter(r *entryRow, l Listed, moved, linked bool) (bool, string) {
+// A move can change the change time, but so can a same-size rewrite that
+// restores the modified time. Both must be hashed before reusing content.
+func contentAfter(r *entryRow, l Listed) (bool, string) {
 	if l.Kind != "file" {
 		return true, "none"
 	}
-	if r.Kind != "file" || !samePtr(r.PhysicalFileID, nullIDPtr(l.physicalFileID)) || r.Size != l.Size || !sameTime(r.Modified, l.Modified) || ((!moved || linked) && !sameTime(r.Changed, l.Changed)) {
+	if r.Kind != "file" || !samePtr(r.PhysicalFileID, nullIDPtr(l.physicalFileID)) || r.Size != l.Size || !sameTime(r.Modified, l.Modified) || !sameTime(r.Changed, l.Changed) {
 		return true, l.HashState
 	}
 	return false, hashStateAfter(r.HashState, l.HashState)

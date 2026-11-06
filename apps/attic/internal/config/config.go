@@ -46,7 +46,7 @@ type Text struct {
 	PDFToText string `toml:"pdftotext"`
 }
 
-// Metadata controls batch extraction on temporary copies.
+// Metadata controls per-file extraction through a persistent ExifTool process.
 type Metadata struct {
 	Enabled  bool   `toml:"enabled"`
 	ExifTool string `toml:"exiftool"`

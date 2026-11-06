@@ -48,8 +48,8 @@ func (sc *Scan) RebuildContent(ctx context.Context) error {
 }
 
 // Stamp is how the catalogue last saw a hashed file, and the digest it
-// recorded. Rescans keep the digest without reading the file while it still
-// matches, so a read made while it matches describes the same bytes.
+// recorded. A changed size, modified time, change time or physical ID resets
+// content before a listing updates these fields.
 type Stamp struct {
 	Size     int64
 	Modified *time.Time

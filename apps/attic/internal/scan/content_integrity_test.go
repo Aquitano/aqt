@@ -14,6 +14,7 @@ import (
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
+	"lukechampine.com/blake3"
 )
 
 func TestDerivedContentUsesHashedBytes(t *testing.T) {
@@ -243,5 +244,67 @@ func TestFileSystemWithoutChangeTimesRehashesBeforeReading(t *testing.T) {
 	}
 	if skips, err := st.Skips(t.Context(), res.ScanID, "changed", "", 10); err != nil || len(skips) != 1 {
 		t.Fatalf("changed skips: %+v, %v", skips, err)
+	}
+}
+
+func TestRewriteThenRenameRehashesBeforeDerivedContent(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ATTIC_SCAN_METADATA_HELPER", "1")
+	for _, ext := range []string{"txt", "zip", "mp4"} {
+		t.Run(ext, func(t *testing.T) {
+			st, dsn := storetest.New(t)
+			root := t.TempDir()
+			original, replacement := "original", "replaced"
+			if ext == "zip" {
+				original = zipOf(t, map[string]string{"original.txt": "original"})
+				replacement = zipOf(t, map[string]string{"replaced.txt": "replaced"})
+			}
+			if len(original) != len(replacement) {
+				t.Fatal("replacement must have the same size")
+			}
+			write(t, root, "moving.bin", original)
+			path := filepath.Join(root, "moving.bin")
+			before, err := disk.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if before.Changed.IsZero() {
+				t.Skip("filesystem has no change time")
+			}
+			fp := testVolume
+			fp.FS = "NTFS"
+			cfg := config.Config{Temp: t.TempDir(), Archives: config.Archives{Depth: 1}, Metadata: config.Metadata{Enabled: true, ExifTool: binary}}
+			scanAt(t, st, root, fp, func(o *Options) { o.Config = cfg })
+			old := find(t, st, "moving")
+			oldContent := pgschematest.QueryInt(t, dsn, `select content_id from entries where id=$1`, old.ID)
+			write(t, root, "moving.bin", replacement)
+			if err := os.Chtimes(path, before.Modified, before.Modified); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(path, filepath.Join(root, "moving."+ext)); err != nil {
+				t.Fatal(err)
+			}
+			res := scanAt(t, st, root, fp, func(o *Options) { o.Config = cfg })
+			after := find(t, st, "moving")
+			digest := blake3.Sum256([]byte(replacement))
+			if res.Counts.Hashed != 1 || after.ID != old.ID || after.Ref != fmt.Sprintf("%x", digest[:8]) || after.Ref == old.Ref {
+				t.Fatalf("replacement kept old digest: before %+v, after %+v, counts %+v", old, after, res.Counts)
+			}
+			if n := pgschematest.QueryInt(t, dsn, `select
+				(select count(*) from texts where content_id=$1) +
+				(select count(*) from metadata where content_id=$1) +
+				(select count(*) from archives where content_id=$1)`, oldContent); n != 0 {
+				t.Fatalf("stored %d replacement results under the original digest", n)
+			}
+			if res.Counts.Texts+res.Counts.Archives+res.Counts.Metadata != 1 {
+				t.Fatalf("replacement was not extracted: %+v", res.Counts)
+			}
+			if again := scanAt(t, st, root, fp, func(o *Options) { o.Config = cfg }); again.Counts.Hashed != 0 {
+				t.Fatalf("unchanged NTFS file rehashed: %+v", again.Counts)
+			}
+		})
 	}
 }

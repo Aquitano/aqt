@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"math"
@@ -157,7 +158,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	if r.o.list == nil {
 		r.o.list = disk.List
 	}
-	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20, PDFToText: o.Config.Text.PDFToText}
+	r.text = extract.Options{MaxBytes: textMax, MaxChars: 1 << 20, PDFToText: o.Config.Text.PDFToText}
 	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
 		"root", cmp.Or(root, "/"), "no_hash", o.NoHash, "archive_depth", a.Depth, "unpack_max_bytes", a.UnpackMaxBytes,
 		"text_max_bytes", o.Config.Text.MaxBytes, "hash_max_bytes", o.Config.HashMaxBytes)
@@ -664,6 +665,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	started, members := time.Now(), r.sc.Counts.Members
 	var skips []archive.Skip
 	opener := archiveFiles{r: r, ctx: ctx, source: source, stamp: a.Stamp}
+	defer opener.close()
 	options := r.archives
 	options.Depth = rules.ArchiveDepth
 	res, err := archive.List(ctx, opener.source, opener.open, options,
@@ -774,8 +776,16 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 		return r.readFailure(ctx, p.Path, err)
 	}
 	r.readErr = nil
-	res := extract.File(ctx, source, p.Name, "", r.text)
+	res := extract.Read(ctx, watchedDocument{Reader: io.NewSectionReader(f, 0, f.Entry.Size), err: &r.readErr}, f.Entry.Size, p.Name, "", r.text)
 	r.release(f)
+	if strings.EqualFold(filepath.Ext(p.Name), ".pdf") && res.Status == extract.StatusFailed && r.readErr == nil && r.text.PDFToText != "" && ctx.Err() == nil {
+		w, path, err := r.toolCopy(ctx, source, p.Stamp, r.o.Config.Text.MaxBytes)
+		if err != nil {
+			return r.readFailure(ctx, p.Path, err)
+		}
+		res = extract.File(ctx, path, p.Name, "", r.text)
+		r.closeScratch(w)
+	}
 	took := time.Since(started)
 	if err := ctx.Err(); err != nil {
 		return err
@@ -821,32 +831,19 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 
 const slowDocument = 10 * time.Second
 
-// openDocument opens a document for extract through disk.Open, and notes the
-// first failed open or read in r.readErr.
-func (r *run) openDocument(p string) (extract.Handle, error) {
-	f, err := disk.Open(p)
-	if err != nil {
-		if ioError(err) {
-			r.readErr = err
-		}
-		return nil, err
-	}
-	return watchedDocument{File: f, err: &r.readErr}, nil
-}
-
 type watchedDocument struct {
-	*os.File
+	extract.Reader
 	err *error
 }
 
 func (d watchedDocument) Read(p []byte) (int, error) {
-	n, err := d.File.Read(p)
+	n, err := d.Reader.Read(p)
 	d.note(err)
 	return n, err
 }
 
 func (d watchedDocument) ReadAt(p []byte, off int64) (int, error) {
-	n, err := d.File.ReadAt(p, off)
+	n, err := d.Reader.ReadAt(p, off)
 	d.note(err)
 	return n, err
 }

@@ -126,6 +126,18 @@ func TestFileReadsThroughTheGivenOpener(t *testing.T) {
 	}
 }
 
+func TestReadUsesTheOpenObjectWithoutAPath(t *testing.T) {
+	data := []byte("text from the held object")
+	o := Options{Open: func(string) (Handle, error) {
+		t.Fatal("reopened the source path")
+		return nil, os.ErrNotExist
+	}}
+	res := Read(t.Context(), bytes.NewReader(data), int64(len(data)), "missing.txt", "", o)
+	if res.Status != StatusOK || res.Text != string(data) {
+		t.Fatalf("read: %+v", res)
+	}
+}
+
 func TestFileHTMLStripsMarkup(t *testing.T) {
 	path := write(t, "page.html", []byte("<html><style>p{color:red}</style><p>Hello <b>Alice</b></p></html>"))
 	res := File(context.Background(), path, "page.html", "text/html", Options{})
