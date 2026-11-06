@@ -89,9 +89,10 @@ type Options struct {
 }
 
 type Result struct {
-	Format string
-	Status string
-	Detail string
+	Format     string
+	Status     string
+	Detail     string
+	Incomplete bool
 }
 
 type Handle interface {
@@ -131,8 +132,15 @@ func List[F Handle](ctx context.Context, p string, open func(string) (F, error),
 		defer func() { err = errors.Join(err, workspace.Close()) }()
 		o.Temp = workspace.Path
 	}
-	l := lister{o: o, emit: emit, skip: skip, watch: &watch{ctx: ctx}, log: cmp.Or(o.Log, slog.New(slog.DiscardHandler))}
+	incomplete := false
+	l := lister{o: o, emit: emit, skip: func(s Skip) {
+		if s.Reason != "too_deep" {
+			incomplete = true
+		}
+		skip(s)
+	}, watch: &watch{ctx: ctx}, log: cmp.Or(o.Log, slog.New(slog.DiscardHandler))}
 	res, err = l.list(ctx, p, func(p string) (Handle, error) { return open(p) }, "", 1)
+	res.Incomplete = incomplete
 	// A read that failed anywhere, a nested archive's included, says the disk
 	// faltered; the listing is dropped and the next scan tries again.
 	if readErr := l.watch.failure(); err == nil && readErr != nil {

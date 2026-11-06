@@ -585,8 +585,8 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 	return r.sc.SetContent(ctx, p, digest)
 }
 
-// listArchives reads the archives below the scan root whose content has no
-// listing yet, in path order like hashing.
+// listArchives reads archives below the scan root whose cached listings do
+// not reach the requested depth, in path order like hashing.
 func (r *run) listArchives(ctx context.Context) error {
 	var err error
 	if r.total, err = r.sc.ArchiveTotals(ctx, r.archiveDepth); err != nil {
@@ -607,6 +607,9 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	rules := r.rulesFor(a.Path)
 	if rules.SkipContent(a.Path) || rules.ArchiveDepth == 0 {
 		r.log.Debug("archive left unread by the rules", "path", a.Path)
+		return nil
+	}
+	if a.Depth >= rules.ArchiveDepth {
 		return nil
 	}
 	l, err := r.sc.StartListing(ctx, a.ContentID, rules.ArchiveDepth)

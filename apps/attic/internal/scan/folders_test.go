@@ -10,6 +10,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
+	"github.com/aquitano/aqt/apps/attic/internal/store"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
@@ -115,5 +116,36 @@ func TestFolderDepthUpgradesIdenticalArchiveCopies(t *testing.T) {
 	}
 	if res := scanAt(t, st, root, testVolume, options); res.Counts.Archives != 0 {
 		t.Fatalf("completed deep listing was repeated: %+v", res.Counts)
+	}
+}
+
+func TestArchiveDepthUpgradeRetainsCacheAfterNestedSkip(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	deepest := zipOf(t, map[string]string{"deep.txt": "content", "closed.zip": zipOf(t, map[string]string{"unopened.txt": "content"})})
+	nested := zipOf(t, map[string]string{"cached.txt": "cached", "deeper.zip": deepest})
+	write(t, root, "copy.zip", zipOf(t, map[string]string{"nested.zip": nested}))
+	options := func(o *Options) { o.Config.Archives.Depth = 2 }
+	scanAt(t, st, root, testVolume, options)
+	res := scanAt(t, st, root, testVolume, func(o *Options) {
+		o.Config.Archives.Depth = 3
+		o.Config.Archives.UnpackMaxBytes = 1
+	})
+	if res.Counts.Archives != 0 || res.Counts.Members != 0 ||
+		pgschematest.QueryInt(t, dsn, `select depth from archives`) != 2 ||
+		pgschematest.QueryInt(t, dsn, `select count(*) from members where name = 'cached.txt'`) != 1 {
+		t.Fatalf("nested skip replaced the cache: %+v", res.Counts)
+	}
+	res = scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Archives.Depth = 3 })
+	if res.Counts.Archives != 1 || pgschematest.QueryInt(t, dsn, `select depth from archives`) != 3 ||
+		pgschematest.QueryInt(t, dsn, `select count(*) from members where name in ('cached.txt', 'deep.txt')`) != 2 {
+		t.Fatalf("successful retry did not deepen the cache: %+v", res.Counts)
+	}
+}
+
+func TestSatisfiedFolderDepthSkipsArchiveTransaction(t *testing.T) {
+	r := run{rules: config.Default().Rules("", "")}
+	if err := r.listArchive(t.Context(), store.PendingArchive{Path: "/copy.zip", Depth: r.rules.ArchiveDepth}); err != nil {
+		t.Fatal(err)
 	}
 }

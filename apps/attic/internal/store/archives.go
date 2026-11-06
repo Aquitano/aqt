@@ -17,15 +17,17 @@ type PendingArchive struct {
 	Size      int64
 	ContentID int64
 	Digest    disk.Digest
+	Depth     int
 }
 
 // pendingArchiveWhere matches the names archive.IsArchive accepts, below an
 // upper path bound at the requested depth; the callers add the lower one as $6.
 const pendingArchiveWhere = `
 	from entries e join contents c on c.id = e.content_id
+	left join archives a on a.content_id = e.content_id
 	where e.volume_id = $1 and e.kind = 'file' and e.hash_state = 'done' and e.missing_scan is null
 	  and (e.ext = any($2) or (e.ext = any($3) and lower(e.name) like ('%.tar.' || e.ext)))
-	  and not exists (select 1 from archives a where a.content_id = e.content_id and (a.depth is null or a.depth >= $5))
+	  and (a.content_id is null or a.depth < $5)
 	  and ($4 = '' or e.path collate "C" < $4)`
 
 // ArchiveTotals is the listing work left below the scan root, one per content.
@@ -44,7 +46,7 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 	if after.ID != 0 {
 		lower = after.Path
 	}
-	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, c.size_bytes, e.content_id, c.blake3`+pendingArchiveWhere+`
+	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, c.size_bytes, e.content_id, c.blake3, coalesce(a.depth, 0)`+pendingArchiveWhere+`
 		  and (e.path collate "C", e.id) > ($6, $7)
 		order by e.path collate "C", e.id limit $8`,
 		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, depth, lower, after.ID, limit)
@@ -54,7 +56,7 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PendingArchive, error) {
 		var p PendingArchive
 		var digest []byte
-		err := r.Scan(&p.ID, &p.Path, &p.Size, &p.ContentID, &digest)
+		err := r.Scan(&p.ID, &p.Path, &p.Size, &p.ContentID, &digest, &p.Depth)
 		copy(p.Digest[:], digest)
 		return p, err
 	})
@@ -145,7 +147,7 @@ func (l *Listing) flush(ctx context.Context) error {
 
 // Finish records how reading the archive went and commits its members.
 func (l *Listing) Finish(ctx context.Context, res archive.Result) error {
-	if l.replacing && res.Status != archive.Listed {
+	if l.replacing && (res.Status != archive.Listed || res.Incomplete) {
 		l.Abort(ctx)
 		return ctx.Err()
 	}

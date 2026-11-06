@@ -88,7 +88,7 @@ func TestListOpensNestedArchivesToTheDepth(t *testing.T) {
 	temp := t.TempDir()
 
 	res, members, skips := list(t, outer, Options{Depth: 2, Temp: temp})
-	if res.Status != Listed || res.Format != "zip" {
+	if res.Status != Listed || res.Format != "zip" || res.Incomplete {
 		t.Fatalf("result %+v", res)
 	}
 	var paths []string
@@ -106,8 +106,8 @@ func TestListOpensNestedArchivesToTheDepth(t *testing.T) {
 		t.Errorf("temporary copies left behind: %v", left)
 	}
 
-	_, _, skips = list(t, outer, Options{Depth: 2, UnpackMaxBytes: 10, Temp: temp})
-	if len(skips) != 1 || skips[0].Reason != "too_big" {
+	res, _, skips = list(t, outer, Options{Depth: 2, UnpackMaxBytes: 10, Temp: temp})
+	if !res.Incomplete || len(skips) != 1 || skips[0].Reason != "too_big" {
 		t.Errorf("skips with a 10-byte cap %+v, want MinecraftServer.zip too big", skips)
 	}
 }
@@ -136,6 +136,13 @@ func TestListTellsWhyAnArchiveCannotBeRead(t *testing.T) {
 		}
 		if tc.status == Listed && (len(members) != 1 || members[0].Path != "backup/notes.txt") {
 			t.Errorf("%s: members %+v", tc.name, members)
+		}
+		if tc.status != Listed {
+			outer := zipOf(t, map[string][]byte{"nested.zip": tc.data})
+			res, _, skips := list(t, outer, Options{Depth: 2, Temp: t.TempDir()})
+			if res.Status != Listed || !res.Incomplete || len(skips) != 1 || skips[0].Reason != tc.status {
+				t.Errorf("nested %s: result %+v, skips %+v", tc.name, res, skips)
+			}
 		}
 	}
 }

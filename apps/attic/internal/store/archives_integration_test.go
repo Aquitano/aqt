@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -89,6 +90,9 @@ func TestArchiveCacheUpgradesToRequestedDepth(t *testing.T) {
 			t.Fatalf("depth %d pending: %+v, %v", tc.depth, pending, err)
 		}
 		if tc.want != 0 {
+			if pending[0].Depth != 1 {
+				t.Fatalf("cached depth: %d, want 1", pending[0].Depth)
+			}
 			next, err := sc.NextArchives(ctx, pending[0], 1, tc.depth)
 			if err != nil || len(next) != 1 || next[0].ContentID != id || next[0].Path != "/shallow/copy.zip" {
 				t.Fatalf("next copy: %+v, %v", next, err)
@@ -183,26 +187,30 @@ func TestArchiveCacheRollbackPreservesCommittedListing(t *testing.T) {
 	}
 }
 
-func TestArchiveCacheKeepsListingWhenUpgradeReturnsSplit(t *testing.T) {
-	sc, conn, id := archiveCacheScan(t)
-	ctx := t.Context()
-	finishArchiveListing(t, sc, id, 1, "original.txt")
-	l, err := sc.StartListing(ctx, id, 2)
-	if err != nil || l == nil {
-		t.Fatalf("upgrade: %v, %v", l, err)
-	}
-	defer l.Abort(ctx)
-	if err := l.Finish(ctx, archive.Result{Status: archive.Split}); err != nil {
-		t.Fatal(err)
-	}
-	var valid bool
-	if err := conn.QueryRow(ctx, `select depth = 1 and status = 'listed' and members = 1
+func TestArchiveCacheKeepsListingWhenUpgradeIsIncomplete(t *testing.T) {
+	for _, res := range []archive.Result{{Status: archive.Split}, {Status: archive.Listed, Incomplete: true}} {
+		t.Run(fmt.Sprint(res), func(t *testing.T) {
+			sc, conn, id := archiveCacheScan(t)
+			ctx := t.Context()
+			finishArchiveListing(t, sc, id, 1, "original.txt")
+			l, err := sc.StartListing(ctx, id, 2)
+			if err != nil || l == nil {
+				t.Fatalf("upgrade: %v, %v", l, err)
+			}
+			defer l.Abort(ctx)
+			if err := l.Finish(ctx, res); err != nil {
+				t.Fatal(err)
+			}
+			var valid bool
+			if err := conn.QueryRow(ctx, `select depth = 1 and status = 'listed' and members = 1
 		and exists (select 1 from members where archive_id = $1 and path = 'original.txt')
 		from archives where content_id = $1`, id).Scan(&valid); err != nil || !valid {
-		t.Fatalf("unsuccessful upgrade replaced valid cache: %t, %v", valid, err)
-	}
-	if sc.Counts.Archives != 1 || sc.Counts.Members != 1 {
-		t.Fatalf("unsuccessful upgrade changed counts: %+v", sc.Counts)
+				t.Fatalf("unsuccessful upgrade replaced valid cache: %t, %v", valid, err)
+			}
+			if sc.Counts.Archives != 1 || sc.Counts.Members != 1 {
+				t.Fatalf("unsuccessful upgrade changed counts: %+v", sc.Counts)
+			}
+		})
 	}
 }
 
