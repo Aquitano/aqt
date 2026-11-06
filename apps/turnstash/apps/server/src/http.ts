@@ -25,6 +25,7 @@ import {
   getRequest,
   listConversations,
 } from "./conversations.ts";
+import { currentLimitsReport } from "./current-limits.ts";
 import { Db } from "./db/client.ts";
 import { dirtyConversations, pricingCatalogs } from "./db/schema.ts";
 import { applyCommitBatch, repositoryTasks } from "./git.ts";
@@ -130,6 +131,7 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
     .handle("statsDaily", ({ query }) => dailyStats(query).pipe(databaseFailure))
     .handle("analysis", ({ query }) => computeAnalysis(query).pipe(databaseFailure))
     .handle("cacheBreaks", ({ query }) => cacheBreaks(query).pipe(databaseFailure))
+    .handle("currentLimits", () => currentLimitsReport().pipe(databaseFailure))
     .handle("limits", ({ query }) => limitsReport(query).pipe(databaseFailure))
     .handle("limitDrain", ({ query }) => limitDrain(query).pipe(databaseFailure))
     .handle("listConversations", ({ query }) => listConversations(query).pipe(databaseFailure))

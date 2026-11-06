@@ -13,7 +13,27 @@ const Preferences = Schema.fromJsonString(
     desktop: Schema.Boolean,
   }),
 );
-const Receipt = Schema.Struct({ id: Schema.String, until: Schema.Number });
+const Receipt = Schema.Struct({
+  id: Schema.String,
+  until: Schema.Number,
+  window: Schema.optionalKey(
+    Schema.Struct({
+      provider: Schema.String,
+      minutes: Schema.Number,
+      kind: Schema.Literals(["low", "unused"]),
+      observedAt: Schema.Number,
+    }),
+  ),
+});
+
+export const receiptMatchesAlert = (receipt: typeof Receipt.Type, alert: QuotaAlert) =>
+  receipt.id === alert.id ||
+  (receipt.window !== undefined &&
+    receipt.window.provider === alert.provider &&
+    receipt.window.minutes === alert.windowMinutes &&
+    receipt.window.kind === alert.kind &&
+    receipt.window.observedAt >= alert.firstObservedAtMs &&
+    receipt.window.observedAt <= alert.lastObservedAtMs);
 const decodePreferences = Schema.decodeUnknownOption(Preferences);
 const decodeReceipts = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Array(Receipt)));
 
@@ -63,7 +83,16 @@ export const readReceipts = (key: string, nowMs: number) => {
 export const rememberAlert = (key: string, alert: QuotaAlert, nowMs: number) => {
   const receipts = [
     ...readReceipts(key, nowMs).filter((receipt) => receipt.id !== alert.id),
-    { id: alert.id, until: alert.resetsAtMs + 24 * 3_600_000 },
+    {
+      id: alert.id,
+      until: alert.resetsAtMs + 24 * 3_600_000,
+      window: {
+        provider: alert.provider,
+        minutes: alert.windowMinutes,
+        kind: alert.kind,
+        observedAt: alert.firstObservedAtMs,
+      },
+    },
   ];
   memoryReceipts.set(key, receipts);
   try {
@@ -72,4 +101,16 @@ export const rememberAlert = (key: string, alert: QuotaAlert, nowMs: number) => 
     // The in-memory receipt prevents repeats in this tab.
   }
   return receipts;
+};
+
+export const dismissQuotaAlert = async (alert: QuotaAlert) => {
+  const remember = () => rememberAlert(dismissedKey, alert, Date.now());
+  if ("locks" in navigator) {
+    try {
+      return await navigator.locks.request("turnstash-quota-notifications", remember);
+    } catch {
+      return remember();
+    }
+  }
+  return remember();
 };

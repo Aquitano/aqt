@@ -85,6 +85,13 @@ export const limitsQuery = (query: LimitsQuery) =>
     refetchInterval: 5 * 60_000,
   });
 
+export const currentLimitsQuery = () =>
+  queryOptions({
+    queryKey: [...queryKeys.limits, "current"],
+    queryFn: () => Effect.runPromise(api.read.currentLimits()),
+    refetchInterval: 5 * 60_000,
+  });
+
 export const limitDrainQuery = (query: LimitDrainQuery) =>
   queryOptions({
     queryKey: [...queryKeys.limitDrain, query],
