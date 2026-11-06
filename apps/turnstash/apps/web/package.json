@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aqt/turnstash-analysis": "workspace:*",
     "@aqt/turnstash-api": "workspace:*",
     "@aqt/ui": "workspace:*",
     "@tanstack/react-query": "^5.104.5",

@@ -44,7 +44,7 @@ The deployment Compose file publishes the server on `127.0.0.1:4320`. Put a TLS 
 
 Database statement timeouts return HTTP 503 for API requests. API and worker database failure logs include the error category, the failed operation (connect, query or commit) and SQLSTATE, without SQL text, parameter values, or raw error messages.
 
-With the OTLP variables set, the server exports traces, logs, and metrics as `turnstash-server`. Each HTTP request is traced; worker passes are traced only when they normalize or price something. SQL spans carry the query text with placeholders, never parameter values, and `authorization` and `cookie` headers are redacted. The OIDC callback is not traced because its URL holds the authorization code. Metrics are named `turnstash.*`: ingested records by machine, provider and outcome, batches, normalization failures, worker pass duration and items, queue depth, unpriced requests, archive rows, time since each machine last synced, and today's and month-to-date cost by provider.
+With the OTLP variables set, the server exports traces, logs, and metrics as `turnstash-server`. Each HTTP request is traced; worker passes are traced only when they normalize or price something. SQL spans carry the query text with placeholders, never parameter values, and `authorization` and `cookie` headers are redacted. The OIDC callback is not traced because its URL holds the authorization code. Operational metrics are named `turnstash.*`: ingested records by machine, provider and outcome, batches, normalization failures, worker pass duration and items, queue depth, unpriced requests, archive rows, time since each machine last synced, and today's and month-to-date cost by provider.
 
 Migrations run on startup. The bundled pricing catalog is inserted on first start; `Settings > Pricing` in the UI refreshes it from LiteLLM. The scheduled refresh does the same, but only when the new catalog changes the price of a model that already appears in the archive and no other catalog is still being applied. A new catalog takes over once every request is valued under it: requests whose model it prices exactly like the live catalog keep their valuation, the rest are repriced. A change to the pricing code bumps `pricingVersion` in `packages/pricing`: the worker then reprices every valuation written by an older version, and a new catalog never keeps one. Valuations under the three most recent superseded catalogs are kept for the request inspector; older ones are deleted when a new catalog takes over and on startup.
 
@@ -57,6 +57,12 @@ The server stores each raw record without copies of what other records hold: Cod
 The Limits page shows how much of each subscription window is left, when it resets, and where the usage went. Codex reports its limits in every transcript, so history comes from the archive. Claude Code keeps its current usage in `cachedUsageUtilization` in `~/.claude.json`; `turnstash sync` sends only the percentages, reset times and plan tier from it, and never reads an OAuth token. The server therefore holds no provider credentials. Usage is assumed to belong to one account per provider.
 
 Upgrading bumps the Codex and Claude parser versions, so the worker re-normalizes those conversations at startup to fill in limit history.
+
+### Quota alerts
+
+In Settings, under Display, opt in to warnings when quota is at or below 10%, is projected to run out within an hour before reset, or may reset within an hour with at least 20% unused. Both alert types default off. Forecasts use the last hour's pace and require more than 15 minutes of observations; readings older than 30 minutes do not trigger alerts.
+
+Alerts appear throughout the dashboard. Desktop notifications are a separate opt-in and require browser permission. Turnstash must remain open, and background tabs may be delayed by the browser. Preferences and dismissals are saved in this browser. Each alert type sends at most one desktop notification per quota window across tabs when storage is available. For alerts with the dashboard closed, use the server quota metrics and [OpenObserve setup guide](deploy/openobserve.md). OpenObserve owns its alert rules, destinations and cooldowns independently of these browser preferences.
 
 ## Agent
 

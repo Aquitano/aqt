@@ -680,6 +680,29 @@ export const LimitsReport = Schema.Struct({
 });
 export type LimitsReport = typeof LimitsReport.Type;
 
+// Current quota reads omit costs and history. Points retain at least the last hour and its preceding anchor.
+export const CurrentLimitWindow = Schema.Struct({
+  windowMinutes: LimitWindow.fields.windowMinutes,
+  startsAt: LimitWindow.fields.startsAt,
+  resetsAt: LimitWindow.fields.resetsAt,
+  endedAt: LimitWindow.fields.endedAt,
+  outcome: LimitWindow.fields.outcome,
+  firstObservedAt: LimitWindow.fields.firstObservedAt,
+  lastObservedAt: LimitWindow.fields.lastObservedAt,
+  firstUsedPercent: LimitWindow.fields.firstUsedPercent,
+  usedPercent: LimitWindow.fields.usedPercent,
+  points: LimitWindow.fields.points,
+});
+export type CurrentLimitWindow = typeof CurrentLimitWindow.Type;
+
+export const CurrentLimitsReport = Schema.Struct({
+  generatedAt: Iso,
+  providers: Schema.Array(
+    Schema.Struct({ provider: ProviderId, windows: Schema.Array(CurrentLimitWindow) }),
+  ),
+});
+export type CurrentLimitsReport = typeof CurrentLimitsReport.Type;
+
 export const LimitDrainQuery = Schema.Struct({
   provider: ProviderId,
   from: DateBoundary,

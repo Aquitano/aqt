@@ -35,6 +35,7 @@ import {
   LimitDrainQuery,
   LimitsQuery,
   LimitsReport,
+  CurrentLimitsReport,
   MarkdownExport,
   MarkdownExportInput,
   ApiTokenCreated,
@@ -219,6 +220,7 @@ export const readGroup = HttpApiGroup.make("read")
     }),
   )
   .add(HttpApiEndpoint.get("limits", "/limits", { query: LimitsQuery, success: LimitsReport }))
+  .add(HttpApiEndpoint.get("currentLimits", "/limits/current", { success: CurrentLimitsReport }))
   .add(
     HttpApiEndpoint.get("limitDrain", "/limits/drain", {
       query: LimitDrainQuery,
