@@ -4,7 +4,7 @@
 # history on a box reachable from the tailnet keeps nothing else around it, no
 # shell, no package manager, no libc.
 
-FROM golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
+FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
 WORKDIR /src/apps/tracker
 
 # The context is the repository root, because tracker builds against
@@ -21,7 +21,7 @@ ARG GIT_SHA=dev
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${GIT_SHA}" -o /out/tracker ./cmd/tracker
 
 # distroless/static carries the CA bundle OIDC discovery needs and nothing else.
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:18f4cc26c9ffa7f20a359298be7deadac5c607c8e03a02b8119f1a5fc2f82c99
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 
 COPY --from=build /out/tracker /usr/local/bin/tracker
 
