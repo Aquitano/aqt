@@ -1,22 +1,42 @@
-import { limitWindowsOf, quotaObservationMaxAgeMs, quotaStateOf } from "@aqt/turnstash-analysis";
-import { limitResetToleranceMs, providerIds, type ProviderId } from "@aqt/turnstash-core";
-import { asc, gte, or } from "drizzle-orm";
+import { quotaStateOf } from "@aqt/turnstash-analysis";
+import { providerIds, type ProviderId } from "@aqt/turnstash-core";
 import { Cause, Clock, Config, Effect, Layer, Metric, Schedule } from "effect";
 
-import { Db } from "./db/client.ts";
+import { currentLimitWindows } from "./current-limits.ts";
 import { failureSummary } from "./db/errors.ts";
-import { limitSamples } from "./db/schema.ts";
 
 export const quotaMetrics = {
-  remaining: Metric.gauge("turnstash_quota_remaining_percent"),
-  projected: Metric.gauge("turnstash_quota_projected_remaining_percent"),
-  forecast: Metric.gauge("turnstash_quota_forecast_available"),
-  reset: Metric.gauge("turnstash_quota_resets_at_seconds"),
-  observed: Metric.gauge("turnstash_quota_observed_at_seconds"),
-  fresh: Metric.gauge("turnstash_quota_fresh"),
-  low: Metric.gauge("turnstash_quota_low"),
-  unused: Metric.gauge("turnstash_quota_unused"),
-  sampled: Metric.gauge("turnstash_quota_sampled_at_seconds"),
+  remaining: Metric.gauge("turnstash_quota_remaining_percent", {
+    description: "Quota remaining in the current subscription window, in percent.",
+  }),
+  projected: Metric.gauge("turnstash_quota_projected_remaining_percent", {
+    description:
+      "Projected quota remaining at reset, in percent; valid only when forecast_available is 1.",
+  }),
+  forecast: Metric.gauge("turnstash_quota_forecast_available", {
+    description:
+      "1 when the reading is fresh and there is enough history to project usage; otherwise 0.",
+  }),
+  reset: Metric.gauge("turnstash_quota_resets_at_seconds", {
+    description: "Current quota window reset time as Unix seconds.",
+  }),
+  observed: Metric.gauge("turnstash_quota_observed_at_seconds", {
+    description: "Latest provider quota observation time as Unix seconds.",
+  }),
+  fresh: Metric.gauge("turnstash_quota_fresh", {
+    description: "1 when the current window has a reading no older than 30 minutes; otherwise 0.",
+  }),
+  low: Metric.gauge("turnstash_quota_low", {
+    description:
+      "1 when fresh quota is at or below 10 percent, or is projected to run out within an hour before reset.",
+  }),
+  unused: Metric.gauge("turnstash_quota_unused", {
+    description:
+      "1 when fresh quota resets within an hour with at least 20 percent projected unused and no exhausted window.",
+  }),
+  sampled: Metric.gauge("turnstash_quota_sampled_at_seconds", {
+    description: "Latest successful quota sampler pass as Unix seconds.",
+  }),
 };
 
 export const makeQuotaSampler = Effect.sync(() => {
@@ -25,43 +45,11 @@ export const makeQuotaSampler = Effect.sync(() => {
     { readonly provider: ProviderId; readonly window_minutes: string }
   >();
   return Effect.fn("Telemetry.sampleQuota")(function* () {
-    const db = yield* Db;
     const nowMs = yield* Clock.currentTimeMillis;
-    const samples = yield* db
-      .select({
-        provider: limitSamples.provider,
-        windowMinutes: limitSamples.windowMinutes,
-        observedAt: limitSamples.observedAt,
-        resetsAt: limitSamples.resetsAt,
-        usedPercent: limitSamples.usedPercent,
-      })
-      .from(limitSamples)
-      .where(
-        or(
-          gte(limitSamples.resetsAt, new Date(nowMs - limitResetToleranceMs)),
-          gte(limitSamples.observedAt, new Date(nowMs - quotaObservationMaxAgeMs)),
-        ),
-      )
-      .orderBy(asc(limitSamples.observedAt));
+    const current = yield* currentLimitWindows(nowMs);
     const active = new Set<string>();
     for (const provider of providerIds) {
-      const own = samples.filter((sample) => sample.provider === provider);
-      const windows = [...new Set(own.map((sample) => sample.windowMinutes))].flatMap(
-        (windowMinutes) => {
-          const open = limitWindowsOf(
-            windowMinutes,
-            own
-              .filter((sample) => sample.windowMinutes === windowMinutes)
-              .map((sample) => ({
-                observedAtMs: sample.observedAt.getTime(),
-                resetsAtMs: sample.resetsAt.getTime(),
-                usedPercent: sample.usedPercent,
-              })),
-            nowMs,
-          ).findLast((window) => window.outcome === "open");
-          return open === undefined ? [] : [{ windowMinutes, open }];
-        },
-      );
+      const windows = current.filter((window) => window.provider === provider);
       const blocked = windows.some(({ open }) => open.usedPercent >= 100);
       for (const { windowMinutes, open } of windows) {
         const key = `${provider}:${windowMinutes}`;

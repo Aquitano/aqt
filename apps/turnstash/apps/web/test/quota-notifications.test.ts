@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 
 import {
   defaultPreferences,
+  dismissQuotaAlert,
   dismissedKey,
   notifiedKey,
   preferencesKey,
@@ -20,6 +21,8 @@ const alertOf = (id: string): QuotaAlert => ({
   provider: "claude",
   windowMinutes: 300,
   resetsAtMs: now + 3_600_000,
+  firstObservedAtMs: now - 3_600_000,
+  lastObservedAtMs: now,
   title: "Claude 5-hour quota is running low",
   description: "10% left.",
 });
@@ -63,6 +66,8 @@ beforeEach(() => {
     getItem: (key: string) => storage.get(key) ?? null,
     setItem: (key: string, value: string) => storage.set(key, value),
   });
+  readReceipts(notifiedKey, now + 2 * 86_400_000);
+  readReceipts(dismissedKey, now + 2 * 86_400_000);
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -90,15 +95,21 @@ test("concurrent notification attempts deliver once, and clicking opens the sele
     ]),
   ).toEqual([null, null]);
   expect(sent).toHaveLength(1);
-  expect(JSON.parse(storage.get(notifiedKey) ?? "[]")).toContainEqual({
-    id: alert.id,
-    until: alert.resetsAtMs + 86_400_000,
-  });
+  expect(JSON.parse(storage.get(notifiedKey) ?? "[]")).toContainEqual(
+    expect.objectContaining({
+      id: alert.id,
+      until: alert.resetsAtMs + 86_400_000,
+    }),
+  );
   sent[0]?.dispatchEvent(new Event("click"));
   expect(window.focus).toHaveBeenCalledOnce();
   expect(open).toHaveBeenCalledWith(alert);
   expect(sent[0]?.close).toHaveBeenCalledOnce();
-  await notifyQuotaAlerts([alertOf("next-window")], () => true, open);
+  await notifyQuotaAlerts(
+    [{ ...alertOf("next-window"), firstObservedAtMs: now + 1, lastObservedAtMs: now + 1 }],
+    () => true,
+    open,
+  );
   expect(sent).toHaveLength(2);
 });
 
@@ -137,4 +148,44 @@ test("failed storage writes still prevent repeats in this tab and receipts expir
   await notifyQuotaAlerts([alert], () => true, vi.fn());
   expect(sent).toHaveLength(1);
   expect(readReceipts(notifiedKey, now + 2 * 86_400_000)).toEqual([]);
+});
+
+test("older readings and reset drift do not deliver a previously notified or dismissed window again", async () => {
+  const original = alertOf("original-window");
+  await notifyQuotaAlerts([original], () => true, vi.fn());
+  const expanded = {
+    ...original,
+    id: "earlier-history",
+    firstObservedAtMs: now - 2 * 3_600_000,
+    resetsAtMs: original.resetsAtMs + 15 * 60_000,
+  };
+  await notifyQuotaAlerts([expanded], () => true, vi.fn());
+  expect(sent).toHaveLength(1);
+  const unused = { ...original, id: "unused-window", kind: "unused" as const };
+  await dismissQuotaAlert(unused);
+  await notifyQuotaAlerts(
+    [{ ...expanded, id: "earlier-unused", kind: "unused" }],
+    () => true,
+    vi.fn(),
+  );
+  expect(sent).toHaveLength(1);
+});
+
+test("separate tabs serialize dismissals and keep both receipts after reload", async () => {
+  vi.resetModules();
+  const firstTab = await import("../src/quota-alert-storage");
+  vi.resetModules();
+  const secondTab = await import("../src/quota-alert-storage");
+  const request = vi.spyOn(navigator.locks, "request");
+  await Promise.all([
+    firstTab.dismissQuotaAlert(alertOf("first-dismissal")),
+    secondTab.dismissQuotaAlert(alertOf("second-dismissal")),
+  ]);
+  expect(request).toHaveBeenCalledTimes(2);
+  vi.resetModules();
+  const reloaded = await import("../src/quota-alert-storage");
+  expect(reloaded.readReceipts(dismissedKey, now).map((receipt) => receipt.id)).toEqual([
+    "first-dismissal",
+    "second-dismissal",
+  ]);
 });
