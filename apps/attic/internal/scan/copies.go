@@ -69,7 +69,7 @@ func (c *archiveCopies) open(path string) (archive.Handle, error) {
 		if !errors.Is(err, os.ErrNotExist) {
 			c.failure = err
 		}
-		return nil, err
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}
 	rel, err := filepath.Rel(c.r.mountRoot, path)
 	if err != nil || !filepath.IsLocal(rel) {

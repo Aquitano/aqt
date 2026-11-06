@@ -209,3 +209,20 @@ func TestArchiveUpgradeRetriesUnverifiedCopies(t *testing.T) {
 		})
 	}
 }
+
+func TestArchiveListingRetriesCopiesWithMissingVolumes(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	for _, folder := range []string{"a", "b"} {
+		write(t, root, folder+"/test.part01.rar", rarFixture(t, "test.part01.rar"))
+	}
+	write(t, root, "b/test.part02.rar", rarFixture(t, "test.part02.rar"))
+	res := scanAt(t, st, root, testVolume, func(o *Options) {
+		o.Config.Archives.Depth = 1
+	})
+	if res.Counts.Archives != 2 ||
+		pgschematest.QueryInt(t, dsn, `select count(*) from archives where status='listed'`) != 1 ||
+		pgschematest.QueryInt(t, dsn, `select count(*) from members`) == 0 {
+		t.Fatalf("missing volume prevented a complete copy from listing: %+v", res.Counts)
+	}
+}

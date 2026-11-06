@@ -679,12 +679,6 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 		l.Abort(ctx)
 		return r.copyFailure(ctx, a.Path, opener.failure)
 	}
-	if opener.copied != "" {
-		if r.archiveTried == nil {
-			r.archiveTried = map[archiveAttempt]bool{}
-		}
-		r.archiveTried[attempt] = true
-	}
 	if err == nil && res.Status != archive.Listed {
 		// A disk unplugged mid-read looks like a damaged archive.
 		err = r.volumeGone()
@@ -701,6 +695,12 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 		r.log.Warn("archive unreadable; the next scan tries again", "path", a.Path, "size", a.Size, "err", err)
 		r.sc.Skip(a.Path, "unreadable", "", err.Error())
 		return nil
+	}
+	if opener.copied != "" {
+		if r.archiveTried == nil {
+			r.archiveTried = map[archiveAttempt]bool{}
+		}
+		r.archiveTried[attempt] = true
 	}
 	if err := l.Finish(ctx, res); err != nil {
 		return err
