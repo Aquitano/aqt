@@ -4,11 +4,14 @@ package disk
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+	"unsafe"
 
+	"golang.org/x/sys/windows"
 	"lukechampine.com/blake3"
 )
 

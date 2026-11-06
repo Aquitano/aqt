@@ -97,13 +97,14 @@ func (r *run) readFailure(ctx context.Context, path string, err error) error {
 
 // archiveFiles opens an archive and its multipart siblings in place.
 type archiveFiles struct {
-	r       *run
-	ctx     context.Context
-	source  string
-	stamp   store.Stamp
-	failure error
-	fatal   error
-	held    map[string]*disk.Held
+	r         *run
+	ctx       context.Context
+	source    string
+	stamp     store.Stamp
+	failure   error
+	fatal     error
+	held      map[string]*disk.Held
+	multipart bool
 }
 
 func (a *archiveFiles) open(path string) (archive.Handle, error) {
@@ -112,6 +113,7 @@ func (a *archiveFiles) open(path string) (archive.Handle, error) {
 	}
 	stamp := a.stamp
 	if path != a.source {
+		a.multipart = true
 		var err error
 		if stamp, err = a.sibling(path); err != nil {
 			return nil, err

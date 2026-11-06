@@ -711,8 +711,9 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 		r.sc.Skip(a.Path, "unreadable", "", err.Error())
 		return nil
 	}
-	res.CacheableFailure = res.CacheableFailure && opener.copied != "" && !opener.multipart
-	if opener.copied != "" && (res.Status == archive.Listed && !res.Incomplete || res.CacheableFailure) {
+	verified := opener.held[opener.source] != nil
+	res.CacheableFailure = res.CacheableFailure && verified && !opener.multipart
+	if verified && (res.Status == archive.Listed && !res.Incomplete || res.CacheableFailure) {
 		if r.archiveTried == nil {
 			r.archiveTried = map[archiveAttempt]bool{}
 		}
