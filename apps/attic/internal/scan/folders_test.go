@@ -19,7 +19,7 @@ func TestFolderConfigReadRefusesLinksAndOversizedFiles(t *testing.T) {
 	root := t.TempDir()
 	folders := config.NewFolders(root, config.Default().Rules("", ""))
 	write(t, root, config.FolderFile, strings.Repeat(" ", (64<<10)+1))
-	if _, err := folders.Load("", nil); err == nil {
+	if _, err := folders.Load("", root, nil); err == nil {
 		t.Fatal("oversized folder config accepted")
 	}
 	other := filepath.Join(t.TempDir(), "policy.toml")
@@ -29,7 +29,7 @@ func TestFolderConfigReadRefusesLinksAndOversizedFiles(t *testing.T) {
 	if err := os.Symlink(other, filepath.Join(root, config.FolderFile)); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if _, err := folders.Load("", nil); err == nil {
+	if _, err := folders.Load("", root, nil); err == nil {
 		t.Fatal("followed a linked folder config")
 	}
 }
@@ -51,6 +51,26 @@ func TestMalformedFolderPatternStopsBeforeContentProcessing(t *testing.T) {
 	if res.Counts.Hashed != 0 || res.Counts.Texts != 0 || res.Counts.Metadata != 0 ||
 		pgschematest.QueryInt(t, dsn, `select count(*) from contents`) != 0 {
 		t.Fatalf("malformed policy allowed content processing: %+v", res.Counts)
+	}
+}
+
+func TestFolderPolicyUsesLosslessFilesystemPath(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	dir := "folder\xff"
+	if err := os.Mkdir(filepath.Join(root, dir), 0o755); err != nil {
+		t.Skipf("invalid UTF-8 names unavailable: %v", err)
+	}
+	write(t, root, dir+"/"+config.FolderFile, "[archives]\ndepth = 1\n")
+	write(t, root, dir+"/child/document.txt", "content stays unread")
+	scanAt(t, st, root, testVolume)
+	folders := config.NewFolders(root, config.Default().Rules("", ""))
+	if rules, err := folders.Load("/folder\uFFFD", filepath.Join(root, dir), nil); err != nil || rules.ArchiveDepth != 1 {
+		t.Fatalf("ancestor policy lookup: depth %d, %v", rules.ArchiveDepth, err)
+	}
+	livePaths(t, st, "document", "/folder\uFFFD/child/document.txt")
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from contents`); n != 0 {
+		t.Fatalf("invalid-Unicode path allowed %d content reads", n)
 	}
 }
 

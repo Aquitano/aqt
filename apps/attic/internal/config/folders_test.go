@@ -14,8 +14,11 @@ func TestFolderLookupRefreshesCachedRulesAndBlocksUnresolvedPolicies(t *testing.
 	if err := os.WriteFile(filepath.Join(root, FolderFile), []byte("[archives]\ndepth = 0\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := folders.Load("", nil); err != nil {
+	if _, err := folders.Load("", root, nil); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := folders.Load("/outside", t.TempDir(), nil); err == nil {
+		t.Fatal("folder lookup escaped the volume root")
 	}
 	if folders.For("/Backups/copy.zip").ArchiveDepth != 0 {
 		t.Fatal("root policy not inherited")
@@ -26,7 +29,7 @@ func TestFolderLookupRefreshesCachedRulesAndBlocksUnresolvedPolicies(t *testing.
 	if err := os.WriteFile(filepath.Join(root, "Backups", FolderFile), []byte("[archives]\ndepth = 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := folders.Load("/Backups", nil); err != nil {
+	if _, err := folders.Load("/Backups", filepath.Join(root, "Backups"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if folders.For("/Backups/copy.zip").ArchiveDepth != 1 {
@@ -142,7 +145,7 @@ func TestFolderLookupFindsCaseVariantsAndRejectsDuplicates(t *testing.T) {
 	if err := os.WriteFile(upper, []byte("[archives]\ndepth = 1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if rules, err := folders.Load("", nil); err != nil || rules.ArchiveDepth != 1 {
+	if rules, err := folders.Load("", root, nil); err != nil || rules.ArchiveDepth != 1 {
 		t.Fatalf("uppercase policy: %+v, %v", rules, err)
 	}
 	lower := filepath.Join(root, FolderFile)
@@ -152,7 +155,7 @@ func TestFolderLookupFindsCaseVariantsAndRejectsDuplicates(t *testing.T) {
 	if err := os.WriteFile(lower, []byte("[archives]\ndepth = 2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := folders.Load("", nil); err == nil || !strings.Contains(err.Error(), "multiple") {
+	if _, err := folders.Load("", root, nil); err == nil || !strings.Contains(err.Error(), "multiple") {
 		t.Fatalf("duplicate policies: %v", err)
 	}
 }

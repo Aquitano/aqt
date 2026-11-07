@@ -62,10 +62,15 @@ func (f *Folders) set(folder string, rules Rules) {
 	f.last = ""
 }
 
-func (f *Folders) Load(folder string, entries []disk.Entry) (Rules, error) {
+func (f *Folders) Load(folder, dir string, entries []disk.Entry) (Rules, error) {
 	rules := f.For(folder)
-	rel := filepath.FromSlash(strings.TrimPrefix(folder, "/"))
-	dir := filepath.Join(f.root, rel)
+	rel, err := filepath.Rel(f.root, dir)
+	if err != nil {
+		return rules, err
+	}
+	if !filepath.IsLocal(rel) {
+		return rules, fmt.Errorf("%s is outside the volume root", dir)
+	}
 	if entries == nil {
 		info, err := disk.Stat(dir)
 		if err != nil {

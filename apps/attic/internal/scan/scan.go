@@ -361,7 +361,7 @@ func (r *run) ancestors(ctx context.Context, rel []string) (folderJob, error) {
 		}
 		parent = &dirs[0]
 		if i < len(rel) {
-			if _, err := r.folders.Load(parent.Path, nil); err != nil {
+			if _, err := r.folders.Load(parent.Path, p, nil); err != nil {
 				return folderJob{}, err
 			}
 		}
@@ -444,7 +444,7 @@ func (r *run) folder(ctx context.Context, job folderJob) ([]folderJob, error) {
 	}
 	rules := r.rulesFor(dir.Path)
 	if len(entries) > 0 {
-		rules, err = r.folders.Load(dir.Path, entries)
+		rules, err = r.folders.Load(dir.Path, job.os, entries)
 		if err != nil {
 			return nil, err
 		}
