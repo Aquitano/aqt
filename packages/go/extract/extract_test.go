@@ -65,6 +65,27 @@ func TestPDFFallback(t *testing.T) {
 	}
 }
 
+func TestPDFToTextSkipsParser(t *testing.T) {
+	path := write(t, "document.pdf", onePagePDF(t, []byte("q Q")))
+	for _, text := range []string{"recovered text", ""} {
+		tool := fakeBin(t, "pdftotext", `printf '`+text+`'`)
+		res := PDFToText(t.Context(), path, Options{PDFToText: tool, MaxChars: 9, Open: func(string) (Handle, error) {
+			t.Fatal("external fallback opened the in-process parser")
+			return nil, nil
+		}})
+		if text == "" {
+			if res.Status != StatusNeedsOCR {
+				t.Fatalf("empty fallback: %+v", res)
+			}
+		} else if res.Status != StatusOK || res.Text != "recovered" || !res.Truncated {
+			t.Fatalf("fallback: %+v", res)
+		}
+	}
+	if res := PDFToText(t.Context(), path, Options{PDFToText: "missing", MaxBytes: 1}); res.Status != StatusTooBig {
+		t.Fatalf("oversized PDF reached external reader: %+v", res)
+	}
+}
+
 func TestNormalize(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"  hello   world \n\n next ", "hello world next"},
@@ -123,6 +144,18 @@ func TestFileReadsThroughTheGivenOpener(t *testing.T) {
 	}}
 	if res := File(context.Background(), path, "notes.txt", "", o); res.Status != StatusOK || opened != 1 {
 		t.Fatalf("status %s, opened %d times; want ok, opened once through the opener", res.Status, opened)
+	}
+}
+
+func TestReadUsesTheOpenObjectWithoutAPath(t *testing.T) {
+	data := []byte("text from the held object")
+	o := Options{Open: func(string) (Handle, error) {
+		t.Fatal("reopened the source path")
+		return nil, os.ErrNotExist
+	}}
+	res := Read(t.Context(), bytes.NewReader(data), int64(len(data)), "missing.txt", "", o)
+	if res.Status != StatusOK || res.Text != string(data) {
+		t.Fatalf("read: %+v", res)
 	}
 }
 

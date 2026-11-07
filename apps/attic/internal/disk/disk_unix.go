@@ -23,6 +23,31 @@ func Mounted() []Volume { return nil }
 
 func Open(path string) (*os.File, error) { return os.Open(path) }
 
+// Held is an open file and what the file system said about it when it was
+// opened.
+type Held struct {
+	*os.File
+	Entry Entry
+}
+
+// Hold cannot keep writers out on Unix, which has no mandatory share modes.
+// Scanning runs on Windows; this lets the tests on Linux CI read files the
+// same way.
+func Hold(path string) (*Held, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return &Held{File: f, Entry: fromInfo(filepath.Base(path), info)}, nil
+}
+
+func (f *Held) Restore() error { return nil }
+
 // Move renames a file within one file system and fails when to exists.
 func Move(from, to string) error {
 	if err := os.Link(from, to); err != nil {

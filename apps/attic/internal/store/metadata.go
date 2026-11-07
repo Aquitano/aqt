@@ -24,6 +24,8 @@ type ContentFile struct {
 	Digest    disk.Digest
 	VolumeID  string
 	Ref       string
+	// Stamp is set by NextMetadata, whose readers check the file in place.
+	Stamp Stamp
 }
 
 const pendingMetadata = `from entries e join contents c on c.id = e.content_id
@@ -43,16 +45,14 @@ func (sc *Scan) NextMetadata(ctx context.Context, after ContentFile, limit int) 
 	if after.ID != 0 {
 		lower = after.Path
 	}
-	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, c.id, c.size_bytes, c.blake3 `+pendingMetadata+`
+	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, c.id, c.size_bytes, `+stampColumns+` `+pendingMetadata+`
  and (e.path collate "C", e.id) > ($4, $5) order by e.path collate "C", e.id limit $6`, sc.Volume.ID, metadata.Extensions, upper, lower, after.ID, limit)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ContentFile, error) {
 		var p ContentFile
-		var digest []byte
-		err := row.Scan(&p.ID, &p.Path, &p.ContentID, &p.Size, &digest)
-		copy(p.Digest[:], digest)
+		err := row.Scan(append([]any{&p.ID, &p.Path, &p.ContentID, &p.Size}, p.Stamp.fields()...)...)
 		return p, err
 	})
 }

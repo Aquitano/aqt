@@ -117,8 +117,16 @@ func TestScanKeepsIdentityAcrossMoves(t *testing.T) {
 	write(t, root, "photos/MinecraftServer.rar", "a bigger world")
 
 	second := scanAt(t, st, root, fp)
-	if second.Counts.Hashed != 1 {
-		t.Errorf("second scan hashed %d files, want only the changed one", second.Counts.Hashed)
+	wantHashes := int64(1)
+	observed, err := disk.Stat(filepath.Join(root, "renamed.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !observed.Changed.IsZero() {
+		wantHashes++
+	}
+	if second.Counts.Hashed != wantHashes {
+		t.Errorf("second scan hashed %d files, want %d", second.Counts.Hashed, wantHashes)
 	}
 	if moved := find(t, st, "werkstudent"); moved.ID != contract.ID || moved.Path != "/papers/Werkstudentenvertrag Element.pdf" {
 		t.Errorf("file in a renamed folder: %+v, want id %d under /papers", moved, contract.ID)
@@ -584,7 +592,7 @@ func TestDocumentReadFailureTriesAnotherCopy(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, "a.txt")); err != nil {
 		t.Fatal(err)
 	}
-	r.text = extract.Options{Open: r.openDocument}
+	r.text = extract.Options{}
 	if err := r.readTexts(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -621,10 +629,7 @@ func TestCancelledDocumentReadRemainsPending(t *testing.T) {
 		}
 	})
 	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root, rules: config.Default().Rules(first.Volume.ID, first.Volume.Label), textsRead: map[int64]bool{}, seen: map[int64]bool{}}
-	r.text = extract.Options{Open: func(p string) (extract.Handle, error) {
-		cancel()
-		return r.openDocument(p)
-	}}
+	r.o.Progress = func(Progress) { cancel() }
 	if err := r.readTexts(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled read: %v", err)
 	}

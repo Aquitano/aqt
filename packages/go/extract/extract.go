@@ -86,17 +86,20 @@ type Options struct {
 	PDFToPPM  string
 	PDFToText string
 	// Open opens the file for the in-process extractors; os.Open when nil.
-	// attic passes one that keeps the file's last-access time and watches its
-	// reads. OCR hands the path to tesseract and pdftoppm, which open it
-	// themselves.
+	// External tools open the path themselves.
 	Open func(string) (Handle, error)
 }
 
 // Handle is an open file as the extractors read it.
 type Handle interface {
+	Reader
+	io.Closer
+}
+
+// Reader supplies bytes to the in-process extractors.
+type Reader interface {
 	io.Reader
 	io.ReaderAt
-	io.Closer
 }
 
 func openFile(path string) (Handle, error) {
@@ -208,15 +211,42 @@ func File(ctx context.Context, path, filename, mimeType string, o Options) Resul
 		return Result{Status: StatusFailed, Extractor: extractors[k], Err: err}
 	}
 	defer f.Close()
+	return read(ctx, f, info.Size(), path, k, o)
+}
+
+// Read extracts from an already-open object. The caller owns the reader.
+// External tools are disabled because there is no trusted filesystem path.
+func Read(ctx context.Context, f Reader, size int64, filename, mimeType string, o Options) Result {
+	o = o.withDefaults()
+	o.OCR, o.PDFToText = false, ""
+	if size > o.MaxBytes {
+		return Result{Status: StatusTooBig}
+	}
+	if size == 0 {
+		return Result{Status: StatusEmpty}
+	}
+	k := classify(filename, mimeType)
+	switch k {
+	case kindNone:
+		return Result{Status: StatusUnsupported}
+	case kindImage:
+		return Result{Status: StatusNeedsOCR}
+	}
+	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
+	defer cancel()
+	return read(ctx, f, size, "", k, o)
+}
+
+func read(ctx context.Context, f Reader, size int64, path string, k kind, o Options) Result {
 	switch k {
 	case kindText:
 		return run("text", o, func() (string, bool, error) { return readPlain(f, o) })
 	case kindHTML:
 		return run("html", o, func() (string, bool, error) { return readHTML(f, o) })
 	case kindZipXML:
-		return run("zipxml", o, func() (string, bool, error) { return readZipXML(f, info.Size(), o) })
+		return run("zipxml", o, func() (string, bool, error) { return readZipXML(f, size, o) })
 	}
-	return pdfResult(ctx, f, info.Size(), path, o)
+	return pdfResult(ctx, f, size, path, o)
 }
 
 // run calls one extractor and turns its (text, cut, error) into a Result,

@@ -1,82 +1,100 @@
 package metadata
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
+	"strings"
 	"testing"
+	"time"
 )
 
+// TestMain doubles as a fake ExifTool in -stay_open mode. What it answers
+// depends on the requested file's name.
 func TestMain(m *testing.M) {
-	if mode := os.Getenv("ATTIC_METADATA_HELPER"); mode != "" {
-		paths := os.Args[slices.Index(os.Args, "--")+1:]
-		switch mode {
-		case "basenames":
-			rows := make([]map[string]any, len(paths))
-			for i, path := range paths {
-				rows[i] = map[string]any{"SourceFile": filepath.Base(path), "EXIF:Model": "camera"}
-			}
-			_ = json.NewEncoder(os.Stdout).Encode(rows)
-		case "invalid":
-			fmt.Print("not JSON")
-		case "partial":
-			fmt.Print("[]")
-		case "failure":
-			_ = json.NewEncoder(os.Stdout).Encode([]map[string]any{{"SourceFile": paths[0], "ExifTool:Error": "damaged"}})
-			os.Exit(1)
-		case "reversed":
-			_ = json.NewEncoder(os.Stdout).Encode([]map[string]any{{"SourceFile": paths[1], "EXIF:Model": "second"}, {"SourceFile": paths[0], "EXIF:Model": "first"}})
+	if os.Getenv("ATTIC_METADATA_HELPER") == "" {
+		os.Exit(m.Run())
+	}
+	in := bufio.NewScanner(os.Stdin)
+	var name string
+	for in.Scan() {
+		line := in.Text()
+		n, ok := strings.CutPrefix(line, "-execute")
+		if !ok {
+			name = line
+			continue
 		}
-		os.Exit(0)
+		switch {
+		case strings.Contains(name, "hang"):
+			time.Sleep(time.Hour)
+		case strings.Contains(name, "invalid"):
+			fmt.Print("not JSON\n")
+		case strings.Contains(name, "damaged"):
+			_ = json.NewEncoder(os.Stdout).Encode([]map[string]any{{"SourceFile": name, "ExifTool:Error": "damaged"}})
+		default:
+			_ = json.NewEncoder(os.Stdout).Encode([]map[string]any{{"SourceFile": name, "EXIF:Model": "camera", "pid": os.Getpid()}})
+		}
+		fmt.Printf("{ready%s}\n", n)
 	}
-	os.Exit(m.Run())
+	if in.Err() != nil {
+		os.Exit(3)
+	}
+	os.Exit(0)
 }
 
-func TestBatchMatchesPathsAndKeepsPerFileFailures(t *testing.T) {
+func fakeExifTool(t *testing.T) *Reader {
+	t.Helper()
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ATTIC_METADATA_HELPER", "reversed")
-	got, err := Read(context.Background(), binary, []string{"one.jpg", "two.jpg"})
-	if err != nil || len(got) != 2 || got[0].Tags["EXIF:Model"] != "first" || got[1].Tags["EXIF:Model"] != "second" {
-		t.Fatalf("reordered batch: %+v %v", got, err)
-	}
-	t.Setenv("ATTIC_METADATA_HELPER", "failure")
-	got, err = Read(context.Background(), binary, []string{"bad.jpg"})
-	if err != nil || len(got) != 1 || got[0].Status != "failed" || got[0].Detail != "damaged" {
-		t.Fatalf("file failure: %+v %v", got, err)
-	}
+	t.Setenv("ATTIC_METADATA_HELPER", "1")
+	r := NewReader(binary)
+	t.Cleanup(r.Close)
+	return r
 }
 
-func TestBrokenBatchDoesNotReturnCacheableResults(t *testing.T) {
-	binary, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, mode := range []string{"invalid", "partial"} {
-		t.Run(mode, func(t *testing.T) {
-			t.Setenv("ATTIC_METADATA_HELPER", mode)
-			got, err := Read(context.Background(), binary, []string{"one.jpg"})
-			if err == nil || got != nil {
-				t.Fatalf("bad batch accepted: %+v %v", got, err)
-			}
-		})
-	}
-}
-
-func TestBatchUsesBareNamesAcrossPlatforms(t *testing.T) {
-	binary, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("ATTIC_METADATA_HELPER", "basenames")
+func TestReaderKeepsOneProcessAndReportsFileFailures(t *testing.T) {
+	r := fakeExifTool(t)
 	dir := t.TempDir()
-	got, err := Read(context.Background(), binary, []string{filepath.Join(dir, "one.jpg"), filepath.Join(dir, "two.jpg")})
-	if err != nil || len(got) != 2 {
-		t.Fatalf("scratch names: %+v %v", got, err)
+	first, err := r.Read(t.Context(), filepath.Join(dir, "one.jpg"))
+	if err != nil || first.Status != "ok" || first.Tags["EXIF:Model"] != "camera" {
+		t.Fatalf("first: %+v %v", first, err)
+	}
+	second, err := r.Read(t.Context(), filepath.Join(dir, "two.jpg"))
+	if err != nil || second.Tags["pid"] != first.Tags["pid"] {
+		t.Fatalf("second file did not reuse the running ExifTool: %+v %v", second, err)
+	}
+	damaged, err := r.Read(t.Context(), filepath.Join(dir, "damaged.jpg"))
+	if err != nil || damaged.Status != "failed" || damaged.Detail != "damaged" {
+		t.Fatalf("file failure: %+v %v", damaged, err)
+	}
+	if _, err := r.Read(t.Context(), "relative.jpg"); err == nil {
+		t.Fatal("relative path accepted")
+	}
+}
+
+func TestReaderRestartsAfterBadAnswerOrTimeout(t *testing.T) {
+	r := fakeExifTool(t)
+	dir := t.TempDir()
+	before, err := r.Read(t.Context(), filepath.Join(dir, "one.jpg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := r.Read(t.Context(), filepath.Join(dir, "invalid.jpg")); err == nil {
+		t.Fatalf("bad answer accepted: %+v", res)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := r.Read(ctx, filepath.Join(dir, "hang.jpg")); err == nil || time.Since(start) > 5*time.Second {
+		t.Fatalf("hung ExifTool: %v after %s", err, time.Since(start))
+	}
+	after, err := r.Read(t.Context(), filepath.Join(dir, "two.jpg"))
+	if err != nil || after.Tags["pid"] == before.Tags["pid"] {
+		t.Fatalf("no fresh ExifTool after failures: %+v %v", after, err)
 	}
 }

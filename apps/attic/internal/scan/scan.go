@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"math"
@@ -150,13 +151,14 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 		textMax = math.MaxInt64
 	}
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
-		archives:  archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
-		textsRead: map[int64]bool{}, log: log}
+		changeTimes: slices.Contains([]string{"NTFS", "REFS"}, strings.ToUpper(vol.FS)),
+		archives:    archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
+		textsRead:   map[int64]bool{}, log: log}
 	r.folders = config.NewFolders(mounted.Root, r.rules)
 	if r.o.list == nil {
 		r.o.list = disk.List
 	}
-	r.text = extract.Options{Open: r.openDocument, MaxBytes: textMax, MaxChars: 1 << 20, PDFToText: o.Config.Text.PDFToText}
+	r.text = extract.Options{MaxBytes: textMax, MaxChars: 1 << 20, PDFToText: o.Config.Text.PDFToText}
 	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
 		"root", cmp.Or(root, "/"), "no_hash", o.NoHash, "archive_depth", a.Depth, "unpack_max_bytes", a.UnpackMaxBytes,
 		"text_max_bytes", o.Config.Text.MaxBytes, "hash_max_bytes", o.Config.HashMaxBytes)
@@ -189,6 +191,9 @@ type run struct {
 	archiveDepth int
 	archiveTried map[archiveAttempt]bool
 	mountRoot    string
+	// changeTimes says the file system moves a file's change time on every
+	// write, which makes the catalogue's stamp a reliable check.
+	changeTimes  bool
 	dirs         int64
 	hashFiles    int64
 	hashBytes    int64
@@ -556,17 +561,29 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 	if rules.HashMaxBytes > 0 && p.Size > rules.HashMaxBytes {
 		return r.sc.SkipHash(ctx, p, "too_big", "", fmt.Sprintf("%d bytes", p.Size))
 	}
+	started := time.Now()
+	f, err := disk.Hold(r.osPath(p.Path))
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if gone := r.volumeGone(); gone != nil {
+			return gone
+		}
+		return r.sc.HashFailed(ctx, p, err)
+	}
+	defer r.release(f)
+	stamp := store.Stamp{Size: p.Size, Modified: p.Modified, Changed: p.Changed, FileID: p.PhysicalFileID}
+	if f.Entry.Dir || f.Entry.Link || f.Entry.Remote || !stamp.Matches(f.Entry) {
+		return r.readFailure(ctx, p.Path, errChanged)
+	}
 	if p.Linked {
-		e, err := disk.Stat(r.osPath(p.Path))
-		if err == nil {
-			reused, err := r.sc.ReuseContent(ctx, p, e)
-			if err != nil || reused {
-				return err
-			}
+		reused, err := r.sc.ReuseContent(ctx, p, f.Entry)
+		if err != nil || reused {
+			return err
 		}
 	}
-	started := time.Now()
-	digest, n, err := disk.Hash(ctx, r.osPath(p.Path))
+	digest, n, err := f.Hash(ctx)
 	took := time.Since(started)
 	switch {
 	case ctx.Err() != nil:
@@ -613,7 +630,7 @@ func (r *run) listArchives(ctx context.Context) error {
 	}, r.afterItem)
 }
 
-func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err error) {
+func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
 	rules := r.rulesFor(a.Path)
 	if rules.SkipContent(a.Path) || rules.ArchiveDepth == 0 {
@@ -637,7 +654,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	f, err := disk.Open(source)
 	if err != nil {
 		l.Abort(ctx)
-		return r.copyFailure(ctx, a.Path, err)
+		return r.readFailure(ctx, a.Path, err)
 	}
 	info, err := f.Stat()
 	var possible bool
@@ -647,7 +664,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	err = errors.Join(err, f.Close())
 	if err != nil {
 		l.Abort(ctx)
-		return r.copyFailure(ctx, a.Path, err)
+		return r.readFailure(ctx, a.Path, err)
 	}
 	if !possible {
 		l.Abort(ctx)
@@ -657,15 +674,10 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 		r.sc.Skip(a.Path, archive.NotArchive, "", "")
 		return nil
 	}
-	w, err := scratch.New(r.o.Config.Temp, r.log)
-	if err != nil {
-		l.Abort(ctx)
-		return err
-	}
-	defer func() { err = errors.Join(err, w.Close()) }()
 	started, members := time.Now(), r.sc.Counts.Members
 	var skips []archive.Skip
-	opener := archiveCopies{r: r, w: w, ctx: ctx, source: source, digest: a.Digest, size: a.Size}
+	opener := archiveFiles{r: r, ctx: ctx, source: source, stamp: a.Stamp}
+	defer opener.close()
 	options := r.archives
 	options.Depth = rules.ArchiveDepth
 	res, err := archive.List(ctx, opener.source, opener.open, options,
@@ -680,7 +692,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	}
 	if opener.failure != nil {
 		l.Abort(ctx)
-		return r.copyFailure(ctx, a.Path, opener.failure)
+		return r.readFailure(ctx, a.Path, opener.failure)
 	}
 	if err == nil && res.Status != archive.Listed {
 		// A disk unplugged mid-read looks like a damaged archive.
@@ -699,8 +711,9 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 		r.sc.Skip(a.Path, "unreadable", "", err.Error())
 		return nil
 	}
-	res.CacheableFailure = res.CacheableFailure && opener.copied != "" && !opener.multipart
-	if opener.copied != "" && (res.Status == archive.Listed && !res.Incomplete || res.CacheableFailure) {
+	verified := opener.held[opener.source] != nil
+	res.CacheableFailure = res.CacheableFailure && verified && !opener.multipart
+	if verified && (res.Status == archive.Listed && !res.Incomplete || res.CacheableFailure) {
 		if r.archiveTried == nil {
 			r.archiveTried = map[archiveAttempt]bool{}
 		}
@@ -753,7 +766,7 @@ func (r *run) readTexts(ctx context.Context) error {
 	}, r.afterItem)
 }
 
-func (r *run) readText(ctx context.Context, p store.PendingText) (err error) {
+func (r *run) readText(ctx context.Context, p store.PendingText) error {
 	// Hashed under older rules; the ones in force now may forbid reading it.
 	if r.rulesFor(p.Path).SkipContent(p.Path) {
 		r.log.Debug("document left unread by the rules", "path", p.Path)
@@ -769,18 +782,23 @@ func (r *run) readText(ctx context.Context, p store.PendingText) (err error) {
 		r.sc.Skip(p.Path, "too_big", "", "over text.max_bytes")
 		return nil
 	}
-	w, err := scratch.New(r.o.Config.Temp, r.log)
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, w.Close()) }()
 	started := time.Now()
-	copied, err := w.Copy(ctx, r.osPath(p.Path), p.Digest, max(1, p.Size))
+	source := r.osPath(p.Path)
+	f, err := r.hold(ctx, source, p.Stamp)
 	if err != nil {
-		return r.copyFailure(ctx, p.Path, err)
+		return r.readFailure(ctx, p.Path, err)
 	}
 	r.readErr = nil
-	res := extract.File(ctx, copied, p.Name, "", r.text)
+	res := extract.Read(ctx, watchedDocument{Reader: io.NewSectionReader(f, 0, f.Entry.Size), err: &r.readErr}, f.Entry.Size, p.Name, "", r.text)
+	r.release(f)
+	if strings.EqualFold(filepath.Ext(p.Name), ".pdf") && res.Status == extract.StatusFailed && r.readErr == nil && r.text.PDFToText != "" && ctx.Err() == nil {
+		w, path, err := r.toolCopy(ctx, source, p.Stamp, r.o.Config.Text.MaxBytes)
+		if err != nil {
+			return r.readFailure(ctx, p.Path, err)
+		}
+		res = extract.PDFToText(ctx, path, r.text)
+		r.closeScratch(w)
+	}
 	took := time.Since(started)
 	if err := ctx.Err(); err != nil {
 		return err
@@ -826,32 +844,19 @@ func (r *run) readText(ctx context.Context, p store.PendingText) (err error) {
 
 const slowDocument = 10 * time.Second
 
-// openDocument opens a document for extract through disk.Open, and notes the
-// first failed open or read in r.readErr.
-func (r *run) openDocument(p string) (extract.Handle, error) {
-	f, err := disk.Open(p)
-	if err != nil {
-		if ioError(err) {
-			r.readErr = err
-		}
-		return nil, err
-	}
-	return watchedDocument{File: f, err: &r.readErr}, nil
-}
-
 type watchedDocument struct {
-	*os.File
+	extract.Reader
 	err *error
 }
 
 func (d watchedDocument) Read(p []byte) (int, error) {
-	n, err := d.File.Read(p)
+	n, err := d.Reader.Read(p)
 	d.note(err)
 	return n, err
 }
 
 func (d watchedDocument) ReadAt(p []byte, off int64) (int, error) {
-	n, err := d.File.ReadAt(p, off)
+	n, err := d.Reader.ReadAt(p, off)
 	d.note(err)
 	return n, err
 }

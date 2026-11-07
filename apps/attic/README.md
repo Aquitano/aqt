@@ -60,6 +60,12 @@ The destination directory must already exist. Retrieval stages a private copy be
 
 A scan lists directories, hashes unknown files, lists archives, extracts document text and reads embedded metadata. It skips links, cloud placeholders, excluded paths and name-only files. ZIP, 7z, RAR and tar listings can include nested archives. Documents include plain text, Markdown, CSV, HTML, Office, OpenDocument and PDFs with a text layer. Source code and configuration files keep their names only. Extracted document text is capped at 1 MB.
 
+Archive listings and in-process document extraction read a held source file. Windows refuses writers until the read ends. Its size, modified time, change time and file ID must match the catalogue entry. A change time that changes during a move also requires rehashing. FAT and exFAT record no change time, so on those disks the scan hashes the held file again before reading it. A file that changed since hashing, or that another program has open for writing, is skipped as `changed` and retried by the next scan. New hashes record that their bytes came from a held object matching the listed timestamps and file ID. Listing a ZIP or 7z then reads its index, so a large archive costs little beyond its hash on NTFS.
+
+Older catalogue hashes lack this provenance. Pending archive and document extraction verifies those files in full through the held handle, even on NTFS and ReFS. Matching timestamps alone never promote an older hash. This adds a full read whenever an older file needs direct extraction, without a temporary copy or a catalogue-wide rehash. The upgrade preserves historical hashes and cached results.
+
+External tools receive verified temporary copies because reopening a source path can follow an ancestor redirected through a junction. One ExifTool process serves the whole metadata phase and receives one file at a time. Each metadata file, including a video, needs a full verified copy. PDF parser failures also need a verified copy before the `pdftotext` fallback runs.
+
 On volumes with stable file IDs, matching hard links can reuse a hash within the scanned subtree. Scan a common parent of the links to repair conflicting hashes left by older scans.
 
 A changed or unavailable device serial requires an identity decision when the volume resembles a known one. Rerun with `--volume <id>` to confirm the known disk, or `--new-volume` to record a separate disk. This can also happen after moving a disk to another enclosure.
@@ -167,7 +173,7 @@ Then connect the app's attic account in the Executor dashboard and paste the tok
 
 Use `%APPDATA%\attic\config.toml`, or select another file with `--config`. `attic config` prints the effective settings and rules.
 
-`temp` selects one existing directory for verified copies and nested archives. It defaults to the system temporary directory and must be on another disk when scanning. To scan C:, set `temp = 'D:\AtticTemp'` to an existing directory on another disk. Archive verification reads and copies each outer archive in full before listing it. Allow scratch space for that archive, open multipart volumes and nested archives. Private `aqt-attic/scan-*` workspaces are removed after use; abandoned workspaces are cleaned after a day when their locks are free.
+`temp` selects one existing directory for nested archives and verified metadata, PDF fallback and enrichment copies. It defaults to the system temporary directory and must be on another disk when scanning. To scan C:, set `temp = 'D:\AtticTemp'` to an existing directory on another disk. Scans keep parent and child nested archives there together while listing them. Allow the sum of their sizes across active nesting levels, up to `unpack_max_bytes` per level below the outer archive. An `unpack_max_bytes` value of zero leaves this space unbounded. External tools also need space for one full input copy at a time. Private `aqt-attic/scan-*` workspaces are removed after use; abandoned workspaces are cleaned after a day when their locks are free.
 
 Legacy `archives.temp`, `metadata.temp` and `ai.temp` settings remain accepted. Empty `metadata.temp` and `ai.temp` values inherit the shared directory. Conflicting explicit directories are rejected. Remove the legacy settings when choosing a different top-level `temp`.
 
@@ -192,7 +198,7 @@ pdftotext = "pdftotext"
 [metadata]
 enabled = true
 exiftool = "exiftool"
-max_bytes = 1073741824
+max_bytes = 0
 
 [ai]
 provider = ""
@@ -214,7 +220,7 @@ label = "Data"
 exclude = ["/Games/"]
 ```
 
-`archives.depth = 0` disables archive listings. `unpack_max_bytes` limits each nested archive. `text.max_bytes` and `metadata.max_bytes` bound their source files. `text.pdftotext` selects the Poppler binary; if unavailable, PDF parser failures remain failures. `ai.max_bytes` bounds a verified enrichment copy. `ai.token_parameter` also accepts `max_completion_tokens`. Install Tesseract language data for each language in `ocr_lang`, such as `deu+eng`.
+`archives.depth = 0` disables archive listings. `unpack_max_bytes` limits each nested archive. `text.max_bytes` limits the source file size eligible for text extraction. `metadata.max_bytes` bounds the files given to ExifTool; it defaults to no limit, so large videos can need equally large temporary copies. `text.pdftotext` selects the Poppler binary; if unavailable, PDF parser failures remain failures. `ai.max_bytes` bounds a verified enrichment copy. `ai.token_parameter` also accepts `max_completion_tokens`. Install Tesseract language data for each language in `ocr_lang`, such as `deu+eng`.
 
 ### Configure a folder and its children
 

@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,9 +12,9 @@ import (
 
 	"github.com/aquitano/aqt/apps/attic/internal/config"
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
-	"github.com/aquitano/aqt/apps/attic/internal/scratch"
 	"github.com/aquitano/aqt/apps/attic/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
+	"lukechampine.com/blake3"
 )
 
 func TestDerivedContentUsesHashedBytes(t *testing.T) {
@@ -223,48 +222,171 @@ func TestMultipartArchivesVerifySiblingsAndPreserveNames(t *testing.T) {
 	}
 }
 
-func TestArchiveSiblingCopiesAreRemovedOnClose(t *testing.T) {
-	st, _ := storetest.New(t)
-	root := t.TempDir()
-	write(t, root, "first.rar", "first")
-	write(t, root, "second.rar", "second")
-	first := scanAt(t, st, root, testVolume)
-	sc, err := st.StartScan(t.Context(), first.Volume, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer sc.Finish(context.Background(), "complete", nil)
-	w, err := scratch.New(t.TempDir(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer w.Close()
-	r := &run{sc: sc, mountRoot: root, log: slog.New(slog.DiscardHandler)}
-	c := archiveCopies{r: r, w: w, ctx: t.Context(), source: filepath.Join(root, "first.rar")}
-	f, err := c.open(filepath.Join(root, "second.rar"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(t, root, "second.rar", "mutated")
-	data := make([]byte, len("second"))
-	if _, err := f.ReadAt(data, 0); err != nil || string(data) != "second" {
-		t.Fatalf("snapshot changed: %q, %v", data, err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	files, err := os.ReadDir(w.Path)
-	if err != nil || len(files) != 1 || c.failure != nil {
-		t.Fatalf("closed copies remain: %v, %v, %v", files, err, c.failure)
-	}
-}
-
 func TestScanRejectsRebuildWithoutHashing(t *testing.T) {
 	_, err := Run(t.Context(), nil, Options{NoHash: true, RebuildContent: true})
 	if err == nil {
 		t.Fatal("rebuild without hashing accepted")
+	}
+}
+
+func TestFileSystemWithoutChangeTimesRehashesBeforeReading(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, "a.txt", "original words")
+	scanAt(t, st, root, testVolume)
+	// A digest that no longer describes the file, as a same-size rewrite that
+	// kept its modified time would leave on exFAT.
+	pgschematest.QueryInt(t, dsn, `with stale as (update contents set blake3 = decode(repeat('ab', 32), 'hex') returning 1) select count(*) from stale`)
+	pgschematest.QueryInt(t, dsn, `with gone as (delete from texts returning 1) select count(*) from gone`)
+	res := scanAt(t, st, root, testVolume)
+	if res.Counts.Texts != 0 {
+		t.Fatalf("read text under a stale digest: %+v", res.Counts)
+	}
+	if skips, err := st.Skips(t.Context(), res.ScanID, "changed", "", 10); err != nil || len(skips) != 1 {
+		t.Fatalf("changed skips: %+v, %v", skips, err)
+	}
+}
+
+func TestRewriteThenRenameRehashesBeforeDerivedContent(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ATTIC_SCAN_METADATA_HELPER", "1")
+	for _, ext := range []string{"txt", "zip", "mp4"} {
+		t.Run(ext, func(t *testing.T) {
+			st, dsn := storetest.New(t)
+			root := t.TempDir()
+			original, replacement := "original", "replaced"
+			if ext == "zip" {
+				original = zipOf(t, map[string]string{"original.txt": "original"})
+				replacement = zipOf(t, map[string]string{"replaced.txt": "replaced"})
+			}
+			if len(original) != len(replacement) {
+				t.Fatal("replacement must have the same size")
+			}
+			write(t, root, "moving.bin", original)
+			path := filepath.Join(root, "moving.bin")
+			before, err := disk.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if before.Changed.IsZero() {
+				t.Skip("filesystem has no change time")
+			}
+			fp := testVolume
+			fp.FS = "NTFS"
+			cfg := config.Config{Temp: t.TempDir(), Archives: config.Archives{Depth: 1}, Metadata: config.Metadata{Enabled: true, ExifTool: binary}}
+			scanAt(t, st, root, fp, func(o *Options) { o.Config = cfg })
+			old := find(t, st, "moving")
+			oldContent := pgschematest.QueryInt(t, dsn, `select content_id from entries where id=$1`, old.ID)
+			write(t, root, "moving.bin", replacement)
+			if err := os.Chtimes(path, before.Modified, before.Modified); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Rename(path, filepath.Join(root, "moving."+ext)); err != nil {
+				t.Fatal(err)
+			}
+			res := scanAt(t, st, root, fp, func(o *Options) { o.Config = cfg })
+			after := find(t, st, "moving")
+			digest := blake3.Sum256([]byte(replacement))
+			if res.Counts.Hashed != 1 || after.ID != old.ID || after.Ref != fmt.Sprintf("%x", digest[:8]) || after.Ref == old.Ref {
+				t.Fatalf("replacement kept old digest: before %+v, after %+v, counts %+v", old, after, res.Counts)
+			}
+			if n := pgschematest.QueryInt(t, dsn, `select
+				(select count(*) from texts where content_id=$1) +
+				(select count(*) from metadata where content_id=$1) +
+				(select count(*) from archives where content_id=$1)`, oldContent); n != 0 {
+				t.Fatalf("stored %d replacement results under the original digest", n)
+			}
+			if res.Counts.Texts+res.Counts.Archives+res.Counts.Metadata != 1 {
+				t.Fatalf("replacement was not extracted: %+v", res.Counts)
+			}
+			if again := scanAt(t, st, root, fp, func(o *Options) { o.Config = cfg }); again.Counts.Hashed != 0 {
+				t.Fatalf("unchanged NTFS file rehashed: %+v", again.Counts)
+			}
+		})
+	}
+}
+
+func TestLegacyHashProvenanceBeforeDirectExtraction(t *testing.T) {
+	for _, fs := range []string{"NTFS", "ReFS"} {
+		for _, ext := range []string{"txt", "zip"} {
+			for _, stale := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/stale=%t", fs, ext, stale), func(t *testing.T) {
+					st, dsn := storetest.New(t)
+					root := t.TempDir()
+					original, replacement := "original", "replaced"
+					if ext == "zip" {
+						original = zipOf(t, map[string]string{"original.txt": "original"})
+						replacement = zipOf(t, map[string]string{"replaced.txt": "replaced"})
+					}
+					if len(original) != len(replacement) {
+						t.Fatal("replacement must have the same size")
+					}
+					fp := testVolume
+					fp.FS = fs
+					write(t, root, "moving.bin", original)
+					scanAt(t, st, root, fp)
+					old := find(t, st, "moving")
+					before, err := disk.Stat(filepath.Join(root, "moving.bin"))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if stale {
+						write(t, root, "moving.bin", replacement)
+						if err := os.Chtimes(filepath.Join(root, "moving.bin"), before.Modified, before.Modified); err != nil {
+							t.Fatal(err)
+						}
+					}
+					path := filepath.Join(root, "moving."+ext)
+					if err := os.Rename(filepath.Join(root, "moving.bin"), path); err != nil {
+						t.Fatal(err)
+					}
+					now, err := disk.Stat(path)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if now.Changed.IsZero() {
+						t.Skip("filesystem has no change time")
+					}
+					// Old ApplyListing acknowledged the rename's new stamp without hashing.
+					pgschematest.QueryInt(t, dsn, `update entries set name=$2, raw_name=convert_to($2,'UTF8'),
+						path='/' || $2, ext=$3, modified_at=$4, changed_at=$5, hash_trusted=false
+						where id=$1 and hash_state='done' returning id`, old.ID, "moving."+ext, ext,
+						now.Modified.Truncate(time.Microsecond), now.Changed.Truncate(time.Microsecond))
+					res := scanAt(t, st, root, fp, func(o *Options) { o.Config.Archives.Depth = 1 })
+					want := int64(1)
+					if stale {
+						want = 0
+					}
+					if res.Counts.Hashed != 0 || res.Counts.Texts+res.Counts.Archives != want {
+						t.Fatalf("legacy extraction: %+v, want %d results without rehashing", res.Counts, want)
+					}
+					if after := find(t, st, "moving"); after.Ref != old.Ref {
+						t.Fatalf("legacy baseline changed: %s to %s", old.Ref, after.Ref)
+					}
+					if n := pgschematest.QueryInt(t, dsn, `select count(*) from entries where hash_trusted`); n != 0 {
+						t.Fatalf("promoted %d legacy hashes", n)
+					}
+					if ext == "txt" && !stale {
+						got, err := st.Text(t.Context(), old.ID, "")
+						if err != nil || got.Text != original {
+							t.Fatalf("legacy text: %+v, %v", got, err)
+						}
+					}
+					if ext == "zip" && !stale {
+						if n := pgschematest.QueryInt(t, dsn, `select count(*) from members where name='original.txt'`); n != 1 {
+							t.Fatalf("correct legacy archive has %d original members", n)
+						}
+					}
+					if n := pgschematest.QueryInt(t, dsn, `select
+						(select count(*) from texts where text='replaced') +
+						(select count(*) from members where name='replaced.txt')`); n != 0 {
+						t.Fatalf("attached %d replacement results to the old digest", n)
+					}
+				})
+			}
+		}
 	}
 }

@@ -1,11 +1,13 @@
 // Package disk is everything attic asks of the operating system: which volume
 // a path lives on, a folder's entries in bulk, and a file's BLAKE3 digest. It
 // writes to the disks it reads only through Move, which dedupe uses to set
-// copies aside.
+// copies aside, and Held.Restore, which puts back times another program's
+// read moved.
 package disk
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync"
 	"time"
@@ -58,6 +60,9 @@ type Entry struct {
 
 type Digest [32]byte
 
+// ErrInUse means another program has the file open for writing.
+var ErrInUse = errors.New("in use by another program")
+
 var hashBuffers = sync.Pool{New: func() any { return new([1 << 20]byte) }}
 
 // Hash reads the whole file once and returns its BLAKE3-256 digest and the
@@ -71,6 +76,18 @@ func Hash(ctx context.Context, path string) (Digest, int64, error) {
 	}
 	defer f.Close()
 	return hashReader(ctx, f)
+}
+
+// Verify rereads a held file and reports whether its bytes have digest. It
+// reads by offset, so the file's own read position stays at the start.
+func (f *Held) Verify(ctx context.Context, digest Digest) (bool, error) {
+	got, _, err := hashReader(ctx, io.NewSectionReader(f.File, 0, f.Entry.Size))
+	return got == digest, err
+}
+
+// Hash reads the held object, whose Entry supplies the digest's metadata baseline.
+func (f *Held) Hash(ctx context.Context) (Digest, int64, error) {
+	return hashReader(ctx, f.File)
 }
 
 func hashReader(ctx context.Context, r io.Reader) (Digest, int64, error) {

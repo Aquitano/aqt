@@ -8,7 +8,6 @@ import (
 
 	"github.com/aquitano/aqt/apps/attic/internal/archive"
 	"github.com/aquitano/aqt/apps/attic/internal/config"
-	"github.com/aquitano/aqt/apps/attic/internal/disk"
 )
 
 // PendingArchive is a hashed archive below the scan root whose content has
@@ -18,7 +17,7 @@ type PendingArchive struct {
 	Path      string
 	Size      int64
 	ContentID int64
-	Digest    disk.Digest
+	Stamp     Stamp
 	Depth     int
 }
 
@@ -71,7 +70,7 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 			from (select * from unnest($5::text[], $6::text[], $7::int[]) as p(lower, upper, depth)
 				order by p.lower collate "C") policy
 			cross join lateral (
-				select e.id, e.path, c.size_bytes, e.content_id, c.blake3, coalesce(a.depth, 0)`+pendingArchiveWhere+`
+				select e.id, e.path, c.size_bytes, e.content_id, coalesce(a.depth, 0), `+stampColumns+pendingArchiveWhere+`
 				and (e.path collate "C", e.id) > ($10, $11)
 				order by e.path collate "C", e.id limit $12
 			) candidate order by policy.lower collate "C", candidate.path collate "C", candidate.id limit $12`,
@@ -82,9 +81,7 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 		}
 		page, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (PendingArchive, error) {
 			var p PendingArchive
-			var digest []byte
-			err := r.Scan(&p.ID, &p.Path, &p.Size, &p.ContentID, &digest, &p.Depth)
-			copy(p.Digest[:], digest)
+			err := r.Scan(append([]any{&p.ID, &p.Path, &p.Size, &p.ContentID, &p.Depth}, p.Stamp.fields()...)...)
 			return p, err
 		})
 		if err != nil || len(page) != 0 {
