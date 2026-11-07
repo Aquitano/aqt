@@ -21,43 +21,51 @@ type PendingArchive struct {
 	Depth     int
 }
 
-// pendingArchiveWhere matches the names archive.IsArchive accepts, below an
-// upper path bound at each folder policy depth; callers add the lower one as $7.
+// Each disjoint policy range drives an entries_path_idx scan. The lateral
+// barriers prevent rebuilding a whole-cache hash table for each range.
 const pendingArchiveWhere = `
 	from entries e join contents c on c.id = e.content_id
-	left join archives a on a.content_id = e.content_id
-	cross join lateral (
-		select scope.depth from unnest($5::text[], $6::int[]) as scope(path, depth)
-		where scope.path = '/' or starts_with(lower(e.path), scope.path || '/')
-		order by length(scope.path) desc limit 1
-	) policy
+	left join lateral (select content_id, depth from archives where content_id = e.content_id offset 0) a on true
 	where e.volume_id = $1 and e.kind = 'file' and e.hash_state = 'done' and e.missing_scan is null
+	  and e.path collate "C" >= policy.lower and e.path collate "C" < policy.upper
 	  and (e.ext = any($2) or (e.ext = any($3) and lower(e.name) like ('%.tar.' || e.ext)))
-	  and policy.depth > 0 and (a.content_id is null or a.depth < policy.depth)
+	  and (a.content_id is null or a.depth < policy.depth)
+	  and not exists (select 1 from archive_depth_failures f
+		where f.content_id = e.content_id and f.depth = policy.depth and f.unpack_max_bytes = $8 offset 0)
 	  and ($4 = '' or e.path collate "C" < $4)`
 
 // ArchiveTotals is the listing work left below the scan root, one per content.
-func (sc *Scan) ArchiveTotals(ctx context.Context, scopes []config.ArchiveScope) (int64, error) {
+func (sc *Scan) ArchiveTotals(ctx context.Context, ranges []config.ArchiveRange, unpackMaxBytes int64) (int64, error) {
 	lower, upper := sc.subtree()
-	paths, depths := archiveScopeArrays(scopes)
+	lowers, uppers, depths := archiveRangeArrays(ranges)
 	var n int64
-	err := sc.store.pool.QueryRow(ctx, `select count(distinct e.content_id)`+pendingArchiveWhere+` and e.path collate "C" > $7`,
-		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, paths, depths, lower).Scan(&n)
+	err := sc.store.pool.QueryRow(ctx, `select count(distinct candidate.content_id)
+		from unnest($5::text[], $6::text[], $7::int[]) as policy(lower, upper, depth)
+		cross join lateral (select e.content_id`+pendingArchiveWhere+`
+			and e.path collate "C" > $9 offset 0) candidate
+		where policy.upper collate "C" > $9 and ($4 = '' or policy.lower collate "C" < $4)`,
+		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lowers, uppers, depths, unpackMaxBytes, lower).Scan(&n)
 	return n, err
 }
 
 // NextArchives returns up to limit archives after the given one, in path
 // order. A completed listing settles copies requesting no greater depth.
-func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit int, scopes []config.ArchiveScope) ([]PendingArchive, error) {
+func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit int, ranges []config.ArchiveRange, unpackMaxBytes int64) ([]PendingArchive, error) {
 	lower, upper := sc.subtree()
-	paths, depths := archiveScopeArrays(scopes)
+	lowers, uppers, depths := archiveRangeArrays(ranges)
 	if after.ID != 0 {
 		lower = after.Path
 	}
-	rows, err := sc.store.pool.Query(ctx, `select e.id, e.path, c.size_bytes, e.content_id, c.blake3, coalesce(a.depth, 0)`+pendingArchiveWhere+`
-		  and (e.path collate "C", e.id) > ($7, $8)
-		order by e.path collate "C", e.id limit $9`,
-		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, paths, depths, lower, after.ID, limit)
+	rows, err := sc.store.pool.Query(ctx, `select candidate.*
+		from unnest($5::text[], $6::text[], $7::int[]) as policy(lower, upper, depth)
+		cross join lateral (
+			select e.id, e.path, c.size_bytes, e.content_id, c.blake3, coalesce(a.depth, 0)`+pendingArchiveWhere+`
+			and (e.path collate "C", e.id) > ($9, $10)
+			order by e.path collate "C", e.id limit $11
+		) candidate
+		where policy.upper collate "C" > $9 and ($4 = '' or policy.lower collate "C" < $4)
+		order by candidate.path collate "C", candidate.id limit $11`,
+		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lowers, uppers, depths, unpackMaxBytes, lower, after.ID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -70,32 +78,34 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 	})
 }
 
-func archiveScopeArrays(scopes []config.ArchiveScope) ([]string, []int) {
-	paths, depths := make([]string, len(scopes)), make([]int, len(scopes))
-	for i, scope := range scopes {
-		paths[i], depths[i] = scope.Path, scope.Depth
+func archiveRangeArrays(ranges []config.ArchiveRange) ([]string, []string, []int) {
+	lowers, uppers, depths := make([]string, len(ranges)), make([]string, len(ranges)), make([]int, len(ranges))
+	for i, r := range ranges {
+		lowers[i], uppers[i], depths[i] = r.Lower, r.Upper, r.Depth
 	}
-	return paths, depths
+	return lowers, uppers, depths
 }
 
 // Listing writes one archive's members in a transaction of its own, so a
 // listing replaces the previous cache only when committed. Members are copied
 // in batches as they are read.
 type Listing struct {
-	sc        *Scan
-	tx        pgx.Tx
-	contentID int64
-	rows      [][]any
-	members   int64
-	replacing bool
+	sc             *Scan
+	tx             pgx.Tx
+	contentID      int64
+	rows           [][]any
+	members        int64
+	replacing      bool
+	depth          int
+	unpackMaxBytes int64
 }
 
 const listingBatch = 5000
 
 // StartListing claims a content for listing at depth. It returns nil when the
-// cache is already deep enough or has an unknown legacy depth. Another listing
-// holds the claim until it commits.
-func (sc *Scan) StartListing(ctx context.Context, contentID int64, depth int) (*Listing, error) {
+// cache is deep enough, has an unknown legacy depth, or remembers an attempt
+// at this depth and unpack limit. Another listing holds the claim until it commits.
+func (sc *Scan) StartListing(ctx context.Context, contentID int64, depth int, unpackMaxBytes int64) (*Listing, error) {
 	tx, err := sc.store.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -112,8 +122,13 @@ func (sc *Scan) StartListing(ctx context.Context, contentID int64, depth int) (*
 	}
 	replacing := tag.RowsAffected() == 0
 	if replacing {
+		if _, err := tx.Exec(ctx, `savepoint previous_listing`); err != nil {
+			_ = tx.Rollback(context.WithoutCancel(ctx))
+			return nil, err
+		}
 		tag, err = tx.Exec(ctx, `update archives set status = 'listing', depth = $2
-			where content_id = $1 and depth < $2`, contentID, depth)
+			where content_id = $1 and depth < $2
+			and not exists (select 1 from archive_depth_failures where content_id = $1 and depth = $2 and unpack_max_bytes = $3)`, contentID, depth, unpackMaxBytes)
 		if err != nil || tag.RowsAffected() == 0 {
 			_ = tx.Rollback(context.WithoutCancel(ctx))
 			return nil, err
@@ -123,7 +138,7 @@ func (sc *Scan) StartListing(ctx context.Context, contentID int64, depth int) (*
 		_ = tx.Rollback(context.WithoutCancel(ctx))
 		return nil, err
 	}
-	return &Listing{sc: sc, tx: tx, contentID: contentID, replacing: replacing}, nil
+	return &Listing{sc: sc, tx: tx, contentID: contentID, replacing: replacing, depth: depth, unpackMaxBytes: unpackMaxBytes}, nil
 }
 
 func (l *Listing) Add(ctx context.Context, m archive.Member) error {
@@ -164,8 +179,26 @@ func (l *Listing) flush(ctx context.Context) error {
 // Finish records how reading the archive went and commits its members.
 func (l *Listing) Finish(ctx context.Context, res archive.Result) error {
 	if l.replacing && (res.Status != archive.Listed || res.Incomplete) {
-		l.Abort(ctx)
-		return ctx.Err()
+		if !res.CacheableFailure {
+			l.Abort(ctx)
+			return ctx.Err()
+		}
+		if _, err := l.tx.Exec(ctx, `rollback to savepoint previous_listing`); err != nil {
+			l.Abort(ctx)
+			return err
+		}
+		if _, err := l.tx.Exec(ctx, `insert into archive_depth_failures (content_id, depth, unpack_max_bytes) values ($1, $2, $3)
+			on conflict do nothing`, l.contentID, l.depth, l.unpackMaxBytes); err != nil {
+			l.Abort(ctx)
+			return err
+		}
+		if err := l.tx.Commit(ctx); err != nil {
+			l.Abort(ctx)
+			return err
+		}
+		l.tx = nil
+		l.sc.Counts.Members -= l.members
+		return nil
 	}
 	if err := l.flush(ctx); err != nil {
 		l.Abort(ctx)

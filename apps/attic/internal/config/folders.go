@@ -38,7 +38,7 @@ func (f *Folders) For(file string) Rules {
 		return f.cache
 	}
 	rules := f.base
-	for dir := strings.ToLower(folder); dir != "."; dir = path.Dir(dir) {
+	for dir := folder; dir != "."; dir = path.Dir(dir) {
 		if found, ok := f.rules[dir]; ok {
 			rules = found
 			break
@@ -58,7 +58,7 @@ func (f *Folders) Block(folder string) {
 }
 
 func (f *Folders) set(folder string, rules Rules) {
-	f.rules[path.Clean("/"+strings.ToLower(folder))] = rules
+	f.rules[path.Clean("/"+folder)] = rules
 	f.last = ""
 }
 
@@ -115,6 +115,48 @@ func (f *Folders) Load(folder string, entries []disk.Entry) (Rules, error) {
 type ArchiveScope struct {
 	Path  string
 	Depth int
+}
+
+type ArchiveRange struct {
+	Lower string
+	Upper string
+	Depth int
+}
+
+// ArchiveRanges partitions sparse folder policies into disjoint byte-order
+// ranges. Disabled scopes cut holes that deeper policies can reopen.
+func ArchiveRanges(scopes []ArchiveScope) []ArchiveRange {
+	type boundary struct {
+		path  string
+		depth int
+		end   bool
+	}
+	boundaries := make([]boundary, 0, 2*len(scopes))
+	for _, scope := range scopes {
+		prefix := strings.TrimRight(scope.Path, "/")
+		boundaries = append(boundaries, boundary{path: prefix + "/", depth: scope.Depth}, boundary{path: prefix + "0", end: true})
+	}
+	slices.SortFunc(boundaries, func(a, b boundary) int { return strings.Compare(a.path, b.path) })
+	var ranges []ArchiveRange
+	var depths []int
+	previous := ""
+	for _, b := range boundaries {
+		if len(depths) > 0 && depths[len(depths)-1] > 0 && previous < b.path {
+			depth := depths[len(depths)-1]
+			if len(ranges) > 0 && ranges[len(ranges)-1].Upper == previous && ranges[len(ranges)-1].Depth == depth {
+				ranges[len(ranges)-1].Upper = b.path
+			} else {
+				ranges = append(ranges, ArchiveRange{Lower: previous, Upper: b.path, Depth: depth})
+			}
+		}
+		if b.end {
+			depths = depths[:len(depths)-1]
+		} else {
+			depths = append(depths, b.depth)
+		}
+		previous = b.path
+	}
+	return ranges
 }
 
 func (f *Folders) ArchiveScopes() []ArchiveScope {

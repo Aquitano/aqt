@@ -58,7 +58,7 @@ func archiveCacheScan(t *testing.T) (*store.Scan, *pgx.Conn, int64) {
 
 func finishArchiveListing(t *testing.T, sc *store.Scan, contentID int64, depth int, paths ...string) {
 	t.Helper()
-	l, err := sc.StartListing(t.Context(), contentID, depth)
+	l, err := sc.StartListing(t.Context(), contentID, depth, 0)
 	if err != nil || l == nil {
 		t.Fatalf("start listing at depth %d: %v, %v", depth, l, err)
 	}
@@ -76,7 +76,7 @@ func finishArchiveListing(t *testing.T, sc *store.Scan, contentID int64, depth i
 func TestArchiveCacheUpgradesToRequestedDepth(t *testing.T) {
 	sc, conn, id := archiveCacheScan(t)
 	ctx := t.Context()
-	if n, err := sc.ArchiveTotals(ctx, []config.ArchiveScope{{Path: "/", Depth: 1}}); err != nil || n != 1 {
+	if n, err := sc.ArchiveTotals(ctx, config.ArchiveRanges([]config.ArchiveScope{{Path: "/", Depth: 1}}), 0); err != nil || n != 1 {
 		t.Fatalf("uncached totals: %d, %v", n, err)
 	}
 	finishArchiveListing(t, sc, id, 1, "nested.zip")
@@ -84,10 +84,10 @@ func TestArchiveCacheUpgradesToRequestedDepth(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ depth, want int }{{1, 0}, {2, 1}} {
-		if n, err := sc.ArchiveTotals(ctx, []config.ArchiveScope{{Path: "/", Depth: tc.depth}}); err != nil || n != int64(tc.want) {
+		if n, err := sc.ArchiveTotals(ctx, config.ArchiveRanges([]config.ArchiveScope{{Path: "/", Depth: tc.depth}}), 0); err != nil || n != int64(tc.want) {
 			t.Fatalf("depth %d totals: %d, %v", tc.depth, n, err)
 		}
-		pending, err := sc.NextArchives(ctx, store.PendingArchive{}, 1, []config.ArchiveScope{{Path: "/", Depth: tc.depth}})
+		pending, err := sc.NextArchives(ctx, store.PendingArchive{}, 1, config.ArchiveRanges([]config.ArchiveScope{{Path: "/", Depth: tc.depth}}), 0)
 		if err != nil || len(pending) != tc.want {
 			t.Fatalf("depth %d pending: %+v, %v", tc.depth, pending, err)
 		}
@@ -95,7 +95,7 @@ func TestArchiveCacheUpgradesToRequestedDepth(t *testing.T) {
 			if pending[0].Depth != 1 {
 				t.Fatalf("cached depth: %d, want 1", pending[0].Depth)
 			}
-			next, err := sc.NextArchives(ctx, pending[0], 1, []config.ArchiveScope{{Path: "/", Depth: tc.depth}})
+			next, err := sc.NextArchives(ctx, pending[0], 1, config.ArchiveRanges([]config.ArchiveScope{{Path: "/", Depth: tc.depth}}), 0)
 			if err != nil || len(next) != 1 || next[0].ContentID != id || next[0].Path != "/shallow/copy.zip" {
 				t.Fatalf("next copy: %+v, %v", next, err)
 			}
@@ -109,7 +109,7 @@ func TestArchiveCacheUpgradesToRequestedDepth(t *testing.T) {
 		from archives where content_id = $1`, id).Scan(&valid); err != nil || !valid {
 		t.Fatalf("upgraded cache: valid=%v, %v", valid, err)
 	}
-	if n, err := sc.ArchiveTotals(ctx, []config.ArchiveScope{{Path: "/", Depth: 2}}); err != nil || n != 0 {
+	if n, err := sc.ArchiveTotals(ctx, config.ArchiveRanges([]config.ArchiveScope{{Path: "/", Depth: 2}}), 0); err != nil || n != 0 {
 		t.Fatalf("upgraded totals: %d, %v", n, err)
 	}
 	if sc.Counts.Archives != 2 || sc.Counts.Members != 3 {
@@ -126,14 +126,14 @@ func TestArchiveCacheReusesSameOrShallowerDepth(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, depth := range []int{2, 1, 0} {
-		l, err := sc.StartListing(ctx, id, depth)
+		l, err := sc.StartListing(ctx, id, depth, 0)
 		if l != nil {
 			l.Abort(ctx)
 		}
 		if err != nil || l != nil {
 			t.Fatalf("depth %d reused cache: %v, %v", depth, l, err)
 		}
-		if pending, err := sc.NextArchives(ctx, store.PendingArchive{}, 10, []config.ArchiveScope{{Path: "/", Depth: depth}}); err != nil || len(pending) != 0 {
+		if pending, err := sc.NextArchives(ctx, store.PendingArchive{}, 10, config.ArchiveRanges([]config.ArchiveScope{{Path: "/", Depth: depth}}), 0); err != nil || len(pending) != 0 {
 			t.Fatalf("depth %d pending: %+v, %v", depth, pending, err)
 		}
 	}
@@ -158,7 +158,7 @@ func TestArchiveCacheRollbackPreservesCommittedListing(t *testing.T) {
 	}
 	for _, failure := range []string{"abort", "finish cancelled"} {
 		t.Run(failure, func(t *testing.T) {
-			l, err := sc.StartListing(ctx, id, 2)
+			l, err := sc.StartListing(ctx, id, 2, 0)
 			if err != nil || l == nil {
 				t.Fatalf("upgrade: %v, %v", l, err)
 			}
@@ -190,12 +190,12 @@ func TestArchiveCacheRollbackPreservesCommittedListing(t *testing.T) {
 }
 
 func TestArchiveCacheKeepsListingWhenUpgradeIsIncomplete(t *testing.T) {
-	for _, res := range []archive.Result{{Status: archive.Split}, {Status: archive.Listed, Incomplete: true}} {
+	for _, res := range []archive.Result{{Status: archive.Split}, {Status: archive.Listed, Incomplete: true}, {Status: archive.Listed, Incomplete: true, CacheableFailure: true}} {
 		t.Run(fmt.Sprint(res), func(t *testing.T) {
 			sc, conn, id := archiveCacheScan(t)
 			ctx := t.Context()
 			finishArchiveListing(t, sc, id, 1, "original.txt")
-			l, err := sc.StartListing(ctx, id, 2)
+			l, err := sc.StartListing(ctx, id, 2, 0)
 			if err != nil || l == nil {
 				t.Fatalf("upgrade: %v, %v", l, err)
 			}
@@ -212,6 +212,13 @@ func TestArchiveCacheKeepsListingWhenUpgradeIsIncomplete(t *testing.T) {
 			if sc.Counts.Archives != 1 || sc.Counts.Members != 1 {
 				t.Fatalf("unsuccessful upgrade changed counts: %+v", sc.Counts)
 			}
+			retry, err := sc.StartListing(ctx, id, 2, 0)
+			if retry != nil {
+				retry.Abort(ctx)
+			}
+			if err != nil || (retry == nil) != res.CacheableFailure {
+				t.Fatalf("remembered failure %t: retry %v, %v", res.CacheableFailure, retry, err)
+			}
 		})
 	}
 }
@@ -223,10 +230,10 @@ func TestLegacyArchiveListingRequiresExplicitRebuild(t *testing.T) {
 	if _, err := conn.Exec(ctx, `update archives set depth = null where content_id = $1`, id); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := sc.ArchiveTotals(ctx, []config.ArchiveScope{{Path: "/", Depth: 3}}); err != nil || n != 0 {
+	if n, err := sc.ArchiveTotals(ctx, config.ArchiveRanges([]config.ArchiveScope{{Path: "/", Depth: 3}}), 0); err != nil || n != 0 {
 		t.Fatalf("legacy cache queued for automatic replacement: %d, %v", n, err)
 	}
-	if l, err := sc.StartListing(ctx, id, 3); err != nil || l != nil {
+	if l, err := sc.StartListing(ctx, id, 3, 0); err != nil || l != nil {
 		if l != nil {
 			l.Abort(ctx)
 		}
@@ -251,7 +258,7 @@ func TestArchiveQueueUsesEachFolderPolicy(t *testing.T) {
 	if _, err := conn.Exec(ctx, `with folders as (
 		insert into entries (volume_id, parent_id, kind, name, raw_name, path, hash_state, first_scan, updated_scan)
 		select $1, (select id from entries where volume_id=$1 and path=''), 'dir', path, convert_to(path, 'UTF8'), path, 'none', $3, $3
-		from unnest(array['/DEEP/disabled', '/deep/disabled/open', '/foo', '/foobar', '/blocked']) as path
+		from unnest(array['/deep/disabled', '/deep/disabled/open', '/foo', '/foobar', '/blocked', '/A', '/a']) as path
 		returning id, path
 	)
 	insert into entries
@@ -267,20 +274,23 @@ func TestArchiveQueueUsesEachFolderPolicy(t *testing.T) {
 		{Path: "/shallow", Depth: 1},
 		{Path: "/foo", Depth: 0},
 		{Path: "/blocked", Depth: 0},
+		{Path: "/A", Depth: 0},
+		{Path: "/a", Depth: 2},
 	}
+	ranges := config.ArchiveRanges(scopes)
 	for _, cached := range []bool{true, false} {
 		if !cached {
 			if _, err := conn.Exec(ctx, `delete from archives where content_id = $1`, id); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if n, err := sc.ArchiveTotals(ctx, scopes); err != nil || n != 1 {
+		if n, err := sc.ArchiveTotals(ctx, ranges, 0); err != nil || n != 1 {
 			t.Fatalf("cached %t totals: %d, %v", cached, n, err)
 		}
 		var paths []string
 		var after store.PendingArchive
 		for {
-			page, err := sc.NextArchives(ctx, after, 1, scopes)
+			page, err := sc.NextArchives(ctx, after, 1, ranges, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -290,7 +300,7 @@ func TestArchiveQueueUsesEachFolderPolicy(t *testing.T) {
 			after = page[0]
 			paths = append(paths, after.Path)
 		}
-		want := []string{"/deep/copy.zip", "/deep/disabled/open/copy.zip", "/foobar/copy.zip"}
+		want := []string{"/a/copy.zip", "/deep/copy.zip", "/deep/disabled/open/copy.zip", "/foobar/copy.zip"}
 		if !cached {
 			want = append(want, "/shallow/copy.zip")
 		}

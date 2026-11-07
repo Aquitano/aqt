@@ -311,6 +311,10 @@ func finalPath(path string) (string, error) {
 		return "", &os.PathError{Op: "open", Path: path, Err: err}
 	}
 	defer windows.CloseHandle(h)
+	return handlePath(h, path)
+}
+
+func handlePath(h windows.Handle, path string) (string, error) {
 	buf := make([]uint16, 1024)
 	for {
 		n, err := windows.GetFinalPathNameByHandle(h, &buf[0], uint32(len(buf)), fileNameNormalizedDOS)
@@ -494,6 +498,10 @@ func LookupFold(dir, name string) ([]Entry, error) {
 	if err != nil {
 		return nil, &os.PathError{Op: "open", Path: p, Err: err}
 	}
-	windows.CloseHandle(probe)
-	return []Entry{{Name: name}}, nil
+	defer windows.CloseHandle(probe)
+	stored, err := handlePath(probe, p)
+	if err != nil {
+		return nil, err
+	}
+	return []Entry{{Name: filepath.Base(stored)}}, nil
 }

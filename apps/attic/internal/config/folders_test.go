@@ -32,11 +32,11 @@ func TestFolderLookupRefreshesCachedRulesAndBlocksUnresolvedPolicies(t *testing.
 	if folders.For("/Backups/copy.zip").ArchiveDepth != 1 {
 		t.Fatal("cached lookup hid a deeper override")
 	}
-	if scopes := folders.ArchiveScopes(); !slices.Equal(scopes, []ArchiveScope{{Path: "/", Depth: 0}, {Path: "/backups", Depth: 1}}) {
+	if scopes := folders.ArchiveScopes(); !slices.Equal(scopes, []ArchiveScope{{Path: "/", Depth: 0}, {Path: "/Backups", Depth: 1}}) {
 		t.Fatalf("sparse policy snapshot: %+v", scopes)
 	}
 	folders.Block("/Backups")
-	if scopes := folders.ArchiveScopes(); !slices.Equal(scopes, []ArchiveScope{{Path: "/", Depth: 0}, {Path: "/backups", Depth: 0}}) {
+	if scopes := folders.ArchiveScopes(); !slices.Equal(scopes, []ArchiveScope{{Path: "/", Depth: 0}, {Path: "/Backups", Depth: 0}}) {
 		t.Fatalf("blocked policy snapshot: %+v", scopes)
 	}
 	if rules := folders.For("/Backups/copy.zip"); rules.ArchiveDepth != 0 || !rules.SkipContent("/Backups/copy.zip") {
@@ -44,6 +44,27 @@ func TestFolderLookupRefreshesCachedRulesAndBlocksUnresolvedPolicies(t *testing.
 	}
 	if rules := folders.For("/Other/copy.zip"); rules.ArchiveDepth != 0 || rules.SkipContent("/Other/copy.zip") {
 		t.Fatal("blocking a folder changed a sibling's policy")
+	}
+}
+
+func TestArchiveRangesSplitNestedOverridesAndCaseSensitiveScopes(t *testing.T) {
+	ranges := ArchiveRanges([]ArchiveScope{
+		{Path: "/foo/open", Depth: 3},
+		{Path: "/", Depth: 2},
+		{Path: "/foo", Depth: 0},
+		{Path: "/a", Depth: 1},
+		{Path: "/A", Depth: 0},
+	})
+	want := []ArchiveRange{
+		{Lower: "/", Upper: "/A/", Depth: 2},
+		{Lower: "/A0", Upper: "/a/", Depth: 2},
+		{Lower: "/a/", Upper: "/a0", Depth: 1},
+		{Lower: "/a0", Upper: "/foo/", Depth: 2},
+		{Lower: "/foo/open/", Upper: "/foo/open0", Depth: 3},
+		{Lower: "/foo0", Upper: "0", Depth: 2},
+	}
+	if !slices.Equal(ranges, want) {
+		t.Fatalf("disjoint archive ranges: %+v, want %+v", ranges, want)
 	}
 }
 

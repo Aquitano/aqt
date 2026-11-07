@@ -107,7 +107,7 @@ func TestListOpensNestedArchivesToTheDepth(t *testing.T) {
 	}
 
 	res, _, skips = list(t, outer, Options{Depth: 2, UnpackMaxBytes: 10, Temp: temp})
-	if !res.Incomplete || len(skips) != 1 || skips[0].Reason != "too_big" {
+	if !res.Incomplete || !res.CacheableFailure || len(skips) != 1 || skips[0].Reason != "too_big" {
 		t.Errorf("skips with a 10-byte cap %+v, want MinecraftServer.zip too big", skips)
 	}
 }
@@ -131,7 +131,7 @@ func TestListTellsWhyAnArchiveCannotBeRead(t *testing.T) {
 	}
 	for _, tc := range cases {
 		res, members, _ := list(t, tc.data, Options{Depth: 1})
-		if res.Status != tc.status || res.Format != tc.format {
+		if res.Status != tc.status || res.Format != tc.format || res.CacheableFailure != (tc.status != Listed) {
 			t.Errorf("%s: %s %q (%s), want %s %q", tc.name, res.Status, res.Format, res.Detail, tc.status, tc.format)
 		}
 		if tc.status == Listed && (len(members) != 1 || members[0].Path != "backup/notes.txt") {
@@ -140,7 +140,7 @@ func TestListTellsWhyAnArchiveCannotBeRead(t *testing.T) {
 		if tc.status != Listed {
 			outer := zipOf(t, map[string][]byte{"nested.zip": tc.data})
 			res, _, skips := list(t, outer, Options{Depth: 2, Temp: t.TempDir()})
-			if res.Status != Listed || res.Incomplete != (tc.status != NotArchive) || len(skips) != 1 || skips[0].Reason != tc.status {
+			if res.Status != Listed || res.Incomplete != (tc.status != NotArchive) || res.CacheableFailure != (tc.status != NotArchive) || len(skips) != 1 || skips[0].Reason != tc.status {
 				t.Errorf("nested %s: result %+v, skips %+v", tc.name, res, skips)
 			}
 		}
@@ -190,7 +190,7 @@ func TestLaterRarVolumesAreSplit(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err := List(context.Background(), p, os.Open, Options{Depth: 1}, func(Member) error { return nil }, func(Skip) {})
-	if err != nil || res.Status != Split {
+	if err != nil || res.Status != Split || res.CacheableFailure {
 		t.Errorf("part02: %+v, %v; want split", res, err)
 	}
 }

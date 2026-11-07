@@ -125,6 +125,9 @@ func TestLookupFoldKeepsDirectoryLastAccess(t *testing.T) {
 		if err != nil || len(entries) != want {
 			t.Fatalf("%s lookup: %+v, %v", name, entries, err)
 		}
+		if want == 1 && entries[0].Name != ".ATTIC.TOML" {
+			t.Fatalf("lookup lost stored filename spelling: %+v", entries)
+		}
 	}
 	control, err := Stat(filepath.Join(root, "control"))
 	if err != nil {

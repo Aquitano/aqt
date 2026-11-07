@@ -595,15 +595,15 @@ type archiveAttempt struct {
 // not reach the requested depth, in path order like hashing.
 func (r *run) listArchives(ctx context.Context) error {
 	var err error
-	scopes := r.folders.ArchiveScopes()
+	ranges := config.ArchiveRanges(r.folders.ArchiveScopes())
 	r.archiveTried = map[archiveAttempt]bool{}
-	if r.total, err = r.sc.ArchiveTotals(ctx, scopes); err != nil {
+	if r.total, err = r.sc.ArchiveTotals(ctx, ranges, r.archives.UnpackMaxBytes); err != nil {
 		return err
 	}
 	r.done, r.seen = 0, map[int64]bool{}
 	r.progress(true)
 	return eachPage(ctx, func(ctx context.Context, after store.PendingArchive) ([]store.PendingArchive, error) {
-		return r.sc.NextArchives(ctx, after, 64, scopes)
+		return r.sc.NextArchives(ctx, after, 64, ranges, r.archives.UnpackMaxBytes)
 	}, func(ctx context.Context, a store.PendingArchive) error {
 		r.count(a.ContentID)
 		return r.listArchive(ctx, a)
@@ -621,7 +621,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 	if a.Depth >= rules.ArchiveDepth || r.archiveTried[attempt] {
 		return nil
 	}
-	l, err := r.sc.StartListing(ctx, a.ContentID, rules.ArchiveDepth)
+	l, err := r.sc.StartListing(ctx, a.ContentID, rules.ArchiveDepth, r.archives.UnpackMaxBytes)
 	if err != nil || l == nil {
 		if l == nil && err == nil {
 			r.log.Debug("archive cache already reaches requested depth", "path", a.Path)
@@ -702,6 +702,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 		}
 		r.archiveTried[attempt] = true
 	}
+	res.CacheableFailure = res.CacheableFailure && opener.copied != "" && !opener.multipart
 	if err := l.Finish(ctx, res); err != nil {
 		return err
 	}

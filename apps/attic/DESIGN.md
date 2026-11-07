@@ -48,6 +48,10 @@ Temporary copies and nested archives use private `aqt-attic/scan-*` workspaces u
 
 Archive members carry names, paths, sizes, timestamps and CRC32 where available. They are not independently hashed. A nested archive adds another `::` path component. Depth and unpack limits bound traversal. Multipart RAR listings need their sibling volumes; a missing part remains retryable. Archive listings commit as a unit so interruption cannot preserve a partial transaction.
 
+Folder policies retain filesystem directory spelling. The archive queue resolves the sparse policies into disjoint byte-order path ranges once per phase. Each range selects entries through `entries_path_idx`, including nested overrides without comparing every archive with every policy.
+
+An incomplete depth upgrade keeps the successful listing and its depth. Completed, verified attempts that encounter encryption, parser failures or unpack limits record the content, exact requested depth and effective unpack limit. Changing the depth or unpack limit enables another attempt. Source I/O, changed digests and multipart probes remain retryable. Rebuilding selected content deletes its remembered failures with its archive cache.
+
 Document extraction keeps at most 1 MB of text per content. PDFs without a text layer become `needs_ocr`. Source code, configuration and logs keep their names without text extraction. ExifTool handles embedded metadata separately from document text.
 
 ## Scans and enrichment have separate lifecycles

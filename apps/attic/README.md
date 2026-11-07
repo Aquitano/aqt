@@ -249,7 +249,9 @@ Patterns are relative to the folder containing the file. `/Cache/` selects that 
 
 Folder files control scans. Existing catalogue results remain searchable, including archive members recorded before a rule changed or through another copy of the same content. Other commands continue to use the main configuration.
 
-A deeper archive policy upgrades a shallower cached listing, including when identical copies have different folder policies. Failed upgrades keep the previous listing. Existing catalogues do not record their earlier listing depths, so the migration leaves their listings unchanged. Use `attic scan E:\Backups --rebuild-content` to refresh those older listings at the selected depth. Unreadable directories leave catalogue history intact, and files below them receive no content processing while their folder policies are unresolved.
+A deeper archive policy upgrades a shallower cached listing, including when identical copies have different folder policies. Failed upgrades keep the previous listing. Completed, verified attempts that encounter encryption, parser failures or unpack limits are remembered for that content, requested depth and effective unpack limit. Unchanged scans skip those attempts. Changing the depth or unpack limit enables another attempt. Source read failures, missing multipart volumes and changed bytes remain retryable. `--rebuild-content` clears remembered failures for the selected content.
+
+Folder policy lookup preserves directory spelling, so case-sensitive sibling folders can have separate settings. Patterns still ignore case. Existing catalogues do not record their earlier listing depths, so the migration leaves their listings unchanged. Use `attic scan E:\Backups --rebuild-content` to refresh those older listings at the selected depth. Unreadable directories leave catalogue history intact, and files below them receive no content processing while their folder policies are unresolved.
 
 ## Develop
 

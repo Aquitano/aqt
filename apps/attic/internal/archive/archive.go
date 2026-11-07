@@ -89,10 +89,11 @@ type Options struct {
 }
 
 type Result struct {
-	Format     string
-	Status     string
-	Detail     string
-	Incomplete bool
+	Format           string
+	Status           string
+	Detail           string
+	Incomplete       bool
+	CacheableFailure bool
 }
 
 type Handle interface {
@@ -132,10 +133,14 @@ func List[F Handle](ctx context.Context, p string, open func(string) (F, error),
 		defer func() { err = errors.Join(err, workspace.Close()) }()
 		o.Temp = workspace.Path
 	}
-	incomplete := false
+	incomplete, retryable := false, false
 	l := lister{o: o, emit: emit, skip: func(s Skip) {
-		if s.Reason != "too_deep" && s.Reason != NotArchive {
+		switch s.Reason {
+		case "too_deep", NotArchive:
+		case Damaged, Encrypted, "too_big":
 			incomplete = true
+		default:
+			incomplete, retryable = true, true
 		}
 		skip(s)
 	}, watch: &watch{ctx: ctx}, log: cmp.Or(o.Log, slog.New(slog.DiscardHandler))}
@@ -146,6 +151,8 @@ func List[F Handle](ctx context.Context, p string, open func(string) (F, error),
 	if readErr := l.watch.failure(); err == nil && readErr != nil {
 		err = UnreadableError{readErr}
 	}
+	res.CacheableFailure = err == nil && !retryable &&
+		(res.Status == Listed && incomplete || res.Status == Damaged || res.Status == Encrypted || res.Status == NotArchive)
 	return res, err
 }
 
@@ -525,7 +532,7 @@ func classify(err error) string {
 	case errors.Is(err, rardecode.ErrArchiveEncrypted), errors.Is(err, rardecode.ErrArchivedFileEncrypted),
 		errors.As(err, &se) && se.Encrypted:
 		return Encrypted
-	case errors.Is(err, rardecode.ErrBadVolumeNumber):
+	case errors.Is(err, rardecode.ErrBadVolumeNumber), volumeMissing(err):
 		return Split
 	}
 	return Damaged
