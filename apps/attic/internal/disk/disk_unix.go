@@ -48,13 +48,8 @@ func Hold(path string) (*Held, error) {
 
 func (f *Held) Restore() error { return nil }
 
-// Move renames a file within one file system and fails when to exists.
-func Move(from, to string) error {
-	if err := os.Link(from, to); err != nil {
-		return err
-	}
-	return os.Remove(from)
-}
+// Present always holds: without Locate there is no fingerprint to compare.
+func Present(Volume) bool { return true }
 
 func List(dir string) ([]Entry, error) {
 	des, err := os.ReadDir(dir)

@@ -1,13 +1,16 @@
 // Package disk is everything attic asks of the operating system: which volume
 // a path lives on, a folder's entries in bulk, and a file's BLAKE3 digest. It
-// writes to the disks it reads only through Move, which dedupe uses to set
-// copies aside, and Held.Restore, which puts back times another program's
-// read moved.
+// writes to the disks it reads only through Move and Folders, which dedupe
+// and organize use to set copies aside and to rename reviewed files and
+// folders, and Held.Restore, which puts back times another program's read
+// moved.
 package disk
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -59,6 +62,18 @@ type Entry struct {
 }
 
 type Digest [32]byte
+
+func (d Digest) MarshalText() ([]byte, error) {
+	return hex.AppendEncode(nil, d[:]), nil
+}
+
+func (d *Digest) UnmarshalText(text []byte) error {
+	if hex.DecodedLen(len(text)) != len(d) {
+		return fmt.Errorf("a BLAKE3 digest has %d hex characters, not %d", 2*len(d), len(text))
+	}
+	_, err := hex.Decode(d[:], text)
+	return err
+}
 
 // ErrInUse means another program has the file open for writing.
 var ErrInUse = errors.New("in use by another program")

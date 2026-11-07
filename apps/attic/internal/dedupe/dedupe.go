@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
@@ -134,7 +133,7 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, kept *kept
 	if err != nil {
 		return Move{}, err.Error(), nil
 	}
-	if !here(mount) {
+	if !disk.Present(mount) {
 		return Move{}, "its disk changed since the run started", nil
 	}
 	root := mount.Root
@@ -155,7 +154,7 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, kept *kept
 	}
 	toRel := filepath.Join(Quarantine, run, rel)
 	from, to := filepath.Join(root, rel), filepath.Join(root, toRel)
-	if err := folders(root, filepath.Dir(toRel), true); err != nil {
+	if _, err := disk.Folders(root, filepath.Dir(toRel), true); err != nil {
 		return Move{}, err.Error(), nil
 	}
 	if err := disk.Move(from, to); err != nil {
@@ -185,7 +184,7 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, kept *kept
 // putBack returns a set-aside copy to root/rel. It refuses a path that is
 // taken, or whose folders now lead through a link or junction.
 func putBack(root, rel, to string) error {
-	if err := folders(root, filepath.Dir(rel), false); err != nil {
+	if _, err := disk.Folders(root, filepath.Dir(rel), false); err != nil {
 		return err
 	}
 	return disk.Move(to, filepath.Join(root, rel))
@@ -202,7 +201,7 @@ type keptCopy struct {
 // intact reports whether the kept copy is still the same file on the same
 // disk, unwritten since it was hashed.
 func (k *keptCopy) intact() bool {
-	if !here(k.mount) {
+	if !disk.Present(k.mount) {
 		return false
 	}
 	now, err := statOrdinary(k.mount.Root, k.rel)
@@ -215,7 +214,7 @@ func verifiedCopy(ctx context.Context, kept []store.Hit, digest disk.Digest, mou
 	reason := "no kept copy is on an attached disk"
 	for _, h := range kept {
 		m, online := mounts[h.VolumeID]
-		if !online || !here(m) {
+		if !online || !disk.Present(m) {
 			continue
 		}
 		rel, err := local(h.Path)
@@ -229,16 +228,6 @@ func verifiedCopy(ctx context.Context, kept []store.Hit, digest disk.Digest, mou
 		reason = "no attached kept copy still matches its digest"
 	}
 	return nil, reason
-}
-
-// here reports whether the disk at m.Root is still the one the run started
-// with. Locating a volume needs Windows; elsewhere the check passes.
-func here(m disk.Volume) bool {
-	if runtime.GOOS != "windows" {
-		return true
-	}
-	current, _, err := disk.Locate(m.Root)
-	return err == nil && current.Fingerprint == m.Fingerprint
 }
 
 // stillHashed reports whether root/rel, reached without following links,
@@ -275,32 +264,6 @@ func statOrdinary(root, rel string) (fs.FileInfo, error) {
 
 func unwritten(was, now fs.FileInfo) bool {
 	return now.Size() == was.Size() && now.ModTime().Equal(was.ModTime())
-}
-
-// folders checks that each folder of rel below root is an ordinary folder,
-// not a link or junction that would send a move elsewhere. create makes the
-// missing ones first.
-func folders(root, rel string, create bool) error {
-	if rel == "." {
-		return nil
-	}
-	dir := root
-	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
-		dir = filepath.Join(dir, part)
-		if create {
-			if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
-				return err
-			}
-		}
-		info, err := os.Lstat(dir)
-		if err != nil {
-			return err
-		}
-		if info.Mode().Type() != fs.ModeDir {
-			return fmt.Errorf("%s is not an ordinary folder", dir)
-		}
-	}
-	return nil
 }
 
 func local(catalogued string) (string, error) {

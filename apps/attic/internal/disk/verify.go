@@ -3,9 +3,11 @@ package disk
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 var ErrNotOrdinary = errors.New("not an ordinary local file or directory")
@@ -48,4 +50,38 @@ func HashOrdinaryInfo(ctx context.Context, root, rel string) (Digest, fs.FileInf
 	}
 	d, _, err := hashReader(ctx, f)
 	return d, info, err
+}
+
+// Folders checks that each folder of rel below root is an ordinary folder,
+// not a link or junction that would send a move elsewhere. Without create it
+// stops at the first missing folder; with create it makes the missing ones
+// and returns them.
+func Folders(root, rel string, create bool) ([]string, error) {
+	if rel == "." {
+		return nil, nil
+	}
+	var created []string
+	dir := root
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
+		dir = filepath.Join(dir, part)
+		if create {
+			err := os.Mkdir(dir, 0o700)
+			if err == nil {
+				created = append(created, dir)
+			} else if !errors.Is(err, fs.ErrExist) {
+				return created, err
+			}
+		}
+		info, err := os.Lstat(dir)
+		if !create && errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
+		if err != nil {
+			return created, err
+		}
+		if info.Mode().Type() != fs.ModeDir {
+			return created, fmt.Errorf("%s is not an ordinary folder", dir)
+		}
+	}
+	return created, nil
 }

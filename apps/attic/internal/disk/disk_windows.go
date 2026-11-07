@@ -187,7 +187,13 @@ func (f *Held) Restore() error {
 	return nil
 }
 
-// Move renames a file within one volume and fails when to exists. os.Rename
+// Present reports whether the disk at v.Root is still the one v describes.
+func Present(v Volume) bool {
+	current, _, err := Locate(v.Root)
+	return err == nil && current.Fingerprint == v.Fingerprint
+}
+
+// Move renames a file or folder within one volume and fails when to exists. os.Rename
 // would replace it.
 func Move(from, to string) error {
 	f, err := windows.UTF16PtrFromString(longPath(from))

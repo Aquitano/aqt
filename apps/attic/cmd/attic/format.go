@@ -35,6 +35,13 @@ func count(n int64) string {
 	return s
 }
 
+func plural(n int64, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return count(n) + " " + noun + "s"
+}
+
 // parseSize reads "10M", "512kb", "2G" or a plain byte count.
 func parseSize(raw string) (int64, error) {
 	s := strings.TrimSuffix(strings.ToUpper(strings.TrimSpace(raw)), "B")
