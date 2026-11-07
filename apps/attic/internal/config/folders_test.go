@@ -104,13 +104,34 @@ func TestFolderRulesInheritWithoutChangingOtherFolders(t *testing.T) {
 }
 
 func TestFolderConfigRejectsInvalidOrMachineSettings(t *testing.T) {
-	for _, body := range []string{"exclude = [", "temp = '/other'", "[ai]\nprovider = 'codex'", "[archives]\ndepth = -1", "[archives]\ntemp = '/other'"} {
+	for _, body := range []string{
+		"exclude = [", "temp = '/other'", "[ai]\nprovider = 'codex'", "[archives]\ndepth = -1", "[archives]\ntemp = '/other'",
+		"exclude = ['secret[*.txt']", "name_only = ['secret[*.txt']", "name_only = ['prefix*[bad']", "exclude = ['dir/[a-']",
+		"name_only = ['private**/secret.txt']", "exclude = ['/cache**/']",
+	} {
 		t.Run(body, func(t *testing.T) {
 			_, err := Default().Rules("", "").WithFolder("/Backups", []byte(body))
 			if err == nil || !strings.Contains(err.Error(), "/Backups/.attic.toml") {
 				t.Fatalf("invalid folder config: %v", err)
 			}
 		})
+	}
+}
+
+func TestFolderRulesAcceptGitignoreGlobsAndComments(t *testing.T) {
+	rules, err := Default().Rules("", "").WithFolder("/Backups", []byte(`
+exclude = ['cache**/']
+name_only = ['**/secret[0-9].key', '!**/secret0.key', 'literal[[]name', '# ignored [', '']
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rules.NameOnly(split("backups/child/secret1.key")) || rules.NameOnly(split("backups/child/secret0.key")) ||
+		!rules.NameOnly(split("backups/literal[name")) {
+		t.Fatal("valid folder patterns changed their matching behavior")
+	}
+	if excluded, _ := rules.Excluded(split("backups/cache-folder"), true); !excluded {
+		t.Fatal("valid simple-name directory glob was rejected")
 	}
 }
 

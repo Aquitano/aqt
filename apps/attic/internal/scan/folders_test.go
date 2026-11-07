@@ -34,6 +34,26 @@ func TestFolderConfigReadRefusesLinksAndOversizedFiles(t *testing.T) {
 	}
 }
 
+func TestMalformedFolderPatternStopsBeforeContentProcessing(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	write(t, root, config.FolderFile, "name_only = ['secret[*.txt']\n")
+	write(t, root, "secret.txt", "private text")
+	res, err := Run(t.Context(), st, Options{
+		Path: root,
+		locate: func(string) (disk.Volume, []string, error) {
+			return disk.Volume{Fingerprint: testVolume, Root: root}, nil, nil
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), config.FolderFile) || !strings.Contains(err.Error(), "secret[*.txt") {
+		t.Fatalf("malformed folder pattern: %v", err)
+	}
+	if res.Counts.Hashed != 0 || res.Counts.Texts != 0 || res.Counts.Metadata != 0 ||
+		pgschematest.QueryInt(t, dsn, `select count(*) from contents`) != 0 {
+		t.Fatalf("malformed policy allowed content processing: %+v", res.Counts)
+	}
+}
+
 func TestFolderArchivePolicyKeepsHashAndMetadata(t *testing.T) {
 	binary, err := os.Executable()
 	if err != nil {

@@ -185,6 +185,22 @@ func (r Rules) WithFolder(folder string, data []byte) (Rules, error) {
 	if err := dec.Decode(&local); err != nil {
 		return r, fmt.Errorf("%s: %w", source, err)
 	}
+	for _, p := range slices.Concat(local.Exclude, local.NameOnly) {
+		p = strings.TrimSpace(p)
+		if p == "" || strings.HasPrefix(p, "#") {
+			continue
+		}
+		pattern := strings.TrimSuffix(strings.TrimPrefix(p, "!"), "/")
+		glob := strings.Contains(pattern, "/")
+		for _, part := range strings.Split(pattern, "/") {
+			if glob && part != "**" && strings.Contains(part, "**") {
+				return r, fmt.Errorf("%s: pattern %q: ** must occupy a complete path component", source, p)
+			}
+			if _, err := path.Match(filepath.ToSlash(part), ""); err != nil {
+				return r, fmt.Errorf("%s: pattern %q: %w", source, p, err)
+			}
+		}
+	}
 	if local.Archives.Depth != nil {
 		if *local.Archives.Depth < 0 {
 			return r, fmt.Errorf("%s: archives.depth must not be negative", source)
