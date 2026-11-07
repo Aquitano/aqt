@@ -58,18 +58,24 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 		lower = after.Path
 	}
 	first := sort.Search(len(ranges), func(i int) bool { return ranges[i].Upper > lower })
-	for _, policy := range ranges[first:] {
-		if upper != "" && policy.Lower >= upper {
-			break
-		}
+	ranges = ranges[first:]
+	if upper != "" {
+		last := sort.Search(len(ranges), func(i int) bool { return ranges[i].Lower >= upper })
+		ranges = ranges[:last]
+	}
+	for len(ranges) > 0 {
+		n := min(len(ranges), 64)
+		lowers, uppers, depths := archiveRangeArrays(ranges[:n])
+		ranges = ranges[n:]
 		rows, err := sc.store.pool.Query(ctx, `select candidate.*
-			from (values ($5::text, $6::text, $7::int)) as policy(lower, upper, depth)
+			from (select * from unnest($5::text[], $6::text[], $7::int[]) as p(lower, upper, depth)
+				order by p.lower collate "C") policy
 			cross join lateral (
 				select e.id, e.path, c.size_bytes, e.content_id, c.blake3, coalesce(a.depth, 0)`+pendingArchiveWhere+`
 				and (e.path collate "C", e.id) > ($10, $11)
 				order by e.path collate "C", e.id limit $12
-			) candidate order by candidate.path collate "C", candidate.id`,
-			sc.Volume.ID, archive.Extensions, archive.Compressed, upper, policy.Lower, policy.Upper, policy.Depth,
+			) candidate order by policy.lower collate "C", candidate.path collate "C", candidate.id limit $12`,
+			sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lowers, uppers, depths,
 			unpackMaxBytes, archive.LaterVolumePattern, lower, after.ID, limit)
 		if err != nil {
 			return nil, err

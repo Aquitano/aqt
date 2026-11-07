@@ -287,6 +287,53 @@ func TestLegacyArchiveListingRequiresExplicitRebuild(t *testing.T) {
 	finishArchiveListing(t, sc, id, 3, "refreshed.txt")
 }
 
+func TestArchiveQueueBatchesPolicyRanges(t *testing.T) {
+	sc, conn, id := archiveCacheScan(t)
+	ctx := t.Context()
+	if _, err := conn.Exec(ctx, `with folders as (
+		insert into entries (volume_id, parent_id, kind, name, raw_name, path, hash_state, first_scan, updated_scan)
+		select $1, (select id from entries where volume_id=$1 and path=''), 'dir', name, convert_to(name, 'UTF8'),
+			'/' || name, 'none', $3, $3
+		from (select 'range' || lpad(n::text, 3, '0') as name from generate_series(64,193) n) names
+		returning id, path
+	)
+	insert into entries
+		(volume_id, parent_id, kind, name, raw_name, path, ext, size_bytes, content_id, hash_state, first_scan, updated_scan)
+	select $1, id, 'file', 'copy.zip', 'copy.zip'::bytea, path || '/copy.zip', 'zip', 10, $2, 'done', $3, $3 from folders`, sc.Volume.ID, id, sc.ID); err != nil {
+		t.Fatal(err)
+	}
+	var scopes []config.ArchiveScope
+	for i := range 194 {
+		scopes = append(scopes, config.ArchiveScope{Path: fmt.Sprintf("/range%03d", i), Depth: 1})
+	}
+	ranges := config.ArchiveRanges(scopes)
+	var after store.PendingArchive
+	var paths []string
+	for {
+		page, err := sc.NextArchives(ctx, after, 64, ranges, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		if after.ID == 0 && len(page) != 64 {
+			t.Fatalf("first page returned %d archives, want 64 across policy ranges", len(page))
+		}
+		after = page[len(page)-1]
+		for _, a := range page {
+			paths = append(paths, a.Path)
+		}
+	}
+	var want []string
+	for i := 64; i < 194; i++ {
+		want = append(want, fmt.Sprintf("/range%03d/copy.zip", i))
+	}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("paged paths: %v, want %v", paths, want)
+	}
+}
+
 func TestArchiveQueueUsesEachFolderPolicy(t *testing.T) {
 	sc, conn, id := archiveCacheScan(t)
 	ctx := t.Context()

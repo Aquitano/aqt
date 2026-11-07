@@ -602,6 +602,9 @@ func (r *run) listArchives(ctx context.Context) error {
 	}
 	r.done, r.seen = 0, map[int64]bool{}
 	r.progress(true)
+	if r.total == 0 {
+		return nil
+	}
 	return eachPage(ctx, func(ctx context.Context, after store.PendingArchive) ([]store.PendingArchive, error) {
 		return r.sc.NextArchives(ctx, after, 64, ranges, r.archives.UnpackMaxBytes)
 	}, func(ctx context.Context, a store.PendingArchive) error {
