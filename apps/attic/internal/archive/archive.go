@@ -89,9 +89,11 @@ type Options struct {
 }
 
 type Result struct {
-	Format string
-	Status string
-	Detail string
+	Format           string
+	Status           string
+	Detail           string
+	Incomplete       bool
+	CacheableFailure bool
 }
 
 type Handle interface {
@@ -131,19 +133,34 @@ func List[F Handle](ctx context.Context, p string, open func(string) (F, error),
 		defer func() { err = errors.Join(err, workspace.Close()) }()
 		o.Temp = workspace.Path
 	}
-	l := lister{o: o, emit: emit, skip: skip, watch: &watch{ctx: ctx}, log: cmp.Or(o.Log, slog.New(slog.DiscardHandler))}
+	incomplete, retryable := false, false
+	l := lister{o: o, emit: emit, skip: func(s Skip) {
+		switch s.Reason {
+		case "too_deep", NotArchive:
+		case Damaged, Encrypted, "too_big":
+			incomplete = true
+		default:
+			incomplete, retryable = true, true
+		}
+		skip(s)
+	}, watch: &watch{ctx: ctx}, log: cmp.Or(o.Log, slog.New(slog.DiscardHandler))}
 	res, err = l.list(ctx, p, func(p string) (Handle, error) { return open(p) }, "", 1)
+	res.Incomplete = incomplete
 	// A read that failed anywhere, a nested archive's included, says the disk
 	// faltered; the listing is dropped and the next scan tries again.
 	if readErr := l.watch.failure(); err == nil && readErr != nil {
 		err = UnreadableError{readErr}
 	}
+	res.CacheableFailure = err == nil && !retryable &&
+		(res.Status == Listed && incomplete || res.Status == Damaged || res.Status == Encrypted || res.Status == NotArchive)
 	return res, err
 }
 
-// laterVolume names the second and later parts of a split rar, which are
+// LaterVolumePattern names the second and later parts of a split rar, which are
 // listed with the first. RAR4 parts do not say so in a way rardecode reports.
-var laterVolume = regexp.MustCompile(`(?i)\.part0*([2-9]|[1-9]\d+)\.rar$`)
+const LaterVolumePattern = `(?i)\.part0*([2-9]|[1-9][0-9]+)\.rar$`
+
+var laterVolume = regexp.MustCompile(LaterVolumePattern)
 
 type lister struct {
 	o     Options
@@ -517,7 +534,7 @@ func classify(err error) string {
 	case errors.Is(err, rardecode.ErrArchiveEncrypted), errors.Is(err, rardecode.ErrArchivedFileEncrypted),
 		errors.As(err, &se) && se.Encrypted:
 		return Encrypted
-	case errors.Is(err, rardecode.ErrBadVolumeNumber):
+	case errors.Is(err, rardecode.ErrBadVolumeNumber), volumeMissing(err):
 		return Split
 	}
 	return Damaged

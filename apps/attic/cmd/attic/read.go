@@ -564,6 +564,7 @@ func (cmd *textCmd) Run(ctx context.Context) error {
 type configCmd struct {
 	Config string `help:"Configuration file."`
 	Volume string `help:"Volume label or ID for effective rules."`
+	Under  string `help:"Inspect inherited scan rules for a mounted folder."`
 }
 
 func (cmd *configCmd) Run(ctx context.Context) error {
@@ -571,25 +572,46 @@ func (cmd *configCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	rules := cfg.Rules(cmd.Volume, cmd.Volume)
+	var files []string
+	if cmd.Under != "" {
+		mounted, rel, err := disk.Locate(cmd.Under)
+		if err != nil {
+			return err
+		}
+		rules, files, err = inspectFolder(cfg, cmd.Volume, mounted, rel)
+		if err != nil {
+			return err
+		}
+	}
 	state := "exists"
 	if _, err := os.Stat(path); err != nil {
 		state = "not created; defaults apply"
 	}
 	fmt.Printf("config    %s (%s)\n", path, state)
+	if cmd.Under != "" {
+		fmt.Printf("under     %s\n", cmd.Under)
+		if len(files) == 0 {
+			fmt.Println("folders   no folder configuration files found")
+		}
+		for _, file := range files {
+			fmt.Printf("folder    %s\n", file)
+		}
+	}
 	fmt.Printf("temp      %s\n", cmp.Or(cfg.Temp, os.TempDir()))
 	if cfg.HashMaxBytes > 0 {
 		fmt.Printf("hash      files up to %s\n", humanBytes(cfg.HashMaxBytes))
 	} else {
 		fmt.Println("hash      every file")
 	}
-	if a := cfg.Archives; a.Depth == 0 {
+	if a := cfg.Archives; rules.ArchiveDepth == 0 {
 		fmt.Println("archives  not read")
 	} else {
 		limit := "any size"
 		if a.UnpackMaxBytes > 0 {
 			limit = "up to " + humanBytes(a.UnpackMaxBytes)
 		}
-		fmt.Printf("archives  %d levels deep; nested archives %s\n", a.Depth, limit)
+		fmt.Printf("archives  %d levels deep; nested archives %s\n", rules.ArchiveDepth, limit)
 	}
 	if t := cfg.Text; t.MaxBytes > 0 {
 		fmt.Printf("text      documents up to %s, the first 1 MB of text each\n", humanBytes(t.MaxBytes))
@@ -598,7 +620,7 @@ func (cmd *configCmd) Run(ctx context.Context) error {
 	}
 	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes)
 	fmt.Printf("enrich    explicit command only; provider=%s, model=%s, endpoint=%s, api_key_env=%s, max_bytes=%d, timeout=%ds\n", cfg.AI.Provider, cfg.AI.Model, cfg.AI.Endpoint, cfg.AI.APIKeyEnv, cfg.AI.MaxBytes, cfg.AI.TimeoutSeconds)
-	exclude, nameOnly := cfg.Rules(cmd.Volume, cmd.Volume).Describe()
+	exclude, nameOnly := rules.Describe()
 	fmt.Println("exclude")
 	for _, r := range exclude {
 		fmt.Println("  " + r)

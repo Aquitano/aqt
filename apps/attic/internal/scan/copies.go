@@ -33,15 +33,16 @@ func (r *run) copyFailure(ctx context.Context, path string, err error) error {
 }
 
 type archiveCopies struct {
-	r       *run
-	w       *scratch.Workspace
-	ctx     context.Context
-	source  string
-	digest  disk.Digest
-	size    int64
-	copied  string
-	failure error
-	fatal   error
+	r         *run
+	w         *scratch.Workspace
+	ctx       context.Context
+	source    string
+	digest    disk.Digest
+	size      int64
+	copied    string
+	multipart bool
+	failure   error
+	fatal     error
 }
 
 func (c *archiveCopies) open(path string) (archive.Handle, error) {
@@ -65,11 +66,12 @@ func (c *archiveCopies) open(path string) (archive.Handle, error) {
 		c.failure = fmt.Errorf("archive part is outside its source directory: %s", path)
 		return nil, c.failure
 	}
+	c.multipart = true
 	if _, err := disk.Stat(path); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			c.failure = err
 		}
-		return nil, err
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}
 	rel, err := filepath.Rel(c.r.mountRoot, path)
 	if err != nil || !filepath.IsLocal(rel) {
@@ -77,7 +79,7 @@ func (c *archiveCopies) open(path string) (archive.Handle, error) {
 		return nil, c.failure
 	}
 	rel = "/" + filepath.ToSlash(rel)
-	if c.r.rules.SkipContent(rel) {
+	if c.r.rulesFor(rel).SkipContent(rel) {
 		c.failure = fmt.Errorf("archive part is excluded by current rules: %s", rel)
 		return nil, c.failure
 	}

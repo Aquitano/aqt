@@ -311,6 +311,10 @@ func finalPath(path string) (string, error) {
 		return "", &os.PathError{Op: "open", Path: path, Err: err}
 	}
 	defer windows.CloseHandle(h)
+	return handlePath(h, path)
+}
+
+func handlePath(h windows.Handle, path string) (string, error) {
 	buf := make([]uint16, 1024)
 	for {
 		n, err := windows.GetFinalPathNameByHandle(h, &buf[0], uint32(len(buf)), fileNameNormalizedDOS)
@@ -457,4 +461,47 @@ func Mounted() []Volume {
 		}
 	}
 	return out
+}
+
+// LookupFold probes a fixed filename on ordinary Windows directories. Only
+// case-sensitive directories need enumeration to find all case variants.
+func LookupFold(dir, name string) ([]Entry, error) {
+	h, err := open(dir, windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE, windows.FILE_FLAG_BACKUP_SEMANTICS)
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: dir, Err: err}
+	}
+	defer windows.CloseHandle(h)
+	var flags uint32
+	err = windows.GetFileInformationByHandleEx(h, windows.FileCaseSensitiveInfo, (*byte)(unsafe.Pointer(&flags)), uint32(unsafe.Sizeof(flags)))
+	if err != nil && !errors.Is(err, windows.ERROR_INVALID_PARAMETER) && !errors.Is(err, windows.ERROR_NOT_SUPPORTED) && !errors.Is(err, windows.ERROR_INVALID_FUNCTION) {
+		return nil, &os.PathError{Op: "case sensitivity", Path: dir, Err: err}
+	}
+	if flags&windows.FILE_CS_FLAG_CASE_SENSITIVE_DIR != 0 {
+		entries, err := List(dir)
+		if err != nil {
+			return nil, err
+		}
+		var matches []Entry
+		for _, e := range entries {
+			if strings.EqualFold(e.Name, name) {
+				matches = append(matches, e)
+			}
+		}
+		return matches, nil
+	}
+	p := filepath.Join(dir, name)
+	probe, err := open(p, windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE,
+		windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT|windows.FILE_FLAG_OPEN_NO_RECALL)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: p, Err: err}
+	}
+	defer windows.CloseHandle(probe)
+	stored, err := handlePath(probe, p)
+	if err != nil {
+		return nil, err
+	}
+	return []Entry{{Name: filepath.Base(stored)}}, nil
 }
