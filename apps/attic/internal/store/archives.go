@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"sort"
 
 	"github.com/jackc/pgx/v5"
 
@@ -30,6 +31,7 @@ const pendingArchiveWhere = `
 	  and e.path collate "C" >= policy.lower and e.path collate "C" < policy.upper
 	  and (e.ext = any($2) or (e.ext = any($3) and lower(e.name) like ('%.tar.' || e.ext)))
 	  and (a.content_id is null or a.depth < policy.depth)
+	  and (a.content_id is null or e.name !~ $9)
 	  and not exists (select 1 from archive_depth_failures f
 		where f.content_id = e.content_id and f.depth = policy.depth and f.unpack_max_bytes = $8 offset 0)
 	  and ($4 = '' or e.path collate "C" < $4)`
@@ -42,42 +44,48 @@ func (sc *Scan) ArchiveTotals(ctx context.Context, ranges []config.ArchiveRange,
 	err := sc.store.pool.QueryRow(ctx, `select count(distinct candidate.content_id)
 		from unnest($5::text[], $6::text[], $7::int[]) as policy(lower, upper, depth)
 		cross join lateral (select e.content_id`+pendingArchiveWhere+`
-			and e.path collate "C" > $9 offset 0) candidate
-		where policy.upper collate "C" > $9 and ($4 = '' or policy.lower collate "C" < $4)`,
-		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lowers, uppers, depths, unpackMaxBytes, lower).Scan(&n)
+			and e.path collate "C" > $10 offset 0) candidate
+		where policy.upper collate "C" > $10 and ($4 = '' or policy.lower collate "C" < $4)`,
+		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lowers, uppers, depths, unpackMaxBytes, archive.LaterVolumePattern, lower).Scan(&n)
 	return n, err
 }
 
 // NextArchives returns up to limit archives after the given one, in path
 // order. A completed listing settles copies requesting no greater depth.
-// Disjoint ranges can be ordered first so the limit stops before later ranges.
 func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit int, ranges []config.ArchiveRange, unpackMaxBytes int64) ([]PendingArchive, error) {
 	lower, upper := sc.subtree()
-	lowers, uppers, depths := archiveRangeArrays(ranges)
 	if after.ID != 0 {
 		lower = after.Path
 	}
-	rows, err := sc.store.pool.Query(ctx, `select candidate.*
-		from (select * from unnest($5::text[], $6::text[], $7::int[]) as p(lower, upper, depth)
-			order by p.lower collate "C") policy
-		cross join lateral (
-			select e.id, e.path, c.size_bytes, e.content_id, c.blake3, coalesce(a.depth, 0)`+pendingArchiveWhere+`
-			and (e.path collate "C", e.id) > ($9, $10)
-			order by e.path collate "C", e.id limit $11
-		) candidate
-		where policy.upper collate "C" > $9 and ($4 = '' or policy.lower collate "C" < $4)
-		order by policy.lower collate "C", candidate.path collate "C", candidate.id limit $11`,
-		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lowers, uppers, depths, unpackMaxBytes, lower, after.ID, limit)
-	if err != nil {
-		return nil, err
+	first := sort.Search(len(ranges), func(i int) bool { return ranges[i].Upper > lower })
+	for _, policy := range ranges[first:] {
+		if upper != "" && policy.Lower >= upper {
+			break
+		}
+		rows, err := sc.store.pool.Query(ctx, `select candidate.*
+			from (values ($5::text, $6::text, $7::int)) as policy(lower, upper, depth)
+			cross join lateral (
+				select e.id, e.path, c.size_bytes, e.content_id, c.blake3, coalesce(a.depth, 0)`+pendingArchiveWhere+`
+				and (e.path collate "C", e.id) > ($10, $11)
+				order by e.path collate "C", e.id limit $12
+			) candidate order by candidate.path collate "C", candidate.id`,
+			sc.Volume.ID, archive.Extensions, archive.Compressed, upper, policy.Lower, policy.Upper, policy.Depth,
+			unpackMaxBytes, archive.LaterVolumePattern, lower, after.ID, limit)
+		if err != nil {
+			return nil, err
+		}
+		page, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (PendingArchive, error) {
+			var p PendingArchive
+			var digest []byte
+			err := r.Scan(&p.ID, &p.Path, &p.Size, &p.ContentID, &digest, &p.Depth)
+			copy(p.Digest[:], digest)
+			return p, err
+		})
+		if err != nil || len(page) != 0 {
+			return page, err
+		}
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (PendingArchive, error) {
-		var p PendingArchive
-		var digest []byte
-		err := r.Scan(&p.ID, &p.Path, &p.Size, &p.ContentID, &digest, &p.Depth)
-		copy(p.Digest[:], digest)
-		return p, err
-	})
+	return nil, nil
 }
 
 func archiveRangeArrays(ranges []config.ArchiveRange) ([]string, []string, []int) {

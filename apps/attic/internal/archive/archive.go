@@ -156,9 +156,11 @@ func List[F Handle](ctx context.Context, p string, open func(string) (F, error),
 	return res, err
 }
 
-// laterVolume names the second and later parts of a split rar, which are
+// LaterVolumePattern names the second and later parts of a split rar, which are
 // listed with the first. RAR4 parts do not say so in a way rardecode reports.
-var laterVolume = regexp.MustCompile(`(?i)\.part0*([2-9]|[1-9]\d+)\.rar$`)
+const LaterVolumePattern = `(?i)\.part0*([2-9]|[1-9][0-9]+)\.rar$`
+
+var laterVolume = regexp.MustCompile(LaterVolumePattern)
 
 type lister struct {
 	o     Options

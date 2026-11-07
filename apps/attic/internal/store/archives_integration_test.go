@@ -148,6 +148,42 @@ func TestArchiveCacheReusesSameOrShallowerDepth(t *testing.T) {
 	}
 }
 
+func TestArchiveQueueSkipsCachedContinuationNames(t *testing.T) {
+	sc, conn, id := archiveCacheScan(t)
+	ctx := t.Context()
+	if _, err := conn.Exec(ctx, `update entries set
+		name = case when path = '/deep/copy.zip' then 'test.PART0002.RAR' else 'test.part01.rar' end,
+		path = case when path = '/deep/copy.zip' then '/deep/test.PART0002.RAR' else '/shallow/test.part01.rar' end,
+		ext = 'rar' where content_id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	ranges := config.ArchiveRanges([]config.ArchiveScope{{Path: "/", Depth: 2}})
+	if pending, err := sc.NextArchives(ctx, store.PendingArchive{}, 10, ranges, 0); err != nil || len(pending) != 2 {
+		t.Fatalf("initial parts: %+v, %v", pending, err)
+	}
+	l, err := sc.StartListing(ctx, id, 1, 0)
+	if err != nil || l == nil {
+		t.Fatalf("initial split listing: %v, %v", l, err)
+	}
+	defer l.Abort(ctx)
+	if err := l.Finish(ctx, archive.Result{Format: "rar", Status: archive.Split}); err != nil {
+		t.Fatal(err)
+	}
+	if pending, err := sc.NextArchives(ctx, store.PendingArchive{}, 10, ranges, 0); err != nil ||
+		len(pending) != 1 || pending[0].Path != "/shallow/test.part01.rar" {
+		t.Fatalf("continuation queued or primary excluded: %+v, %v", pending, err)
+	}
+	if _, err := conn.Exec(ctx, `update entries set missing_scan = $1 where path = '/shallow/test.part01.rar'`, sc.ID); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := sc.ArchiveTotals(ctx, ranges, 0); err != nil || n != 0 {
+		t.Fatalf("continuation totals: %d, %v", n, err)
+	}
+	if pending, err := sc.NextArchives(ctx, store.PendingArchive{}, 10, ranges, 0); err != nil || len(pending) != 0 {
+		t.Fatalf("continuation pending: %+v, %v", pending, err)
+	}
+}
+
 func TestArchiveCacheRollbackPreservesCommittedListing(t *testing.T) {
 	sc, conn, id := archiveCacheScan(t)
 	ctx := t.Context()
@@ -287,25 +323,29 @@ func TestArchiveQueueUsesEachFolderPolicy(t *testing.T) {
 		if n, err := sc.ArchiveTotals(ctx, ranges, 0); err != nil || n != 1 {
 			t.Fatalf("cached %t totals: %d, %v", cached, n, err)
 		}
-		var paths []string
-		var after store.PendingArchive
-		for {
-			page, err := sc.NextArchives(ctx, after, 1, ranges, 0)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(page) == 0 {
-				break
-			}
-			after = page[0]
-			paths = append(paths, after.Path)
-		}
 		want := []string{"/a/copy.zip", "/deep/copy.zip", "/deep/disabled/open/copy.zip", "/foobar/copy.zip"}
 		if !cached {
 			want = append(want, "/shallow/copy.zip")
 		}
-		if !slices.Equal(paths, want) {
-			t.Fatalf("cached %t queue paths: %v, want %v", cached, paths, want)
+		for _, limit := range []int{1, 3} {
+			var paths []string
+			var after store.PendingArchive
+			for {
+				page, err := sc.NextArchives(ctx, after, limit, ranges, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(page) == 0 {
+					break
+				}
+				after = page[len(page)-1]
+				for _, a := range page {
+					paths = append(paths, a.Path)
+				}
+			}
+			if !slices.Equal(paths, want) {
+				t.Fatalf("cached %t limit %d queue paths: %v, want %v", cached, limit, paths, want)
+			}
 		}
 	}
 }
