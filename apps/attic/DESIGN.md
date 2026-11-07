@@ -42,7 +42,7 @@ Archive listings, document text and metadata belong to content. Once a result ex
 
 The scanner verifies source bytes against the expected digest before extracting content-derived results. Readers and external tools use stable temporary copies. Changed files, failed reads and size limits leave work eligible for a later scan. A repeatable parser failure can be stored as a result of the verified content.
 
-`scan --rebuild-content` discards archive listings and document text selected through present files below the scan root, then extracts them again. It repairs results produced before verification was enforced. The reset affects all copies sharing that content, and keeps metadata and enrichment results.
+`scan --rebuild-content` discards archive listings and document text selected through present files below the scan root. It repairs results produced before verification was enforced. The reset affects all copies sharing that content, and keeps metadata and enrichment results. Current folder policies determine which results are regenerated. Depth-zero copies do not regenerate archive listings.
 
 Temporary copies and nested archives use private `aqt-attic/scan-*` workspaces under the configured `temp` directory. Windows checks that scratch is off the source volume. File locks distinguish abandoned workspaces from active readers. Cleanup failures leave files available for a later cleanup attempt.
 
@@ -50,7 +50,7 @@ Archive members carry names, paths, sizes, timestamps and CRC32 where available.
 
 Folder policies retain filesystem directory spelling. The archive queue resolves the sparse policies into disjoint byte-order path ranges once per phase. Each range selects entries through `entries_path_idx`, including nested overrides without comparing every archive with every policy.
 
-An incomplete depth upgrade keeps the successful listing and its depth. Completed, verified attempts that encounter encryption, parser failures or unpack limits record the content, exact requested depth and effective unpack limit. Changing the depth or unpack limit enables another attempt. Source I/O, changed digests and multipart probes remain retryable. Rebuilding selected content deletes its remembered failures with its archive cache.
+An incomplete depth upgrade keeps the successful listing and its depth. Completed, verified upgrade attempts that encounter encryption, parser failures or unpack limits record the content, exact requested depth and effective unpack limit. Changing the depth or unpack limit can enable another upgrade attempt. Source I/O, changed digests and multipart probes remain retryable. Initial listings remain cached at their recorded depth. Retrying an initial listing at the same depth requires rebuilding selected content, even if the unpack limit changes. Rebuilding deletes remembered failures with the selected archive cache.
 
 Document extraction keeps at most 1 MB of text per content. PDFs without a text layer become `needs_ocr`. Source code, configuration and logs keep their names without text extraction. ExifTool handles embedded metadata separately from document text.
 
