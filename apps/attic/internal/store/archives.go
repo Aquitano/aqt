@@ -50,6 +50,7 @@ func (sc *Scan) ArchiveTotals(ctx context.Context, ranges []config.ArchiveRange,
 
 // NextArchives returns up to limit archives after the given one, in path
 // order. A completed listing settles copies requesting no greater depth.
+// Disjoint ranges can be ordered first so the limit stops before later ranges.
 func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit int, ranges []config.ArchiveRange, unpackMaxBytes int64) ([]PendingArchive, error) {
 	lower, upper := sc.subtree()
 	lowers, uppers, depths := archiveRangeArrays(ranges)
@@ -57,14 +58,15 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 		lower = after.Path
 	}
 	rows, err := sc.store.pool.Query(ctx, `select candidate.*
-		from unnest($5::text[], $6::text[], $7::int[]) as policy(lower, upper, depth)
+		from (select * from unnest($5::text[], $6::text[], $7::int[]) as p(lower, upper, depth)
+			order by p.lower collate "C") policy
 		cross join lateral (
 			select e.id, e.path, c.size_bytes, e.content_id, c.blake3, coalesce(a.depth, 0)`+pendingArchiveWhere+`
 			and (e.path collate "C", e.id) > ($9, $10)
 			order by e.path collate "C", e.id limit $11
 		) candidate
 		where policy.upper collate "C" > $9 and ($4 = '' or policy.lower collate "C" < $4)
-		order by candidate.path collate "C", candidate.id limit $11`,
+		order by policy.lower collate "C", candidate.path collate "C", candidate.id limit $11`,
 		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lowers, uppers, depths, unpackMaxBytes, lower, after.ID, limit)
 	if err != nil {
 		return nil, err
