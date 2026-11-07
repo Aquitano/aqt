@@ -696,13 +696,13 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) (err erro
 		r.sc.Skip(a.Path, "unreadable", "", err.Error())
 		return nil
 	}
-	if opener.copied != "" {
+	res.CacheableFailure = res.CacheableFailure && opener.copied != "" && !opener.multipart
+	if opener.copied != "" && (res.Status == archive.Listed && !res.Incomplete || res.CacheableFailure) {
 		if r.archiveTried == nil {
 			r.archiveTried = map[archiveAttempt]bool{}
 		}
 		r.archiveTried[attempt] = true
 	}
-	res.CacheableFailure = res.CacheableFailure && opener.copied != "" && !opener.multipart
 	if err := l.Finish(ctx, res); err != nil {
 		return err
 	}

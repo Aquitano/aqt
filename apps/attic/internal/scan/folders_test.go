@@ -308,3 +308,23 @@ func TestArchiveListingRetriesCopiesWithMissingVolumes(t *testing.T) {
 		t.Fatalf("missing volume prevented a complete copy from listing: %+v", res.Counts)
 	}
 }
+
+func TestArchiveUpgradeRetriesCopiesWithDamagedVolumes(t *testing.T) {
+	st, dsn := storetest.New(t)
+	root := t.TempDir()
+	for _, folder := range []string{"a", "b"} {
+		for _, name := range []string{"test.part01.rar", "test.part02.rar"} {
+			write(t, root, folder+"/"+name, rarFixture(t, name))
+		}
+	}
+	scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Archives.Depth = 1 })
+	bad := []byte(rarFixture(t, "test.part02.rar"))
+	bad[0] ^= 0xff
+	write(t, root, "a/test.part02.rar", string(bad))
+	res := scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Archives.Depth = 2 })
+	if res.Counts.Members == 0 || pgschematest.QueryInt(t, dsn, `select depth from archives where content_id =
+		(select content_id from entries where path = '/a/test.part01.rar')`) != 2 ||
+		pgschematest.QueryInt(t, dsn, `select count(*) from archive_depth_failures`) != 0 {
+		t.Fatalf("damaged volume prevented a complete copy from upgrading: %+v", res.Counts)
+	}
+}
