@@ -394,6 +394,25 @@ func TestMoveRechecksAFileRightBeforeItsRename(t *testing.T) {
 	}
 }
 
+func TestPrepareReportsAMissingSourceByName(t *testing.T) {
+	root := t.TempDir()
+	p := Plan{Root: root, Moves: []Move{{From: "missing.txt", To: "b.txt"}}}
+	if err := p.validate(); err != nil {
+		t.Fatal(err)
+	}
+	vol, err := Mount(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions, err := Prepare(context.Background(), &p, vol, filepath.Join(t.TempDir(), "plan.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := actions[0]; a.Status != Blocked || a.From != "missing.txt" {
+		t.Fatalf("prepare = %+v", a)
+	}
+}
+
 func TestPrepareBlocksHardLinksAcrossMoves(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "Folder/a.txt", "a")

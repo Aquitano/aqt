@@ -170,7 +170,10 @@ func Prepare(ctx context.Context, p *Plan, vol disk.Volume, out string) (Actions
 		m := &p.Moves[i]
 		err := free(p.Root, m.To)
 		if err == nil {
-			m.From, err = stored(p.Root, m.From)
+			var name string
+			if name, err = stored(p.Root, m.From); err == nil {
+				m.From = name
+			}
 		}
 		if err == nil {
 			m.Baseline, err = snapshot(ctx, p.Root, m.From, true)
