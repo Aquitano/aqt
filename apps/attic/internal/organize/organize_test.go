@@ -327,6 +327,20 @@ func TestApplyAfterAFailedRenameComparesBytes(t *testing.T) {
 	}
 }
 
+func TestMoveRechecksAFileRightBeforeItsRename(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "a.txt", "a")
+	plan := prepare(t, root, Move{From: "a.txt", To: "Sorted/a.txt"})
+	r := open(t, plan)
+	defer r.Close()
+	rewrite(t, root, "a.txt", "A")
+
+	problem, err := r.move(context.Background(), 0, "a.txt", "Sorted/a.txt", moving, moved)
+	if err != nil || !strings.Contains(problem, "was changed") || !exists(root, "a.txt") {
+		t.Fatalf("move after preflight = %q, %v", problem, err)
+	}
+}
+
 func TestPrepareBlocksHardLinksAcrossMoves(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "Folder/a.txt", "a")
@@ -395,6 +409,13 @@ func TestUndoRemovesFoldersOnceEveryMoveIsBack(t *testing.T) {
 	}
 	if exists(root, "New") {
 		t.Fatal("undo left New, which apply made")
+	}
+	if err := os.Mkdir(filepath.Join(root, "New"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	run(t, plan, (*Run).Undo)
+	if !exists(root, "New") {
+		t.Fatal("undo removed a New made after the moves were undone")
 	}
 }
 

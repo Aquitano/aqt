@@ -62,7 +62,11 @@ func walk(ctx context.Context, root, rel, inside string, e disk.Entry, hash bool
 			if err != nil {
 				return err
 			}
-			if info.Size() != e.Size || !info.ModTime().Equal(e.Modified) {
+			after, err := disk.Lstat(filepath.Join(root, filepath.FromSlash(at)))
+			if err != nil {
+				return err
+			}
+			if info.Size() != e.Size || !info.ModTime().Equal(e.Modified) || after.Size != e.Size || !after.Modified.Equal(e.Modified) {
 				return fmt.Errorf("%s changed while it was read", at)
 			}
 			it.Digest = &d

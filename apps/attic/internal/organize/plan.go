@@ -298,10 +298,12 @@ func claim(path string, create bool) (*os.File, error) {
 }
 
 // save writes the plan beside out and publishes it with a rename that
-// replaces only an earlier plan, so a link at out is replaced rather than
-// written through. It holds the journal locked meanwhile, so no run starts
+// replaces only the earlier plan claimOut checked, so a link at out is
+// replaced rather than written through, and a file that appears meanwhile
+// stops the rename. It holds the journal locked meanwhile, so no run starts
 // on the plan being replaced.
 func (p *Plan) save(out string) error {
+	replace := !missing(out)
 	journal, err := p.claimOut(out, true)
 	if err != nil {
 		return err
@@ -317,10 +319,10 @@ func (p *Plan) save(out string) error {
 	}
 	_, err = tmp.Write(append(data, '\n'))
 	err = errors.Join(err, tmp.Sync(), tmp.Close())
-	if err == nil && missing(out) {
-		err = disk.Move(tmp.Name(), out)
-	} else if err == nil {
+	if err == nil && replace {
 		err = os.Rename(tmp.Name(), out)
+	} else if err == nil {
+		err = disk.Move(tmp.Name(), out)
 	}
 	if err != nil {
 		_ = os.Remove(tmp.Name())

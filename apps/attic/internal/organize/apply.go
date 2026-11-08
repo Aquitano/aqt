@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -25,6 +26,7 @@ const (
 	restoring = "restoring"
 	restored  = "restored"
 	created   = "created"
+	removed   = "removed"
 )
 
 type event struct {
@@ -41,7 +43,7 @@ type event struct {
 
 // state is a move as its journal leaves it: the last lifecycle event, empty
 // when the move was never attempted, the object's change time after the last
-// verified rename, and the folders the moves made for it.
+// verified rename, and the folders the moves made for it that still exist.
 type state struct {
 	last    string
 	changed time.Time
@@ -49,9 +51,12 @@ type state struct {
 }
 
 func (s *state) add(e event) {
-	if e.Event == created {
+	switch e.Event {
+	case created:
 		s.folders = append(s.folders, e.Folder)
-	} else {
+	case removed:
+		s.folders = slices.DeleteFunc(s.folders, func(dir string) bool { return dir == e.Folder })
+	default:
 		s.last, s.changed = e.Event, e.Changed
 	}
 }
@@ -174,10 +179,10 @@ func (r *Run) replay(data []byte) error {
 		switch {
 		case m.From != e.From || m.To != e.To:
 			return fmt.Errorf("line %d names a move this plan does not have", n)
-		case e.Event == created && (path.Clean(e.Folder) != e.Folder ||
+		case (e.Event == created || e.Event == removed) && (path.Clean(e.Folder) != e.Folder ||
 			!strings.HasPrefix(m.To, e.Folder+"/") && !strings.HasPrefix(m.From, e.Folder+"/")):
 			return fmt.Errorf("line %d names a folder that move %d cannot have made", n, e.Move)
-		case !slices.Contains([]string{moving, moved, restoring, restored, created}, e.Event):
+		case !slices.Contains([]string{moving, moved, restoring, restored, created, removed}, e.Event):
 			return fmt.Errorf("line %d holds the unknown event %q", n, e.Event)
 		}
 		r.states[e.Move-1].add(e)
@@ -366,26 +371,33 @@ func (r *Run) Undo(ctx context.Context) (Result, error) {
 			}
 		}
 	}
-	r.removeFolders()
-	return res, nil
+	return res, r.removeFolders()
 }
 
-// removeFolders removes the folders apply made for moves that are back at
+// removeFolders removes the folders the moves made for moves that are back at
 // their source, deepest first, when they are ordinary and empty again. A
-// folder that another move still filled is retried by the next undo.
-func (r *Run) removeFolders() {
-	var dirs []string
-	for _, s := range r.states {
+// removed folder leaves the journal, so a folder made later under its name
+// stays. A folder that another move still fills is retried by the next undo.
+func (r *Run) removeFolders() error {
+	owners := map[string][]int{}
+	for i, s := range r.states {
 		if s.last == restored {
-			dirs = append(dirs, s.folders...)
+			for _, dir := range s.folders {
+				owners[dir] = append(owners[dir], i)
+			}
 		}
 	}
-	slices.Sort(dirs)
-	for _, dir := range slices.Backward(slices.Compact(dirs)) {
-		if err := disk.Folders(r.plan.Root, filepath.FromSlash(dir), false); err == nil {
-			_ = os.Remove(r.path(dir))
+	for _, dir := range slices.Backward(slices.Sorted(maps.Keys(owners))) {
+		if disk.Folders(r.plan.Root, filepath.FromSlash(dir), false) != nil || os.Remove(r.path(dir)) != nil {
+			continue
+		}
+		for _, i := range owners[dir] {
+			if err := r.record(i, event{Event: removed, Folder: dir}); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // move renames move i's object from one place to the other and verifies it
@@ -394,6 +406,15 @@ func (r *Run) removeFolders() {
 func (r *Run) move(ctx context.Context, i int, from, to, start, done string) (string, error) {
 	if !disk.Present(r.vol) {
 		return "the disk changed since the run started", nil
+	}
+	// The rename replaces a file's change time, the one sign of an edit that
+	// kept its size and modified time, so that sign is read right before.
+	if r.vol.StableIDs && !r.plan.Moves[i].Baseline[0].Dir {
+		if _, err := r.verify(ctx, i, from, false); ctx.Err() != nil {
+			return "", ctx.Err()
+		} else if err != nil {
+			return err.Error(), nil
+		}
 	}
 	if err := r.record(i, event{Event: start}); err != nil {
 		return "", err
