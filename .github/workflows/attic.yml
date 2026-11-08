@@ -23,6 +23,7 @@ on:
         "tools/tasks/attic.toml",
         ".github/workflows/attic.yml",
       ]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -61,7 +62,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl tesseract-ocr poppler-utils
       - run: "mise run shared:go ::: attic:go ::: attic:go:unix ::: attic:go:windows"
 
-  # Windows minutes bill at 2x, so this job waits for main.
+  # Windows minutes bill at 2x, so this job waits for main or a manual run.
   windows:
     if: github.event_name != 'pull_request'
     runs-on: windows-latest
