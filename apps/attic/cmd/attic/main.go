@@ -36,6 +36,7 @@ type cli struct {
 	Scans    scansCmd    `cmd:"" help:"List scan history, phase times and counts."`
 	Dupes    dupesCmd    `cmd:"" help:"Find contents stored more than once."`
 	Dedupe   dedupeCmd   `cmd:"" help:"Move copies outside the kept folders into a quarantine folder on their disk."`
+	Organize organizeCmd `cmd:"" help:"Rename reviewed files and folders within one volume, with a journal and undo."`
 	Coverage coverageCmd `cmd:"" help:"Report content on fewer than two recorded volumes."`
 	Skips    skipsCmd    `cmd:"" help:"Show what a scan left out and why."`
 	Stats    statsCmd    `cmd:"" help:"Show catalogue totals."`

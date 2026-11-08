@@ -1,6 +1,6 @@
 # attic
 
-Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It changes source files only when `attic dedupe apply` moves duplicate copies into a quarantine folder. Scanning runs on Windows; search runs wherever the database is reachable.
+Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It changes source files only when `attic dedupe apply` moves duplicate copies into a quarantine folder, or `attic organize apply` and `undo` rename files and folders that a reviewed plan lists. Scanning runs on Windows; search runs wherever the database is reachable.
 
 ## Setup
 
@@ -84,6 +84,36 @@ attic dedupe apply --keep E:\Files --keep F:\Photos
 `plan` lists hashed contents that have a copy inside the kept folders and copies outside them, most bytes outside first. It skips contents under `--min-size` (default `1M`) and stops after `--limit` contents (default 100). `apply` hashes the kept copy and each extra copy again, and moves an extra copy only when both still match the catalogue. It moves the copy into `.attic-quarantine\<run>\<original path>` on the same disk and never deletes anything, so a move is a rename and a copy can go back to its original path by hand. Scans skip the quarantine folder. `attic show <id>` reports a moved copy and the kept entry, and the next scan of its folder marks it missing. A copy put back by hand takes part again once a scan of its folder finds it.
 
 Only hashed files take part, so scan with hashing first. Emptying the quarantine is up to you; delete a quarantined copy only once its kept copy is backed up somewhere else.
+
+## Organize files with a reviewed plan
+
+A person or agent decides where things go; attic only carries out the reviewed moves. Write a move list whose paths are relative to `root`:
+
+```json
+{
+  "root": "E:\\",
+  "moves": [
+    { "from": "Inbox/award-2014.pdf", "to": "Documents/School/award-2014.pdf", "reason": "school award" },
+    { "from": "Downloads/Robot", "to": "Projects/Robot", "reason": "whole project folder" }
+  ]
+}
+```
+
+```powershell
+attic organize prepare moves.json
+attic organize apply moves.plan.json
+attic organize undo moves.plan.json
+```
+
+`prepare` reads every source without changing it and saves `moves.plan.json` with a baseline of each move: every file and folder inside it, including empty folders, and each file's ID, size, modified and change times and BLAKE3 digest. Sources are recorded under the names the disk stores, so undo restores the exact spelling. It refuses paths outside `root`, moves whose sources or destinations overlap, existing destinations, links, junctions, cloud placeholders and hard links split across moves. A source that cannot be read in full blocks the plan, and nothing is saved until every move is ready. It never replaces an existing file and never saves the plan inside a move, so delete an earlier plan before preparing again; a name whose journal records a run stays taken. It also lists the folders the destinations would create, so new structure is reviewed apart from moves into existing folders. A move is a rename on one volume, so it never copies, replaces or deletes anything.
+
+`apply` checks every move before it renames anything, including moves an earlier run finished. A written, changed, added or missing file, or a destination that is now taken, blocks the run with the move and the reason. Only one `apply` or `undo` runs on a plan at a time. Each move is journalled in `moves.plan.json.journal.jsonl` before its rename and again once its destination holds exactly the baseline. A move that arrives different goes back. Run `apply` again after an interruption: finished moves stay, and an interrupted one counts as done or not done only when one place holds exactly the baseline and the other is empty. Anything else is reported for a decision by hand.
+
+On NTFS and ReFS a rename keeps the file record, so the same file ID also keeps the file's streams, times, attributes, owner and permissions. An unchanged change time shows that none of them, and none of the bytes, was rewritten since `prepare`, even when a program put the modified time back. The rename itself updates the moved object's own change time, so the journal records the new one after each verified move. FAT and exFAT give a moved file a new ID and keep no change time, so there every apply and undo rereads the bytes against the digests.
+
+`undo` moves every applied move back, last first, when it still matches the baseline and its original path is free. Changed moves stay where they are and are reported; the others still go back. Folders that the moves created are removed once they are empty again, also by a later `undo` once the last blocked move is back.
+
+The catalogue is not changed. Scan `root` afterwards; on NTFS and ReFS the entries keep their identity across the moves. Organizing needs no database, and identifying the disk needs Windows.
 
 ## Verify stored file hashes during maintenance
 

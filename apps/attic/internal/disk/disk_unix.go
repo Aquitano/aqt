@@ -48,13 +48,8 @@ func Hold(path string) (*Held, error) {
 
 func (f *Held) Restore() error { return nil }
 
-// Move renames a file within one file system and fails when to exists.
-func Move(from, to string) error {
-	if err := os.Link(from, to); err != nil {
-		return err
-	}
-	return os.Remove(from)
-}
+// Present always holds: without Locate there is no fingerprint to compare.
+func Present(Volume) bool { return true }
 
 func List(dir string) ([]Entry, error) {
 	des, err := os.ReadDir(dir)
@@ -75,12 +70,44 @@ func List(dir string) ([]Entry, error) {
 	return out, nil
 }
 
-func Stat(path string) (Entry, error) {
+// Stat describes path itself. Only Windows has volumes mounted in folders for
+// Stat to follow, so here it is Lstat.
+func Stat(path string) (Entry, error) { return Lstat(path) }
+
+// Lstat describes path itself without following a link.
+func Lstat(path string) (Entry, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
 		return Entry{}, err
 	}
 	return fromInfo(filepath.Base(path), info), nil
+}
+
+// Lock takes an exclusive lock on f that lasts until f is closed. It fails
+// with ErrLocked instead of waiting for another process.
+func Lock(f *os.File) error {
+	err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if errors.Is(err, syscall.EWOULDBLOCK) {
+		return ErrLocked
+	}
+	return err
+}
+
+// RemoveDir removes dir when it is an empty directory, and never a file.
+func RemoveDir(dir string) error {
+	if err := syscall.Rmdir(dir); err != nil {
+		return &os.PathError{Op: "rmdir", Path: dir, Err: err}
+	}
+	return nil
+}
+
+// SyncDir makes the entries created in dir durable.
+func SyncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	return errors.Join(d.Sync(), d.Close())
 }
 
 // fromInfo fills what Unix reports. Creation and access times stay zero
