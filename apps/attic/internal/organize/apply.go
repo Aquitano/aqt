@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
+	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/aquitano/aqt/apps/attic/internal/disk"
@@ -41,180 +43,210 @@ type state struct {
 	folders []string
 }
 
-type journal struct {
-	f      *os.File
-	path   string
-	plan   *Plan
-	states []state
-}
-
-// openJournal replays the journal at path. A final line without its newline
-// was cut short by a crash and never counted; it is cut off so the next event
-// starts a line of its own.
-func openJournal(path string, p *Plan) (*journal, error) {
-	j := &journal{path: path, plan: p, states: make([]state, len(p.Moves))}
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		err = nil
-	}
-	if err == nil {
-		err = j.replay(data)
-	}
-	// Windows opens an appending file without the right to truncate it.
-	if torn := len(data) - bytes.LastIndexByte(data, '\n') - 1; err == nil && torn > 0 {
-		err = os.Truncate(path, int64(len(data)-torn))
-	}
-	if err == nil {
-		j.f, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("journal %s: %w", path, err)
-	}
-	return j, nil
-}
-
-func (j *journal) replay(data []byte) error {
-	lines := bytes.Split(data, []byte{'\n'})
-	for n, line := range lines[:len(lines)-1] {
-		var e event
-		if err := json.Unmarshal(line, &e); err != nil {
-			return fmt.Errorf("line %d is damaged: %w", n+1, err)
-		}
-		if e.Move < 1 || e.Move > len(j.plan.Moves) || j.plan.Moves[e.Move-1].From != e.From || j.plan.Moves[e.Move-1].To != e.To {
-			return fmt.Errorf("line %d names a move this plan does not have", n+1)
-		}
-		s := &j.states[e.Move-1]
-		if e.Event == created {
-			s.folders = append(s.folders, e.Folder)
-		} else {
-			s.last = e.Event
-		}
-	}
-	return nil
-}
-
-func (j *journal) record(i int, name, folder string) error {
-	m := j.plan.Moves[i]
-	line, err := json.Marshal(event{Move: i + 1, From: m.From, To: m.To, Event: name, Folder: folder, At: time.Now().UTC()})
-	if err != nil {
-		return err
-	}
-	if _, err := j.f.Write(append(line, '\n')); err != nil {
-		return err
-	}
-	if err := j.f.Sync(); err != nil {
-		return err
-	}
-	if name == created {
-		j.states[i].folders = append(j.states[i].folders, folder)
+func (s *state) add(e event) {
+	if e.Event == created {
+		s.folders = append(s.folders, e.Folder)
 	} else {
-		j.states[i].last = name
+		s.last = e.Event
 	}
-	return nil
 }
 
-func (j *journal) Close() error { return j.f.Close() }
+// Run applies or undoes one prepared plan. It holds the plan's journal open
+// and locked, so a second run of the same plan fails until Close.
+type Run struct {
+	plan     Plan
+	planPath string
+	vol      disk.Volume
+	journal  *os.File
+	states   []state
+}
 
 type Result struct {
-	Root    string   `json:"root"`
-	Plan    string   `json:"plan"`
-	Journal string   `json:"journal"`
-	Actions []Action `json:"actions"`
+	Root    string  `json:"root"`
+	Plan    string  `json:"plan"`
+	Journal string  `json:"journal"`
+	Actions Actions `json:"actions"`
 }
 
-// Blocked reports whether any action could not run.
-func (r Result) Blocked() bool {
-	return slices.ContainsFunc(r.Actions, func(a Action) bool { return a.Status == Blocked })
+// Open reads the prepared plan at path, checks that its disk is attached and
+// replays its journal.
+func Open(path string) (*Run, error) {
+	p, err := Read(path)
+	if err != nil {
+		return nil, err
+	}
+	if p.PreparedAt.IsZero() {
+		return nil, fmt.Errorf("%s is not prepared; run `attic organize prepare` on it first", path)
+	}
+	for i, m := range p.Moves {
+		if len(m.Baseline) == 0 {
+			return nil, fmt.Errorf("move %d has no baseline; prepare the plan again", i+1)
+		}
+	}
+	vol, err := Mount(p.Root)
+	if err != nil {
+		return nil, err
+	}
+	if vol.Fingerprint != p.Volume {
+		return nil, fmt.Errorf("the disk at %s is not the one the plan was prepared on", p.Root)
+	}
+	r := &Run{plan: p, planPath: path, vol: vol, states: make([]state, len(p.Moves))}
+	if err := r.openJournal(); err != nil {
+		return nil, fmt.Errorf("journal %s: %w", JournalPath(path), err)
+	}
+	return r, nil
 }
 
-type place int
+func (r *Run) Close() error { return r.journal.Close() }
 
-const (
-	atFrom place = iota
-	atTo
-)
-
-// runner applies or undoes one plan on one mounted volume.
-type runner struct {
-	plan    *Plan
-	vol     disk.Volume
-	journal *journal
+func (r *Run) openJournal() error {
+	f, err := os.OpenFile(JournalPath(r.planPath), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	if err := r.load(f); err != nil {
+		f.Close()
+		return err
+	}
+	r.journal = f
+	return nil
 }
 
-func (r *runner) path(rel string) string {
+// load locks the journal and replays its complete lines. A last line without
+// its newline was cut short by a crash and never counted; it is cut off so
+// the next event starts a line of its own. A file without a single complete
+// line could be anything, so it is left alone.
+func (r *Run) load(f *os.File) error {
+	if err := disk.Lock(f); errors.Is(err, disk.ErrLocked) {
+		return errors.New("another apply or undo of this plan is running")
+	} else if err != nil {
+		return err
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	if len(data) == 0 {
+		return disk.SyncDir(filepath.Dir(f.Name()))
+	}
+	complete := int64(bytes.LastIndexByte(data, '\n') + 1)
+	if complete == 0 {
+		return errors.New("it holds no complete entry, so apply did not write it; delete it only if an apply stopped before its first move")
+	}
+	if err := r.replay(data[:complete]); err != nil {
+		return err
+	}
+	if complete == int64(len(data)) {
+		return nil
+	}
+	if err := f.Truncate(complete); err != nil {
+		return err
+	}
+	_, err = f.Seek(complete, io.SeekStart)
+	return err
+}
+
+func (r *Run) replay(data []byte) error {
+	n := 0
+	for line := range bytes.Lines(data) {
+		n++
+		var e event
+		if err := json.Unmarshal(line, &e); err != nil {
+			return fmt.Errorf("line %d is damaged: %w", n, err)
+		}
+		if e.Move < 1 || e.Move > len(r.plan.Moves) {
+			return fmt.Errorf("line %d names a move this plan does not have", n)
+		}
+		m := r.plan.Moves[e.Move-1]
+		switch {
+		case m.From != e.From || m.To != e.To:
+			return fmt.Errorf("line %d names a move this plan does not have", n)
+		case e.Event == created && (path.Clean(e.Folder) != e.Folder ||
+			!strings.HasPrefix(m.To, e.Folder+"/") && !strings.HasPrefix(m.From, e.Folder+"/")):
+			return fmt.Errorf("line %d names a folder that move %d cannot have made", n, e.Move)
+		case !slices.Contains([]string{moving, moved, restoring, restored, created}, e.Event):
+			return fmt.Errorf("line %d holds the unknown event %q", n, e.Event)
+		}
+		r.states[e.Move-1].add(e)
+	}
+	return nil
+}
+
+func (r *Run) record(i int, name, folder string) error {
+	m := r.plan.Moves[i]
+	e := event{Move: i + 1, From: m.From, To: m.To, Event: name, Folder: folder, At: time.Now().UTC()}
+	line, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	if _, err := r.journal.Write(append(line, '\n')); err != nil {
+		return err
+	}
+	if err := r.journal.Sync(); err != nil {
+		return err
+	}
+	r.states[i].add(e)
+	return nil
+}
+
+func (r *Run) result() Result {
+	res := Result{Root: r.plan.Root, Plan: r.planPath, Journal: r.journal.Name(), Actions: make(Actions, len(r.plan.Moves))}
+	for i, m := range r.plan.Moves {
+		res.Actions[i] = Action{Move: i + 1, From: m.From, To: m.To}
+	}
+	return res
+}
+
+func (r *Run) path(rel string) string {
 	return filepath.Join(r.plan.Root, filepath.FromSlash(rel))
 }
 
-// rehash says whether verifying move i must reread its bytes: on file systems
-// without stable IDs, once the move may have renamed the object.
-func (r *runner) rehash(i int) bool {
-	return !r.vol.StableIDs && r.journal.states[i].last != ""
-}
-
-// locate finds where move i's object is. The journal answers for settled
-// moves; an interrupted one counts as moved or not only when one side holds
-// exactly the baseline and the other side is empty.
-func (r *runner) locate(ctx context.Context, i int) (place, error) {
+// verify checks that the object at rel is exactly move i's baseline. Once the
+// object may have been renamed, FAT and exFAT have given it new IDs, so there
+// its bytes are compared instead.
+func (r *Run) verify(ctx context.Context, i int, rel string) error {
 	m := r.plan.Moves[i]
-	switch r.journal.states[i].last {
-	case "", restored:
-		return atFrom, nil
-	case moved:
-		return atTo, nil
-	}
-	fromErr := verifyAt(ctx, r.plan.Root, m.From, m.Baseline, r.rehash(i))
-	toErr := verifyAt(ctx, r.plan.Root, m.To, m.Baseline, r.rehash(i))
-	if ctx.Err() != nil {
-		return 0, ctx.Err()
-	}
-	switch {
-	case fromErr == nil && missing(r.path(m.To)):
-		return atFrom, nil
-	case toErr == nil && missing(r.path(m.From)):
-		return atTo, nil
-	}
-	return 0, fmt.Errorf("an earlier run stopped during this move and neither place holds exactly what was planned; decide by hand. At %s: %v. At %s: %v",
-		m.From, describe(fromErr), m.To, describe(toErr))
-}
-
-func describe(err error) string {
-	if err == nil {
-		return "the planned object"
-	}
-	return err.Error()
-}
-
-func missing(p string) bool {
-	_, err := os.Lstat(p)
-	return errors.Is(err, fs.ErrNotExist)
-}
-
-// Apply runs a prepared plan. It first checks every action and moves nothing
-// if one is blocked. Each move is journalled before its rename and again once
-// the object is verified at its destination. Running Apply again resumes:
-// verified moves are kept, and an interrupted one is reconciled from what is
-// on disk.
-func Apply(ctx context.Context, p *Plan, planPath string, vol disk.Volume) (Result, error) {
-	j, err := openJournal(JournalPath(planPath), p)
+	renamed := rel != m.From || r.states[i].last != ""
+	rehash := renamed && !r.vol.StableIDs
+	_, now, err := snapshot(ctx, r.plan.Root, rel, rehash)
 	if err != nil {
-		return Result{}, err
+		return err
 	}
-	defer j.Close()
-	r := &runner{plan: p, vol: vol, journal: j}
-	res := Result{Root: p.Root, Plan: planPath, Journal: j.path, Actions: make([]Action, len(p.Moves))}
+	return compare(rel, m.Baseline, now, rehash, renamed)
+}
+
+// locate finds move i's object, at its source or its destination, and checks
+// that it is exactly the baseline there. When only one place is taken, that
+// one holds it. When both are, the journal decides, unless it shows a rename
+// under way.
+func (r *Run) locate(ctx context.Context, i int) (string, error) {
+	m := r.plan.Moves[i]
+	from, to := !missing(r.path(m.From)), !missing(r.path(m.To))
+	at := m.From
+	switch last := r.states[i].last; {
+	case !from && !to:
+		return "", fmt.Errorf("neither %s nor %s exists", m.From, m.To)
+	case to && (!from || last == moved):
+		at = m.To
+	case to && (last == moving || last == restoring):
+		return "", errors.New("an earlier run stopped during this move and both places are taken; decide by hand")
+	}
+	return at, r.verify(ctx, i, at)
+}
+
+// Apply runs the plan. It first checks every action and moves nothing if one
+// is blocked; moves an earlier run finished must still match too. Each move
+// is journalled before its rename and again once the object is verified at
+// its destination. Running Apply again resumes: verified moves are kept, and
+// an interrupted one is reconciled from what is on disk.
+func (r *Run) Apply(ctx context.Context) (Result, error) {
+	res := r.result()
 	var pending []int
-	for i, m := range p.Moves {
+	for i, m := range r.plan.Moves {
 		a := &res.Actions[i]
-		*a = Action{Move: i + 1, From: m.From, To: m.To}
-		where, err := r.locate(ctx, i)
-		if err == nil && where == atTo && j.states[i].last != moved {
-			err = j.record(i, moved, "")
-		}
-		if err == nil && where == atFrom {
-			err = verifyAt(ctx, p.Root, m.From, m.Baseline, r.rehash(i))
-			if err == nil {
-				err = free(p.Root, m.To)
-			}
+		at, err := r.locate(ctx, i)
+		if err == nil && at == m.From {
+			err = free(r.plan.Root, m.To)
 		}
 		if ctx.Err() != nil {
 			return res, ctx.Err()
@@ -222,14 +254,19 @@ func Apply(ctx context.Context, p *Plan, planPath string, vol disk.Volume) (Resu
 		switch {
 		case err != nil:
 			a.Status, a.Problem = Blocked, err.Error()
-		case where == atTo:
-			a.Status = AlreadyMoved
-		default:
+		case at == m.From:
 			a.Status = Pending
 			pending = append(pending, i)
+		default:
+			a.Status = AlreadyMoved
+			if r.states[i].last != moved {
+				if err := r.record(i, moved, ""); err != nil {
+					return res, err
+				}
+			}
 		}
 	}
-	if res.Blocked() {
+	if res.Actions.Blocked() {
 		return res, nil
 	}
 	for _, i := range pending {
@@ -237,7 +274,7 @@ func Apply(ctx context.Context, p *Plan, planPath string, vol disk.Volume) (Resu
 			return res, err
 		}
 		a := &res.Actions[i]
-		problem, err := r.move(ctx, i, p.Moves[i].From, p.Moves[i].To, moving, moved)
+		problem, err := r.move(ctx, i, r.plan.Moves[i].From, r.plan.Moves[i].To, moving, moved)
 		if err != nil {
 			return res, err
 		}
@@ -253,81 +290,84 @@ func Apply(ctx context.Context, p *Plan, planPath string, vol disk.Volume) (Resu
 // Undo moves every applied move back, last first, when its object is still
 // exactly the baseline and its original place is free. A move that fails
 // either check stays where it is and is reported; the others still go back.
-// Folders the moves made that are empty again are removed.
-func Undo(ctx context.Context, p *Plan, planPath string, vol disk.Volume) (Result, error) {
-	j, err := openJournal(JournalPath(planPath), p)
-	if err != nil {
-		return Result{}, err
-	}
-	defer j.Close()
-	r := &runner{plan: p, vol: vol, journal: j}
-	res := Result{Root: p.Root, Plan: planPath, Journal: j.path, Actions: make([]Action, len(p.Moves))}
-	for i := len(p.Moves) - 1; i >= 0; i-- {
-		m := p.Moves[i]
+// Folders the moves made are removed once they are empty again.
+func (r *Run) Undo(ctx context.Context) (Result, error) {
+	res := r.result()
+	for i := len(r.plan.Moves) - 1; i >= 0; i-- {
+		m := r.plan.Moves[i]
 		a := &res.Actions[i]
-		*a = Action{Move: i + 1, From: m.From, To: m.To}
-		where, err := r.locate(ctx, i)
-		if err == nil && where == atTo {
-			err = verifyAt(ctx, p.Root, m.To, m.Baseline, r.rehash(i))
-			if err == nil {
-				err = free(p.Root, m.From)
-			}
+		last := r.states[i].last
+		if last == "" || last == restored {
+			a.Status = NotMoved
+			continue
+		}
+		at, err := r.locate(ctx, i)
+		if err == nil && at == m.To {
+			err = free(r.plan.Root, m.From)
 		}
 		if ctx.Err() != nil {
 			return res, ctx.Err()
 		}
-		switch last := j.states[i].last; {
+		switch {
 		case err != nil:
 			a.Status, a.Problem = Blocked, err.Error()
-			continue
-		case where == atFrom && last == restoring:
-			// An earlier undo renamed it back but stopped before journalling.
-			if err := j.record(i, restored, ""); err != nil {
+		case at == m.From:
+			// Either an earlier undo renamed it back before journalling, or
+			// it never left.
+			if err := r.record(i, restored, ""); err != nil {
 				return res, err
 			}
-		case where == atFrom:
 			a.Status = NotMoved
-			continue
+			if last == restoring {
+				a.Status = Restored
+			}
 		default:
 			problem, err := r.move(ctx, i, m.To, m.From, restoring, restored)
 			if err != nil {
 				return res, err
 			}
+			a.Status, a.Problem = Restored, problem
 			if problem != "" {
-				a.Status, a.Problem = Blocked, problem
-				continue
-			}
-		}
-		a.Status = Restored
-		folders := j.states[i].folders
-		for k := len(folders) - 1; k >= 0; k-- {
-			// Only an ordinary folder is removed, and only an empty one can be.
-			if info, err := os.Lstat(r.path(folders[k])); err == nil && info.Mode().Type() == fs.ModeDir {
-				_ = os.Remove(r.path(folders[k]))
+				a.Status = Blocked
 			}
 		}
 	}
+	r.removeFolders()
 	return res, nil
+}
+
+// removeFolders removes the folders apply made for moves that are back at
+// their source, deepest first, when they are ordinary and empty again. A
+// folder that another move still filled is retried by the next undo.
+func (r *Run) removeFolders() {
+	var dirs []string
+	for _, s := range r.states {
+		if s.last == restored {
+			dirs = append(dirs, s.folders...)
+		}
+	}
+	slices.Sort(dirs)
+	for _, dir := range slices.Backward(slices.Compact(dirs)) {
+		if _, err := disk.Folders(r.plan.Root, filepath.FromSlash(dir), false); err == nil {
+			_ = os.Remove(r.path(dir))
+		}
+	}
 }
 
 // move renames move i's object from one place to the other and verifies it
 // there. A problem means the object is back where it started; an error means
 // the run must stop, and says where the object is when it could not go back.
-func (r *runner) move(ctx context.Context, i int, from, to, start, done string) (string, error) {
-	j := r.journal
+func (r *Run) move(ctx context.Context, i int, from, to, start, done string) (string, error) {
 	if !disk.Present(r.vol) {
 		return "the disk changed since the run started", nil
 	}
-	if err := j.record(i, start, ""); err != nil {
+	if err := r.record(i, start, ""); err != nil {
 		return "", err
 	}
 	made, err := disk.Folders(r.plan.Root, filepath.Dir(filepath.FromSlash(to)), true)
 	for _, dir := range made {
-		rel, relErr := filepath.Rel(r.plan.Root, dir)
-		if relErr == nil {
-			if recErr := j.record(i, created, filepath.ToSlash(rel)); recErr != nil {
-				return "", recErr
-			}
+		if err := r.record(i, created, filepath.ToSlash(dir)); err != nil {
+			return "", err
 		}
 	}
 	if err != nil {
@@ -338,24 +378,29 @@ func (r *runner) move(ctx context.Context, i int, from, to, start, done string) 
 	}
 	// The rename resolves both paths again, so a folder swapped for a junction
 	// or a file saved over meanwhile would move something else. Only the
-	// planned object stays.
-	if verr := verifyAt(ctx, r.plan.Root, to, r.plan.Moves[i].Baseline, r.rehash(i)); verr != nil {
-		if ctx.Err() != nil {
-			// The journal still says the move started; the next run checks
-			// both places and finishes or reports it.
-			return "", ctx.Err()
-		}
-		if err := disk.Move(r.path(to), r.path(from)); err != nil {
-			return "", fmt.Errorf("%s did not match the plan after the move and stays at %s: %w", from, to, errors.Join(verr, err))
-		}
-		back := restored
-		if start == restoring {
-			back = moved
-		}
-		if err := j.record(i, back, ""); err != nil {
-			return "", err
-		}
-		return "did not match the plan after the move, so it went back: " + verr.Error(), nil
+	// planned object stays, and it goes back only through ordinary folders.
+	verr := r.verify(ctx, i, to)
+	if verr == nil {
+		return "", r.record(i, done, "")
 	}
-	return "", j.record(i, done, "")
+	if ctx.Err() != nil {
+		// The journal still says the move started; the next run checks both
+		// places and finishes or reports it.
+		return "", ctx.Err()
+	}
+	_, err = disk.Folders(r.plan.Root, filepath.Dir(filepath.FromSlash(from)), false)
+	if err == nil {
+		err = disk.Move(r.path(to), r.path(from))
+	}
+	if err != nil {
+		return "", fmt.Errorf("%s did not match the plan after the move and stays at %s: %w", from, to, errors.Join(verr, err))
+	}
+	back := restored
+	if start == restoring {
+		back = moved
+	}
+	if err := r.record(i, back, ""); err != nil {
+		return "", err
+	}
+	return "did not match the plan after the move, so it went back: " + verr.Error(), nil
 }

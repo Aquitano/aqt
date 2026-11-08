@@ -55,19 +55,20 @@ func HashOrdinaryInfo(ctx context.Context, root, rel string) (Digest, fs.FileInf
 // Folders checks that each folder of rel below root is an ordinary folder,
 // not a link or junction that would send a move elsewhere. Without create it
 // stops at the first missing folder; with create it makes the missing ones
-// and returns them.
+// and returns them relative to root.
 func Folders(root, rel string, create bool) ([]string, error) {
 	if rel == "." {
 		return nil, nil
 	}
 	var created []string
-	dir := root
+	sub := ""
 	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
-		dir = filepath.Join(dir, part)
+		sub = filepath.Join(sub, part)
+		dir := filepath.Join(root, sub)
 		if create {
 			err := os.Mkdir(dir, 0o700)
 			if err == nil {
-				created = append(created, dir)
+				created = append(created, sub)
 			} else if !errors.Is(err, fs.ErrExist) {
 				return created, err
 			}

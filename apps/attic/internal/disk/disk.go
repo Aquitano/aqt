@@ -78,6 +78,9 @@ func (d *Digest) UnmarshalText(text []byte) error {
 // ErrInUse means another program has the file open for writing.
 var ErrInUse = errors.New("in use by another program")
 
+// ErrLocked means another process holds the lock that Lock asked for.
+var ErrLocked = errors.New("locked by another process")
+
 var hashBuffers = sync.Pool{New: func() any { return new([1 << 20]byte) }}
 
 // Hash reads the whole file once and returns its BLAKE3-256 digest and the

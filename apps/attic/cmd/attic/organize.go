@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/aquitano/aqt/apps/attic/internal/organize"
@@ -39,26 +38,22 @@ func (cmd *organizePrepareCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	actions, err := organize.Prepare(ctx, &p, vol)
-	if err != nil {
-		return err
-	}
 	out := cmd.Out
 	if out == "" {
 		out = strings.TrimSuffix(cmd.Moves, ".json") + ".plan.json"
 	}
-	ready := !slices.ContainsFunc(actions, func(a organize.Action) bool { return a.Status == organize.Blocked })
+	actions, err := organize.Prepare(ctx, &p, vol, out)
+	if err != nil {
+		return err
+	}
+	ready := !actions.Blocked()
 	moves := make([]preparedMove, len(actions))
 	for i, a := range actions {
 		files, folders, bytes := p.Moves[i].Totals()
 		moves[i] = preparedMove{Action: a, Reason: p.Moves[i].Reason, Files: files, Folders: folders, Bytes: bytes}
 	}
 	var blocked error
-	if ready {
-		if err := organize.Write(out, p); err != nil {
-			return err
-		}
-	} else {
+	if !ready {
 		blocked, out = errors.New("some moves cannot run, so no plan was saved"), ""
 	}
 	newFolders := organize.NewFolders(p)
@@ -95,12 +90,13 @@ type organizeApplyCmd struct {
 }
 
 func (cmd *organizeApplyCmd) Run(ctx context.Context) error {
-	p, vol, err := organize.Open(cmd.Plan)
+	run, err := organize.Open(cmd.Plan)
 	if err != nil {
 		return err
 	}
-	res, err := organize.Apply(ctx, &p, cmd.Plan, vol)
-	return printOrganize(res, err, cmd.JSON, fmt.Sprintf("Undo with `attic organize undo %s`. Scan %s so the catalogue follows the moves.", cmd.Plan, p.Root))
+	defer run.Close()
+	res, err := run.Apply(ctx)
+	return printOrganize(res, err, cmd.JSON, fmt.Sprintf("Undo with `attic organize undo %s`. Scan %s so the catalogue follows the moves.", cmd.Plan, res.Root))
 }
 
 type organizeUndoCmd struct {
@@ -109,19 +105,20 @@ type organizeUndoCmd struct {
 }
 
 func (cmd *organizeUndoCmd) Run(ctx context.Context) error {
-	p, vol, err := organize.Open(cmd.Plan)
+	run, err := organize.Open(cmd.Plan)
 	if err != nil {
 		return err
 	}
-	res, err := organize.Undo(ctx, &p, cmd.Plan, vol)
-	return printOrganize(res, err, cmd.JSON, fmt.Sprintf("Scan %s so the catalogue follows the moves.", p.Root))
+	defer run.Close()
+	res, err := run.Undo(ctx)
+	return printOrganize(res, err, cmd.JSON, fmt.Sprintf("Scan %s so the catalogue follows the moves.", res.Root))
 }
 
 func printOrganize(res organize.Result, err error, asJSON bool, next string) error {
 	if res.Actions == nil {
 		return err
 	}
-	if err == nil && res.Blocked() {
+	if err == nil && res.Actions.Blocked() {
 		err = errors.New("some moves are blocked; see their problems")
 	}
 	if asJSON {
@@ -142,6 +139,6 @@ func printOrganize(res organize.Result, err error, asJSON bool, next string) err
 			parts = append(parts, fmt.Sprintf("%s %s", count(counts[s]), strings.ReplaceAll(string(s), "_", " ")))
 		}
 	}
-	fmt.Printf("\n%s. Every moved and restored action was verified at its new place. Journal: %s. %s\n", strings.Join(parts, ", "), res.Journal, next)
+	fmt.Printf("\n%s. Every moved, already moved and restored object matched its baseline where it is now. Journal: %s. %s\n", strings.Join(parts, ", "), res.Journal, next)
 	return err
 }

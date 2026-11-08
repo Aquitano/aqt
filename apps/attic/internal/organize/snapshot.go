@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"slices"
@@ -18,35 +16,34 @@ import (
 // Item is one file or folder of a moved object. Path is relative to the
 // object, "." for the object itself. On NTFS and ReFS a rename keeps the file
 // record, so the same FileID also carries the streams, times, attributes,
-// owner and permissions the file had.
+// owner and permissions the file had, and an unchanged change time shows that
+// none of them was rewritten.
 type Item struct {
 	Path     string       `json:"path"`
 	Dir      bool         `json:"dir,omitempty"`
 	Size     int64        `json:"size,omitempty"`
 	Modified time.Time    `json:"modified,omitzero"`
+	Changed  time.Time    `json:"changed,omitzero"`
 	FileID   uint64       `json:"file_id,omitempty"`
 	Digest   *disk.Digest `json:"blake3,omitempty"`
 }
 
 // snapshot lists the object at rel below root and everything inside it
-// without following links. It refuses links, junctions and cloud
-// placeholders anywhere in the object. hash also reads every file's digest.
-func snapshot(ctx context.Context, root, rel string, hash bool) ([]Item, error) {
+// without following links, and returns the object's name as the file system
+// stores it. It refuses links, junctions and cloud placeholders anywhere in
+// the object. hash also reads every file's digest.
+func snapshot(ctx context.Context, root, rel string, hash bool) (string, []Item, error) {
 	native := filepath.FromSlash(rel)
-	parent := filepath.Dir(native)
-	if _, err := disk.Folders(root, parent, false); err != nil {
-		return nil, err
+	if _, err := disk.Folders(root, filepath.Dir(native), false); err != nil {
+		return "", nil, err
 	}
-	entries, err := disk.List(filepath.Join(root, parent))
+	top, err := disk.Lstat(filepath.Join(root, native))
 	if err != nil {
-		return nil, err
-	}
-	i := slices.IndexFunc(entries, func(e disk.Entry) bool { return e.Name == filepath.Base(native) })
-	if i < 0 {
-		return nil, &os.PathError{Op: "find", Path: rel, Err: fs.ErrNotExist}
+		return "", nil, err
 	}
 	var items []Item
-	return items, walk(ctx, root, rel, ".", entries[i], hash, &items)
+	err = walk(ctx, root, rel, ".", top, hash, &items)
+	return top.Name, items, err
 }
 
 func walk(ctx context.Context, root, rel, inside string, e disk.Entry, hash bool, items *[]Item) error {
@@ -59,7 +56,7 @@ func walk(ctx context.Context, root, rel, inside string, e disk.Entry, hash bool
 	}
 	it := Item{Path: inside, Dir: e.Dir, FileID: e.FileID}
 	if !e.Dir {
-		it.Size, it.Modified = e.Size, e.Modified
+		it.Size, it.Modified, it.Changed = e.Size, e.Modified, e.Changed
 		if hash {
 			d, info, err := disk.HashOrdinaryInfo(ctx, root, filepath.FromSlash(at))
 			if err != nil {
@@ -87,15 +84,12 @@ func walk(ctx context.Context, root, rel, inside string, e disk.Entry, hash bool
 	return nil
 }
 
-// verifyAt checks that the object at rel is exactly the baseline: every file
-// and folder once, nothing added. Without rehash it must be the same file
-// system objects, unwritten since. FAT and exFAT give a moved object new IDs,
-// so after a move there rehash compares the bytes instead.
-func verifyAt(ctx context.Context, root, rel string, base []Item, rehash bool) error {
-	now, err := snapshot(ctx, root, rel, rehash)
-	if err != nil {
-		return err
-	}
+// compare checks that the object at rel, listed as now, is exactly the
+// baseline: every file and folder once, nothing added. Without rehash every
+// item must be the same file system object, unwritten since; with rehash its
+// bytes must match instead. A rename updates the moved object's own change
+// time, so once renamed that one is not compared.
+func compare(rel string, base, now []Item, rehash, renamed bool) error {
 	got := make(map[string]Item, len(now))
 	for _, it := range now {
 		got[it.Path] = it
@@ -112,8 +106,11 @@ func verifyAt(ctx context.Context, root, rel string, base []Item, rehash bool) e
 			problems = append(problems, at+" changed between file and folder")
 		case !rehash && have.FileID != want.FileID:
 			problems = append(problems, at+" is a different file")
-		case !want.Dir && (have.Size != want.Size || !have.Modified.Equal(want.Modified)):
+		case want.Dir:
+		case have.Size != want.Size || !have.Modified.Equal(want.Modified):
 			problems = append(problems, at+" was written")
+		case !rehash && (want.Path != "." || !renamed) && !have.Changed.Equal(want.Changed):
+			problems = append(problems, at+" was changed")
 		case have.Digest != nil && want.Digest != nil && *have.Digest != *want.Digest:
 			problems = append(problems, at+" holds other bytes")
 		}

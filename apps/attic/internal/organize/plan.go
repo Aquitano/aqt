@@ -67,19 +67,6 @@ func Read(path string) (Plan, error) {
 	return p, p.validate()
 }
 
-// Write saves a prepared plan. A plan that has a journal was applied, so
-// replacing it would leave that journal describing another plan.
-func Write(path string, p Plan) error {
-	if _, err := os.Lstat(JournalPath(path)); err == nil {
-		return fmt.Errorf("%s was applied and has a journal; prepare into a new file", path)
-	}
-	data, err := json.MarshalIndent(p, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o600)
-}
-
 // JournalPath is where Apply and Undo record each step of the plan at path.
 func JournalPath(plan string) string {
 	return strings.TrimSuffix(plan, ".json") + ".journal.jsonl"
@@ -96,34 +83,9 @@ func Mount(root string) (disk.Volume, error) {
 	return v, err
 }
 
-// Open reads a prepared plan and the volume it was prepared on.
-func Open(path string) (Plan, disk.Volume, error) {
-	p, err := Read(path)
-	if err != nil {
-		return Plan{}, disk.Volume{}, err
-	}
-	if p.PreparedAt.IsZero() {
-		return Plan{}, disk.Volume{}, fmt.Errorf("%s is not prepared; run `attic organize prepare` on it first", path)
-	}
-	for i, m := range p.Moves {
-		if len(m.Baseline) == 0 {
-			return Plan{}, disk.Volume{}, fmt.Errorf("move %d has no baseline; prepare the plan again", i+1)
-		}
-	}
-	v, err := Mount(p.Root)
-	if err != nil {
-		return Plan{}, disk.Volume{}, err
-	}
-	if v.Fingerprint != p.Volume {
-		return Plan{}, disk.Volume{}, fmt.Errorf("the disk at %s is not the one the plan was prepared on", p.Root)
-	}
-	return p, v, nil
-}
-
 // validate normalizes every path and rejects moves that escape the root or
-// overlap. Two places overlap when one equals or contains the other, compared
-// without case because Windows file systems ignore it. Keeping every source
-// and destination apart makes the moves independent of their order.
+// overlap. Keeping every source and destination apart makes the moves
+// independent of their order.
 func (p *Plan) validate() error {
 	if !filepath.IsAbs(p.Root) {
 		return fmt.Errorf("root %q must be an absolute folder", p.Root)
@@ -145,7 +107,7 @@ func (p *Plan) validate() error {
 				return fmt.Errorf("move %d: %q must be a path inside the root", i+1, *side)
 			}
 			*side = filepath.ToSlash(filepath.Clean(rel))
-			places = append(places, place{key: strings.ToLower(*side) + "/", path: *side, move: i + 1})
+			places = append(places, place{key: key(*side), path: *side, move: i + 1})
 		}
 	}
 	slices.SortFunc(places, func(a, b place) int { return strings.Compare(a.key, b.key) })
@@ -155,6 +117,12 @@ func (p *Plan) validate() error {
 		}
 	}
 	return nil
+}
+
+// key compares paths without case, because Windows file systems ignore it.
+// A path equals or lies inside another when its key starts with the other's.
+func key(rel string) string {
+	return strings.ToLower(rel) + "/"
 }
 
 // Status is where an action stands after a command.
@@ -178,30 +146,122 @@ type Action struct {
 	Problem string `json:"problem,omitempty"`
 }
 
-// Prepare records the baseline of every move and reports the ones that cannot
-// run. It reads and hashes the sources and changes nothing. The plan is ready
-// only when every action is.
-func Prepare(ctx context.Context, p *Plan, vol disk.Volume) ([]Action, error) {
-	actions := make([]Action, len(p.Moves))
+type Actions []Action
+
+// Blocked reports whether any action could not run.
+func (as Actions) Blocked() bool {
+	return slices.ContainsFunc(as, func(a Action) bool { return a.Status == Blocked })
+}
+
+// Prepare records the baseline of every move and, when every move is ready,
+// saves the plan at out. Apart from that file it only reads. Each source is
+// renamed in the plan to the spelling the file system stores, so undo
+// restores the exact name.
+func Prepare(ctx context.Context, p *Plan, vol disk.Volume, out string) (Actions, error) {
+	if err := p.checkOut(out); err != nil {
+		return nil, err
+	}
+	actions := make(Actions, len(p.Moves))
 	for i := range p.Moves {
 		m := &p.Moves[i]
-		a := Action{Move: i + 1, From: m.From, To: m.To, Status: Ready}
-		base, err := snapshot(ctx, p.Root, m.From, true)
+		err := free(p.Root, m.To)
 		if err == nil {
-			err = free(p.Root, m.To)
+			var name string
+			name, m.Baseline, err = snapshot(ctx, p.Root, m.From, true)
+			if err == nil {
+				m.From = path.Join(path.Dir(m.From), name)
+			}
 		}
 		if ctx.Err() != nil {
-			return actions, ctx.Err()
+			return nil, ctx.Err()
 		}
+		actions[i] = Action{Move: i + 1, From: m.From, To: m.To, Status: Ready}
 		if err != nil {
-			a.Status, a.Problem = Blocked, err.Error()
+			actions[i].Status, actions[i].Problem = Blocked, err.Error()
 		}
-		m.Baseline = base
-		actions[i] = a
+	}
+	if actions.Blocked() {
+		return actions, nil
 	}
 	p.Volume = vol.Fingerprint
 	p.PreparedAt = time.Now().UTC()
-	return actions, nil
+	return actions, p.save(out)
+}
+
+// checkOut makes sure saving the plan at out loses nothing: the plan and its
+// journal lie outside every move, the journal records no run, and out is free
+// or holds an earlier prepared plan.
+func (p *Plan) checkOut(out string) error {
+	abs, err := filepath.Abs(out)
+	if err != nil {
+		return err
+	}
+	journal := JournalPath(abs)
+	for _, file := range []string{abs, journal} {
+		rel, err := filepath.Rel(p.Root, file)
+		if err != nil || !filepath.IsLocal(rel) {
+			continue
+		}
+		k := key(filepath.ToSlash(rel))
+		for i, m := range p.Moves {
+			if strings.HasPrefix(k, key(m.From)) || strings.HasPrefix(k, key(m.To)) {
+				return fmt.Errorf("%s would be inside move %d; save the plan outside what it moves", file, i+1)
+			}
+		}
+	}
+	if err := unused(journal); err != nil {
+		return err
+	}
+	if old, err := Read(abs); !errors.Is(err, fs.ErrNotExist) && (err != nil || old.PreparedAt.IsZero()) {
+		return fmt.Errorf("%s exists and is not a prepared plan; save the plan elsewhere", out)
+	}
+	return nil
+}
+
+// unused fails when the journal at path records a run or a run holds it.
+func unused(path string) error {
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := disk.Lock(f); err != nil {
+		return fmt.Errorf("journal %s: %w", path, err)
+	}
+	info, err := f.Stat()
+	if err == nil && info.Size() > 0 {
+		return fmt.Errorf("%s records a run of this plan; prepare into a new file", path)
+	}
+	return err
+}
+
+// save checks out again, because reading the sources took a while, and then
+// replaces it through a rename, so a link at out is replaced rather than
+// written through.
+func (p *Plan) save(out string) error {
+	if err := p.checkOut(out); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(out), ".plan-*")
+	if err != nil {
+		return err
+	}
+	_, err = tmp.Write(append(data, '\n'))
+	err = errors.Join(err, tmp.Sync(), tmp.Close())
+	if err == nil {
+		err = os.Rename(tmp.Name(), out)
+	}
+	if err != nil {
+		_ = os.Remove(tmp.Name())
+	}
+	return err
 }
 
 // NewFolders lists the folders that apply would create for the destinations,
@@ -238,4 +298,9 @@ func free(root, rel string) error {
 	default:
 		return err
 	}
+}
+
+func missing(p string) bool {
+	_, err := os.Lstat(p)
+	return errors.Is(err, fs.ErrNotExist)
 }

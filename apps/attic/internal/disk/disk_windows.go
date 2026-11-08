@@ -193,8 +193,8 @@ func Present(v Volume) bool {
 	return err == nil && current.Fingerprint == v.Fingerprint
 }
 
-// Move renames a file or folder within one volume and fails when to exists. os.Rename
-// would replace it.
+// Move renames a file or folder within one volume and fails when to exists.
+// os.Rename would replace it.
 func Move(from, to string) error {
 	f, err := windows.UTF16PtrFromString(longPath(from))
 	if err != nil {
@@ -319,6 +319,43 @@ func Stat(path string) (Entry, error) {
 	e.Name = filepath.Base(path)
 	return e, nil
 }
+
+// Lstat describes path itself without following a reparse point or recalling
+// a cloud placeholder. The name is spelled as the file system stores it.
+func Lstat(path string) (Entry, error) {
+	h, err := open(path, windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE,
+		windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT|windows.FILE_FLAG_OPEN_NO_RECALL)
+	if err != nil {
+		return Entry{}, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	defer windows.CloseHandle(h)
+	e, _, err := statHandle(h)
+	if err != nil {
+		return Entry{}, &os.PathError{Op: "stat", Path: path, Err: err}
+	}
+	stored, err := handlePath(h, path)
+	if err != nil {
+		return Entry{}, err
+	}
+	e.Name = filepath.Base(stored)
+	return e, nil
+}
+
+// Lock takes an exclusive lock on f that lasts until f is closed. It fails
+// with ErrLocked instead of waiting for another process. The locked byte lies
+// far past any data, because Windows locks also refuse other handles' reads.
+func Lock(f *os.File) error {
+	at := windows.Overlapped{OffsetHigh: 0x7fffffff}
+	err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &at)
+	if errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
+		return ErrLocked
+	}
+	return err
+}
+
+// SyncDir does nothing: Windows cannot flush a directory handle, and NTFS and
+// ReFS journal directory changes themselves.
+func SyncDir(string) error { return nil }
 
 func statHandle(h windows.Handle) (Entry, fileBasicInfo, error) {
 	var bh windows.ByHandleFileInformation
