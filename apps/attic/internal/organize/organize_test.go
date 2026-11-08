@@ -193,15 +193,18 @@ func TestValidateRejectsEscapesAndOverlaps(t *testing.T) {
 	}
 }
 
-func TestPrepareNeverReplacesAFile(t *testing.T) {
+func TestPrepareRefusesUnsafeOutputs(t *testing.T) {
 	for _, tc := range []struct {
 		name, want string
 		setup      func(t *testing.T, root string) string
 	}{
-		{"plan inside a moved folder", "inside move 1", func(t *testing.T, root string) string {
+		{"plan inside a moved folder", "collide with move 1", func(t *testing.T, root string) string {
 			return filepath.Join(root, "Inbox", "moves.plan.json")
 		}},
-		{"plan linked into a moved folder", "inside move 1", func(t *testing.T, root string) string {
+		{"plan in place of a destination folder", "collide with move 1", func(t *testing.T, root string) string {
+			return filepath.Join(root, "Sorted")
+		}},
+		{"plan linked into a moved folder", "collide with move 1", func(t *testing.T, root string) string {
 			link := filepath.Join(t.TempDir(), "inbox")
 			if err := os.Symlink(filepath.Join(root, "Inbox"), link); err != nil {
 				t.Skip("symlinks unsupported:", err)
@@ -318,7 +321,43 @@ func TestApplyRechecksFinishedMoves(t *testing.T) {
 	}
 }
 
-func TestApplyAfterAFailedRenameComparesBytes(t *testing.T) {
+func TestPrepareSavesUnderARelativeName(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "a.txt", "a")
+	t.Chdir(t.TempDir())
+	if err := prepareAt(t, "moves.plan.json", root, Move{From: "a.txt", To: "b.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	run(t, "moves.plan.json", (*Run).Apply)
+	if !exists(root, "b.txt") {
+		t.Fatal("apply did not move a.txt")
+	}
+}
+
+func TestApplyAfterAFailedRenameKeepsTheChangeTime(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "a.txt", "a")
+	plan := prepare(t, root, Move{From: "a.txt", To: "Sorted/a.txt"})
+	r := open(t, plan)
+	write(t, root, "Sorted", "a file where the folder should go")
+	if problem, err := r.move(context.Background(), 0, "a.txt", "Sorted/a.txt", moving, moved); err != nil || problem == "" {
+		t.Fatalf("move into a file = %q, %v", problem, err)
+	}
+	r.Close()
+	if err := os.Remove(filepath.Join(root, "Sorted")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(root, "a.txt"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(filepath.Join(root, "a.txt"), 0o600) })
+
+	if a := run(t, plan, (*Run).Apply).Actions[0]; a.Status != Blocked || !strings.Contains(a.Problem, "was changed") {
+		t.Fatalf("apply after the failed rename = %+v", a)
+	}
+}
+
+func TestApplyAfterAnInterruptedRenameComparesBytes(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "a.txt", "a")
 	plan := prepare(t, root, Move{From: "a.txt", To: "Sorted/a.txt"})

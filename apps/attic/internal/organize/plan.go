@@ -157,6 +157,10 @@ func (as Actions) Blocked() bool {
 // saves the plan at out. Apart from that file it only reads. Each source is respelled as the file system stores it, so undo
 // restores the exact names.
 func Prepare(ctx context.Context, p *Plan, vol disk.Volume, out string) (Actions, error) {
+	out, err := filepath.Abs(out)
+	if err != nil {
+		return nil, err
+	}
 	if err := p.checkOut(out); err != nil {
 		return nil, err
 	}
@@ -226,14 +230,12 @@ func (p *Plan) blockSharedFiles(actions Actions) {
 	}
 }
 
-// checkOut makes sure saving the plan at out loses nothing: the plan and its
-// journal lie outside every move, out is free, and its journal records no
+// checkOut makes sure saving the plan at the absolute path out loses nothing
+// and blocks no move: the plan and its journal neither lie inside a move nor
+// take a place a destination needs, out is free, and its journal records no
 // run and is held by none.
 func (p *Plan) checkOut(out string) error {
-	abs, err := filepath.Abs(out)
-	if err != nil {
-		return err
-	}
+	abs := out
 	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
 		abs = filepath.Join(dir, filepath.Base(abs))
 	}
@@ -248,8 +250,8 @@ func (p *Plan) checkOut(out string) error {
 		}
 		k := key(filepath.ToSlash(rel))
 		for i, m := range p.Moves {
-			if strings.HasPrefix(k, key(m.From)) || strings.HasPrefix(k, key(m.To)) {
-				return fmt.Errorf("%s would be inside move %d; save the plan outside what it moves", file, i+1)
+			if strings.HasPrefix(k, key(m.From)) || strings.HasPrefix(k, key(m.To)) || strings.HasPrefix(key(m.To), k) {
+				return fmt.Errorf("%s would collide with move %d; save the plan outside what it moves", file, i+1)
 			}
 		}
 	}

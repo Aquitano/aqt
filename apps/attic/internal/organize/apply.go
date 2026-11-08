@@ -35,15 +35,15 @@ type event struct {
 	To     string `json:"to"`
 	Event  string `json:"event"`
 	Folder string `json:"folder,omitempty"`
-	// Changed is the object's change time once a rename is verified, since
-	// the rename itself moved it.
+	// Changed is the change time the object has where the event leaves it:
+	// before a rename at its start, after a verified one at its arrival.
 	Changed time.Time `json:"changed,omitzero"`
 	At      time.Time `json:"at"`
 }
 
 // state is a move as its journal leaves it: the last lifecycle event, empty
-// when the move was never attempted, the object's change time after the last
-// verified rename, and the folders the moves made for it that still exist.
+// when the move was never attempted, the change time that event recorded, and
+// the folders the moves made for it that still exist.
 type state struct {
 	last    string
 	changed time.Time
@@ -237,14 +237,16 @@ func (r *Run) verify(ctx context.Context, i int, rel string, top time.Time, rena
 }
 
 // expected is the change time move i's object should have at rel: the
-// baseline's before any rename, the journal's after a verified one, and zero
-// while a rename is unsettled.
+// baseline's before any rename, and otherwise the journal's for the place its
+// last event left the object. It is zero at the other place, where an
+// unrecorded rename would have changed it.
 func (r *Run) expected(i int, rel string) time.Time {
 	m, s := r.plan.Moves[i], r.states[i]
 	switch {
 	case s.last == "" && rel == m.From:
 		return m.Baseline[0].Changed
-	case s.last == moved && rel == m.To, s.last == restored && rel == m.From:
+	case (s.last == moved || s.last == restoring) && rel == m.To,
+		(s.last == restored || s.last == moving) && rel == m.From:
 		return s.changed
 	}
 	return time.Time{}
@@ -406,7 +408,7 @@ func (r *Run) move(ctx context.Context, i int, from, to, start, done string) (st
 		return "the disk changed since the run started", nil
 	}
 	top := r.expected(i, from)
-	if err := r.record(i, event{Event: start}); err != nil {
+	if err := r.record(i, event{Event: start, Changed: top}); err != nil {
 		return "", err
 	}
 	// A folder is journalled before it is made, so undo removes it even when
