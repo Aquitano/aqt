@@ -68,12 +68,8 @@ func Read(path string) (Plan, error) {
 }
 
 // JournalPath is where Apply and Undo record each step of the plan at path.
-// Windows matches the extension without case, so every spelling it accepts
-// for one plan finds one journal.
+// It keeps the whole plan name, so two plans never share a journal.
 func JournalPath(plan string) string {
-	if ext := filepath.Ext(plan); ext == ".json" || runtime.GOOS == "windows" && strings.EqualFold(ext, ".json") {
-		plan = strings.TrimSuffix(plan, ext)
-	}
 	return plan + ".journal.jsonl"
 }
 
@@ -259,6 +255,9 @@ func (p *Plan) checkOut(out string) error {
 				return fmt.Errorf("%s would collide with move %d; save the plan outside what it moves", file, i+1)
 			}
 		}
+	}
+	if info, err := os.Stat(filepath.Dir(abs)); err != nil || !info.IsDir() {
+		return fmt.Errorf("%s has no folder to save the plan in", out)
 	}
 	if !missing(abs) {
 		return fmt.Errorf("%s exists; delete it to prepare again, or save the plan elsewhere", out)

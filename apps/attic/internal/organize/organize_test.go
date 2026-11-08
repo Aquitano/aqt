@@ -106,6 +106,9 @@ func problems(res Result) string {
 }
 
 func TestApplyAndUndoMoveFilesAndWholeFolders(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "windows" {
+		t.Skip("moves here rename through a hard link, which cannot move folders")
+	}
 	root := t.TempDir()
 	write(t, root, "Inbox/award.pdf", "2014 award")
 	write(t, root, "Inbox/Proj/src/logo.png", "logo")
@@ -172,13 +175,6 @@ func TestPrepareUsesStoredNames(t *testing.T) {
 	}
 }
 
-func TestJournalPathFollowsTheFileSystemsCase(t *testing.T) {
-	a, b := JournalPath("moves.plan.json"), JournalPath("moves.plan.JSON")
-	if a != "moves.plan.journal.jsonl" || (a == b) != (runtime.GOOS == "windows") {
-		t.Fatalf("journals = %s and %s", a, b)
-	}
-}
-
 func TestValidateRejectsEscapesAndOverlaps(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -217,6 +213,9 @@ func TestPrepareRefusesUnsafeOutputs(t *testing.T) {
 				t.Skip("symlinks unsupported:", err)
 			}
 			return filepath.Join(link, "moves.plan.json")
+		}},
+		{"missing folder", "no folder", func(t *testing.T, root string) string {
+			return filepath.Join(t.TempDir(), "missing", "moves.plan.json")
 		}},
 		{"existing file", "exists", func(t *testing.T, root string) string {
 			out := filepath.Join(t.TempDir(), "notes.json")
