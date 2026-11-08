@@ -154,23 +154,24 @@ func (as Actions) Blocked() bool {
 }
 
 // Prepare records the baseline of every move and, when every move is ready,
-// saves the plan at out. Apart from that file it only reads. Each source is
-// renamed in the plan to the spelling the file system stores, so undo
-// restores the exact name.
+// saves the plan at out. Apart from that file and its empty journal it only
+// reads. Each source is respelled as the file system stores it, so undo
+// restores the exact names.
 func Prepare(ctx context.Context, p *Plan, vol disk.Volume, out string) (Actions, error) {
-	if err := p.checkOut(out); err != nil {
+	if journal, err := p.claimOut(out, false); err != nil {
 		return nil, err
+	} else if journal != nil {
+		journal.Close()
 	}
 	actions := make(Actions, len(p.Moves))
 	for i := range p.Moves {
 		m := &p.Moves[i]
 		err := free(p.Root, m.To)
 		if err == nil {
-			var name string
-			name, m.Baseline, err = snapshot(ctx, p.Root, m.From, true)
-			if err == nil {
-				m.From = path.Join(path.Dir(m.From), name)
-			}
+			m.From, err = stored(p.Root, m.From)
+		}
+		if err == nil {
+			m.Baseline, err = snapshot(ctx, p.Root, m.From, true)
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -180,6 +181,7 @@ func Prepare(ctx context.Context, p *Plan, vol disk.Volume, out string) (Actions
 			actions[i].Status, actions[i].Problem = Blocked, err.Error()
 		}
 	}
+	p.blockSharedFiles(actions)
 	if actions.Blocked() {
 		return actions, nil
 	}
@@ -188,16 +190,56 @@ func Prepare(ctx context.Context, p *Plan, vol disk.Volume, out string) (Actions
 	return actions, p.save(out)
 }
 
-// checkOut makes sure saving the plan at out loses nothing: the plan and its
-// journal lie outside every move, the journal records no run, and out is free
-// or holds an earlier prepared plan.
-func (p *Plan) checkOut(out string) error {
+// stored spells rel as the file system stores each of its parts.
+func stored(root, rel string) (string, error) {
+	parts := strings.Split(rel, "/")
+	for i := range parts {
+		e, err := disk.Lstat(filepath.Join(root, filepath.FromSlash(path.Join(parts[:i+1]...))))
+		if err != nil {
+			return "", err
+		}
+		parts[i] = e.Name
+	}
+	return path.Join(parts...), nil
+}
+
+// blockSharedFiles blocks moves that hold hard links to one file: renaming
+// one link changes the change time the other move's baseline recorded.
+func (p *Plan) blockSharedFiles(actions Actions) {
+	type seen struct {
+		move int
+		path string
+	}
+	first := map[uint64]seen{}
+	for i, m := range p.Moves {
+		for _, it := range m.Baseline {
+			if it.Dir || it.FileID == 0 {
+				continue
+			}
+			at := path.Join(m.From, it.Path)
+			other, ok := first[it.FileID]
+			switch {
+			case !ok:
+				first[it.FileID] = seen{i, at}
+			case other.move != i:
+				actions[i].Status = Blocked
+				actions[i].Problem = fmt.Sprintf("%s and %s (move %d) are hard links to one file; move them together", at, other.path, other.move+1)
+			}
+		}
+	}
+}
+
+// claimOut makes sure saving the plan at out loses nothing, and returns its
+// journal locked until the file is closed. The plan and its journal must lie
+// outside every move, the journal must record no run, and out must be free
+// or hold an earlier prepared plan. Without create, a missing journal gives
+// no file.
+func (p *Plan) claimOut(out string, create bool) (_ *os.File, err error) {
 	abs, err := filepath.Abs(out)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	journal := JournalPath(abs)
-	for _, file := range []string{abs, journal} {
+	for _, file := range []string{abs, JournalPath(abs)} {
 		rel, err := filepath.Rel(p.Root, file)
 		if err != nil || !filepath.IsLocal(rel) {
 			continue
@@ -205,46 +247,66 @@ func (p *Plan) checkOut(out string) error {
 		k := key(filepath.ToSlash(rel))
 		for i, m := range p.Moves {
 			if strings.HasPrefix(k, key(m.From)) || strings.HasPrefix(k, key(m.To)) {
-				return fmt.Errorf("%s would be inside move %d; save the plan outside what it moves", file, i+1)
+				return nil, fmt.Errorf("%s would be inside move %d; save the plan outside what it moves", file, i+1)
 			}
 		}
 	}
-	if err := unused(journal); err != nil {
-		return err
+	journal, err := claim(JournalPath(abs), create)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil && journal != nil {
+			journal.Close()
+		}
+	}()
+	if journal != nil {
+		if info, err := journal.Stat(); err != nil {
+			return nil, err
+		} else if info.Size() > 0 {
+			return nil, fmt.Errorf("%s records a run of this plan; prepare into a new file", journal.Name())
+		}
 	}
 	if old, err := Read(abs); !errors.Is(err, fs.ErrNotExist) && (err != nil || old.PreparedAt.IsZero()) {
-		return fmt.Errorf("%s exists and is not a prepared plan; save the plan elsewhere", out)
+		return nil, fmt.Errorf("%s exists and is not a prepared plan; save the plan elsewhere", out)
 	}
-	return nil
+	return journal, nil
 }
 
-// unused fails when the journal at path records a run or a run holds it.
-func unused(path string) error {
-	f, err := os.Open(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
+// claim opens the journal at path and locks it until the file is closed.
+// Without create it returns no file when there is no journal.
+func claim(path string, create bool) (*os.File, error) {
+	flag := os.O_RDWR
+	if create {
+		flag |= os.O_CREATE
 	}
+	f, err := os.OpenFile(path, flag, 0o600)
+	if !create && errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := disk.Lock(f); err != nil {
+		f.Close()
+		if errors.Is(err, disk.ErrLocked) {
+			err = errors.New("another run of this plan holds it")
+		}
+		return nil, fmt.Errorf("journal %s: %w", path, err)
+	}
+	return f, nil
+}
+
+// save writes the plan beside out and publishes it with a rename that
+// replaces only an earlier plan, so a link at out is replaced rather than
+// written through. It holds the journal locked meanwhile, so no run starts
+// on the plan being replaced.
+func (p *Plan) save(out string) error {
+	journal, err := p.claimOut(out, true)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	if err := disk.Lock(f); err != nil {
-		return fmt.Errorf("journal %s: %w", path, err)
-	}
-	info, err := f.Stat()
-	if err == nil && info.Size() > 0 {
-		return fmt.Errorf("%s records a run of this plan; prepare into a new file", path)
-	}
-	return err
-}
-
-// save checks out again, because reading the sources took a while, and then
-// replaces it through a rename, so a link at out is replaced rather than
-// written through.
-func (p *Plan) save(out string) error {
-	if err := p.checkOut(out); err != nil {
-		return err
-	}
+	defer journal.Close()
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
 		return err
@@ -255,7 +317,9 @@ func (p *Plan) save(out string) error {
 	}
 	_, err = tmp.Write(append(data, '\n'))
 	err = errors.Join(err, tmp.Sync(), tmp.Close())
-	if err == nil {
+	if err == nil && missing(out) {
+		err = disk.Move(tmp.Name(), out)
+	} else if err == nil {
 		err = os.Rename(tmp.Name(), out)
 	}
 	if err != nil {
@@ -270,23 +334,37 @@ func NewFolders(p Plan) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, m := range p.Moves {
-		for dir := path.Dir(m.To); dir != "." && !seen[dir]; dir = path.Dir(dir) {
-			seen[dir] = true
-			if !missing(filepath.Join(p.Root, filepath.FromSlash(dir))) {
-				break
+		for _, dir := range missingFolders(p.Root, m.To) {
+			id := dir
+			if runtime.GOOS == "windows" {
+				id = key(dir)
 			}
-			out = append(out, dir)
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, dir)
+			}
 		}
 	}
 	slices.Sort(out)
 	return out
 }
 
+// missingFolders lists the folders above rel that do not exist yet, outermost
+// first.
+func missingFolders(root, rel string) []string {
+	var dirs []string
+	for dir := path.Dir(rel); dir != "." && missing(filepath.Join(root, filepath.FromSlash(dir))); dir = path.Dir(dir) {
+		dirs = append(dirs, dir)
+	}
+	slices.Reverse(dirs)
+	return dirs
+}
+
 // free checks that nothing occupies rel and that its existing folders are
 // ordinary ones.
 func free(root, rel string) error {
 	native := filepath.FromSlash(rel)
-	if _, err := disk.Folders(root, filepath.Dir(native), false); err != nil {
+	if err := disk.Folders(root, filepath.Dir(native), false); err != nil {
 		return err
 	}
 	_, err := os.Lstat(filepath.Join(root, native))

@@ -54,35 +54,29 @@ func HashOrdinaryInfo(ctx context.Context, root, rel string) (Digest, fs.FileInf
 
 // Folders checks that each folder of rel below root is an ordinary folder,
 // not a link or junction that would send a move elsewhere. Without create it
-// stops at the first missing folder; with create it makes the missing ones
-// and returns them relative to root.
-func Folders(root, rel string, create bool) ([]string, error) {
+// stops at the first missing folder; with create it makes the missing ones.
+func Folders(root, rel string, create bool) error {
 	if rel == "." {
-		return nil, nil
+		return nil
 	}
-	var created []string
-	sub := ""
+	dir := root
 	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
-		sub = filepath.Join(sub, part)
-		dir := filepath.Join(root, sub)
+		dir = filepath.Join(dir, part)
 		if create {
-			err := os.Mkdir(dir, 0o700)
-			if err == nil {
-				created = append(created, sub)
-			} else if !errors.Is(err, fs.ErrExist) {
-				return created, err
+			if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+				return err
 			}
 		}
 		info, err := os.Lstat(dir)
 		if !create && errors.Is(err, fs.ErrNotExist) {
-			return nil, nil
+			return nil
 		}
 		if err != nil {
-			return created, err
+			return err
 		}
 		if info.Mode().Type() != fs.ModeDir {
-			return created, fmt.Errorf("%s is not an ordinary folder", dir)
+			return fmt.Errorf("%s is not an ordinary folder", dir)
 		}
 	}
-	return created, nil
+	return nil
 }

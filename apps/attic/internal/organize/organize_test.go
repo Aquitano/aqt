@@ -83,6 +83,20 @@ func statuses(res Result) []Status {
 	return out
 }
 
+// rewrite replaces a file's bytes and puts its modified time back.
+func rewrite(t *testing.T, root, rel, data string) {
+	t.Helper()
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, root, rel, data)
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func problems(res Result) string {
 	var all []string
 	for _, a := range res.Actions {
@@ -153,7 +167,7 @@ func TestPrepareUsesStoredNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := p.Moves[0].From; got != "inbox/Award.PDF" {
+	if got := p.Moves[0].From; got != "Inbox/Award.PDF" {
 		t.Fatalf("from = %s, want the stored name", got)
 	}
 }
@@ -226,17 +240,7 @@ func TestApplyMovesNothingWhenAnyActionIsBlocked(t *testing.T) {
 		change     func(t *testing.T, root string)
 	}{
 		{"file written", "was written", func(t *testing.T, root string) { write(t, root, "b.txt", "edited since prepare") }},
-		{"file rewritten with its old size and time", "was changed", func(t *testing.T, root string) {
-			path := filepath.Join(root, "b.txt")
-			info, err := os.Stat(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			write(t, root, "b.txt", "B")
-			if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
-				t.Fatal(err)
-			}
-		}},
+		{"file rewritten with its old size and time", "was changed", func(t *testing.T, root string) { rewrite(t, root, "b.txt", "B") }},
 		{"file added to a folder", "was added", func(t *testing.T, root string) { write(t, root, "Proj/new.txt", "new") }},
 		{"destination taken", "already exists", func(t *testing.T, root string) { write(t, root, "Sorted/b.txt", "other") }},
 	} {
@@ -271,7 +275,7 @@ func TestApplyResumesInterruptedMoves(t *testing.T) {
 	// stopped before renaming b.txt, halfway through writing a line.
 	r := open(t, plan)
 	for i := range 2 {
-		if err := r.record(i, moving, ""); err != nil {
+		if err := r.record(i, event{Event: moving}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -299,10 +303,51 @@ func TestApplyRechecksFinishedMoves(t *testing.T) {
 	write(t, root, "a.txt", "a")
 	plan := prepare(t, root, Move{From: "a.txt", To: "Sorted/a.txt"})
 	run(t, plan, (*Run).Apply)
-	write(t, root, "Sorted/a.txt", "edited after apply")
+	rewrite(t, root, "Sorted/a.txt", "A")
 
-	if a := run(t, plan, (*Run).Apply).Actions[0]; a.Status != Blocked || !strings.Contains(a.Problem, "was written") {
+	if a := run(t, plan, (*Run).Apply).Actions[0]; a.Status != Blocked || !strings.Contains(a.Problem, "was changed") {
 		t.Fatalf("apply after an edit = %+v", a)
+	}
+}
+
+func TestApplyAfterAFailedRenameComparesBytes(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "a.txt", "a")
+	plan := prepare(t, root, Move{From: "a.txt", To: "Sorted/a.txt"})
+	// An earlier run journalled the move, and then its rename failed.
+	r := open(t, plan)
+	if err := r.record(0, event{Event: moving}); err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
+	rewrite(t, root, "a.txt", "A")
+
+	if a := run(t, plan, (*Run).Apply).Actions[0]; a.Status != Blocked || !strings.Contains(a.Problem, "holds other bytes") {
+		t.Fatalf("apply after the failed rename = %+v", a)
+	}
+}
+
+func TestPrepareBlocksHardLinksAcrossMoves(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "Folder/a.txt", "a")
+	if err := os.Link(filepath.Join(root, "Folder", "a.txt"), filepath.Join(root, "b.txt")); err != nil {
+		t.Skip("hard links unsupported:", err)
+	}
+	p := Plan{Root: root, Moves: []Move{{From: "Folder", To: "Sorted/Folder"}, {From: "b.txt", To: "Sorted/b.txt"}}}
+	if err := p.validate(); err != nil {
+		t.Fatal(err)
+	}
+	vol, err := Mount(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "plan.json")
+	actions, err := Prepare(context.Background(), &p, vol, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := actions[1]; a.Status != Blocked || !strings.Contains(a.Problem, "hard links") || exists(filepath.Dir(out), "plan.json") {
+		t.Fatalf("prepare = %+v", actions)
 	}
 }
 
@@ -324,7 +369,7 @@ func TestOpenRefusesForeignJournalsAndSecondRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := open(t, plan)
-	if _, err := Open(plan); err == nil || !strings.Contains(err.Error(), "is running") {
+	if _, err := Open(plan); err == nil || !strings.Contains(err.Error(), "holds it") {
 		t.Fatalf("second open = %v", err)
 	}
 	first.Close()
@@ -353,7 +398,7 @@ func TestUndoRemovesFoldersOnceEveryMoveIsBack(t *testing.T) {
 	}
 }
 
-func TestUndoWithoutStableIDsComparesBytesAndKeepsChangedMoves(t *testing.T) {
+func TestWithoutStableIDsApplyAndUndoCompareBytes(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows reports the real file system's identity, and these temp folders keep stable IDs")
 	}
@@ -364,21 +409,22 @@ func TestUndoWithoutStableIDsComparesBytesAndKeepsChangedMoves(t *testing.T) {
 	r := open(t, plan)
 	defer r.Close()
 	r.vol.StableIDs = false
-	if _, err := r.Apply(context.Background()); err != nil {
-		t.Fatal(err)
-	}
 	// Same size and modified time: only the bytes tell the edit apart.
-	moved := filepath.Join(root, "Sorted", "a.txt")
-	info, err := os.Stat(moved)
+	rewrite(t, root, "a.txt", "OVERRIDE")
+	res, err := r.Apply(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, root, "Sorted/a.txt", "OVERRIDE")
-	if err := os.Chtimes(moved, info.ModTime(), info.ModTime()); err != nil {
-		t.Fatal(err)
+	if a := res.Actions[0]; a.Status != Blocked || !strings.Contains(a.Problem, "holds other bytes") || !exists(root, "b.txt") {
+		t.Fatalf("apply of an edited source = %+v", res.Actions)
 	}
+	rewrite(t, root, "a.txt", "original")
+	if res, err := r.Apply(context.Background()); err != nil || res.Actions.Blocked() {
+		t.Fatalf("apply = %+v, %v", res.Actions, err)
+	}
+	rewrite(t, root, "Sorted/a.txt", "OVERRIDE")
 
-	res, err := r.Undo(context.Background())
+	res, err = r.Undo(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

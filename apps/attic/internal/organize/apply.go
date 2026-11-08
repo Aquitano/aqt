@@ -28,18 +28,23 @@ const (
 )
 
 type event struct {
-	Move   int       `json:"move"`
-	From   string    `json:"from"`
-	To     string    `json:"to"`
-	Event  string    `json:"event"`
-	Folder string    `json:"folder,omitempty"`
-	At     time.Time `json:"at"`
+	Move   int    `json:"move"`
+	From   string `json:"from"`
+	To     string `json:"to"`
+	Event  string `json:"event"`
+	Folder string `json:"folder,omitempty"`
+	// Changed is the object's change time once a rename is verified, since
+	// the rename itself moved it.
+	Changed time.Time `json:"changed,omitzero"`
+	At      time.Time `json:"at"`
 }
 
 // state is a move as its journal leaves it: the last lifecycle event, empty
-// when the move was never attempted, and the folders apply made for it.
+// when the move was never attempted, the object's change time after the last
+// verified rename, and the folders the moves made for it.
 type state struct {
 	last    string
+	changed time.Time
 	folders []string
 }
 
@@ -47,7 +52,7 @@ func (s *state) add(e event) {
 	if e.Event == created {
 		s.folders = append(s.folders, e.Folder)
 	} else {
-		s.last = e.Event
+		s.last, s.changed = e.Event, e.Changed
 	}
 }
 
@@ -69,19 +74,29 @@ type Result struct {
 }
 
 // Open reads the prepared plan at path, checks that its disk is attached and
-// replays its journal.
+// replays its journal. The plan is read once before its journal is created,
+// so a wrong file gets none, and again under the journal's lock, so prepare
+// cannot replace it underneath the run.
 func Open(path string) (*Run, error) {
-	p, err := Read(path)
+	if _, err := readPrepared(path); err != nil {
+		return nil, err
+	}
+	journal, err := claim(JournalPath(path), true)
 	if err != nil {
 		return nil, err
 	}
-	if p.PreparedAt.IsZero() {
-		return nil, fmt.Errorf("%s is not prepared; run `attic organize prepare` on it first", path)
+	r, err := openRun(path, journal)
+	if err != nil {
+		journal.Close()
+		return nil, err
 	}
-	for i, m := range p.Moves {
-		if len(m.Baseline) == 0 {
-			return nil, fmt.Errorf("move %d has no baseline; prepare the plan again", i+1)
-		}
+	return r, nil
+}
+
+func openRun(path string, journal *os.File) (*Run, error) {
+	p, err := readPrepared(path)
+	if err != nil {
+		return nil, err
 	}
 	vol, err := Mount(p.Root)
 	if err != nil {
@@ -90,44 +105,42 @@ func Open(path string) (*Run, error) {
 	if vol.Fingerprint != p.Volume {
 		return nil, fmt.Errorf("the disk at %s is not the one the plan was prepared on", p.Root)
 	}
-	r := &Run{plan: p, planPath: path, vol: vol, states: make([]state, len(p.Moves))}
-	if err := r.openJournal(); err != nil {
-		return nil, fmt.Errorf("journal %s: %w", JournalPath(path), err)
+	r := &Run{plan: p, planPath: path, vol: vol, journal: journal, states: make([]state, len(p.Moves))}
+	if err := r.load(); err != nil {
+		return nil, fmt.Errorf("journal %s: %w", journal.Name(), err)
 	}
 	return r, nil
 }
 
-func (r *Run) Close() error { return r.journal.Close() }
-
-func (r *Run) openJournal() error {
-	f, err := os.OpenFile(JournalPath(r.planPath), os.O_RDWR|os.O_CREATE, 0o600)
+func readPrepared(path string) (Plan, error) {
+	p, err := Read(path)
 	if err != nil {
-		return err
+		return Plan{}, err
 	}
-	if err := r.load(f); err != nil {
-		f.Close()
-		return err
+	if p.PreparedAt.IsZero() {
+		return Plan{}, fmt.Errorf("%s is not prepared; run `attic organize prepare` on it first", path)
 	}
-	r.journal = f
-	return nil
+	for i, m := range p.Moves {
+		if len(m.Baseline) == 0 {
+			return Plan{}, fmt.Errorf("move %d has no baseline; prepare the plan again", i+1)
+		}
+	}
+	return p, nil
 }
 
-// load locks the journal and replays its complete lines. A last line without
-// its newline was cut short by a crash and never counted; it is cut off so
-// the next event starts a line of its own. A file without a single complete
-// line could be anything, so it is left alone.
-func (r *Run) load(f *os.File) error {
-	if err := disk.Lock(f); errors.Is(err, disk.ErrLocked) {
-		return errors.New("another apply or undo of this plan is running")
-	} else if err != nil {
-		return err
-	}
-	data, err := io.ReadAll(f)
+func (r *Run) Close() error { return r.journal.Close() }
+
+// load replays the journal's complete lines. A last line without its newline
+// was cut short by a crash and never counted; it is cut off so the next event
+// starts a line of its own. A file without a single complete line could be
+// anything, so it is left alone.
+func (r *Run) load() error {
+	data, err := io.ReadAll(r.journal)
 	if err != nil {
 		return err
 	}
 	if len(data) == 0 {
-		return disk.SyncDir(filepath.Dir(f.Name()))
+		return disk.SyncDir(filepath.Dir(r.journal.Name()))
 	}
 	complete := int64(bytes.LastIndexByte(data, '\n') + 1)
 	if complete == 0 {
@@ -139,10 +152,10 @@ func (r *Run) load(f *os.File) error {
 	if complete == int64(len(data)) {
 		return nil
 	}
-	if err := f.Truncate(complete); err != nil {
+	if err := r.journal.Truncate(complete); err != nil {
 		return err
 	}
-	_, err = f.Seek(complete, io.SeekStart)
+	_, err = r.journal.Seek(complete, io.SeekStart)
 	return err
 }
 
@@ -172,9 +185,9 @@ func (r *Run) replay(data []byte) error {
 	return nil
 }
 
-func (r *Run) record(i int, name, folder string) error {
+func (r *Run) record(i int, e event) error {
 	m := r.plan.Moves[i]
-	e := event{Move: i + 1, From: m.From, To: m.To, Event: name, Folder: folder, At: time.Now().UTC()}
+	e.Move, e.From, e.To, e.At = i+1, m.From, m.To, time.Now().UTC()
 	line, err := json.Marshal(e)
 	if err != nil {
 		return err
@@ -201,37 +214,58 @@ func (r *Run) path(rel string) string {
 	return filepath.Join(r.plan.Root, filepath.FromSlash(rel))
 }
 
-// verify checks that the object at rel is exactly move i's baseline. Once the
-// object may have been renamed, FAT and exFAT have given it new IDs, so there
-// its bytes are compared instead.
-func (r *Run) verify(ctx context.Context, i int, rel string) error {
+// verify checks that the object at rel is exactly move i's baseline and
+// returns its change time. FAT and exFAT give a moved object new IDs and keep
+// no change time, so there the bytes are compared. Right after a rename the
+// object's own change time is new. Otherwise, when the journal cannot say
+// what it should be, a single file's bytes are compared instead.
+func (r *Run) verify(ctx context.Context, i int, rel string, renamed bool) (time.Time, error) {
 	m := r.plan.Moves[i]
-	renamed := rel != m.From || r.states[i].last != ""
-	rehash := renamed && !r.vol.StableIDs
-	_, now, err := snapshot(ctx, r.plan.Root, rel, rehash)
-	if err != nil {
-		return err
+	rehash := !r.vol.StableIDs
+	var top time.Time
+	if !renamed {
+		top = r.expected(i, rel)
 	}
-	return compare(rel, m.Baseline, now, rehash, renamed)
+	hash := rehash || (!renamed && top.IsZero() && !m.Baseline[0].Dir)
+	now, err := snapshot(ctx, r.plan.Root, rel, hash)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return now[0].Changed, compare(rel, m.Baseline, now, rehash, top)
 }
 
-// locate finds move i's object, at its source or its destination, and checks
-// that it is exactly the baseline there. When only one place is taken, that
-// one holds it. When both are, the journal decides, unless it shows a rename
-// under way.
-func (r *Run) locate(ctx context.Context, i int) (string, error) {
+// expected is the change time move i's object should have at rel: the
+// baseline's before any rename, the journal's after a verified one, and zero
+// while a rename is unsettled.
+func (r *Run) expected(i int, rel string) time.Time {
+	m, s := r.plan.Moves[i], r.states[i]
+	switch {
+	case s.last == "" && rel == m.From:
+		return m.Baseline[0].Changed
+	case s.last == moved && rel == m.To, s.last == restored && rel == m.From:
+		return s.changed
+	}
+	return time.Time{}
+}
+
+// locate finds move i's object, at its source or its destination, checks that
+// it is exactly the baseline there and returns its change time. When only one
+// place is taken, that one holds it. When both are, the journal decides,
+// unless it shows a rename under way.
+func (r *Run) locate(ctx context.Context, i int) (string, time.Time, error) {
 	m := r.plan.Moves[i]
 	from, to := !missing(r.path(m.From)), !missing(r.path(m.To))
 	at := m.From
 	switch last := r.states[i].last; {
 	case !from && !to:
-		return "", fmt.Errorf("neither %s nor %s exists", m.From, m.To)
+		return "", time.Time{}, fmt.Errorf("neither %s nor %s exists", m.From, m.To)
 	case to && (!from || last == moved):
 		at = m.To
 	case to && (last == moving || last == restoring):
-		return "", errors.New("an earlier run stopped during this move and both places are taken; decide by hand")
+		return "", time.Time{}, errors.New("an earlier run stopped during this move and both places are taken; decide by hand")
 	}
-	return at, r.verify(ctx, i, at)
+	changed, err := r.verify(ctx, i, at, false)
+	return at, changed, err
 }
 
 // Apply runs the plan. It first checks every action and moves nothing if one
@@ -244,7 +278,7 @@ func (r *Run) Apply(ctx context.Context) (Result, error) {
 	var pending []int
 	for i, m := range r.plan.Moves {
 		a := &res.Actions[i]
-		at, err := r.locate(ctx, i)
+		at, changed, err := r.locate(ctx, i)
 		if err == nil && at == m.From {
 			err = free(r.plan.Root, m.To)
 		}
@@ -260,7 +294,7 @@ func (r *Run) Apply(ctx context.Context) (Result, error) {
 		default:
 			a.Status = AlreadyMoved
 			if r.states[i].last != moved {
-				if err := r.record(i, moved, ""); err != nil {
+				if err := r.record(i, event{Event: moved, Changed: changed}); err != nil {
 					return res, err
 				}
 			}
@@ -301,7 +335,7 @@ func (r *Run) Undo(ctx context.Context) (Result, error) {
 			a.Status = NotMoved
 			continue
 		}
-		at, err := r.locate(ctx, i)
+		at, changed, err := r.locate(ctx, i)
 		if err == nil && at == m.To {
 			err = free(r.plan.Root, m.From)
 		}
@@ -314,7 +348,7 @@ func (r *Run) Undo(ctx context.Context) (Result, error) {
 		case at == m.From:
 			// Either an earlier undo renamed it back before journalling, or
 			// it never left.
-			if err := r.record(i, restored, ""); err != nil {
+			if err := r.record(i, event{Event: restored, Changed: changed}); err != nil {
 				return res, err
 			}
 			a.Status = NotMoved
@@ -348,7 +382,7 @@ func (r *Run) removeFolders() {
 	}
 	slices.Sort(dirs)
 	for _, dir := range slices.Backward(slices.Compact(dirs)) {
-		if _, err := disk.Folders(r.plan.Root, filepath.FromSlash(dir), false); err == nil {
+		if err := disk.Folders(r.plan.Root, filepath.FromSlash(dir), false); err == nil {
 			_ = os.Remove(r.path(dir))
 		}
 	}
@@ -361,16 +395,17 @@ func (r *Run) move(ctx context.Context, i int, from, to, start, done string) (st
 	if !disk.Present(r.vol) {
 		return "the disk changed since the run started", nil
 	}
-	if err := r.record(i, start, ""); err != nil {
+	if err := r.record(i, event{Event: start}); err != nil {
 		return "", err
 	}
-	made, err := disk.Folders(r.plan.Root, filepath.Dir(filepath.FromSlash(to)), true)
-	for _, dir := range made {
-		if err := r.record(i, created, filepath.ToSlash(dir)); err != nil {
+	// A folder is journalled before it is made, so undo removes it even when
+	// the run stops in between.
+	for _, dir := range missingFolders(r.plan.Root, to) {
+		if err := r.record(i, event{Event: created, Folder: dir}); err != nil {
 			return "", err
 		}
 	}
-	if err != nil {
+	if err := disk.Folders(r.plan.Root, filepath.Dir(filepath.FromSlash(to)), true); err != nil {
 		return err.Error(), nil
 	}
 	if err := disk.Move(r.path(from), r.path(to)); err != nil {
@@ -379,16 +414,19 @@ func (r *Run) move(ctx context.Context, i int, from, to, start, done string) (st
 	// The rename resolves both paths again, so a folder swapped for a junction
 	// or a file saved over meanwhile would move something else. Only the
 	// planned object stays, and it goes back only through ordinary folders.
-	verr := r.verify(ctx, i, to)
+	changed, verr := r.verify(ctx, i, to, true)
 	if verr == nil {
-		return "", r.record(i, done, "")
+		return "", r.record(i, event{Event: done, Changed: changed})
 	}
 	if ctx.Err() != nil {
 		// The journal still says the move started; the next run checks both
 		// places and finishes or reports it.
 		return "", ctx.Err()
 	}
-	_, err = disk.Folders(r.plan.Root, filepath.Dir(filepath.FromSlash(from)), false)
+	err := disk.Folders(r.plan.Root, filepath.Dir(filepath.FromSlash(to)), false)
+	if err == nil {
+		err = disk.Folders(r.plan.Root, filepath.Dir(filepath.FromSlash(from)), false)
+	}
 	if err == nil {
 		err = disk.Move(r.path(to), r.path(from))
 	}
@@ -399,7 +437,7 @@ func (r *Run) move(ctx context.Context, i int, from, to, start, done string) (st
 	if start == restoring {
 		back = moved
 	}
-	if err := r.record(i, back, ""); err != nil {
+	if err := r.record(i, event{Event: back}); err != nil {
 		return "", err
 	}
 	return "did not match the plan after the move, so it went back: " + verr.Error(), nil

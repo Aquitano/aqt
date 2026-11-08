@@ -29,21 +29,21 @@ type Item struct {
 }
 
 // snapshot lists the object at rel below root and everything inside it
-// without following links, and returns the object's name as the file system
-// stores it. It refuses links, junctions and cloud placeholders anywhere in
-// the object. hash also reads every file's digest.
-func snapshot(ctx context.Context, root, rel string, hash bool) (string, []Item, error) {
+// without following links, the object itself first. It refuses links,
+// junctions and cloud placeholders anywhere in the object. hash also reads
+// every file's digest.
+func snapshot(ctx context.Context, root, rel string, hash bool) ([]Item, error) {
 	native := filepath.FromSlash(rel)
-	if _, err := disk.Folders(root, filepath.Dir(native), false); err != nil {
-		return "", nil, err
+	if err := disk.Folders(root, filepath.Dir(native), false); err != nil {
+		return nil, err
 	}
 	top, err := disk.Lstat(filepath.Join(root, native))
 	if err != nil {
-		return "", nil, err
+		return nil, err
 	}
 	var items []Item
 	err = walk(ctx, root, rel, ".", top, hash, &items)
-	return top.Name, items, err
+	return items, err
 }
 
 func walk(ctx context.Context, root, rel, inside string, e disk.Entry, hash bool, items *[]Item) error {
@@ -86,10 +86,12 @@ func walk(ctx context.Context, root, rel, inside string, e disk.Entry, hash bool
 
 // compare checks that the object at rel, listed as now, is exactly the
 // baseline: every file and folder once, nothing added. Without rehash every
-// item must be the same file system object, unwritten since; with rehash its
+// file must be the same file system object, unwritten since; with rehash its
 // bytes must match instead. A rename updates the moved object's own change
-// time, so once renamed that one is not compared.
-func compare(rel string, base, now []Item, rehash, renamed bool) error {
+// time, so that one is compared with top instead, and not at all when top is
+// zero. Folders count by their place in the tree: their times move whenever a
+// program adds and removes a scratch file inside.
+func compare(rel string, base, now []Item, rehash bool, top time.Time) error {
 	got := make(map[string]Item, len(now))
 	for _, it := range now {
 		got[it.Path] = it
@@ -99,6 +101,10 @@ func compare(rel string, base, now []Item, rehash, renamed bool) error {
 		have, ok := got[want.Path]
 		delete(got, want.Path)
 		at := path.Join(rel, want.Path)
+		changed := want.Changed
+		if want.Path == "." {
+			changed = top
+		}
 		switch {
 		case !ok:
 			problems = append(problems, at+" is missing")
@@ -109,7 +115,7 @@ func compare(rel string, base, now []Item, rehash, renamed bool) error {
 		case want.Dir:
 		case have.Size != want.Size || !have.Modified.Equal(want.Modified):
 			problems = append(problems, at+" was written")
-		case !rehash && (want.Path != "." || !renamed) && !have.Changed.Equal(want.Changed):
+		case !rehash && !changed.IsZero() && !have.Changed.Equal(changed):
 			problems = append(problems, at+" was changed")
 		case have.Digest != nil && want.Digest != nil && *have.Digest != *want.Digest:
 			problems = append(problems, at+" holds other bytes")

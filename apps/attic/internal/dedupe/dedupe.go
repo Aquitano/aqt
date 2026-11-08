@@ -154,7 +154,7 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, kept *kept
 	}
 	toRel := filepath.Join(Quarantine, run, rel)
 	from, to := filepath.Join(root, rel), filepath.Join(root, toRel)
-	if _, err := disk.Folders(root, filepath.Dir(toRel), true); err != nil {
+	if err := disk.Folders(root, filepath.Dir(toRel), true); err != nil {
 		return Move{}, err.Error(), nil
 	}
 	if err := disk.Move(from, to); err != nil {
@@ -184,7 +184,7 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, kept *kept
 // putBack returns a set-aside copy to root/rel. It refuses a path that is
 // taken, or whose folders now lead through a link or junction.
 func putBack(root, rel, to string) error {
-	if _, err := disk.Folders(root, filepath.Dir(rel), false); err != nil {
+	if err := disk.Folders(root, filepath.Dir(rel), false); err != nil {
 		return err
 	}
 	return disk.Move(to, filepath.Join(root, rel))
