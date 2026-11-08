@@ -172,6 +172,12 @@ func TestPrepareUsesStoredNames(t *testing.T) {
 	}
 }
 
+func TestJournalPathIgnoresTheExtensionsCase(t *testing.T) {
+	if a, b := JournalPath("moves.plan.json"), JournalPath("moves.plan.JSON"); a != b || a != "moves.plan.journal.jsonl" {
+		t.Fatalf("journals = %s and %s", a, b)
+	}
+}
+
 func TestValidateRejectsEscapesAndOverlaps(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

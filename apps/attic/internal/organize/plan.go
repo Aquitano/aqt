@@ -68,8 +68,13 @@ func Read(path string) (Plan, error) {
 }
 
 // JournalPath is where Apply and Undo record each step of the plan at path.
+// The extension is matched without case, so every spelling Windows accepts
+// for one plan finds one journal.
 func JournalPath(plan string) string {
-	return strings.TrimSuffix(plan, ".json") + ".journal.jsonl"
+	if ext := filepath.Ext(plan); strings.EqualFold(ext, ".json") {
+		plan = strings.TrimSuffix(plan, ext)
+	}
+	return plan + ".journal.jsonl"
 }
 
 // Mount describes the volume holding root. Windows identifies it by its
