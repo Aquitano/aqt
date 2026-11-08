@@ -353,6 +353,18 @@ func Lock(f *os.File) error {
 	return err
 }
 
+// RemoveDir removes dir when it is an empty directory, and never a file.
+func RemoveDir(dir string) error {
+	p, err := windows.UTF16PtrFromString(longPath(dir))
+	if err == nil {
+		err = windows.RemoveDirectory(p)
+	}
+	if err != nil {
+		return &os.PathError{Op: "rmdir", Path: dir, Err: err}
+	}
+	return nil
+}
+
 // SyncDir does nothing: Windows cannot flush a directory handle, and NTFS and
 // ReFS journal directory changes themselves.
 func SyncDir(string) error { return nil }

@@ -154,14 +154,11 @@ func (as Actions) Blocked() bool {
 }
 
 // Prepare records the baseline of every move and, when every move is ready,
-// saves the plan at out. Apart from that file and its empty journal it only
-// reads. Each source is respelled as the file system stores it, so undo
+// saves the plan at out. Apart from that file it only reads. Each source is respelled as the file system stores it, so undo
 // restores the exact names.
 func Prepare(ctx context.Context, p *Plan, vol disk.Volume, out string) (Actions, error) {
-	if journal, err := p.claimOut(out, false); err != nil {
+	if err := p.checkOut(out); err != nil {
 		return nil, err
-	} else if journal != nil {
-		journal.Close()
 	}
 	actions := make(Actions, len(p.Moves))
 	for i := range p.Moves {
@@ -229,48 +226,46 @@ func (p *Plan) blockSharedFiles(actions Actions) {
 	}
 }
 
-// claimOut makes sure saving the plan at out loses nothing, and returns its
-// journal locked until the file is closed. The plan and its journal must lie
-// outside every move, the journal must record no run, and out must be free
-// or hold an earlier prepared plan. Without create, a missing journal gives
-// no file.
-func (p *Plan) claimOut(out string, create bool) (_ *os.File, err error) {
+// checkOut makes sure saving the plan at out loses nothing: the plan and its
+// journal lie outside every move, out is free, and its journal records no
+// run and is held by none.
+func (p *Plan) checkOut(out string) error {
 	abs, err := filepath.Abs(out)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		abs = filepath.Join(dir, filepath.Base(abs))
+	}
+	root := p.Root
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
 	}
 	for _, file := range []string{abs, JournalPath(abs)} {
-		rel, err := filepath.Rel(p.Root, file)
+		rel, err := filepath.Rel(root, file)
 		if err != nil || !filepath.IsLocal(rel) {
 			continue
 		}
 		k := key(filepath.ToSlash(rel))
 		for i, m := range p.Moves {
 			if strings.HasPrefix(k, key(m.From)) || strings.HasPrefix(k, key(m.To)) {
-				return nil, fmt.Errorf("%s would be inside move %d; save the plan outside what it moves", file, i+1)
+				return fmt.Errorf("%s would be inside move %d; save the plan outside what it moves", file, i+1)
 			}
 		}
 	}
-	journal, err := claim(JournalPath(abs), create)
-	if err != nil {
-		return nil, err
+	if !missing(abs) {
+		return fmt.Errorf("%s exists; delete it to prepare again, or save the plan elsewhere", out)
 	}
-	defer func() {
-		if err != nil && journal != nil {
-			journal.Close()
-		}
-	}()
-	if journal != nil {
-		if info, err := journal.Stat(); err != nil {
-			return nil, err
-		} else if info.Size() > 0 {
-			return nil, fmt.Errorf("%s records a run of this plan; prepare into a new file", journal.Name())
-		}
+	journal, err := claim(JournalPath(abs), false)
+	if err != nil || journal == nil {
+		return err
 	}
-	if old, err := Read(abs); !errors.Is(err, fs.ErrNotExist) && (err != nil || old.PreparedAt.IsZero()) {
-		return nil, fmt.Errorf("%s exists and is not a prepared plan; save the plan elsewhere", out)
+	defer journal.Close()
+	info, err := journal.Stat()
+	if err == nil && info.Size() > 0 {
+		err = fmt.Errorf("%s records a run of a plan by this name; prepare into a new file", journal.Name())
 	}
-	return journal, nil
+	return err
 }
 
 // claim opens the journal at path and locks it until the file is closed.
@@ -297,18 +292,13 @@ func claim(path string, create bool) (*os.File, error) {
 	return f, nil
 }
 
-// save writes the plan beside out and publishes it with a rename that
-// replaces only the earlier plan claimOut checked, so a link at out is
-// replaced rather than written through, and a file that appears meanwhile
-// stops the rename. It holds the journal locked meanwhile, so no run starts
-// on the plan being replaced.
+// save checks out again, because reading the sources took a while, writes the
+// plan beside it and publishes it with a rename that refuses an existing
+// path, so nothing that appeared meanwhile is replaced.
 func (p *Plan) save(out string) error {
-	replace := !missing(out)
-	journal, err := p.claimOut(out, true)
-	if err != nil {
+	if err := p.checkOut(out); err != nil {
 		return err
 	}
-	defer journal.Close()
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
 		return err
@@ -319,9 +309,7 @@ func (p *Plan) save(out string) error {
 	}
 	_, err = tmp.Write(append(data, '\n'))
 	err = errors.Join(err, tmp.Sync(), tmp.Close())
-	if err == nil && replace {
-		err = os.Rename(tmp.Name(), out)
-	} else if err == nil {
+	if err == nil {
 		err = disk.Move(tmp.Name(), out)
 	}
 	if err != nil {

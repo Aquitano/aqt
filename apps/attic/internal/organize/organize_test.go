@@ -193,7 +193,7 @@ func TestValidateRejectsEscapesAndOverlaps(t *testing.T) {
 	}
 }
 
-func TestPrepareReplacesOnlyUnusedPlans(t *testing.T) {
+func TestPrepareNeverReplacesAFile(t *testing.T) {
 	for _, tc := range []struct {
 		name, want string
 		setup      func(t *testing.T, root string) string
@@ -201,20 +201,28 @@ func TestPrepareReplacesOnlyUnusedPlans(t *testing.T) {
 		{"plan inside a moved folder", "inside move 1", func(t *testing.T, root string) string {
 			return filepath.Join(root, "Inbox", "moves.plan.json")
 		}},
-		{"file that is not a plan", "not a prepared plan", func(t *testing.T, root string) string {
+		{"plan linked into a moved folder", "inside move 1", func(t *testing.T, root string) string {
+			link := filepath.Join(t.TempDir(), "inbox")
+			if err := os.Symlink(filepath.Join(root, "Inbox"), link); err != nil {
+				t.Skip("symlinks unsupported:", err)
+			}
+			return filepath.Join(link, "moves.plan.json")
+		}},
+		{"existing file", "exists", func(t *testing.T, root string) string {
 			out := filepath.Join(t.TempDir(), "notes.json")
 			write(t, filepath.Dir(out), "notes.json", "my notes")
 			return out
 		}},
-		{"plan that was applied", "records a run", func(t *testing.T, root string) string {
+		{"journal of an applied plan", "records a run", func(t *testing.T, root string) string {
 			out := filepath.Join(t.TempDir(), "moves.plan.json")
 			write(t, root, "other.txt", "other")
-			for range 2 {
-				if err := prepareAt(t, out, root, Move{From: "other.txt", To: "Sorted/other.txt"}); err != nil {
-					t.Fatal(err)
-				}
+			if err := prepareAt(t, out, root, Move{From: "other.txt", To: "Sorted/other.txt"}); err != nil {
+				t.Fatal(err)
 			}
 			run(t, out, (*Run).Apply)
+			if err := os.Remove(out); err != nil {
+				t.Fatal(err)
+			}
 			return out
 		}},
 	} {
@@ -416,6 +424,28 @@ func TestUndoRemovesFoldersOnceEveryMoveIsBack(t *testing.T) {
 	run(t, plan, (*Run).Undo)
 	if !exists(root, "New") {
 		t.Fatal("undo removed a New made after the moves were undone")
+	}
+}
+
+func TestUndoForgetsFoldersThatAreGone(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "a.txt", "a")
+	plan := prepare(t, root, Move{From: "a.txt", To: "New/a.txt"})
+	run(t, plan, (*Run).Apply)
+	if err := os.Rename(filepath.Join(root, "New", "a.txt"), filepath.Join(root, "a.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "New")); err != nil {
+		t.Fatal(err)
+	}
+	run(t, plan, (*Run).Undo)
+
+	if err := os.Mkdir(filepath.Join(root, "New"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	run(t, plan, (*Run).Undo)
+	if !exists(root, "New") {
+		t.Fatal("undo removed a New made after the moves' own one was gone")
 	}
 }
 

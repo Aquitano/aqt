@@ -221,16 +221,13 @@ func (r *Run) path(rel string) string {
 
 // verify checks that the object at rel is exactly move i's baseline and
 // returns its change time. FAT and exFAT give a moved object new IDs and keep
-// no change time, so there the bytes are compared. Right after a rename the
-// object's own change time is new. Otherwise, when the journal cannot say
-// what it should be, a single file's bytes are compared instead.
-func (r *Run) verify(ctx context.Context, i int, rel string, renamed bool) (time.Time, error) {
+// no change time, so there the bytes are compared. top is the change time the
+// object itself should have. Right after a rename that time is new, so the
+// caller passes none; otherwise, when top is unknown, a single file's bytes
+// are compared instead.
+func (r *Run) verify(ctx context.Context, i int, rel string, top time.Time, renamed bool) (time.Time, error) {
 	m := r.plan.Moves[i]
 	rehash := !r.vol.StableIDs
-	var top time.Time
-	if !renamed {
-		top = r.expected(i, rel)
-	}
 	hash := rehash || (!renamed && top.IsZero() && !m.Baseline[0].Dir)
 	now, err := snapshot(ctx, r.plan.Root, rel, hash)
 	if err != nil {
@@ -269,7 +266,7 @@ func (r *Run) locate(ctx context.Context, i int) (string, time.Time, error) {
 	case to && (last == moving || last == restoring):
 		return "", time.Time{}, errors.New("an earlier run stopped during this move and both places are taken; decide by hand")
 	}
-	changed, err := r.verify(ctx, i, at, false)
+	changed, err := r.verify(ctx, i, at, r.expected(i, at), false)
 	return at, changed, err
 }
 
@@ -376,7 +373,7 @@ func (r *Run) Undo(ctx context.Context) (Result, error) {
 
 // removeFolders removes the folders the moves made for moves that are back at
 // their source, deepest first, when they are ordinary and empty again. A
-// removed folder leaves the journal, so a folder made later under its name
+// folder that is gone leaves the journal, so one made later under its name
 // stays. A folder that another move still fills is retried by the next undo.
 func (r *Run) removeFolders() error {
 	owners := map[string][]int{}
@@ -388,7 +385,8 @@ func (r *Run) removeFolders() error {
 		}
 	}
 	for _, dir := range slices.Backward(slices.Sorted(maps.Keys(owners))) {
-		if disk.Folders(r.plan.Root, filepath.FromSlash(dir), false) != nil || os.Remove(r.path(dir)) != nil {
+		gone := missing(r.path(dir))
+		if !gone && (disk.Folders(r.plan.Root, filepath.FromSlash(dir), false) != nil || disk.RemoveDir(r.path(dir)) != nil) {
 			continue
 		}
 		for _, i := range owners[dir] {
@@ -407,15 +405,7 @@ func (r *Run) move(ctx context.Context, i int, from, to, start, done string) (st
 	if !disk.Present(r.vol) {
 		return "the disk changed since the run started", nil
 	}
-	// The rename replaces a file's change time, the one sign of an edit that
-	// kept its size and modified time, so that sign is read right before.
-	if r.vol.StableIDs && !r.plan.Moves[i].Baseline[0].Dir {
-		if _, err := r.verify(ctx, i, from, false); ctx.Err() != nil {
-			return "", ctx.Err()
-		} else if err != nil {
-			return err.Error(), nil
-		}
-	}
+	top := r.expected(i, from)
 	if err := r.record(i, event{Event: start}); err != nil {
 		return "", err
 	}
@@ -429,13 +419,22 @@ func (r *Run) move(ctx context.Context, i int, from, to, start, done string) (st
 	if err := disk.Folders(r.plan.Root, filepath.Dir(filepath.FromSlash(to)), true); err != nil {
 		return err.Error(), nil
 	}
+	// The rename replaces a file's change time, the one sign of an edit that
+	// kept its size and modified time, so that sign is read right before.
+	if r.vol.StableIDs && !r.plan.Moves[i].Baseline[0].Dir {
+		if _, err := r.verify(ctx, i, from, top, false); ctx.Err() != nil {
+			return "", ctx.Err()
+		} else if err != nil {
+			return err.Error(), nil
+		}
+	}
 	if err := disk.Move(r.path(from), r.path(to)); err != nil {
 		return err.Error(), nil
 	}
 	// The rename resolves both paths again, so a folder swapped for a junction
 	// or a file saved over meanwhile would move something else. Only the
 	// planned object stays, and it goes back only through ordinary folders.
-	changed, verr := r.verify(ctx, i, to, true)
+	changed, verr := r.verify(ctx, i, to, time.Time{}, true)
 	if verr == nil {
 		return "", r.record(i, event{Event: done, Changed: changed})
 	}

@@ -93,6 +93,14 @@ func Lock(f *os.File) error {
 	return err
 }
 
+// RemoveDir removes dir when it is an empty directory, and never a file.
+func RemoveDir(dir string) error {
+	if err := syscall.Rmdir(dir); err != nil {
+		return &os.PathError{Op: "rmdir", Path: dir, Err: err}
+	}
+	return nil
+}
+
 // SyncDir makes the entries created in dir durable.
 func SyncDir(dir string) error {
 	d, err := os.Open(dir)
