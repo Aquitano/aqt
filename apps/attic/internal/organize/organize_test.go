@@ -172,8 +172,9 @@ func TestPrepareUsesStoredNames(t *testing.T) {
 	}
 }
 
-func TestJournalPathIgnoresTheExtensionsCase(t *testing.T) {
-	if a, b := JournalPath("moves.plan.json"), JournalPath("moves.plan.JSON"); a != b || a != "moves.plan.journal.jsonl" {
+func TestJournalPathFollowsTheFileSystemsCase(t *testing.T) {
+	a, b := JournalPath("moves.plan.json"), JournalPath("moves.plan.JSON")
+	if a != "moves.plan.journal.jsonl" || (a == b) != (runtime.GOOS == "windows") {
 		t.Fatalf("journals = %s and %s", a, b)
 	}
 }

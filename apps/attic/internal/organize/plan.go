@@ -68,10 +68,10 @@ func Read(path string) (Plan, error) {
 }
 
 // JournalPath is where Apply and Undo record each step of the plan at path.
-// The extension is matched without case, so every spelling Windows accepts
+// Windows matches the extension without case, so every spelling it accepts
 // for one plan finds one journal.
 func JournalPath(plan string) string {
-	if ext := filepath.Ext(plan); strings.EqualFold(ext, ".json") {
+	if ext := filepath.Ext(plan); ext == ".json" || runtime.GOOS == "windows" && strings.EqualFold(ext, ".json") {
 		plan = strings.TrimSuffix(plan, ext)
 	}
 	return plan + ".journal.jsonl"
