@@ -63,17 +63,3 @@ func (s *Server) handleMailConflict(writer http.ResponseWriter, request *http.Re
 	}
 	writeJSON(writer, 200, page)
 }
-
-func (s *Server) handleMailboxes(writer http.ResponseWriter, request *http.Request) {
-	source := request.URL.Query().Get("source")
-	if err := archive.ValidSource(source); err != nil {
-		writeErr(writer, 400, err.Error())
-		return
-	}
-	mailboxes, err := s.read.ListMailboxes(request.Context(), source)
-	if err != nil {
-		writeErr(writer, 500, err.Error())
-		return
-	}
-	writeJSON(writer, 200, mailboxes)
-}

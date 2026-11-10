@@ -5,6 +5,7 @@ package client
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -88,12 +89,14 @@ func (c *Client) request(ctx context.Context, method, path string, q url.Values,
 }
 
 func errorMessage(resp *http.Response) string {
+	// Typed routes answer with message, the ones not converted yet with error.
 	var payload struct {
-		Error string `json:"error"`
+		Error   string `json:"error"`
+		Message string `json:"message"`
 	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
-	if json.Unmarshal(body, &payload) == nil && payload.Error != "" {
-		return payload.Error
+	if json.Unmarshal(body, &payload) == nil && payload.Error+payload.Message != "" {
+		return cmp.Or(payload.Message, payload.Error)
 	}
 	if len(body) == 0 {
 		return resp.Status

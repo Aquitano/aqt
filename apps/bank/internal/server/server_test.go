@@ -412,8 +412,8 @@ func TestSearchValidatesBounds(t *testing.T) {
 		"/v1/search?q=hi&fuzzy=5",
 		"/v1/search?q=hi&fuzzy=-1",
 	} {
-		if status, body := authedGet(t, srv, token, path); status != http.StatusBadRequest {
-			t.Errorf("%s: status %d, want 400 (%s)", path, status, body)
+		if status, body := authedGet(t, srv, token, path); status != http.StatusUnprocessableEntity {
+			t.Errorf("%s: status %d, want 422 (%s)", path, status, body)
 		}
 	}
 	if status, _ := authedGet(t, srv, token, "/v1/search?q=hi&limit=500&fuzzy=2"); status != http.StatusOK {

@@ -94,14 +94,11 @@ const maxUpload = 16 << 30
 func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
 	s.registerLibraryRoutes(v1)
-	v1.HandleFunc("GET /v1/search", s.handleSearch)
-	v1.HandleFunc("GET /v1/mailboxes", s.handleMailboxes)
 	v1.HandleFunc("GET /v1/threads", s.handleBrowseThreads)
 	v1.HandleFunc("GET /v1/messages/{id}", s.handleMessage)
 	v1.HandleFunc("GET /v1/threads/{id}", s.handleThread)
 	v1.HandleFunc("GET /v1/mail-conflicts/{id}", s.handleMailConflict)
 	v1.HandleFunc("GET /v1/blobs/{sha256}", s.handleBlob)
-	v1.HandleFunc("GET /v1/stats", s.handleStats)
 	v1.HandleFunc("PUT /v1/sources/{source}/coverage", s.handleCoverage)
 	v1.HandleFunc("POST /v1/query", s.handleQuery)
 	v1.HandleFunc("GET /v1/contacts", s.handleContactList)
@@ -194,63 +191,6 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	query := q.Get("q")
-	if query == "" {
-		writeErr(w, http.StatusBadRequest, "missing q")
-		return
-	}
-	o := store.SearchOpts{Source: q.Get("source"), From: q.Get("from"), To: q.Get("to"),
-		Person: q.Get("person"), Match: q.Get("match"), Fuzzy: 1, Limit: 20}
-	var err error
-	if o.MailboxID, o.Subject, o.HasAttachment, err = parseMailFilters(q); err != nil {
-		writeErr(w, 400, err.Error())
-		return
-	}
-	if o.Since, err = parseDate(q.Get("since")); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if o.Until, err = parseDate(q.Get("until")); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if o.Fuzzy, err = parseInt(q.Get("fuzzy"), o.Fuzzy); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid fuzzy")
-		return
-	}
-	if o.Limit, err = parseInt(q.Get("limit"), o.Limit); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid limit")
-		return
-	}
-	if o.Offset, err = parseInt(q.Get("offset"), 0); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid offset")
-		return
-	}
-	// Validated here as well as in the store so a bad request is a 400 with a
-	// usage message, not a 500 carrying a database error.
-	if err := o.ValidateQuery(query); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	msgs, err := s.read.Search(r.Context(), query, o)
-	if errors.Is(err, store.ErrMailboxSource) {
-		writeErr(w, 400, err.Error())
-		return
-	}
-	var noContact *store.ErrNoContact
-	if errors.As(err, &noContact) {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, msgs)
 }
 
 // handleMessage addresses a message by row id or by its stable ref. A ref is
@@ -391,15 +331,6 @@ func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
-}
-
-func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := s.read.Stats(r.Context())
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, stats)
 }
 
 // handleCoverage records what a source is known to hold. An empty text clears

@@ -239,6 +239,177 @@
         ],
         "type": "object"
       },
+      "MailProvenance": {
+        "additionalProperties": false,
+        "properties": {
+          "conflict_key": {
+            "type": "string"
+          },
+          "has_reply_links": {
+            "type": "boolean"
+          },
+          "in_reply_to": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "incomplete": {
+            "type": "boolean"
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "native_thread_id": {
+            "type": "string"
+          },
+          "raw_ref": {
+            "type": "string"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "message_id",
+          "in_reply_to",
+          "references",
+          "raw_ref",
+          "native_thread_id",
+          "has_reply_links",
+          "incomplete",
+          "conflict_key"
+        ],
+        "type": "object"
+      },
+      "Mailbox": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "n": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "kind",
+          "path",
+          "n"
+        ],
+        "type": "object"
+      },
+      "Message": {
+        "additionalProperties": false,
+        "properties": {
+          "alternative_index": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "attachment_snippet": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "branch_id": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mail": {
+            "$ref": "#/components/schemas/MailProvenance"
+          },
+          "mailboxes": {
+            "items": {
+              "$ref": "#/components/schemas/Mailbox"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "parent_external_id": {
+            "type": "string"
+          },
+          "raw_ref": {
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": "string"
+          },
+          "score": {
+            "format": "double",
+            "type": "number"
+          },
+          "sender": {
+            "type": "string"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "sender",
+          "body",
+          "sent_at"
+        ],
+        "type": "object"
+      },
       "NotFoundError": {
         "description": "Nothing matches.",
         "properties": {
@@ -389,6 +560,53 @@
         ],
         "type": "object"
       },
+      "SourceStats": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "type": "string"
+          },
+          "earliest": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_ingest": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_sync": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latest": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "messages",
+          "earliest",
+          "latest",
+          "last_ingest",
+          "last_sync",
+          "stale"
+        ],
+        "type": "object"
+      },
       "Timeline": {
         "additionalProperties": false,
         "properties": {
@@ -476,12 +694,91 @@
     }
   },
   "info": {
-    "description": "bank is one person's archive: messages (mail, chats, AI conversations), a media\nlibrary with what was watched, listened to and read, files, and published notes. The\nfile catalogue of disks that come and go is served below /attic, with a document of\nits own at /attic/openapi.json.\n\nCite a message as bank:\u003cref\u003e, a library record by its ID, and a file on a disk as\nattic:\u003cref\u003e.\n\nThis document describes the operations defined from typed Go handlers. The older /v1\nroutes that the bank CLI uses are not in it yet.",
+    "description": "bank is one person's archive: messages (mail, chats, AI conversations), a media\nlibrary with what was watched, listened to and read, files, and published notes. The\nfile catalogue of disks that come and go is served below /attic, with a document of\nits own at /attic/openapi.json.\n\nCite a message as bank:\u003cref\u003e, a library record by its ID, and a file on a disk as\nattic:\u003cref\u003e.\n\nUploads, imports and byte downloads are not in this document yet.",
     "title": "bank",
     "version": "1"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/mailboxes": {
+      "get": {
+        "operationId": "listMailboxes",
+        "parameters": [
+          {
+            "description": "The mail source, such as gmail or proton.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "The mail source, such as gmail or proton.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Mailbox"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List the mail folders a source was seen with",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
     "/v1/refs/{ref}": {
       "get": {
         "description": "Takes bank:\u003cref\u003e or a bare message ref, a library ID such as item_… or file_…, a blob's SHA-256, or attic:\u003cref\u003e. The answer names the record, the route that returns it in full, and where the same bytes are in the other store: a message attachment's copies on disks, or the messages and library files that hold a disk file's bytes. Those links appear once the server has read the blob's BLAKE3 digest, shortly after an import.",
@@ -583,6 +880,308 @@
         "summary": "Say what a cited ref names, whichever store holds it",
         "tags": [
           "refs"
+        ]
+      }
+    },
+    "/v1/search": {
+      "get": {
+        "description": "Searches subject, body, sender, recipients and the text read from attachments. By default any word may match and one typo per word is tolerated. For media, files and files on disks as well, use the combined search.",
+        "operationId": "searchMessages",
+        "parameters": [
+          {
+            "description": "Words to find.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Words to find.",
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this source, such as gmail or whatsapp.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only this source, such as gmail or whatsapp.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sender contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "Sender contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A recipient contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "A recipient contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sent or received by this contact, by name.",
+            "explode": false,
+            "in": "query",
+            "name": "person",
+            "schema": {
+              "description": "Sent or received by this contact, by name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Subject contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "subject",
+            "schema": {
+              "description": "Subject contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "any word (the default), every word, or the words adjacent and in order.",
+            "explode": false,
+            "in": "query",
+            "name": "match",
+            "schema": {
+              "description": "any word (the default), every word, or the words adjacent and in order.",
+              "enum": [
+                "any",
+                "all",
+                "phrase"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Typos tolerated per word.",
+            "explode": false,
+            "in": "query",
+            "name": "fuzzy",
+            "schema": {
+              "default": 1,
+              "description": "Typos tolerated per word.",
+              "format": "int64",
+              "maximum": 2,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Past 10000, narrow the query instead.",
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "description": "Past 10000, narrow the query instead.",
+              "format": "int64",
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Sent on or after this day, YYYY-MM-DD.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Sent on or after this day, YYYY-MM-DD.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sent before this day, YYYY-MM-DD.",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Sent before this day, YYYY-MM-DD.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this mail folder. Needs source.",
+            "explode": false,
+            "in": "query",
+            "name": "mailbox_id",
+            "schema": {
+              "description": "Only this mail folder. Needs source.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only messages with, or without, attachments.",
+            "explode": false,
+            "in": "query",
+            "name": "has_attachment",
+            "schema": {
+              "description": "Only messages with, or without, attachments.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Message"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Search messages by their text, ranked by relevance",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/v1/stats": {
+      "get": {
+        "operationId": "getStats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SourceStats"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Count messages per source, with their date range and freshness",
+        "tags": [
+          "messages"
         ]
       }
     },
