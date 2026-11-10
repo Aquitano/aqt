@@ -98,8 +98,8 @@ const threadGroup = type({
 });
 export type ThreadGroup = typeof threadGroup.infer;
 
-// Failed /v1 requests answer with `{"message": "..."}` from typed routes, and
-// with `{"error": "..."}` from the routes not converted yet.
+// Failed /v1 requests answer with `{"message": "..."}`; the upload and
+// download routes answer with `{"error": "..."}`.
 const errorBody = type({ "error?": "string", "message?": "string" });
 export class RequestError extends Error {
   readonly status: number;

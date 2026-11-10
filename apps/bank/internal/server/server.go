@@ -201,13 +201,6 @@ func parseDate(s string) (time.Time, error) {
 	return t, nil
 }
 
-func parseInt(s string, def int) (int, error) {
-	if s == "" {
-		return def, nil
-	}
-	return strconv.Atoi(s)
-}
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

@@ -97,7 +97,7 @@ func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
 	for _, test := range []struct {
 		notes string
 		code  int
-	}{{"bad\x00notes", 400}, {"valid notes", 200}} {
+	}{{"bad\x00notes", 422}, {"valid notes", 200}} {
 		body, err := json.Marshal(library.StateEdit{Notes: test.notes})
 		if err != nil {
 			t.Fatal(err)
