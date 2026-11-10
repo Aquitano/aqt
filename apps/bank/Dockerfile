@@ -5,7 +5,7 @@
 # reachable from a tailnet, the process serving it should have as little around
 # it as possible.
 
-FROM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS build
+FROM golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
 WORKDIR /src/apps/bank
 
 # The context is the repository root, because bank builds against
@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}"
 # The image the OCR worker runs from (the `ocr` compose profile). It carries
 # tesseract and poppler — a C++ image stack and a libc — which is exactly why
 # they are not in the image that listens on a port.
-FROM debian:13-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS ocr
+FROM debian:13-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS ocr
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-deu poppler-utils \
