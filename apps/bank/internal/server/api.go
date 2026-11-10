@@ -34,6 +34,10 @@ Uploads, imports and byte downloads are not in this document yet.`
 func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 	api := humago.New(mux, httpapi.Config("bank", apiDescription, "bank token new <name>", ""))
 	s.registerArchiveAPI(api)
+	s.registerMessagesAPI(api)
+	s.registerContactsAPI(api)
+	s.registerAttachmentsAPI(api)
+	s.registerLibraryAPI(api)
 	huma.Register(api, httpapi.Operation{ID: "getTimeline", Method: http.MethodGet, Path: "/v1/timeline", Tag: "timeline",
 		Summary: "List what happened between two days, across messages, activity and files",
 		Description: "Messages by when they were sent, activity (watching, listening, reading) by when it happened, " +
