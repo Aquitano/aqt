@@ -53,7 +53,7 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}
-	if w := request("/v1/import-reports?before=-1"); w.Code != 400 {
+	if w := request("/v1/import-reports?before=-1"); w.Code != 422 {
 		t.Fatalf("import reports: %d %s", w.Code, w.Body)
 	}
 	// The web UI sends every filter, set or not.

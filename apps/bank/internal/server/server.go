@@ -9,7 +9,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
@@ -94,17 +92,8 @@ const maxUpload = 16 << 30
 func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
 	s.registerLibraryRoutes(v1)
-	v1.HandleFunc("GET /v1/threads", s.handleBrowseThreads)
-	v1.HandleFunc("GET /v1/messages/{id}", s.handleMessage)
-	v1.HandleFunc("GET /v1/threads/{id}", s.handleThread)
-	v1.HandleFunc("GET /v1/mail-conflicts/{id}", s.handleMailConflict)
 	v1.HandleFunc("GET /v1/blobs/{sha256}", s.handleBlob)
-	v1.HandleFunc("PUT /v1/sources/{source}/coverage", s.handleCoverage)
-	v1.HandleFunc("POST /v1/query", s.handleQuery)
-	v1.HandleFunc("GET /v1/messages/{id}/branch", s.handleMessageBranch)
-	v1.HandleFunc("GET /v1/messages/{id}/parent", s.handleMessageParent)
 	v1.HandleFunc("GET /v1/attachments/{sha256}/preview", s.handleAttachmentPreview)
-	v1.HandleFunc("GET /v1/import-reports", s.handleImportReports)
 	v1.HandleFunc("PUT /v1/attachments/{sha256}/text", s.handleAttachmentTextPut)
 	v1.HandleFunc("POST /v1/import/{kind}", s.handleImport)
 
@@ -177,93 +166,6 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 	})
 }
 
-// handleMessage addresses a message by row id or by its stable ref. A ref is
-// tried first: it is 12 hex characters, so an all-digit one would otherwise
-// parse as a row id no archive this size will ever have.
-func (s *Server) handleMessage(w http.ResponseWriter, r *http.Request) {
-	arg := r.PathValue("id")
-	var m store.Message
-	var atts []store.Attachment
-	var err error
-	if store.ValidRef(arg) == nil {
-		m, atts, err = s.read.GetMessageByRef(r.Context(), arg)
-	} else {
-		id, parseErr := strconv.ParseInt(arg, 10, 64)
-		if parseErr != nil {
-			writeErr(w, http.StatusBadRequest, "invalid id")
-			return
-		}
-		m, atts, err = s.read.GetMessage(r.Context(), id)
-	}
-	if retired, ok := errors.AsType[*store.RetiredError](err); ok {
-		writeJSON(w, http.StatusGone, map[string]any{"error": retired.Error(), "retired": retired.Retired})
-		return
-	}
-	if errors.Is(err, store.ErrNotFound) {
-		writeErr(w, http.StatusNotFound, fmt.Sprintf("no message %s", arg))
-		return
-	}
-	if err != nil {
-		// A message store that cannot answer is not a missing message: a 404
-		// here would teach every client to treat an outage as an empty archive.
-		writeErr(w, http.StatusInternalServerError, fmt.Sprintf("message %s: %v", arg, err))
-		return
-	}
-	writeJSON(w, http.StatusOK, store.MessageDetail{Message: m, Attachments: atts})
-}
-
-func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	limit, err := parseInt(q.Get("limit"), 0)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid limit")
-		return
-	}
-	o := store.ThreadOpts{Limit: limit}
-	if raw := q.Get("current"); raw != "" {
-		o.Current, err = strconv.ParseBool(raw)
-		if err != nil {
-			writeErr(w, 400, "invalid current")
-			return
-		}
-	}
-	for name, dst := range map[string]*int64{"before": &o.Before, "after": &o.After, "around": &o.Around} {
-		if raw := q.Get(name); raw != "" {
-			*dst, err = strconv.ParseInt(raw, 10, 64)
-			if err != nil || *dst <= 0 {
-				writeErr(w, http.StatusBadRequest, "invalid "+name)
-				return
-			}
-		}
-	}
-	if raw := q.Get("latest"); raw != "" {
-		o.Latest, err = strconv.ParseBool(raw)
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, "invalid latest")
-			return
-		}
-	}
-	if err := o.Validate(); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	thread, err := s.read.GetThreadPage(r.Context(), q.Get("source"), r.PathValue("id"), o)
-	var ambiguous *store.AmbiguousThreadError
-	var conflict *store.MailThreadConflictError
-	switch {
-	case err == nil:
-		writeJSON(w, http.StatusOK, thread)
-	case errors.Is(err, store.ErrNotFound):
-		writeErr(w, http.StatusNotFound, fmt.Sprintf("no thread %q", r.PathValue("id")))
-	case errors.As(err, &ambiguous):
-		writeErr(w, http.StatusBadRequest, err.Error())
-	case errors.As(err, &conflict):
-		writeJSON(w, http.StatusConflict, conflict)
-	default:
-		writeErr(w, http.StatusInternalServerError, err.Error())
-	}
-}
-
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	sum := r.PathValue("sha256")
 	// Validated before it ever reaches a filepath.Join, so no traversal is possible.
@@ -286,52 +188,6 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	_, _ = io.Copy(w, f)
-}
-
-// handleQuery runs one read-only ad-hoc SQL statement. Safety lives in the
-// store (READ ONLY transaction, statement timeout, row cap); this handler
-// only separates "your SQL is wrong" (400) from "the archive is broken" (500).
-func (s *Server) handleQuery(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		SQL   string `json:"sql"`
-		Limit int    `json:"limit"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
-		return
-	}
-	if strings.TrimSpace(req.SQL) == "" {
-		writeErr(w, http.StatusBadRequest, "missing sql")
-		return
-	}
-	res, err := s.read.Query(r.Context(), req.SQL, req.Limit)
-	var bad *store.BadQueryError
-	if errors.As(err, &bad) {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, res)
-}
-
-// handleCoverage records what a source is known to hold. An empty text clears
-// the note, which is why this is a PUT rather than two routes.
-func (s *Server) handleCoverage(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Text string `json:"text"`
-	}
-	if err := decodeJSON(r, &body); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := s.db.SetCoverage(r.Context(), r.PathValue("source"), body.Text); err != nil {
-		writeCause(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"source": r.PathValue("source"), "coverage": body.Text})
 }
 
 func parseDate(s string) (time.Time, error) {

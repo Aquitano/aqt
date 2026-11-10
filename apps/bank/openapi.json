@@ -260,6 +260,28 @@
         ],
         "type": "object"
       },
+      "Branch": {
+        "additionalProperties": false,
+        "properties": {
+          "incomplete": {
+            "type": "boolean"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageDetail"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "messages",
+          "incomplete"
+        ],
+        "type": "object"
+      },
       "Contact": {
         "additionalProperties": false,
         "properties": {
@@ -457,6 +479,16 @@
         ],
         "type": "object"
       },
+      "CoverageInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "description": "What the source holds, in a sentence. Empty or absent clears the note.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Event": {
         "additionalProperties": false,
         "properties": {
@@ -607,6 +639,50 @@
           "messages",
           "sources",
           "samples"
+        ],
+        "type": "object"
+      },
+      "ImportReport": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "input": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "result": {},
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "input",
+          "started_at",
+          "finished_at",
+          "status",
+          "result",
+          "error"
         ],
         "type": "object"
       },
@@ -815,6 +891,68 @@
           "has_reply_links",
           "incomplete",
           "conflict_key"
+        ],
+        "type": "object"
+      },
+      "MailThreadConflictError": {
+        "description": "The thread ID is an old one whose mail the provider now files under several threads. choices lists those thread IDs, and unanchored_path is the route for the messages that belong to none of them.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "MailThreadConflict"
+            ],
+            "type": "string"
+          },
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "conflict_key": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          },
+          "source": {
+            "type": "string"
+          },
+          "unanchored_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "_tag",
+          "choices",
+          "code",
+          "conflict_key",
+          "message",
+          "source",
+          "unanchored_path"
         ],
         "type": "object"
       },
@@ -1035,6 +1173,46 @@
         ],
         "type": "object"
       },
+      "MessageRetiredError": {
+        "description": "The message was retired from the archive. retired says what it was and, in replacement, which record took its place.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "MessageRetired"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          },
+          "retired": {
+            "$ref": "#/components/schemas/RetiredMessage"
+          }
+        },
+        "required": [
+          "_tag",
+          "message",
+          "retired"
+        ],
+        "type": "object"
+      },
       "NotFoundError": {
         "description": "Nothing matches.",
         "properties": {
@@ -1104,6 +1282,63 @@
         "required": [
           "_tag",
           "message"
+        ],
+        "type": "object"
+      },
+      "QueryInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Maximum rows. 0 or absent means 100.",
+            "format": "int64",
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "sql": {
+            "description": "One SQL statement that only reads.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql"
+        ],
+        "type": "object"
+      },
+      "QueryResult": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "rows": {
+            "items": {
+              "items": {},
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "columns",
+          "rows",
+          "truncated"
         ],
         "type": "object"
       },
@@ -1185,6 +1420,64 @@
         ],
         "type": "object"
       },
+      "RetiredMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "external_id": {
+            "type": "string"
+          },
+          "raw_ref": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "replacement": {
+            "type": "string"
+          },
+          "retired_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "source",
+          "external_id",
+          "sent_at",
+          "retired_at"
+        ],
+        "type": "object"
+      },
+      "SourceCoverage": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "coverage"
+        ],
+        "type": "object"
+      },
       "SourceStats": {
         "additionalProperties": false,
         "properties": {
@@ -1229,6 +1522,91 @@
           "last_ingest",
           "last_sync",
           "stale"
+        ],
+        "type": "object"
+      },
+      "Thread": {
+        "additionalProperties": false,
+        "properties": {
+          "has_after": {
+            "type": "boolean"
+          },
+          "has_before": {
+            "type": "boolean"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageDetail"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "thread_id",
+          "source",
+          "messages",
+          "truncated",
+          "has_before",
+          "has_after"
+        ],
+        "type": "object"
+      },
+      "ThreadGroup": {
+        "additionalProperties": false,
+        "properties": {
+          "last_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "last_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "members": {
+            "type": "string"
+          },
+          "n": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "sender": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "thread_id",
+          "n",
+          "last_at",
+          "last_id",
+          "sender",
+          "subject",
+          "preview",
+          "members"
         ],
         "type": "object"
       },
@@ -2867,6 +3245,220 @@
         ]
       }
     },
+    "/v1/import-reports": {
+      "get": {
+        "operationId": "listImportReports",
+        "parameters": [
+          {
+            "description": "Only reports with an ID below this one. 0 starts at the newest.",
+            "explode": false,
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "default": 0,
+              "description": "Only reports with an ID below this one. 0 starts at the newest.",
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImportReport"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List past imports with their outcome, newest first",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/mail-conflicts/{id}": {
+      "get": {
+        "description": "Newest first. A MailThreadConflict failure names this route in unanchored_path.",
+        "operationId": "getMailConflict",
+        "parameters": [
+          {
+            "description": "The conflict_key of a MailThreadConflict failure.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The conflict_key of a MailThreadConflict failure.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The mail source the conflict is in.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "description": "The mail source the conflict is in.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only messages older than this message ID. 0 starts at the newest.",
+            "explode": false,
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "default": 0,
+              "description": "Only messages older than this message ID. 0 starts at the newest.",
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "format": "int64",
+              "maximum": 2000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Thread"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Read the messages of a mail thread conflict that belong to no current thread",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
     "/v1/mailboxes": {
       "get": {
         "operationId": "listMailboxes",
@@ -2941,6 +3533,342 @@
           }
         },
         "summary": "List the mail folders a source was seen with",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/v1/messages/{id}": {
+      "get": {
+        "operationId": "getMessage",
+        "parameters": [
+          {
+            "description": "The message's ref, 12 hex characters as cited in bank:\u003cref\u003e, or its numeric row ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The message's ref, 12 hex characters as cited in bank:\u003cref\u003e, or its numeric row ID.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageRetiredError"
+                }
+              }
+            },
+            "description": "MessageRetired: the message was retired from the archive. retired says what it was and, in replacement, which record took its place."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Read one message with its attachments",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/v1/messages/{id}/branch": {
+      "get": {
+        "description": "For conversations that fork, such as AI chats with edited prompts: only the ancestors of this message, in reply order. incomplete is set when the oldest one answers a message that is not in the archive.",
+        "operationId": "getMessageBranch",
+        "parameters": [
+          {
+            "description": "The message's numeric row ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The message's numeric row ID.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branch"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Read a message and the messages it answers, back to the start of the conversation",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/v1/messages/{id}/parent": {
+      "get": {
+        "operationId": "getMessageParent",
+        "parameters": [
+          {
+            "description": "The message's numeric row ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The message's numeric row ID.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Read the message a message answers",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/v1/query": {
+      "post": {
+        "description": "Runs in a read-only transaction with a statement timeout and a row cap, so a read-only token may call it. Each row is an array in the order of columns. truncated is set when the cap cut the result short.",
+        "operationId": "runQuery",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Run one read-only SQL statement over the archive",
         "tags": [
           "messages"
         ]
@@ -3285,6 +4213,90 @@
         ]
       }
     },
+    "/v1/sources/{source}/coverage": {
+      "put": {
+        "description": "The note is shown with the source's statistics. It does not count as a sync.",
+        "operationId": "setSourceCoverage",
+        "parameters": [
+          {
+            "description": "The source the note is about, such as gmail or whatsapp.",
+            "in": "path",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "description": "The source the note is about, such as gmail or whatsapp.",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CoverageInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceCoverage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Record what a source is known to hold",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
     "/v1/stats": {
       "get": {
         "operationId": "getStats",
@@ -3347,6 +4359,388 @@
           }
         },
         "summary": "Count messages per source, with their date range and freshness",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/v1/threads": {
+      "get": {
+        "description": "One row per thread, with its message count, latest sender and a preview. Read a row's messages with the thread route, passing its source and thread_id.",
+        "operationId": "listThreads",
+        "parameters": [
+          {
+            "description": "Only this source, such as gmail or whatsapp.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only this source, such as gmail or whatsapp.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "By latest message: newest first (desc, the default) or oldest first.",
+            "explode": false,
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "description": "By latest message: newest first (desc, the default) or oldest first.",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sender contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "Sender contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A recipient contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "A recipient contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sent or received by this contact, by name.",
+            "explode": false,
+            "in": "query",
+            "name": "person",
+            "schema": {
+              "description": "Sent or received by this contact, by name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Subject contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "subject",
+            "schema": {
+              "description": "Subject contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Past 10000, narrow the filters instead.",
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "description": "Past 10000, narrow the filters instead.",
+              "format": "int64",
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Sent on or after this day, YYYY-MM-DD.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Sent on or after this day, YYYY-MM-DD.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sent before this day, YYYY-MM-DD.",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Sent before this day, YYYY-MM-DD.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this mail folder. Needs source.",
+            "explode": false,
+            "in": "query",
+            "name": "mailbox_id",
+            "schema": {
+              "description": "Only this mail folder. Needs source.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only messages with, or without, attachments.",
+            "explode": false,
+            "in": "query",
+            "name": "has_attachment",
+            "schema": {
+              "description": "Only messages with, or without, attachments.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ThreadGroup"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List conversations by their latest message",
+        "tags": [
+          "messages"
+        ]
+      }
+    },
+    "/v1/threads/{id}": {
+      "get": {
+        "description": "Without a position the page starts at the oldest message. Use at most one of before, after, around and latest. has_before and has_after say whether more messages exist on either side.",
+        "operationId": "getThread",
+        "parameters": [
+          {
+            "description": "The thread_id of any of its messages.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The thread_id of any of its messages.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The thread's source. Needed when several sources use this thread ID.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "The thread's source. Needed when several sources use this thread ID.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum messages. 0 means 2000.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 0,
+              "description": "Maximum messages. 0 means 2000.",
+              "format": "int64",
+              "maximum": 2000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The page that ends just before this message ID.",
+            "explode": false,
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "description": "The page that ends just before this message ID.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The page that starts just after this message ID.",
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "description": "The page that starts just after this message ID.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The page with this message ID in its middle.",
+            "explode": false,
+            "in": "query",
+            "name": "around",
+            "schema": {
+              "description": "The page with this message ID in its middle.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The page that ends at the newest message.",
+            "explode": false,
+            "in": "query",
+            "name": "latest",
+            "schema": {
+              "description": "The page that ends at the newest message.",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Read the ID as a current thread. Without it, an old mail thread ID is followed to the thread that replaced it.",
+            "explode": false,
+            "in": "query",
+            "name": "current",
+            "schema": {
+              "description": "Read the ID as a current thread. Without it, an old mail thread ID is followed to the thread that replaced it.",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Thread"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailThreadConflictError"
+                }
+              }
+            },
+            "description": "MailThreadConflict: the thread ID is an old one whose mail the provider now files under several threads. choices lists those thread IDs, and unanchored_path is the route for the messages that belong to none of them."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Read a page of one conversation, oldest first",
         "tags": [
           "messages"
         ]
