@@ -1,6 +1,71 @@
 {
   "components": {
     "schemas": {
+      "AliasAddInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "description": "The one source the alias counts in. Empty: every source.",
+            "type": "string"
+          },
+          "value": {
+            "description": "The identity as the source writes it, such as an address or a display name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "AliasRemoved": {
+        "additionalProperties": false,
+        "properties": {
+          "removed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "removed"
+        ],
+        "type": "object"
+      },
+      "AliasTakenError": {
+        "description": "Another contact already has the alias; message names that contact.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "AliasTaken"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
       "AmbiguousRefError": {
         "description": "The ref prefix matches several contents. Retry with one of the candidates' longer refs.",
         "properties": {
@@ -44,6 +109,244 @@
           "_tag",
           "candidates",
           "message"
+        ],
+        "type": "object"
+      },
+      "Attachment": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "message_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "text_chars": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "text_status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "message_id",
+          "filename",
+          "size_bytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "Contact": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "$ref": "#/components/schemas/ContactAlias"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "created_at",
+          "aliases"
+        ],
+        "type": "object"
+      },
+      "ContactAlias": {
+        "additionalProperties": false,
+        "properties": {
+          "normalized": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "normalized"
+        ],
+        "type": "object"
+      },
+      "ContactCreateInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "ContactDeleted": {
+        "additionalProperties": false,
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deleted"
+        ],
+        "type": "object"
+      },
+      "ContactDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "$ref": "#/components/schemas/ContactAlias"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/ContactSourceCount"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "sources",
+          "id",
+          "name",
+          "created_at",
+          "aliases"
+        ],
+        "type": "object"
+      },
+      "ContactImport": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "items": {
+              "$ref": "#/components/schemas/ImportedAlias"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "ContactImportResult": {
+        "additionalProperties": false,
+        "properties": {
+          "aliases": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "created": {
+            "type": "boolean"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "created",
+          "aliases"
+        ],
+        "type": "object"
+      },
+      "ContactSourceCount": {
+        "additionalProperties": false,
+        "properties": {
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "messages"
         ],
         "type": "object"
       },
@@ -133,6 +436,58 @@
         "required": [
           "_tag",
           "message"
+        ],
+        "type": "object"
+      },
+      "IdentitySuggestion": {
+        "additionalProperties": false,
+        "properties": {
+          "identity": {
+            "type": "string"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "samples": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "identity",
+          "messages",
+          "sources",
+          "samples"
+        ],
+        "type": "object"
+      },
+      "ImportedAlias": {
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
         ],
         "type": "object"
       },
@@ -330,6 +685,104 @@
           },
           "attachment_snippet": {
             "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "branch_id": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mail": {
+            "$ref": "#/components/schemas/MailProvenance"
+          },
+          "mailboxes": {
+            "items": {
+              "$ref": "#/components/schemas/Mailbox"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "parent_external_id": {
+            "type": "string"
+          },
+          "raw_ref": {
+            "type": "string"
+          },
+          "recipients": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": "string"
+          },
+          "score": {
+            "format": "double",
+            "type": "number"
+          },
+          "sender": {
+            "type": "string"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "thread_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "source",
+          "sender",
+          "body",
+          "sent_at"
+        ],
+        "type": "object"
+      },
+      "MessageDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "alternative_index": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "attachment_snippet": {
+            "type": "string"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "body": {
             "type": "string"
@@ -700,6 +1153,837 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/contacts": {
+      "get": {
+        "operationId": "listContacts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Contact"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List every contact with its aliases",
+        "tags": [
+          "contacts"
+        ]
+      },
+      "post": {
+        "description": "A name that is empty or already taken is an InvalidRequest.",
+        "operationId": "createContact",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactCreateInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contact"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Create a contact without aliases",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
+    "/v1/contacts/import": {
+      "post": {
+        "description": "An existing contact is kept and gains the aliases that are new. A conflict does not fail the request: each entry's result lists its own errors, and the rest is applied.",
+        "operationId": "importContacts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/ContactImport"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ContactImportResult"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Create or extend several contacts at once",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
+    "/v1/contacts/suggest": {
+      "get": {
+        "operationId": "suggestContacts",
+        "parameters": [
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/IdentitySuggestion"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List the identities no contact claims yet, the ones with most messages first",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
+    "/v1/contacts/{name}": {
+      "delete": {
+        "operationId": "deleteContact",
+        "parameters": [
+          {
+            "description": "The contact's name.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The contact's name.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactDeleted"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Delete a contact and its aliases, leaving its messages in place",
+        "tags": [
+          "contacts"
+        ]
+      },
+      "get": {
+        "operationId": "getContact",
+        "parameters": [
+          {
+            "description": "The contact's name.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The contact's name.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Get one contact with its aliases and its message count per source",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
+    "/v1/contacts/{name}/aliases": {
+      "delete": {
+        "description": "The alias is named in the query string. An alias the contact does not have is an InvalidRequest.",
+        "operationId": "removeContactAlias",
+        "parameters": [
+          {
+            "description": "The contact's name.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The contact's name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The source the alias is scoped to. Empty: the alias that counts in every source.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "The source the alias is scoped to. Empty: the alias that counts in every source.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The alias to remove.",
+            "explode": false,
+            "in": "query",
+            "name": "value",
+            "schema": {
+              "description": "The alias to remove.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AliasRemoved"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Detach an identity from a contact",
+        "tags": [
+          "contacts"
+        ]
+      },
+      "post": {
+        "operationId": "addContactAlias",
+        "parameters": [
+          {
+            "description": "The contact's name.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The contact's name.",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AliasAddInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactAlias"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AliasTakenError"
+                }
+              }
+            },
+            "description": "AliasTaken: another contact already has the alias; message names that contact."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Attach an identity, such as an address or a handle, to a contact",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
+    "/v1/contacts/{name}/messages": {
+      "get": {
+        "description": "Page with before, the id of the last message of the previous page, or with offset, and not with both.",
+        "operationId": "listContactMessages",
+        "parameters": [
+          {
+            "description": "The contact's name.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The contact's name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this source, such as gmail or whatsapp.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only this source, such as gmail or whatsapp.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sent on or after this day, YYYY-MM-DD.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Sent on or after this day, YYYY-MM-DD.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sent before this day, YYYY-MM-DD.",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Sent before this day, YYYY-MM-DD.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Past 10000, narrow with source or since instead.",
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "description": "Past 10000, narrow with source or since instead.",
+              "format": "int64",
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only messages older than the message with this id, which must be one of the contact's.",
+            "explode": false,
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "description": "Only messages older than the message with this id, which must be one of the contact's.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MessageDetail"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List the messages a contact sent or received, across every source, newest first",
+        "tags": [
+          "contacts"
+        ]
+      }
+    },
     "/v1/mailboxes": {
       "get": {
         "operationId": "listMailboxes",
