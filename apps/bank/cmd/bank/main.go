@@ -76,6 +76,7 @@ type cli struct {
 	Contact     contactCmd     `cmd:"" help:"One person across their many identities."`
 	Show        showCmd        `cmd:"" help:"Print one message and its attachments."`
 	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness."`
+	Ref         refCmd         `cmd:"" help:"Say what any cited ref names (bank:…, attic:…, a library ID, a blob's SHA-256) and where the same bytes are elsewhere."`
 	Timeline    timelineCmd    `cmd:"" help:"What happened in a year, month or day: messages, activity and files on disks."`
 	OpenAPI     openapiCmd     `cmd:"" name:"openapi" help:"Print the OpenAPI document of the typed routes." hidden:""`
 	Coverage    coverageCmd    `cmd:"" help:"Note what a source holds (empty text clears)."`

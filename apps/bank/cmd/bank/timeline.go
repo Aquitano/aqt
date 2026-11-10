@@ -78,6 +78,47 @@ func (c *timelineCmd) Run(ctx context.Context) error {
 	return nil
 }
 
+type refCmd struct {
+	Ref  string `arg:"" help:"The ref as cited."`
+	JSON bool   `help:"JSON output."`
+}
+
+func (c *refCmd) Run(ctx context.Context) error {
+	var resolved catalog.Resolved
+	var err error
+	if remote := client.FromEnv(); remote != nil {
+		resolved, err = remote.Resolve(ctx, c.Ref)
+	} else {
+		st, openErr := openStore(ctx)
+		if openErr != nil {
+			return openErr
+		}
+		defer st.Close()
+		// A database without the catalogue resolves the archive's refs alone.
+		var contents catalog.Contents
+		if catalogue, openErr := attic.Open(ctx, databaseURL()); openErr == nil {
+			defer catalogue.Close()
+			contents = catalogue
+		}
+		resolved, err = catalog.Resolve(ctx, st, contents, c.Ref)
+	}
+	if err != nil {
+		return err
+	}
+	if c.JSON {
+		return printJSON(resolved)
+	}
+	fmt.Printf("%s  %s  %s\n", resolved.Kind, resolved.Ref, resolved.Title)
+	if resolved.At != nil {
+		fmt.Printf("  at    %s\n", resolved.At.Local().Format("2006-01-02 15:04"))
+	}
+	fmt.Printf("  full  %s\n", resolved.Href)
+	for _, link := range resolved.Links {
+		fmt.Printf("  %-11s %s  %s\n", link.Relation, link.Ref, link.Title)
+	}
+	return nil
+}
+
 type openapiCmd struct{}
 
 func (openapiCmd) Run() error {

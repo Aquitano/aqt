@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -35,6 +36,15 @@ func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 			"and files on disks by when they were last modified, merged oldest first. limit caps each group on " +
 			"its own; truncated names the groups that reached it.",
 	}.For(api), s.timeline)
+	huma.Register(api, httpapi.Operation{ID: "resolveRef", Method: http.MethodGet, Path: "/v1/refs/{ref}", Tag: "refs",
+		Summary: "Say what a cited ref names, whichever store holds it",
+		Description: "Takes bank:<ref> or a bare message ref, a library ID such as item_… or file_…, a blob's SHA-256, " +
+			"or attic:<ref>. The answer names the record, the route that returns it in full, and where the same " +
+			"bytes are in the other store: a message attachment's copies on disks, or the messages and library " +
+			"files that hold a disk file's bytes. Those links appear once the server has read the blob's BLAKE3 " +
+			"digest, shortly after an import.",
+		Errors: []httpapi.Kind{httpapi.NotFound},
+	}.For(api), s.resolve)
 	httpapi.Finish(api)
 	return api
 }
@@ -42,6 +52,26 @@ func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 // Spec is the OpenAPI document bank serve answers with, built without a database.
 func Spec() ([]byte, error) {
 	return json.MarshalIndent((&Server{}).registerAPI(http.NewServeMux()).OpenAPI(), "", "  ")
+}
+
+type resolveInput struct {
+	Ref string `path:"ref" doc:"The ref as cited."`
+}
+
+func (s *Server) resolve(ctx context.Context, in *resolveInput) (*httpapi.Body[catalog.Resolved], error) {
+	// A nil catalogue must reach Resolve as a nil interface.
+	var contents catalog.Contents
+	if s.catalogue != nil {
+		contents = s.catalogue
+	}
+	resolved, err := catalog.Resolve(ctx, s.db, contents, in.Ref)
+	if errors.Is(err, catalog.ErrNoRecord) {
+		return nil, httpapi.NotFound.New(err.Error())
+	}
+	if err != nil {
+		return nil, httpapi.Internal.New(err.Error())
+	}
+	return &httpapi.Body[catalog.Resolved]{Body: resolved}, nil
 }
 
 type timelineInput struct {

@@ -95,6 +95,31 @@ func (c *Catalogue) Handler(host api.Host) http.Handler {
 	})
 }
 
+// ErrNotFound means no content matches a ref.
+var ErrNotFound = store.ErrNotFound
+
+// Content is one unique content and every place it lives or lived. ref is a
+// content ref, with or without attic:, or a whole BLAKE3 digest in hex.
+func (c *Catalogue) Content(ctx context.Context, ref string) (view.Content, error) {
+	st, err := c.ready()
+	if err != nil {
+		return view.Content{}, err
+	}
+	ref, ok := store.ParseRef(ref)
+	if !ok {
+		return view.Content{}, ErrNotFound
+	}
+	vols, err := st.KnownVolumes(ctx)
+	if err != nil {
+		return view.Content{}, err
+	}
+	detail, err := st.Content(ctx, ref)
+	if err != nil {
+		return view.Content{}, err
+	}
+	return view.NewContent(detail, view.OnlineRoots(vols)), nil
+}
+
 // ModifiedFiles lists files on disks last modified in [since, until), oldest first.
 func (c *Catalogue) ModifiedFiles(ctx context.Context, since, until time.Time, limit int) ([]view.Place, error) {
 	st, err := c.ready()

@@ -162,6 +162,128 @@
         ],
         "type": "object"
       },
+      "Link": {
+        "additionalProperties": false,
+        "properties": {
+          "href": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "relation": {
+            "description": "attachment: a blob attached to this message. on_disk: a place on a disk holding the same bytes. in_archive: a blob in the archive holding the same bytes. replaced_by: what a retired message became.",
+            "enum": [
+              "attachment",
+              "on_disk",
+              "in_archive",
+              "replaced_by"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation",
+          "ref",
+          "title",
+          "href"
+        ],
+        "type": "object"
+      },
+      "NotFoundError": {
+        "description": "Nothing matches.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "NotFound"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Resolved": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "description": "When the message was sent.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "href": {
+            "description": "The route that returns the whole record.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "blob is bytes the archive stores; content is bytes the catalogue saw on a disk.",
+            "enum": [
+              "message",
+              "retired_message",
+              "item",
+              "activity",
+              "collection",
+              "file",
+              "page",
+              "blob",
+              "content"
+            ],
+            "type": "string"
+          },
+          "links": {
+            "description": "Attachments, and the same bytes in the other store.",
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "The form to cite: bank:\u003cref\u003e for a message, a library ID, a blob's SHA-256, or attic:\u003cref\u003e for a file's bytes on disks.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Subject or opening words, a title, a filename or a path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "kind",
+          "title",
+          "href",
+          "links"
+        ],
+        "type": "object"
+      },
       "Timeline": {
         "additionalProperties": false,
         "properties": {
@@ -255,6 +377,90 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/refs/{ref}": {
+      "get": {
+        "description": "Takes bank:\u003cref\u003e or a bare message ref, a library ID such as item_… or file_…, a blob's SHA-256, or attic:\u003cref\u003e. The answer names the record, the route that returns it in full, and where the same bytes are in the other store: a message attachment's copies on disks, or the messages and library files that hold a disk file's bytes. Those links appear once the server has read the blob's BLAKE3 digest, shortly after an import.",
+        "operationId": "resolveRef",
+        "parameters": [
+          {
+            "description": "The ref as cited.",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "description": "The ref as cited.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resolved"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Say what a cited ref names, whichever store holds it",
+        "tags": [
+          "refs"
+        ]
+      }
+    },
     "/v1/timeline": {
       "get": {
         "description": "Messages by when they were sent, activity (watching, listening, reading) by when it happened, and files on disks by when they were last modified, merged oldest first. limit caps each group on its own; truncated names the groups that reached it.",

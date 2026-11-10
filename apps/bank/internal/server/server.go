@@ -151,6 +151,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	workCtx, cancelWork := context.WithCancel(context.Background())
 	s.extraction.ctx = workCtx
+	s.extraction.done.Go(func() { s.digestBlobs(workCtx) })
 	defer func() {
 		s.extraction.mu.Lock()
 		s.extraction.stopping = true

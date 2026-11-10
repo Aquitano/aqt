@@ -25,6 +25,7 @@ type Files interface {
 type Catalogue interface {
 	Disks
 	Files
+	Contents
 }
 
 // Event is one thing that happened: a message sent, something watched,
