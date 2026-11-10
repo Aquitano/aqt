@@ -17,7 +17,7 @@ import (
 
 func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 	s, st := attachmentServer(t)
-	token, err := NewToken(s.dataDir, "test")
+	token, err := Tokens(s.dataDir).New("test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
 	if _, err := st.ImportLibrary(context.Background(), library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
 		t.Fatal(err)
 	}
-	token, err := NewToken(s.dataDir, "test")
+	token, err := Tokens(s.dataDir).New("test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
 
 func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 	s, st := attachmentServer(t)
-	token, err := NewToken(s.dataDir, "test")
+	token, err := Tokens(s.dataDir).New("test")
 	if err != nil {
 		t.Fatal(err)
 	}

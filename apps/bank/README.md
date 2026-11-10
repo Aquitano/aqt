@@ -5,6 +5,8 @@ Personal archive and library: messages, media, viewing activity, playlists, file
 Bank imports personal ChatGPT and Claude.ai exports. Turnstash owns coding-session
 ingestion. Removing an importer does not delete previously archived records.
 
+The same Go module holds [attic](attic/README.md), the catalogue of files on disks that come and go. Its tables are in the `attic` schema of this database, `cmd/attic` scans, and `bank serve` answers its read API below `/attic` with bank's tokens.
+
 See [MAIL.md](MAIL.md) for folder-preserving imports, mail filters, conversation grouping, and metadata recovery. See [IMAP.md](IMAP.md) for the Proton Bridge and Gmail collector.
 
 ## Quickstart

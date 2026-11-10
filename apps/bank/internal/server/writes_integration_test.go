@@ -26,7 +26,7 @@ func TestContactImportAndCoverageRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := NewToken(dir, "test")
+	token, err := Tokens(dir).New("test")
 	if err != nil {
 		t.Fatal(err)
 	}

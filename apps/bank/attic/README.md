@@ -1,0 +1,318 @@
+# attic
+
+Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It changes source files only when `attic dedupe apply` moves duplicate copies into a quarantine folder, or `attic organize apply` and `undo` rename files and folders that a reviewed plan lists. Scanning runs on Windows; search runs wherever the database is reachable.
+
+Attic is part of bank's Go module: `cmd/attic` is the CLI that scans, the packages are under `internal/attic`, and this directory holds its documents, its Compose file and its Executor app. `bank serve` also answers the catalogue's read API, below `/attic` ([Served by bank](#served-by-bank)).
+
+## Setup
+
+```sh
+docker compose up -d --wait                                     # in apps/bank/attic
+go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic     # in apps/bank
+```
+
+The catalogue's tables live in the `attic` schema, so the catalogue can share a database with bank's archive, whose tables are in `public`. The Compose file here starts a database for a catalogue that is on its own. A catalogue an older build kept in `public` is moved into the schema by the first command that migrates, with its search indexes and without rewriting rows.
+
+`DATABASE_URL` defaults to `postgres://attic:attic@127.0.0.1:5436/attic?sslmode=disable`. Use `127.0.0.1` rather than `localhost` in your own URL too: the database listens on IPv4 only, and on Windows a `localhost` connection first spends about a second on IPv6. `attic scan`, `attic enrich`, `attic dedupe apply` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
+
+The identity upgrade rewrites catalogue entries once and builds indexes. The search index upgrade also rebuilds BM25 indexes to remove mutable segments. Migration waits for these operations, and PostgreSQL needs additional database storage during the upgrades.
+
+Install ExifTool for embedded metadata. Poppler's `pdftotext` provides a fallback when the PDF text parser fails. OCR also needs Tesseract and Poppler's `pdftoppm`. Missing ExifTool leaves metadata pending and records `metadata_unavailable`; the rest of the scan continues.
+
+## Use
+
+```powershell
+attic scan E:\
+attic scan E:\Files --no-hash
+attic search minecraft server
+attic search werkstudent --ext pdf
+attic search notes --under E:\Files --json
+attic search minecraft lobby --current
+attic search --under E:\Backups\Minecraft.7z
+attic show 36331
+attic get 36331 --to C:\Recovered\document.pdf --json
+attic text 36331
+attic metadata 36331
+attic volumes
+attic scans --volume Data
+attic dupes --same-volume
+attic coverage --volume Data --under /Files
+attic coverage --volume Data --json --limit 50 --offset 0
+attic skips --reason unreadable
+attic stats
+attic migrate
+attic help scan
+```
+
+To keep the catalogue current, run scans from a nightly task: [SCHEDULED-SCANS.md](SCHEDULED-SCANS.md).
+
+Search requires every searchable word by default; `--any` accepts any word. Words can match names, paths or name fragments. Archive members, document text, metadata and enrichment results appear in separate ranked groups. `--volume` accepts a label or ID. `--under` accepts a mounted path, or a volume-relative path with `--volume`. All read commands support `--json`.
+
+Argument parsing errors exit with code 2. Command failures, including `enrich --task ocr` without targets or `--under`, exit with code 1.
+
+An entry ID identifies a file at a place. A content ref such as `attic:3f9a1c2b4d5e6f70` identifies its bytes across disks. `show <ref>` lists the copies. Refs show 16 hex characters of the BLAKE3 digest; every `<id-or-ref>` command also accepts a longer prefix, up to all 64, with or without `attic:`. If two contents share a ref, the command fails and lists each with a longer ref that tells them apart. Missing files remain searchable and are marked missing. `dupes --same-volume` counts copies that share a disk.
+
+When a file's bytes change, the catalogue keeps what it read from the earlier content: archive listings, document text, metadata and enrichment results. The earlier bytes themselves are not kept. Archive-member, document-text, metadata and enrichment searches include these earlier versions by default. Text output marks such a place `previous version` and counts the other earlier holders as `held before`. In `--json`, every place of a content hit has `version` set to `current` or `previous`. A previous place shows the entry's path as it is now, with the size, modified time and ref it had then. `--current` leaves out content that no file holds now. Name and path search matches entries as they are now. `show <id>` lists the entry's versions with the scans that first saw each one and saw it replaced. For files catalogued before version history, the first scan shown is the last scan that updated the entry, which can be later than the scan that first read its bytes. `show <ref>` lists the files that hold the content now, then those that held it before. Use `text <ref>` or `metadata <ref>` to read an earlier version's results. Moves, renames and rehashing unchanged bytes keep one version.
+
+`coverage` selects present files in the requested scope and counts distinct volume IDs for their completed full content hashes across the entire catalogue. It reports content recorded on fewer than two volumes, with unique byte totals. Multiple paths and hard links on one volume count as one volume. Unknown and invalidated hashes appear separately, with path byte totals that cannot be deduplicated. Offline volumes count; entries marked missing do not. With no scope, it reports the whole catalogue.
+
+Coverage totals include all selected content, independently of pagination. `--limit` and `--offset` page the undercovered content and unknown-file lists separately. Each content lists up to 100 locations and its total path count. Location dates identify the recorded update scan's start, not a fresh verification. This read-only report does not rehash files or verify backup health or physical disk independence. Scans can be partial or stale; use `attic scans --volume Data` to inspect their scope and status.
+
+`get <id-or-ref> --to <new-file>` retrieves one hashed ordinary file from an online copy. It verifies the full stored BLAKE3 digest before publishing the destination and tries another copy after a source read failure or digest mismatch. Existing destinations are never overwritten, including files created concurrently. If no copy is usable, the error names known offline volumes to connect. Directories, archive members, links, cloud placeholders and files excluded by current content rules cannot be retrieved. A hashed archive can be retrieved as a whole file.
+
+The destination directory must already exist. Retrieval stages a private copy beside the destination for atomic publication, independently of the configured `temp` directory. On Windows the destination must be on a different volume from the online source copies. Only Windows currently discovers mounted catalogue volumes. `--json` returns the full verified digest, destination and selected source. Cancellation or verification failure removes the temporary copy without publishing a partial destination.
+
+A scan lists directories, hashes unknown files, lists archives, extracts document text and reads embedded metadata. It skips links, cloud placeholders, excluded paths and name-only files. ZIP, 7z, RAR and tar listings can include nested archives. Documents include plain text, Markdown, CSV, HTML, Office, OpenDocument and PDFs with a text layer. Source code and configuration files keep their names only. Extracted document text is capped at 1 MB.
+
+Archive listings and in-process document extraction read a held source file. Windows refuses writers until the read ends. Its size, modified time, change time and file ID must match the catalogue entry. A change time that changes during a move also requires rehashing. FAT and exFAT record no change time, so on those disks the scan hashes the held file again before reading it. A file that changed since hashing, or that another program has open for writing, is skipped as `changed` and retried by the next scan. New hashes record that their bytes came from a held object matching the listed timestamps and file ID. Listing a ZIP or 7z then reads its index, so a large archive costs little beyond its hash on NTFS.
+
+Older catalogue hashes lack this provenance. Pending archive and document extraction verifies those files in full through the held handle, even on NTFS and ReFS. Matching timestamps alone never promote an older hash. This adds a full read whenever an older file needs direct extraction, without a temporary copy or a catalogue-wide rehash. The upgrade preserves historical hashes and cached results.
+
+External tools receive verified temporary copies because reopening a source path can follow an ancestor redirected through a junction. One ExifTool process serves the whole metadata phase and receives one file at a time. Each metadata file, including a video, needs a full verified copy. PDF parser failures also need a verified copy before the `pdftotext` fallback runs.
+
+On volumes with stable file IDs, matching hard links can reuse a hash within the scanned subtree. Scan a common parent of the links to repair conflicting hashes left by older scans.
+
+A changed or unavailable device serial requires an identity decision when the volume resembles a known one. Rerun with `--volume <id>` to confirm the known disk, or `--new-volume` to record a separate disk. This can also happen after moving a disk to another enclosure.
+
+Ctrl+C keeps committed work. Run the same command again to continue. The summary includes phase times and the log path under `%LOCALAPPDATA%\attic\logs`. Use `--log-level debug` to log individual reads.
+
+## Set aside duplicate copies
+
+Name the folders whose copies stay, then review what would move:
+
+```powershell
+attic dedupe plan --keep E:\Files --keep F:\Photos
+attic dedupe apply --keep E:\Files --keep F:\Photos
+```
+
+`plan` lists hashed contents that have a copy inside the kept folders and copies outside them, most bytes outside first. It skips contents under `--min-size` (default `1M`) and stops after `--limit` contents (default 100). `apply` hashes the kept copy and each extra copy again, and moves an extra copy only when both still match the catalogue. It moves the copy into `.attic-quarantine\<run>\<original path>` on the same disk and never deletes anything, so a move is a rename and a copy can go back to its original path by hand. Scans skip the quarantine folder. `attic show <id>` reports a moved copy and the kept entry, and the next scan of its folder marks it missing. A copy put back by hand takes part again once a scan of its folder finds it.
+
+Only hashed files take part, so scan with hashing first. Emptying the quarantine is up to you; delete a quarantined copy only once its kept copy is backed up somewhere else.
+
+## Organize files with a reviewed plan
+
+A person or agent decides where things go; attic only carries out the reviewed moves. Write a move list whose paths are relative to `root`:
+
+```json
+{
+  "root": "E:\\",
+  "moves": [
+    {
+      "from": "Inbox/award-2014.pdf",
+      "to": "Documents/School/award-2014.pdf",
+      "reason": "school award"
+    },
+    { "from": "Downloads/Robot", "to": "Projects/Robot", "reason": "whole project folder" }
+  ]
+}
+```
+
+```powershell
+attic organize prepare moves.json
+attic organize apply moves.plan.json
+attic organize undo moves.plan.json
+```
+
+`prepare` reads every source without changing it and saves `moves.plan.json` with a baseline of each move: every file and folder inside it, including empty folders, and each file's ID, size, modified and change times and BLAKE3 digest. Sources are recorded under the names the disk stores, so undo restores the exact spelling. It refuses paths outside `root`, moves whose sources or destinations overlap, existing destinations, links, junctions, cloud placeholders and hard links split across moves. A source that cannot be read in full blocks the plan, and nothing is saved until every move is ready. It never replaces an existing file and never saves the plan inside a move, so delete an earlier plan before preparing again; a name whose journal records a run stays taken. It also lists the folders the destinations would create, so new structure is reviewed apart from moves into existing folders. A move is a rename on one volume, so it never copies, replaces or deletes anything.
+
+`apply` checks every move before it renames anything, including moves an earlier run finished. A written, changed, added or missing file, or a destination that is now taken, blocks the run with the move and the reason. Only one `apply` or `undo` runs on a plan at a time. Each move is journalled in `moves.plan.json.journal.jsonl` before its rename and again once its destination holds exactly the baseline. A move that arrives different goes back. Run `apply` again after an interruption: finished moves stay, and an interrupted one counts as done or not done only when one place holds exactly the baseline and the other is empty. Anything else is reported for a decision by hand.
+
+On NTFS and ReFS a rename keeps the file record, so the same file ID also keeps the file's streams, times, attributes, owner and permissions. An unchanged change time shows that none of them, and none of the bytes, was rewritten since `prepare`, even when a program put the modified time back. The rename itself updates the moved object's own change time, so the journal records the new one after each verified move. FAT and exFAT give a moved file a new ID and keep no change time, so there every apply and undo rereads the bytes against the digests.
+
+`undo` moves every applied move back, last first, when it still matches the baseline and its original path is free. Changed moves stay where they are and are reported; the others still go back. Folders that the moves created are removed once they are empty again, also by a later `undo` once the last blocked move is back.
+
+The catalogue is not changed. Scan `root` afterwards; on NTFS and ReFS the entries keep their identity across the moves. Organizing needs no database, and identifying the disk needs Windows.
+
+## Verify stored file hashes during maintenance
+
+`verify` runs only when explicitly invoked. Normal scans and file changes do not trigger this maintenance pass. Run it when the source disk is mounted and can be read for the duration of the check.
+
+```powershell
+attic verify --under E:\Files
+attic verify --volume Data --under /Files --json
+```
+
+Verification rereads each selected catalogue file and compares its full BLAKE3 digest, even when its size and timestamps have not changed. It checks that specific copy, including copies marked missing, without falling back to another disk. It leaves source bytes, catalogue hashes and extracted results unchanged. A mismatch means the bytes differ from the baseline; it does not establish corruption.
+
+`--under` is required. Mounted paths use the disk's current identity. `--volume` confirms an ambiguous identity and also accepts volume-relative paths, including missing folders or offline volumes. Links, junctions and cloud placeholders are not read. Like scanning, mounted volume identification currently requires Windows.
+
+Results distinguish matched, mismatched, unreadable, missing, unavailable and unknown files. Unknown means the catalogue has no full digest, or the scope contains no catalogue files. Verification does not discover files absent from the catalogue. Any result other than matched exits with code 1. The text output ends with counts; `--json` streams one JSON entry per line followed by a summary with `type: "summary"`. The summary's `complete` flag means selection finished, not that all files matched. Cancellation or a catalogue error leaves a partial report with `complete: false` and a nonzero exit.
+
+Ordinary scans can reuse a hash when file metadata is unchanged. `verify` checks those bytes explicitly. `scan --rebuild-content` rebuilds archive listings and document text; it does not replace verification of every selected file.
+
+To keep a dated report, use PowerShell 7.4 or later, which [preserves native output bytes during redirection](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_redirection#redirecting-output-from-native-commands). Run this from a reports folder outside the verified subtree:
+
+```powershell
+$report = "attic-verify-$(Get-Date -Format yyyyMMdd-HHmmss).ndjson"
+attic verify --volume Data --under /Files --json > $report
+$verifyExitCode = $LASTEXITCODE
+Get-Content -LiteralPath $report -Tail 1
+"Verification exit code: $verifyExitCode"
+```
+
+Exit code 0 means every selected file matched its stored digest. Keep reports to see which scope was checked and which files differed or could not be checked. A successful report describes the bytes read during that run; it does not establish that they remain unchanged afterwards. Verification does not store a last-checked status in the catalogue.
+
+For recurring maintenance, Windows Task Scheduler can run the same command at the chosen interval while the disk is connected. Give each run a separate report and retain the command's exit code. Attic does not install a schedule or start a background verifier.
+
+## Rebuild archive listings and document text
+
+Older scans could attach results to the wrong content if a file changed between hashing and extraction. Ordinary rescans reuse those results. To rebuild the archive listings and document text associated with present files below a selected folder, run:
+
+```powershell
+attic scan E:\Files --rebuild-content
+```
+
+Results belong to content, so rebuilding also updates what other copies of those bytes show. Metadata and enrichment results are kept. The command cannot be combined with `--no-hash`.
+
+## OCR and image descriptions
+
+Scanning never runs AI. Select already-hashed files on an online volume, then run enrichment explicitly:
+
+```powershell
+attic enrich --task ocr --under E:\Scans --limit 20
+attic enrich 36331 36332 --task describe --provider openai --model YOUR_VISION_MODEL
+attic analysis 36331 --json
+```
+
+OCR defaults to local Tesseract. It reads images and PDFs marked `needs_ocr`, with the configured languages and page limit. Descriptions default to an OpenAI-compatible endpoint at `http://localhost:11434/v1`. OpenAI-compatible and Codex tasks require an explicit vision model. Remote endpoints receive image bytes and the prompt, require HTTPS, and refuse redirects. Set `ai.api_key_env` to an environment variable's name when authentication is needed. HTTP is accepted for localhost and loopback addresses.
+
+An authenticated native Codex CLI is also available through `--provider codex --model MODEL`. It runs each image in an ephemeral session with tools disabled and a restricted permission profile. Strict configuration rejects unsupported settings; the profile was verified with Codex 0.162.1. On Windows, `ai.codex` must point to `codex.exe`, rather than a `.cmd` or `.bat` shim. Codex is limited to 20 contents per command.
+
+Vision providers accept PNG, JPEG, GIF and WebP up to 20 MiB. Tesseract also accepts TIFF and BMP. Tools receive verified temporary copies. Results retain their task, provider, endpoint, model and extraction policy. Duplicates reuse successful results. `--force` repeats completed work and preserves the previous answer if the new attempt fails. Provider outages stop the run without recording per-content failures. `analysis` compares results; `search` includes their text offline.
+
+## Serve the catalogue to agents
+
+`attic serve` answers the read commands over HTTP. Like them, it opens the catalogue read-only.
+
+```powershell
+attic token new executor
+attic serve --listen 127.0.0.1:8490
+```
+
+`token new` prints the token once. Every `/v1` route needs it as `Authorization: Bearer <token>`. Tokens are kept as SHA-256 digests in `%APPDATA%\attic\tokens`; `attic token list` and `attic token revoke <name>` manage them, and a revocation applies to the next request. There is no TLS, so listen on localhost, or on a Tailscale address to reach the API from the tailnet. `ATTIC_LISTEN` also sets the address. A catalogue at another schema version stops `serve` from starting; run `attic migrate` or upgrade attic first.
+
+`/openapi.json` describes every operation and needs no token. `openapi.json` in this directory is the committed copy; regenerate it from `apps/bank` with `go run ./cmd/attic openapi > attic/openapi.json` after changing the API, because a test fails while it is stale. Responses have the same shapes as `--json`. An error is JSON with a `_tag` naming the failure (`Unauthorized`, `InvalidRequest`, `NotFound`, `AmbiguousRef`, `Unavailable` or `Internal`), a `message`, and a `recovery` with what to do where the caller can act. Each tag has its own schema, so code generated from the document can branch on it.
+
+`GET /v1/contents/{ref}/file` streams a file from an attached disk and checks its BLAKE3 digest on the way. The last 64 KiB wait until the digest matches, so a copy that changed since its scan ends short of `Content-Length` instead of delivering wrong bytes. Without an attached copy the answer is `Unavailable`, with the disks to connect. Like `attic get`, downloads need Windows volume discovery.
+
+### Served by bank
+
+`bank serve` migrates the `attic` schema in bank's database on startup and answers the same routes below `/attic`: `/attic/v1/search`, `/attic/openapi.json` and so on. They take bank's tokens (`bank token new <name>`), so one token reads both the archive and the catalogue. That server has no disks attached, so a download answers `Unavailable` and names the disks that hold a copy. To fetch a file, ask an `attic serve` on the machine with the disk.
+
+Scans still write through `DATABASE_URL`, so the catalogue bank serves is whatever was scanned into bank's database.
+
+### Code mode through Executor
+
+`executor/` is an [Executor](https://executor.sh) app that turns the live `/openapi.json` into typed tools, so an agent writes code such as `await tools.attic.catalogue.search({ q: "minecraft server" })` instead of calling one tool per endpoint. It needs a local or self-hosted Executor: Executor Cloud cannot reach a tailnet or loopback address. The token travels only to the host in `executor/provider.ts`, and any future write operation asks for approval.
+
+```powershell
+attic token new executor
+executor apps create --name attic --files apps/bank/attic/executor
+executor apps deploy --app <app-id> --files apps/bank/attic/executor
+```
+
+Then connect the app's attic account in the Executor dashboard and paste the token there. The app reaches attic at `origin` in `executor/provider.ts`, `http://127.0.0.1:8490` for an Executor on the same PC. For a self-hosted Executor on another machine, such as the VPS, set `origin` to the PC's tailnet address before deploying, run `attic serve --listen <tailnet address>:8490`, and start that Executor with `EXECUTOR_APPS_ALLOW_PRIVATE_FETCH=true`, because it refuses private addresses otherwise. `mise run bank:ts` type-checks and lints it; the `apps` version in `package.json` must match `executor apps framework`.
+
+## Configuration
+
+Use `%APPDATA%\attic\config.toml`, or select another file with `--config`. `attic config` prints the effective settings and rules.
+
+`temp` selects one existing directory for nested archives and verified metadata, PDF fallback and enrichment copies. It defaults to the system temporary directory and must be on another disk when scanning. To scan C:, set `temp = 'D:\AtticTemp'` to an existing directory on another disk. Scans keep parent and child nested archives there together while listing them. Allow the sum of their sizes across active nesting levels, up to `unpack_max_bytes` per level below the outer archive. An `unpack_max_bytes` value of zero leaves this space unbounded. External tools also need space for one full input copy at a time. Private `aqt-attic/scan-*` workspaces are removed after use; abandoned workspaces are cleaned after a day when their locks are free.
+
+Legacy `archives.temp`, `metadata.temp` and `ai.temp` settings remain accepted. Empty `metadata.temp` and `ai.temp` values inherit the shared directory. Conflicting explicit directories are rejected. Remove the legacy settings when choosing a different top-level `temp`.
+
+Patterns use gitignore syntax and ignore case. Defaults exclude dependency and build output, game libraries and Windows system paths. BitLocker recovery-key files keep their names only. Configured patterns follow the defaults, so `!pattern` can re-include a path. A slash anchors a pattern at the volume root; use `**/name/` for any depth. On Windows, match a literal `[` with `[[]`.
+
+The following example shows the defaults, plus optional exclusions for one volume. Byte limits accept zero for no limit.
+
+```toml
+temp = ""
+exclude = []
+name_only = []
+hash_max_bytes = 0
+
+[archives]
+depth = 2
+unpack_max_bytes = 4294967296
+
+[text]
+max_bytes = 67108864
+pdftotext = "pdftotext"
+
+[metadata]
+enabled = true
+exiftool = "exiftool"
+max_bytes = 0
+
+[ai]
+provider = ""
+endpoint = "http://localhost:11434/v1"
+model = ""
+api_key_env = ""
+max_bytes = 67108864
+timeout_seconds = 300
+max_tokens = 4096
+token_parameter = "max_tokens"
+ocr_lang = "eng"
+ocr_max_pages = 20
+tesseract = "tesseract"
+pdftoppm = "pdftoppm"
+codex = "codex"
+
+[[volume]]
+label = "Data"
+exclude = ["/Games/"]
+```
+
+`archives.depth = 0` disables archive listings. `unpack_max_bytes` limits each nested archive. `text.max_bytes` limits the source file size eligible for text extraction. `metadata.max_bytes` bounds the files given to ExifTool; it defaults to no limit, so large videos can need equally large temporary copies. `text.pdftotext` selects the Poppler binary; if unavailable, PDF parser failures remain failures. `ai.max_bytes` bounds a verified enrichment copy. `ai.token_parameter` also accepts `max_completion_tokens`. Install Tesseract language data for each language in `ocr_lang`, such as `deu+eng`.
+
+### Configure a folder and its children
+
+Place `.attic.toml` in a disk's root for rules that apply across that disk, or inside a folder for rules below it. Scans discover these files automatically. A scan started inside a subtree also reads the files in its ancestors, up to the volume root.
+
+To keep hashes and metadata without listing archive contents, save this as `E:\Backups\.attic.toml`:
+
+```toml
+[archives]
+depth = 0
+```
+
+ZIP, 7z, RAR and tar files below `E:\Backups` stay catalogued with their names, paths, sizes, dates and hashes. Hashing still reads each archive's bytes. The archive phase does not open these archives or list their members. Document text and embedded metadata extraction continue for their supported file types.
+
+A deeper file can override the inherited depth. In `E:\Backups\Selected\.attic.toml`, set `depth = 1` under `[archives]` to list archives in that subtree without opening nested archives.
+
+Inspect the settings before scanning with `attic config --under E:\Backups\Selected`. It lists the contributing folder files, effective archive depth and pattern sources. This command needs a mounted Windows volume but no catalogue connection. Add `--volume <id>` when the main configuration selects rules by catalogue volume ID.
+
+Folder files also accept `exclude` and `name_only`:
+
+```toml
+exclude = ["/Cache/"]
+name_only = ["*.key"]
+
+[archives]
+depth = 0
+```
+
+Patterns are relative to the folder containing the file. `/Cache/` selects that folder's direct child; `**/Cache/` selects any depth. Folder rules follow the global and volume rules, from the volume root down. Later matching patterns win, including `!pattern`. An excluded directory is not visited, so a file inside it cannot re-include the directory.
+
+`name_only` keeps filesystem details without hashing, text extraction or embedded metadata extraction. `archives.depth = 0` keeps those other operations enabled. Folder files accept only `exclude`, `name_only` and `archives.depth`; machine settings such as `temp`, tools and AI providers stay in the main configuration. Invalid, unreadable or oversized folder files stop the scan. The size limit is 64 KiB, and links and cloud placeholders are refused.
+
+Folder files control scans. Existing catalogue results remain searchable, including archive members recorded before a rule changed or through another copy of the same content. Other commands continue to use the main configuration.
+
+A deeper archive policy upgrades a shallower cached listing, including when identical copies have different folder policies. Failed upgrades keep the previous listing. Completed, verified upgrade attempts that encounter encryption, parser failures or unpack limits are remembered for that content, requested depth and effective unpack limit. Unchanged scans skip those attempts. Changing the depth or unpack limit can enable another upgrade attempt. Source read failures, missing multipart volumes and changed bytes remain retryable. To retry an initial listing at the same depth after changing its unpack limit, use `--rebuild-content`. Rebuilding also clears remembered upgrade failures for the selected content.
+
+Folder policy lookup preserves directory spelling, so case-sensitive sibling folders can have separate settings. Patterns still ignore case. Existing catalogues do not record their earlier listing depths, so the migration leaves their listings unchanged.
+
+`--rebuild-content` deletes selected archive listings and document text for all copies that share the content. Deletion includes content under depth-zero rules. Depth-zero copies are not relisted. To refresh older listings, set a positive archive depth for the selected copies before running `attic scan E:\Backups --rebuild-content`.
+
+Unreadable directories leave catalogue history intact. Files below them receive no content processing while their folder policies are unresolved.
+
+## Develop
+
+```sh
+mise run bank:check
+```
+
+Checks cover vet, race tests and lint, plus Linux and Windows builds. Set `ATTIC_TEST_DATABASE_URL` to a superuser on disposable ParadeDB. Set `PGSCHEMA_TEST_DATABASE_URL` for the shared migration tests; both can name the same server. Tests create separate databases, drop successful fixtures and retain failures for inspection. CI requires ExifTool, Tesseract and Poppler. HTTP and Codex tests use local doubles and make no paid API calls.
+
+[DESIGN.md](DESIGN.md) describes catalogue identity and extraction decisions.

@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 // reader is the read side of the store, an interface only so the handlers can
@@ -51,6 +53,16 @@ type Server struct {
 	dataDir         string
 	jsonReadTimeout time.Duration
 	extraction      extraction
+	mounts          map[string]http.Handler
+}
+
+// Mount serves another domain's API below prefix, such as /attic. The handler
+// sees the full path and does its own authentication.
+func (s *Server) Mount(prefix string, h http.Handler) {
+	if s.mounts == nil {
+		s.mounts = map[string]http.Handler{}
+	}
+	s.mounts[prefix] = h
 }
 
 func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server {
@@ -60,6 +72,10 @@ func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server
 		slog.Warn("pruning abandoned uploads", "error", err)
 	}
 	return s
+}
+
+func Tokens(dataDir string) tokens.Store {
+	return tokens.Store{Path: filepath.Join(dataDir, "tokens"), Prefix: "bank_"}
 }
 
 // Sized for Gmail Takeout mboxes, which routinely exceed 1 GiB.
@@ -116,6 +132,9 @@ func (s *Server) Handler() http.Handler {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
 	mux.Handle("/v1/", s.requireToken(v1))
+	for prefix, h := range s.mounts {
+		mux.Handle(prefix+"/", h)
+	}
 	return mux
 }
 
@@ -141,7 +160,14 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		const prefix = "bearer " // scheme is case-insensitive per RFC 7235
 		auth := r.Header.Get("Authorization")
-		if len(auth) <= len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) || !VerifyToken(s.dataDir, auth[len(prefix):]) {
+		ok := len(auth) > len(prefix) && strings.EqualFold(auth[:len(prefix)], prefix)
+		if ok {
+			var err error
+			if ok, err = Tokens(s.dataDir).Verify(auth[len(prefix):]); err != nil {
+				slog.Error("read tokens", "error", err)
+			}
+		}
+		if !ok {
 			writeErr(w, http.StatusUnauthorized, "invalid or missing bearer token")
 			return
 		}

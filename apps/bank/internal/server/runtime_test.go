@@ -42,7 +42,7 @@ func TestInternalErrorsDoNotExposeDetails(t *testing.T) {
 func newJSONTestServer(t *testing.T, timeout time.Duration) (*httptest.Server, string) {
 	t.Helper()
 	dir := t.TempDir()
-	token, err := NewToken(dir, "test")
+	token, err := Tokens(dir).New("test")
 	if err != nil {
 		t.Fatal(err)
 	}

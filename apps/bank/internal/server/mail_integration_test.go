@@ -16,7 +16,7 @@ import (
 func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
 	ctx := context.Background()
 	server, database := attachmentServer(t)
-	token, err := NewToken(server.dataDir, "mail-test")
+	token, err := Tokens(server.dataDir).New("mail-test")
 	if err != nil {
 		t.Fatal(err)
 	}

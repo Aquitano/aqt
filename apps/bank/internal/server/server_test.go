@@ -106,7 +106,7 @@ func (f *fakeReader) Query(_ context.Context, sql string, limit int) (store.Quer
 func testServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	dir := t.TempDir()
-	token, err := NewToken(dir, "test")
+	token, err := Tokens(dir).New("test")
 	if err != nil {
 		t.Fatal(err)
 	}

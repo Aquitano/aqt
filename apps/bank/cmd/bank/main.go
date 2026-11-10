@@ -32,6 +32,9 @@ import (
 	"github.com/alecthomas/kong"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
+	atticconfig "github.com/aquitano/aqt/apps/bank/internal/attic/config"
+	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
@@ -877,12 +880,33 @@ func (c *serveCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeStore()
-	if names, err := server.ListTokens(dataDir()); err == nil && len(names) == 0 {
+	if names, err := server.Tokens(dataDir()).Names(); err == nil && len(names) == 0 {
 		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
 	srv := server.New(d.Store, d.Blobs, dataDir(), d.ArchiveDir)
+	catalogue, err := openCatalogue(ctx)
+	if err != nil {
+		return fmt.Errorf("attic catalogue: %w", err)
+	}
+	defer catalogue.Close()
+	srv.Mount(atticBasePath, atticapi.New(catalogue, atticconfig.Default(), atticapi.Host{
+		Tokens: server.Tokens(dataDir()), MintCommand: "bank token new <name>", BasePath: atticBasePath,
+	}))
 	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
 	return srv.ListenAndServe(ctx, c.Listen)
+}
+
+const atticBasePath = "/attic"
+
+// openCatalogue brings attic's schema in bank's database up to date, then
+// reopens it read-only: the routes bank serves for attic never write.
+func openCatalogue(ctx context.Context) (*atticstore.Store, error) {
+	migrated, err := atticstore.Open(ctx, databaseURL())
+	if err != nil {
+		return nil, err
+	}
+	migrated.Close()
+	return atticstore.OpenReadOnly(ctx, databaseURL())
 }
 
 // uiCmd starts the local archive browser: the embedded page plus a proxy that
@@ -959,14 +983,14 @@ func (c *tokenNewCmd) Run() error {
 	if err := refuseRemoteToken(); err != nil {
 		return err
 	}
-	token, err := server.NewToken(dataDir(), c.Name)
+	token, err := server.Tokens(dataDir()).New(c.Name)
 	if err != nil {
 		return err
 	}
 	// Only the digest is stored, so this is the one chance to copy it.
 	// The directory is printed because a token written into the wrong
 	// BANK_DATA_DIR is the usual reason a server keeps answering 401.
-	fmt.Fprintf(os.Stderr, "token stored in %s\n", server.TokensPath(dataDir()))
+	fmt.Fprintf(os.Stderr, "token stored in %s\n", server.Tokens(dataDir()).Path)
 	fmt.Println(token)
 	return nil
 }
@@ -977,11 +1001,11 @@ func (tokenListCmd) Run() error {
 	if err := refuseRemoteToken(); err != nil {
 		return err
 	}
-	names, err := server.ListTokens(dataDir())
+	names, err := server.Tokens(dataDir()).Names()
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "tokens in %s\n", server.TokensPath(dataDir()))
+	fmt.Fprintf(os.Stderr, "tokens in %s\n", server.Tokens(dataDir()).Path)
 	for _, n := range names {
 		fmt.Println(n)
 	}
@@ -996,7 +1020,7 @@ func (c *tokenRevokeCmd) Run() error {
 	if err := refuseRemoteToken(); err != nil {
 		return err
 	}
-	return server.RevokeToken(dataDir(), c.Name)
+	return server.Tokens(dataDir()).Revoke(c.Name)
 }
 
 func parseDate(s string) (time.Time, error) {

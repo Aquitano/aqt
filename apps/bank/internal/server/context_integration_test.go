@@ -24,7 +24,7 @@ func TestThreadContextIncludesLateSearchHit(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := ids[2002]
-	token, err := NewToken(s.dataDir, "test")
+	token, err := Tokens(s.dataDir).New("test")
 	if err != nil {
 		t.Fatal(err)
 	}

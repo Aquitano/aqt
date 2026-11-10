@@ -21,6 +21,7 @@ on:
         "mise.toml",
         ".github/workflows/bank.yml",
       ]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -48,9 +49,26 @@ jobs:
           --health-retries 20
     env:
       BANK_TEST_DATABASE_URL: postgres://bank:bank@localhost:5433/bank?sslmode=disable
+      ATTIC_TEST_DATABASE_URL: postgres://bank:bank@localhost:5433/bank?sslmode=disable
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
         with:
           install_args: go golangci-lint
-      - run: mise run bank:go
+      # attic's extraction tests call these tools.
+      - run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl tesseract-ocr poppler-utils
+      - run: "mise run bank:go ::: bank:go:unix ::: bank:go:windows"
+
+  # Windows minutes bill at 2x, so this job waits for main or a manual run.
+  windows:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/bank
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: go
+      - run: go test ./internal/attic/disk ./internal/attic/archive ./internal/attic/scratch ./internal/attic/process ./internal/attic/dedupe ./internal/attic/organize

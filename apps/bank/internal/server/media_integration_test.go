@@ -18,7 +18,7 @@ import (
 func libraryClient(t *testing.T) (*client.Client, *Server) {
 	t.Helper()
 	s, _ := attachmentServer(t)
-	token, err := NewToken(s.dataDir, "library-test")
+	token, err := Tokens(s.dataDir).New("library-test")
 	if err != nil {
 		t.Fatal(err)
 	}
