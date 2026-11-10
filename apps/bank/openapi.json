@@ -153,6 +153,113 @@
         ],
         "type": "object"
       },
+      "AttachmentTextDeleted": {
+        "additionalProperties": false,
+        "properties": {
+          "sha256": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "deleted"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "status"
+        ],
+        "type": "object"
+      },
+      "AttachmentTextRefreshed": {
+        "additionalProperties": false,
+        "properties": {
+          "messages_reindexed": {
+            "description": "Messages whose searchable attachment text changed.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "messages_reindexed"
+        ],
+        "type": "object"
+      },
+      "BlobRef": {
+        "additionalProperties": false,
+        "properties": {
+          "chars": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "extractor": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "filename",
+          "size_bytes",
+          "messages",
+          "status",
+          "chars"
+        ],
+        "type": "object"
+      },
+      "BlobText": {
+        "additionalProperties": false,
+        "properties": {
+          "chars": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "extracted_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "extractor": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "text",
+          "status",
+          "chars",
+          "extracted_at"
+        ],
+        "type": "object"
+      },
       "Contact": {
         "additionalProperties": false,
         "properties": {
@@ -403,6 +510,33 @@
         ],
         "type": "object"
       },
+      "ExtractionStat": {
+        "additionalProperties": false,
+        "properties": {
+          "blobs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "chars": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "blobs",
+          "bytes",
+          "chars"
+        ],
+        "type": "object"
+      },
       "ForbiddenError": {
         "description": "The token is valid, and its scope does not allow the request.",
         "properties": {
@@ -560,6 +694,44 @@
         "required": [
           "_tag",
           "message"
+        ],
+        "type": "object"
+      },
+      "LibraryFile": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "last_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "snippet": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "filename",
+          "mime_type",
+          "size_bytes",
+          "messages",
+          "last_at"
         ],
         "type": "object"
       },
@@ -1153,6 +1325,717 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/attachment-library": {
+      "get": {
+        "description": "One entry per distinct content, however many messages carry it. query searches the filename and the text read from the file. q and text are plain substring filters, and text adds a snippet around the match.",
+        "operationId": "searchAttachments",
+        "parameters": [
+          {
+            "description": "Words to find in the filename or in the text read from the file. At most 4096 bytes.",
+            "explode": false,
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "description": "Words to find in the filename or in the text read from the file. At most 4096 bytes.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "For query: any word (the default), every word, or the words adjacent and in order.",
+            "explode": false,
+            "in": "query",
+            "name": "match",
+            "schema": {
+              "description": "For query: any word (the default), every word, or the words adjacent and in order.",
+              "enum": [
+                "any",
+                "all",
+                "phrase"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only attachments of messages from this source, such as gmail or whatsapp.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only attachments of messages from this source, such as gmail or whatsapp.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filename contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Filename contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Text read from the file contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "text",
+            "schema": {
+              "description": "Text read from the file contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A file extension such as pdf, a media type such as application/pdf, or its first half such as image.",
+            "explode": false,
+            "in": "query",
+            "name": "type",
+            "schema": {
+              "description": "A file extension such as pdf, a media type such as application/pdf, or its first half such as image.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sent or received by this contact, by name.",
+            "explode": false,
+            "in": "query",
+            "name": "person",
+            "schema": {
+              "description": "Sent or received by this contact, by name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Carried by a message sent on or after this day, YYYY-MM-DD.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Carried by a message sent on or after this day, YYYY-MM-DD.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Carried by a message sent before this day, YYYY-MM-DD.",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Carried by a message sent before this day, YYYY-MM-DD.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LibraryFile"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Search the files attached to messages, newest first",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/v1/attachments": {
+      "get": {
+        "description": "This is the work list for reading text out of files somewhere other than the server: fetch the bytes from /v1/blobs/{sha256}, then store the result with PUT /v1/attachments/{sha256}/text.",
+        "operationId": "listAttachments",
+        "parameters": [
+          {
+            "description": "Only these text statuses, separated by commas: pending (never tried), ok, empty, needs_ocr, unsupported, too_big, failed or manual. Default: all.",
+            "explode": false,
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "description": "Only these text statuses, separated by commas: pending (never tried), ok, empty, needs_ocr, unsupported, too_big, failed or manual. Default: all.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Only content from this source.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only content from this source.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum entries. 5000 is both the default and the most one request returns.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Maximum entries. 5000 is both the default and the most one request returns.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BlobRef"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List distinct attachment content with the state of its text, largest first",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/v1/attachments/refresh": {
+      "post": {
+        "description": "Call it once after storing or deleting text, not after every file: without since it sweeps every message.",
+        "operationId": "refreshAttachmentText",
+        "parameters": [
+          {
+            "description": "Only messages with an attachment stored or read at or after this RFC 3339 time. Default: every message.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Only messages with an attachment stored or read at or after this RFC 3339 time. Default: every message.",
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentTextRefreshed"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Copy stored attachment text onto the messages that carry it, so search finds it",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/v1/attachments/stats": {
+      "get": {
+        "operationId": "getAttachmentStats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExtractionStat"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Count attachment content, bytes and text characters per text status",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/v1/attachments/{sha256}/messages": {
+      "get": {
+        "operationId": "listAttachmentMessages",
+        "parameters": [
+          {
+            "description": "The content's SHA-256, as 64 lowercase hex characters.",
+            "in": "path",
+            "name": "sha256",
+            "required": true,
+            "schema": {
+              "description": "The content's SHA-256, as 64 lowercase hex characters.",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Message"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List the messages that carry a file, newest first",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/v1/attachments/{sha256}/text": {
+      "delete": {
+        "description": "Messages keep the old text in search until the next refresh.",
+        "operationId": "deleteAttachmentText",
+        "parameters": [
+          {
+            "description": "The content's SHA-256, as 64 lowercase hex characters.",
+            "in": "path",
+            "name": "sha256",
+            "required": true,
+            "schema": {
+              "description": "The content's SHA-256, as 64 lowercase hex characters.",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentTextDeleted"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Drop the text stored for a file, which makes the file pending again",
+        "tags": [
+          "attachments"
+        ]
+      },
+      "get": {
+        "operationId": "getAttachmentText",
+        "parameters": [
+          {
+            "description": "The content's SHA-256, as 64 lowercase hex characters.",
+            "in": "path",
+            "name": "sha256",
+            "required": true,
+            "schema": {
+              "description": "The content's SHA-256, as 64 lowercase hex characters.",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlobText"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Return the text read from a file",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
     "/v1/contacts": {
       "get": {
         "operationId": "listContacts",
