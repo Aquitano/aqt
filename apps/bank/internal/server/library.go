@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -81,24 +80,6 @@ func (s *Server) handleAttachmentMessages(w http.ResponseWriter, r *http.Request
 	writeJSON(w, 200, messages)
 }
 
-func (s *Server) handleImportReports(w http.ResponseWriter, r *http.Request) {
-	limit, _, ok := libraryPage(w, r)
-	if !ok {
-		return
-	}
-	before, err := parseInt(r.URL.Query().Get("before"), 0)
-	if err != nil || before < 0 {
-		writeErr(w, 400, "invalid before")
-		return
-	}
-	reports, err := s.db.ImportReports(r.Context(), int64(before), limit)
-	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
-	}
-	writeJSON(w, 200, reports)
-}
-
 func (s *Server) handleAttachmentPreview(w http.ResponseWriter, r *http.Request) {
 	sum, ok := pathDigest(w, r)
 	if !ok {
@@ -149,40 +130,4 @@ func (s *Server) handleAttachmentPreview(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'self'")
 	http.ServeContent(w, r, "preview", info.ModTime(), f)
-}
-
-func (s *Server) handleMessageParent(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil || id <= 0 {
-		writeErr(w, 400, "invalid message id")
-		return
-	}
-	m, err := s.db.MessageParent(r.Context(), id)
-	if errors.Is(err, store.ErrNotFound) {
-		writeErr(w, 404, "parent message is not in the archive")
-		return
-	}
-	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
-	}
-	writeJSON(w, 200, m)
-}
-
-func (s *Server) handleMessageBranch(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil || id <= 0 {
-		writeErr(w, 400, "invalid message id")
-		return
-	}
-	branch, err := s.db.MessageBranch(r.Context(), id)
-	if errors.Is(err, store.ErrNotFound) {
-		writeErr(w, 404, "message is not in the archive")
-		return
-	}
-	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
-	}
-	writeJSON(w, 200, branch)
 }

@@ -48,10 +48,13 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 			t.Fatalf("text=%s: %+v", query, files)
 		}
 	}
-	for _, path := range []string{"/v1/attachment-library?since=invalid", "/v1/attachment-library?offset=-1", "/v1/attachment-library?person=absent", "/v1/import-reports?before=-1", "/v1/attachments/invalid/messages"} {
+	for _, path := range []string{"/v1/attachment-library?since=invalid", "/v1/attachment-library?offset=-1", "/v1/attachment-library?person=absent", "/v1/attachments/invalid/messages"} {
 		if w := request(path); w.Code != 400 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
+	}
+	if w := request("/v1/import-reports?before=-1"); w.Code != 422 {
+		t.Fatalf("negative before: %d %s", w.Code, w.Body)
 	}
 	id, err := st.FindMessageID(context.Background(), "proton", "m1")
 	if err != nil {
