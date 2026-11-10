@@ -17,6 +17,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 // fakeReader stands in for the database so handler tests need no Postgres.
@@ -106,7 +107,7 @@ func (f *fakeReader) Query(_ context.Context, sql string, limit int) (store.Quer
 func testServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	dir := t.TempDir()
-	token, err := Tokens(dir).New("test")
+	token, err := Tokens(dir).New("test", tokens.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,4 +530,43 @@ func (f *fakeReader) MailConflictMessages(context.Context, string, string, int64
 
 func (f *fakeReader) BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error) {
 	return []store.ThreadGroup{}, nil
+}
+
+func TestScopedTokensAreHeldToTheirScope(t *testing.T) {
+	s, _ := testServer(t)
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	mint := func(name string, scope tokens.Scope) string {
+		t.Helper()
+		token, err := Tokens(s.dataDir).New(name, scope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return token
+	}
+	reader := mint("reader", tokens.Scope{ReadOnly: true})
+	catalogueOnly := mint("catalogue", tokens.Scope{Domains: []string{"attic"}})
+	for _, tc := range []struct {
+		name, token, method, path, body string
+		want                            int
+	}{
+		{"read-only token reads", reader, http.MethodGet, "/v1/search?q=hi", "", http.StatusOK},
+		{"read-only token runs read-only SQL", reader, http.MethodPost, "/v1/query", `{"sql": "select 1"}`, http.StatusOK},
+		{"read-only token cannot write", reader, http.MethodPost, "/v1/attachments/refresh", "", http.StatusForbidden},
+		{"another domain's token is refused", catalogueOnly, http.MethodGet, "/v1/search?q=hi", "", http.StatusForbidden},
+	} {
+		req, err := http.NewRequestWithContext(t.Context(), tc.method, srv.URL+tc.path, strings.NewReader(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+tc.token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s: status %d, want %d", tc.name, resp.StatusCode, tc.want)
+		}
+	}
 }

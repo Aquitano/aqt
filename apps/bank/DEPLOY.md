@@ -273,6 +273,8 @@ export BANK_TOKEN=$(ssh vps 'cd /opt/aqt/apps/bank && docker compose run --rm -T
 
 `bank token new` and `bank token list` print the resolved token file to stderr (`token stored in /data/tokens`), which is what to check first when a token is rejected — the digests themselves are never shown. Command substitution captures stdout only, so the token still assigns cleanly; `-T` keeps Docker from allocating a TTY that would corrupt it.
 
+A token opens everything unless it is scoped. `--read-only` mints one that searches and reads but cannot import, edit or delete; ad-hoc SQL still works, because its sessions are read-only. `--domain bank` or `--domain attic` limits it to the archive or to the file catalogue below `/attic`. Give agents `bank token new <agent> --read-only`. `bank token list` shows each token's scope, and a request outside it answers 403.
+
 On the laptop:
 
 ```sh

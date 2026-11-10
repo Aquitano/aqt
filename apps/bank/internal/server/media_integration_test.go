@@ -13,12 +13,13 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 func libraryClient(t *testing.T) (*client.Client, *Server) {
 	t.Helper()
 	s, _ := attachmentServer(t)
-	token, err := Tokens(s.dataDir).New("library-test")
+	token, err := Tokens(s.dataDir).New("library-test", tokens.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -11,12 +11,13 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
 	ctx := context.Background()
 	server, database := attachmentServer(t)
-	token, err := Tokens(server.dataDir).New("mail-test")
+	token, err := Tokens(server.dataDir).New("mail-test", tokens.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}

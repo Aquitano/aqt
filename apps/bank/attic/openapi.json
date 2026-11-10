@@ -672,6 +672,42 @@
         ],
         "type": "object"
       },
+      "ForbiddenError": {
+        "description": "The token is valid, and its scope does not open the catalogue.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "Forbidden"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
       "InternalError": {
         "description": "The server failed; message says how.",
         "properties": {
@@ -1652,6 +1688,16 @@
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -1741,6 +1787,16 @@
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -1826,6 +1882,16 @@
               }
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
           },
           "404": {
             "content": {
@@ -1917,6 +1983,16 @@
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -2000,6 +2076,16 @@
               }
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
           },
           "404": {
             "content": {
@@ -2121,6 +2207,16 @@
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -2222,6 +2318,16 @@
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2285,6 +2391,16 @@
               }
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
           },
           "404": {
             "content": {
@@ -2377,6 +2493,16 @@
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -2450,6 +2576,16 @@
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -2522,6 +2658,16 @@
               }
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
           },
           "404": {
             "content": {
@@ -2633,6 +2779,16 @@
               }
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
           },
           "404": {
             "content": {
@@ -2799,6 +2955,16 @@
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+          },
           "404": {
             "content": {
               "application/json": {
@@ -2860,6 +3026,16 @@
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -2917,6 +3093,16 @@
               }
             },
             "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
           },
           "422": {
             "content": {

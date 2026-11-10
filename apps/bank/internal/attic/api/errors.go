@@ -50,6 +50,8 @@ type errorKind struct {
 var (
 	errUnauthorized = errorKind{tag: "Unauthorized", status: http.StatusUnauthorized,
 		doc: "The bearer token is missing or unknown."}
+	errForbidden = errorKind{tag: "Forbidden", status: http.StatusForbidden,
+		doc: "The token is valid, and its scope does not open the catalogue."}
 	errInvalid = errorKind{tag: "InvalidRequest", status: http.StatusUnprocessableEntity,
 		doc: "A parameter is malformed, out of range or contradicts another."}
 	errNotFound = errorKind{tag: "NotFound", status: http.StatusNotFound,
@@ -69,7 +71,7 @@ var (
 // everyOperation can fail on any route: authentication, parameter validation
 // or the server itself. A catalogue at the wrong schema stops `attic serve`
 // from starting instead.
-var everyOperation = []errorKind{errUnauthorized, errInvalid, errInternal}
+var everyOperation = []errorKind{errUnauthorized, errForbidden, errInvalid, errInternal}
 
 func (k errorKind) new(message string) *apiError {
 	return &apiError{status: k.status, Tag: k.tag, Message: message}

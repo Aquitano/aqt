@@ -16,7 +16,7 @@ import (
 func host(t *testing.T) (api.Host, string) {
 	t.Helper()
 	store := tokens.Store{Path: filepath.Join(t.TempDir(), "tokens")}
-	token, err := store.New("test")
+	token, err := store.New("test", tokens.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}

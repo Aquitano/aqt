@@ -38,6 +38,9 @@ type Server struct {
 	host   Host
 }
 
+// TokenDomain is the domain a scoped token needs for the catalogue.
+const TokenDomain = "attic"
+
 // Host is the server the API runs in: `attic serve` beside the disks, or
 // bank's server, which mounts it under BasePath with bank's own tokens.
 type Host struct {
@@ -101,7 +104,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/v1/") {
 			token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-			ok, err := s.host.Tokens.Verify(token)
+			scope, ok, err := s.host.Tokens.Verify(token)
 			if err != nil {
 				slog.Error("read tokens", "err", err)
 				writeError(w, errInternal.new("the server could not read its token file"))
@@ -110,6 +113,10 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			if !ok {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="attic"`)
 				writeError(w, errUnauthorized.new("send Authorization: Bearer <token>; the owner mints one with `"+s.host.MintCommand+"`"))
+				return
+			}
+			if !scope.Allows(TokenDomain, false) {
+				writeError(w, errForbidden.new("this token's scope ("+scope.String()+") does not open the catalogue"))
 				return
 			}
 		}

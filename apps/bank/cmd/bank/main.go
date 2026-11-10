@@ -42,6 +42,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 	"github.com/aquitano/aqt/apps/bank/internal/verify"
 	"github.com/aquitano/aqt/apps/bank/internal/webui"
 )
@@ -885,7 +886,7 @@ func (c *serveCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeStore()
-	if names, err := server.Tokens(dataDir()).Names(); err == nil && len(names) == 0 {
+	if listed, err := server.Tokens(dataDir()).List(); err == nil && len(listed) == 0 {
 		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
 	srv := server.New(d.Store, d.Blobs, dataDir(), d.ArchiveDir)
@@ -970,14 +971,16 @@ func refuseRemoteToken() error {
 }
 
 type tokenNewCmd struct {
-	Name string `arg:""`
+	Name     string   `arg:""`
+	ReadOnly bool     `help:"The token reads and searches but cannot import, edit or delete."`
+	Domain   []string `help:"Limit the token to these APIs: bank (the archive and library) or attic (the file catalogue). Default: both." enum:"bank,attic"`
 }
 
 func (c *tokenNewCmd) Run() error {
 	if err := refuseRemoteToken(); err != nil {
 		return err
 	}
-	token, err := server.Tokens(dataDir()).New(c.Name)
+	token, err := server.Tokens(dataDir()).New(c.Name, tokens.Scope{ReadOnly: c.ReadOnly, Domains: c.Domain})
 	if err != nil {
 		return err
 	}
@@ -995,13 +998,17 @@ func (tokenListCmd) Run() error {
 	if err := refuseRemoteToken(); err != nil {
 		return err
 	}
-	names, err := server.Tokens(dataDir()).Names()
+	listed, err := server.Tokens(dataDir()).List()
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "tokens in %s\n", server.Tokens(dataDir()).Path)
-	for _, n := range names {
-		fmt.Println(n)
+	for _, token := range listed {
+		if scope := token.Scope.String(); scope != "" {
+			fmt.Printf("%s\t%s\n", token.Name, scope)
+		} else {
+			fmt.Println(token.Name)
+		}
 	}
 	return nil
 }

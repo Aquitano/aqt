@@ -79,6 +79,9 @@ func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server
 	return s
 }
 
+// TokenDomain is the domain a token needs for bank's own routes.
+const TokenDomain = "bank"
+
 func Tokens(dataDir string) tokens.Store {
 	return tokens.Store{Path: filepath.Join(dataDir, "tokens"), Prefix: "bank_"}
 }
@@ -166,14 +169,21 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 		const prefix = "bearer " // scheme is case-insensitive per RFC 7235
 		auth := r.Header.Get("Authorization")
 		ok := len(auth) > len(prefix) && strings.EqualFold(auth[:len(prefix)], prefix)
+		var scope tokens.Scope
 		if ok {
 			var err error
-			if ok, err = Tokens(s.dataDir).Verify(auth[len(prefix):]); err != nil {
+			if scope, ok, err = Tokens(s.dataDir).Verify(auth[len(prefix):]); err != nil {
 				slog.Error("read tokens", "error", err)
 			}
 		}
 		if !ok {
 			writeErr(w, http.StatusUnauthorized, "invalid or missing bearer token")
+			return
+		}
+		// Ad-hoc SQL is a POST that only reads: its sessions are read-only.
+		write := r.Method != http.MethodGet && r.Method != http.MethodHead && r.URL.Path != "/v1/query"
+		if !scope.Allows(TokenDomain, write) {
+			writeErr(w, http.StatusForbidden, "this token's scope ("+scope.String()+") does not allow the request")
 			return
 		}
 		next.ServeHTTP(w, r)

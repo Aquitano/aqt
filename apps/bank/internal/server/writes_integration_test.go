@@ -14,6 +14,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 // The write routes run against the real store: the CLI reaches them only over
@@ -26,7 +27,7 @@ func TestContactImportAndCoverageRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := Tokens(dir).New("test")
+	token, err := Tokens(dir).New("test", tokens.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}

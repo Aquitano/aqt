@@ -47,12 +47,12 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	tokens := tokens.Store{Path: filepath.Join(t.TempDir(), "tokens")}
-	token, err := tokens.New("test")
+	issued := tokens.Store{Path: filepath.Join(t.TempDir(), "tokens")}
+	token, err := issued.New("test", tokens.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(api.New(st, config.Default(), api.Standalone(tokens)))
+	server := httptest.NewServer(api.New(st, config.Default(), api.Standalone(issued)))
 	defer server.Close()
 	get := func(t *testing.T, path, token string, out any) int {
 		t.Helper()

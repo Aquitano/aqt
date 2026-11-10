@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
+	tokenstore "github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 type serveCmd struct {
@@ -26,9 +27,9 @@ func (cmd *serveCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if names, err := tokens.Names(); err != nil {
+	if listed, err := tokens.List(); err != nil {
 		return err
-	} else if len(names) == 0 {
+	} else if len(listed) == 0 {
 		slog.Warn("no tokens yet; every /v1 request answers 401 until 'attic token new <name>'")
 	}
 	st, err := openReadOnlyStore(ctx)
@@ -68,7 +69,7 @@ func (cmd *tokenNewCmd) Run() error {
 	if err != nil {
 		return err
 	}
-	token, err := tokens.New(cmd.Name)
+	token, err := tokens.New(cmd.Name, tokenstore.Scope{})
 	if err != nil {
 		return err
 	}
@@ -84,9 +85,9 @@ func (tokenListCmd) Run() error {
 	if err != nil {
 		return err
 	}
-	names, err := tokens.Names()
-	for _, name := range names {
-		fmt.Println(name)
+	listed, err := tokens.List()
+	for _, token := range listed {
+		fmt.Println(token.Name)
 	}
 	return err
 }
