@@ -32,9 +32,8 @@ import (
 	"github.com/alecthomas/kong"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
-	atticconfig "github.com/aquitano/aqt/apps/bank/internal/attic/config"
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
@@ -343,7 +342,13 @@ func (c *searchCmd) Run(ctx context.Context) error {
 	if remote, ok := b.(*client.Client); ok {
 		result, err = remote.Find(ctx, query, o, findOptions)
 	} else {
-		result, err = catalog.Find(ctx, b, query, o, findOptions)
+		// A database without the catalogue searches the archive alone.
+		var disks catalog.Disks
+		if catalogue, openErr := attic.Open(ctx, databaseURL()); openErr == nil {
+			defer catalogue.Close()
+			disks = catalogue
+		}
+		result, err = catalog.Find(ctx, b, disks, query, o, findOptions)
 	}
 	if err != nil {
 		return err
@@ -884,30 +889,19 @@ func (c *serveCmd) Run(ctx context.Context) error {
 		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
 	srv := server.New(d.Store, d.Blobs, dataDir(), d.ArchiveDir)
-	catalogue, err := openCatalogue(ctx)
-	if err != nil {
-		return fmt.Errorf("attic catalogue: %w", err)
-	}
+	catalogueCtx, stopCatalogue := context.WithCancel(ctx)
+	catalogue := attic.Start(catalogueCtx, databaseURL())
 	defer catalogue.Close()
-	srv.Mount(atticBasePath, atticapi.New(catalogue, atticconfig.Default(), atticapi.Host{
+	defer stopCatalogue()
+	srv.Mount(atticBasePath, catalogue.Handler(atticapi.Host{
 		Tokens: server.Tokens(dataDir()), MintCommand: "bank token new <name>", BasePath: atticBasePath,
 	}))
+	srv.SearchDisks(catalogue)
 	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
 	return srv.ListenAndServe(ctx, c.Listen)
 }
 
 const atticBasePath = "/attic"
-
-// openCatalogue brings attic's schema in bank's database up to date, then
-// reopens it read-only: the routes bank serves for attic never write.
-func openCatalogue(ctx context.Context) (*atticstore.Store, error) {
-	migrated, err := atticstore.Open(ctx, databaseURL())
-	if err != nil {
-		return nil, err
-	}
-	migrated.Close()
-	return atticstore.OpenReadOnly(ctx, databaseURL())
-}
 
 // uiCmd starts the local archive browser: the embedded page plus a proxy that
 // signs /v1 requests with BANK_TOKEN, so the token stays out of the browser.

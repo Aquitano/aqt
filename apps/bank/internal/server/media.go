@@ -540,7 +540,7 @@ func (s *Server) handleFind(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	result, err := catalog.Find(r.Context(), s.db, o.Query, messageOpts, o)
+	result, err := catalog.Find(r.Context(), s.db, s.disks, o.Query, messageOpts, o)
 	if err != nil {
 		var missing *store.ErrNoContact
 		if errors.Is(err, store.ErrMailboxSource) || errors.As(err, &missing) {

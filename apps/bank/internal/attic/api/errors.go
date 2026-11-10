@@ -62,6 +62,8 @@ var (
 		extra: map[string]reflect.Type{"volumes": reflect.TypeFor[[]retrieve.OfflineVolume]()}}
 	errInternal = errorKind{tag: "Internal", status: http.StatusInternalServerError,
 		doc: "The server failed; message says how."}
+	// A host answers this before the API exists, so no operation documents it.
+	errNotReady = errorKind{tag: "NotReady", status: http.StatusServiceUnavailable}
 )
 
 // everyOperation can fail on any route: authentication, parameter validation

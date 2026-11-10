@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
@@ -54,7 +55,11 @@ type Server struct {
 	jsonReadTimeout time.Duration
 	extraction      extraction
 	mounts          map[string]http.Handler
+	disks           catalog.Disks
 }
+
+// SearchDisks adds the files d catalogues to combined search.
+func (s *Server) SearchDisks(d catalog.Disks) { s.disks = d }
 
 // Mount serves another domain's API below prefix, such as /attic. The handler
 // sees the full path and does its own authentication.

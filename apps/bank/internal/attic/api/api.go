@@ -117,6 +117,13 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 	})
 }
 
+// NotReady answers for a catalogue its host has not opened yet.
+func NotReady(w http.ResponseWriter) {
+	e := errNotReady.new("the catalogue is migrating or its migration failed; the server log says which")
+	e.Recovery = &recovery{Action: "Retry later", Instructions: "Retry in a minute. If it persists, ask the owner to read the server log."}
+	writeError(w, e)
+}
+
 func writeError(w http.ResponseWriter, e *apiError) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(e.status)

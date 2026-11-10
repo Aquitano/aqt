@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -17,16 +18,26 @@ type Reader interface {
 	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
 }
 
+// Disks is the catalogue of files that live on disks, not in the archive.
+type Disks interface {
+	SearchDisks(ctx context.Context, query string, limit, offset int) (view.SearchResult, error)
+}
+
 type Result struct {
 	library.SearchResult
 	Messages    []store.Message     `json:"messages"`
 	Attachments []store.LibraryFile `json:"attachments"`
+	Disks       view.SearchResult   `json:"disks"`
 }
 
-func Find(ctx context.Context, reader Reader, query string, messages store.SearchOpts, options library.ListOptions) (Result, error) {
+// Find searches every kind of record. disks may be nil.
+func Find(ctx context.Context, reader Reader, disks Disks, query string, messages store.SearchOpts, options library.ListOptions) (Result, error) {
 	result := Result{Messages: []store.Message{}, Attachments: []store.LibraryFile{}, SearchResult: library.SearchResult{
 		Items: []library.Item{}, Activity: []library.Activity{}, Collections: []library.CollectionSummary{},
 		Files: []library.File{}, Pages: []library.Page{}, Coverage: []string{},
+	}, Disks: view.SearchResult{
+		Entries: []view.Place{}, Members: []view.MemberMatch{}, Texts: []view.TextMatch{},
+		Metadata: []view.TextMatch{}, Analyses: []view.AnalysisMatch{},
 	}}
 	if err := messages.ValidateQuery(query); err != nil {
 		return result, err
@@ -71,11 +82,20 @@ func Find(ctx context.Context, reader Reader, query string, messages store.Searc
 			result.Attachments = []store.LibraryFile{}
 		}
 	}
+	dated := options.Since != "" || options.Until != "" || !messages.Since.IsZero() || !messages.Until.IsZero()
+	if disks != nil && !mailOnly && !dated && options.Account == "" && messages.Source == "" && (options.Kind == "" || options.Kind == "file") {
+		// The archive answers without the catalogue, which may still be migrating.
+		if found, err := disks.SearchDisks(ctx, query, messages.Limit, messages.Offset); err != nil {
+			result.Coverage = append(result.Coverage, "Files on disks are missing from this search: "+err.Error()+".")
+		} else {
+			result.Disks = found
+		}
+	}
 	if options.Account != "" {
 		result.Coverage = append(result.Coverage, "Account filters apply to the library. Correspondence is excluded because its account model differs.")
 	}
-	if !mailOnly && options.Kind != "message" && (options.Since != "" || options.Until != "" || !messages.Since.IsZero() || !messages.Until.IsZero()) {
-		result.Coverage = append(result.Coverage, "Date filters apply to correspondence, activity and message attachments. Items, collections, standalone files and pages have no event date and are returned without date filtering.")
+	if !mailOnly && options.Kind != "message" && dated {
+		result.Coverage = append(result.Coverage, "Date filters apply to correspondence, activity and message attachments. Items, collections, standalone files and pages have no event date and are returned without date filtering. Files on disks are left out.")
 	}
 	return result, nil
 }

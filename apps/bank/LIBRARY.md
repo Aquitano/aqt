@@ -66,7 +66,7 @@ Bank searches the most recent successful publication. Changes in Brain are visib
 
 ## Query and edit
 
-`bank search` and the UI Search tab return separate groups for correspondence, media, activity, collections, files, message attachments, and published pages. Each group has its own bounded page. Existing message citations still work with `bank show`.
+`bank search` and the UI Search tab return separate groups for correspondence, media, activity, collections, files, message attachments, and published pages. `bank search` adds the files [attic](attic/README.md) catalogues on disks, cited as `attic:<ref>`: names and paths, archive members, document text, embedded tags and OCR. For that group every word has to match. It is left out when a sender, source, account, date or a kind other than `file` narrows the search, and when the catalogue cannot answer, which `coverage` then says. Each group has its own bounded page. Existing message citations still work with `bank show`.
 
 ```sh
 bank search "arrival" --json

@@ -197,7 +197,9 @@ attic serve --listen 127.0.0.1:8490
 
 ### Served by bank
 
-`bank serve` migrates the `attic` schema in bank's database on startup and answers the same routes below `/attic`: `/attic/v1/search`, `/attic/openapi.json` and so on. They take bank's tokens (`bank token new <name>`), so one token reads both the archive and the catalogue. That server has no disks attached, so a download answers `Unavailable` and names the disks that hold a copy. To fetch a file, ask an `attic serve` on the machine with the disk.
+`bank serve` migrates the `attic` schema in bank's database and answers the same routes below `/attic`: `/attic/v1/search`, `/attic/openapi.json` and so on. The migration runs in the background, because it can rebuild search indexes for minutes. Until it finishes, and for as long as it has failed, those routes answer 503 with `_tag: NotReady` while the rest of bank works; the server log has the reason. They take bank's tokens (`bank token new <name>`), so one token reads both the archive and the catalogue. That server has no disks attached, so a download answers `Unavailable` and names the disks that hold a copy. To fetch a file, ask an `attic serve` on the machine with the disk.
+
+`bank search` includes the catalogue: a search without sender, source, account or date filters also returns files on disks, under `disks` in `--json`.
 
 Scans still write through `DATABASE_URL`, so the catalogue bank serves is whatever was scanned into bank's database.
 
