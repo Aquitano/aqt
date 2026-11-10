@@ -55,11 +55,11 @@ type Server struct {
 	jsonReadTimeout time.Duration
 	extraction      extraction
 	mounts          map[string]http.Handler
-	disks           catalog.Disks
+	catalogue       catalog.Catalogue
 }
 
-// SearchDisks adds the files d catalogues to combined search.
-func (s *Server) SearchDisks(d catalog.Disks) { s.disks = d }
+// UseCatalogue adds the files on disks to combined search and the timeline.
+func (s *Server) UseCatalogue(c catalog.Catalogue) { s.catalogue = c }
 
 // Mount serves another domain's API below prefix, such as /attic. The handler
 // sees the full path and does its own authentication.
@@ -139,6 +139,8 @@ func (s *Server) Handler() http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
+	s.registerAPI(v1)
+	mux.Handle("GET /openapi.json", v1)
 	mux.Handle("/v1/", s.requireToken(v1))
 	for prefix, h := range s.mounts {
 		mux.Handle(prefix+"/", h)

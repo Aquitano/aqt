@@ -17,6 +17,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
@@ -84,20 +85,7 @@ func Spec() ([]byte, error) {
 }
 
 func apiConfig(host Host) huma.Config {
-	cfg := huma.DefaultConfig("attic", "1")
-	cfg.Info.Description = description
-	cfg.DocsPath = ""
-	cfg.SchemasPath = ""
-	// The default hooks add a $schema link to every body; agents gain nothing from it.
-	cfg.CreateHooks = nil
-	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
-		"bearer": {Type: "http", Scheme: "bearer", Description: "A token from `" + host.MintCommand + "`."},
-	}
-	cfg.Security = []map[string][]string{{"bearer": {}}}
-	if host.BasePath != "" {
-		cfg.Servers = []*huma.Server{{URL: host.BasePath}}
-	}
-	return cfg
+	return httpapi.Config("attic", description, host.MintCommand, host.BasePath)
 }
 
 func (s *Server) authenticate(next http.Handler) http.Handler {
@@ -107,16 +95,16 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			scope, ok, err := s.host.Tokens.Verify(token)
 			if err != nil {
 				slog.Error("read tokens", "err", err)
-				writeError(w, errInternal.new("the server could not read its token file"))
+				httpapi.Write(w, httpapi.Internal.New("the server could not read its token file"))
 				return
 			}
 			if !ok {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="attic"`)
-				writeError(w, errUnauthorized.new("send Authorization: Bearer <token>; the owner mints one with `"+s.host.MintCommand+"`"))
+				httpapi.Write(w, httpapi.Unauthorized.New("send Authorization: Bearer <token>; the owner mints one with `"+s.host.MintCommand+"`"))
 				return
 			}
 			if !scope.Allows(TokenDomain, false) {
-				writeError(w, errForbidden.new("this token's scope ("+scope.String()+") does not open the catalogue"))
+				httpapi.Write(w, httpapi.Forbidden.New("this token's scope ("+scope.String()+") does not open the catalogue"))
 				return
 			}
 		}
@@ -126,15 +114,6 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 
 // NotReady answers for a catalogue its host has not opened yet.
 func NotReady(w http.ResponseWriter) {
-	e := errNotReady.new("the catalogue is migrating or its migration failed; the server log says which")
-	e.Recovery = &recovery{Action: "Retry later", Instructions: "Retry in a minute. If it persists, ask the owner to read the server log."}
-	writeError(w, e)
-}
-
-func writeError(w http.ResponseWriter, e *apiError) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(e.status)
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(e)
+	httpapi.Write(w, httpapi.NotReady.New("the catalogue is migrating or its migration failed; the server log says which").
+		Recover("Retry later", "Retry in a minute. If it persists, ask the owner to read the server log."))
 }

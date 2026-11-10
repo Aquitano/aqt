@@ -7,6 +7,8 @@ ingestion. Removing an importer does not delete previously archived records.
 
 The same Go module holds [attic](attic/README.md), the catalogue of files on disks that come and go. Its tables are in the `attic` schema of this database, `cmd/attic` scans, and `bank serve` answers its read API below `/attic` with bank's tokens, and `bank search` returns its files beside messages and media.
 
+New routes are defined from typed Go handlers in `internal/server/api.go`, on the operation and error types in `internal/httpapi` that attic's API also uses. `GET /openapi.json` describes them, and a failure is JSON with a `_tag`, a `message` and, where the caller can act, a `recovery`. `openapi.json` is the committed copy: regenerate it with `go run ./cmd/bank openapi > openapi.json`, because a test fails while it is stale. The older `/v1` routes are not in the document yet.
+
 See [MAIL.md](MAIL.md) for folder-preserving imports, mail filters, conversation grouping, and metadata recovery. See [IMAP.md](IMAP.md) for the Proton Bridge and Gmail collector.
 
 ## Quickstart

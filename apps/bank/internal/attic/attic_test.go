@@ -69,4 +69,7 @@ func TestStartMigratesAnEmptyDatabaseThenServes(t *testing.T) {
 	if _, err := catalogue.SearchDisks(t.Context(), "report", 5, 0); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := catalogue.ModifiedFiles(t.Context(), time.Unix(0, 0), time.Now(), 5); err != nil {
+		t.Fatal(err)
+	}
 }

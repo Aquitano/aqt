@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
@@ -92,6 +93,20 @@ func (c *Catalogue) Handler(host api.Host) http.Handler {
 		}
 		serve().ServeHTTP(w, r)
 	})
+}
+
+// ModifiedFiles lists files on disks last modified in [since, until), oldest first.
+func (c *Catalogue) ModifiedFiles(ctx context.Context, since, until time.Time, limit int) ([]view.Place, error) {
+	st, err := c.ready()
+	if err != nil {
+		return nil, err
+	}
+	vols, err := st.KnownVolumes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hits, err := st.Modified(ctx, since, until, limit)
+	return view.Places(hits, view.OnlineRoots(vols)), err
 }
 
 // SearchDisks finds files by name, path, archive listing, text, tags and OCR.

@@ -66,6 +66,8 @@ Bank searches the most recent successful publication. Changes in Brain are visib
 
 ## Query and edit
 
+`bank timeline 2019-03` lists what happened in a year, a month or a day, oldest first: messages by when they were sent, activity by when it happened, and files on disks by when they were last modified. `--group message`, `activity` or `file` narrows it. `--limit` caps each group on its own, so a day with thousands of files cannot push the messages out, and the output names the groups that reached it. Activity without a date and files that have gone missing are left out.
+
 `bank search` and the UI Search tab return separate groups for correspondence, media, activity, collections, files, message attachments, and published pages. `bank search` adds the files [attic](attic/README.md) catalogues on disks, cited as `attic:<ref>`: names and paths, archive members, document text, embedded tags and OCR. For that group every word has to match. It is left out when a sender, source, account, date or a kind other than `file` narrows the search, and when the catalogue cannot answer, which `coverage` then says. Each group has its own bounded page. Existing message citations still work with `bank show`.
 
 ```sh

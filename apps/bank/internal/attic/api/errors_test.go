@@ -16,7 +16,7 @@ func TestUnavailableKeepsAnEmptyVolumeList(t *testing.T) {
 	if !strings.Contains(string(body), `"volumes":[]`) {
 		t.Fatalf("body = %s, want the documented empty volumes list", body)
 	}
-	other, err := json.Marshal(errNotFound.new("gone"))
+	other, err := json.Marshal(errNotFound.New("gone"))
 	if err != nil || strings.Contains(string(other), "volumes") {
 		t.Fatalf("a NotFound error carries volumes: %s %v", other, err)
 	}

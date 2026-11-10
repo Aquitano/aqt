@@ -540,7 +540,12 @@ func (s *Server) handleFind(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	result, err := catalog.Find(r.Context(), s.db, s.disks, o.Query, messageOpts, o)
+	// A nil catalogue must reach Find as a nil interface.
+	var disks catalog.Disks
+	if s.catalogue != nil {
+		disks = s.catalogue
+	}
+	result, err := catalog.Find(r.Context(), s.db, disks, o.Query, messageOpts, o)
 	if err != nil {
 		var missing *store.ErrNoContact
 		if errors.Is(err, store.ErrMailboxSource) || errors.As(err, &missing) {

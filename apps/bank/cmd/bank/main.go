@@ -76,6 +76,8 @@ type cli struct {
 	Contact     contactCmd     `cmd:"" help:"One person across their many identities."`
 	Show        showCmd        `cmd:"" help:"Print one message and its attachments."`
 	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness."`
+	Timeline    timelineCmd    `cmd:"" help:"What happened in a year, month or day: messages, activity and files on disks."`
+	OpenAPI     openapiCmd     `cmd:"" name:"openapi" help:"Print the OpenAPI document of the typed routes." hidden:""`
 	Coverage    coverageCmd    `cmd:"" help:"Note what a source holds (empty text clears)."`
 	Query       queryCmd       `cmd:"" help:"Read-only ad-hoc SQL: READ ONLY tx, 15s timeout, row cap 100."`
 	Fetch       fetchCmd       `cmd:"" help:"Write an attachment to a file."`
@@ -897,7 +899,7 @@ func (c *serveCmd) Run(ctx context.Context) error {
 	srv.Mount(atticBasePath, catalogue.Handler(atticapi.Host{
 		Tokens: server.Tokens(dataDir()), MintCommand: "bank token new <name>", BasePath: atticBasePath,
 	}))
-	srv.SearchDisks(catalogue)
+	srv.UseCatalogue(catalogue)
 	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
 	return srv.ListenAndServe(ctx, c.Listen)
 }

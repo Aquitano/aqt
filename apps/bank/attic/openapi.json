@@ -673,7 +673,7 @@
         "type": "object"
       },
       "ForbiddenError": {
-        "description": "The token is valid, and its scope does not open the catalogue.",
+        "description": "The token is valid, and its scope does not allow the request.",
         "properties": {
           "_tag": {
             "enum": [
@@ -1696,7 +1696,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -1795,7 +1795,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -1891,7 +1891,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -1991,7 +1991,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -2085,7 +2085,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -2215,7 +2215,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -2326,7 +2326,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "422": {
             "content": {
@@ -2400,7 +2400,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -2501,7 +2501,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -2584,7 +2584,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -2667,7 +2667,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -2788,7 +2788,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -2963,7 +2963,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "404": {
             "content": {
@@ -3034,7 +3034,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "422": {
             "content": {
@@ -3102,7 +3102,7 @@
                 }
               }
             },
-            "description": "Forbidden: the token is valid, and its scope does not open the catalogue."
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
           },
           "422": {
             "content": {

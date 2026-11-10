@@ -1,0 +1,386 @@
+{
+  "components": {
+    "schemas": {
+      "Event": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "description": "When it happened. Midnight when precision is day.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "group": {
+            "description": "Which records the event comes from.",
+            "enum": [
+              "message",
+              "activity",
+              "file"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "description": "message, the activity kind such as watch or listen, or file.",
+            "type": "string"
+          },
+          "precision": {
+            "description": "day when the source recorded a date without a time.",
+            "enum": [
+              "instant",
+              "day"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "description": "What to cite and resolve: bank:\u003cref\u003e for a message, an activity ID, or attic:\u003cref\u003e for a hashed file.",
+            "type": "string"
+          },
+          "source": {
+            "description": "The message or activity source, such as gmail or netflix, or the disk's label.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Subject or opening words, the activity's title, or the file's path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "precision",
+          "group",
+          "kind",
+          "source",
+          "ref",
+          "title"
+        ],
+        "type": "object"
+      },
+      "ForbiddenError": {
+        "description": "The token is valid, and its scope does not allow the request.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "Forbidden"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "InternalError": {
+        "description": "The server failed; message says how.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "Internal"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "InvalidRequestError": {
+        "description": "A parameter is malformed, out of range or contradicts another.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "InvalidRequest"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Timeline": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "description": "What this answer leaves out and why.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "events": {
+            "description": "Oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "truncated": {
+            "description": "Groups that reached limit; narrow the dates or ask for one group to see the rest.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "events",
+          "truncated",
+          "coverage"
+        ],
+        "type": "object"
+      },
+      "UnauthorizedError": {
+        "description": "The bearer token is missing or unknown.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "Unauthorized"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "description": "A token from `bank token new \u003cname\u003e`.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "bank is one person's archive: messages (mail, chats, AI conversations), a media\nlibrary with what was watched, listened to and read, files, and published notes. The\nfile catalogue of disks that come and go is served below /attic, with a document of\nits own at /attic/openapi.json.\n\nCite a message as bank:\u003cref\u003e, a library record by its ID, and a file on a disk as\nattic:\u003cref\u003e.\n\nThis document describes the operations defined from typed Go handlers. The older /v1\nroutes that the bank CLI uses are not in it yet.",
+    "title": "bank",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/timeline": {
+      "get": {
+        "description": "Messages by when they were sent, activity (watching, listening, reading) by when it happened, and files on disks by when they were last modified, merged oldest first. limit caps each group on its own; truncated names the groups that reached it.",
+        "operationId": "getTimeline",
+        "parameters": [
+          {
+            "description": "First day, as YYYY-MM-DD in the server's time zone.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "description": "First day, as YYYY-MM-DD in the server's time zone.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The day after the last day. Default: the day after since.",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "The day after the last day. Default: the day after since.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only these groups. Default: all three.",
+            "explode": false,
+            "in": "query",
+            "name": "group",
+            "schema": {
+              "description": "Only these groups. Default: all three.",
+              "items": {
+                "enum": [
+                  "message",
+                  "activity",
+                  "file"
+                ],
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Maximum events per group.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 200,
+              "description": "Maximum events per group.",
+              "format": "int64",
+              "maximum": 2000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Timeline"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List what happened between two days, across messages, activity and files",
+        "tags": [
+          "timeline"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ]
+}
