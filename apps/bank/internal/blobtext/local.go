@@ -7,12 +7,39 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // Local is an Archive backed by Postgres and the blob store on the same box.
 type Local struct {
 	Store *store.Store
 	Blobs *blob.Store
+	// Known, when set, is asked for a blob's text before the blob is read.
+	Known TextSource
+}
+
+// TextSource is another store that may already hold the text of the same
+// bytes, found by their BLAKE3 digest.
+type TextSource interface {
+	ReadText(ctx context.Context, blake3 []byte) (text, extractor string, err error)
+}
+
+// KnownText is the text Known holds for a blob. Nothing is known before the
+// blob's BLAKE3 digest is recorded, and any failure means reading the blob
+// as usual.
+func (l Local) KnownText(ctx context.Context, sha256 string) (extract.Result, bool) {
+	if l.Known == nil {
+		return extract.Result{}, false
+	}
+	digest, err := l.Store.BlobDigest(ctx, sha256)
+	if err != nil || digest == nil {
+		return extract.Result{}, false
+	}
+	text, extractor, err := l.Known.ReadText(ctx, digest)
+	if err != nil || text == "" {
+		return extract.Result{}, false
+	}
+	return extract.Result{Text: text, Extractor: "attic: " + extractor, Status: extract.StatusOK}, true
 }
 
 func (l Local) ListBlobs(ctx context.Context, o store.ListBlobsOpts) ([]store.BlobRef, error) {

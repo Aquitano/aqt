@@ -76,6 +76,9 @@ func TestStartMigratesAnEmptyDatabaseThenServes(t *testing.T) {
 	if _, err := catalogue.ModifiedFiles(t.Context(), time.Unix(0, 0), time.Now(), 5); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, err := catalogue.ReadText(t.Context(), make([]byte, 32)); !errors.Is(err, attic.ErrNotFound) {
+		t.Fatalf("text of bytes no disk holds: %v", err)
+	}
 	if _, err := catalogue.Content(t.Context(), "attic:0000000000000000"); !errors.Is(err, attic.ErrNotFound) {
 		t.Fatalf("a ref no content has: %v", err)
 	}

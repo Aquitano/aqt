@@ -198,8 +198,9 @@ func (s *Server) extractUntilCurrent() {
 		s.extraction.arrived = time.Time{}
 		s.extraction.mu.Unlock()
 		started := time.Now()
-		backlog := s.extractPending(ctx, since, refreshSince)
+		// Digests first: with one, a blob can take its text from the catalogue.
 		s.digestBlobs(ctx)
+		backlog := s.extractPending(ctx, since, refreshSince)
 		refreshSince = started
 		s.extraction.mu.Lock()
 		again := !s.extraction.stopping && (backlog || s.extraction.again)
@@ -216,7 +217,11 @@ func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Ti
 	o := extract.DefaultOptions()
 	o.TempDir = uploadStagingDir(s.dataDir)
 	sel := blobtext.Selection{Limit: blobtext.PostImportLimit, NewestFirst: true, StoredSince: since, RefreshSince: refreshSince}
-	summary, err := blobtext.Run(ctx, blobtext.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
+	local := blobtext.Local{Store: s.db, Blobs: s.blobs}
+	if s.catalogue != nil {
+		local.Known = s.catalogue
+	}
+	summary, err := blobtext.Run(ctx, local, sel, o, nil)
 	if err != nil {
 		slog.Error("reading attachment text", "error", err)
 		return false

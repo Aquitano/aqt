@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/hex"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,14 @@ import (
 type modifiedFiles struct {
 	at      time.Time
 	content view.Content
+	text    string
+}
+
+func (m modifiedFiles) ReadText(_ context.Context, blake3 []byte) (string, string, error) {
+	if m.text == "" || hex.EncodeToString(blake3) != m.content.BLAKE3 {
+		return "", "", atticstore.ErrNotFound
+	}
+	return m.text, "pdf", nil
 }
 
 func (m modifiedFiles) Content(_ context.Context, ref string) (view.Content, error) {

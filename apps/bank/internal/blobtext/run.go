@@ -115,7 +115,15 @@ func Run(ctx context.Context, a Archive, sel Selection, o extract.Options, progr
 		if err := ctx.Err(); err != nil {
 			return sum, err
 		}
-		res := extractOne(ctx, a, b, o)
+		res, known := extract.Result{}, false
+		if reuse, ok := a.(interface {
+			KnownText(context.Context, string) (extract.Result, bool)
+		}); ok {
+			res, known = reuse.KnownText(ctx, b.SHA256)
+		}
+		if !known {
+			res = extractOne(ctx, a, b, o)
+		}
 		if err := a.PutBlobText(ctx, store.BlobText{
 			SHA256:    b.SHA256,
 			Text:      res.Text,

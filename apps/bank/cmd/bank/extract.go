@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -159,7 +160,14 @@ func openAttachments(ctx context.Context) (attachmentBackend, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return blobtext.Local{Store: d.Store, Blobs: d.Blobs}, closeStore, nil
+	local := blobtext.Local{Store: d.Store, Blobs: d.Blobs}
+	// A database without the catalogue reads every blob itself.
+	catalogue, err := attic.Open(ctx, databaseURL())
+	if err != nil {
+		return local, closeStore, nil
+	}
+	local.Known = catalogue
+	return local, func() { catalogue.Close(); closeStore() }, nil
 }
 
 // stagingDir is where downloads and rasterized pages go: the data directory,

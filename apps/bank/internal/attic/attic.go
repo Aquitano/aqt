@@ -137,6 +137,16 @@ func (c *Catalogue) Content(ctx context.Context, ref string) (view.Content, erro
 	return view.NewContent(detail, view.OnlineRoots(vols)), nil
 }
 
+// ReadText returns the complete text the catalogue read from the bytes with
+// this BLAKE3 digest, and what read it. It is ErrNotFound when there is none.
+func (c *Catalogue) ReadText(ctx context.Context, blake3 []byte) (text, extractor string, err error) {
+	st, err := c.ready()
+	if err != nil {
+		return "", "", err
+	}
+	return st.ReadText(ctx, blake3)
+}
+
 // ModifiedFiles lists files on disks last modified in [since, until), oldest first.
 func (c *Catalogue) ModifiedFiles(ctx context.Context, since, until time.Time, limit int) ([]view.Place, error) {
 	st, err := c.ready()

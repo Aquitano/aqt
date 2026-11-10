@@ -15,6 +15,31 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
+func TestExtractionTakesTextTheCatalogueAlreadyRead(t *testing.T) {
+	ctx := context.Background()
+	c, s := libraryClient(t)
+	// Bytes bank has no extractor for, which the catalogue read on a disk.
+	bytes := []byte{0, 1, 2, 3, 'n', 'o', 't', ' ', 't', 'e', 'x', 't'}
+	digest := blake3.Sum256(bytes)
+	onDisk := view.Content{}
+	onDisk.BLAKE3 = hex.EncodeToString(digest[:])
+	s.UseCatalogue(modifiedFiles{content: onDisk, text: "the scanned contract, read once"})
+
+	path := filepath.Join(t.TempDir(), "scan.bin")
+	if err := os.WriteFile(path, bytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files, err := c.UploadLibraryFiles(ctx, []string{path}, "", "", "")
+	if err != nil || len(files) != 1 {
+		t.Fatalf("upload: %+v, %v", files, err)
+	}
+	s.extraction.done.Wait()
+	got, err := s.db.GetBlobText(ctx, files[0].SHA256)
+	if err != nil || got.Status != "ok" || got.Text != "the scanned contract, read once" || got.Extractor != "attic: pdf" {
+		t.Fatalf("blob text = %+v, %v", got, err)
+	}
+}
+
 func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 	ctx := context.Background()
 	c, s := libraryClient(t)
