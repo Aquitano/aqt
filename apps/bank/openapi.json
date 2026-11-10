@@ -1,6 +1,64 @@
 {
   "components": {
     "schemas": {
+      "Activity": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "duration_seconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "occurred": {
+            "$ref": "#/components/schemas/Date"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "source": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "item_id",
+          "kind",
+          "title",
+          "occurred",
+          "provenance",
+          "evidence",
+          "source",
+          "account",
+          "external_id"
+        ],
+        "type": "object"
+      },
       "AmbiguousRefError": {
         "description": "The ref prefix matches several contents. Retry with one of the candidates' longer refs.",
         "properties": {
@@ -44,6 +102,199 @@
           "_tag",
           "candidates",
           "message"
+        ],
+        "type": "object"
+      },
+      "AnalysisMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "description": "Path of the best copy: attached, present and current where possible.",
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "places": {
+            "description": "Every place the content lives or lived, present copies first.",
+            "items": {
+              "$ref": "#/components/schemas/Place"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "prompt_version": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "score": {
+            "format": "double",
+            "type": "number"
+          },
+          "snippet": {
+            "type": "string"
+          },
+          "task": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "display",
+          "online",
+          "places",
+          "ref",
+          "snippet",
+          "task",
+          "provider",
+          "model",
+          "prompt_version"
+        ],
+        "type": "object"
+      },
+      "Collection": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "personal": {
+            "type": "boolean"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/Snapshot"
+          },
+          "source": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "description",
+          "personal",
+          "revision",
+          "source",
+          "account",
+          "external_id"
+        ],
+        "type": "object"
+      },
+      "CollectionSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "personal": {
+            "type": "boolean"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotSummary"
+          },
+          "source": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "description",
+          "personal",
+          "revision",
+          "source",
+          "account",
+          "external_id"
+        ],
+        "type": "object"
+      },
+      "Date": {
+        "additionalProperties": false,
+        "properties": {
+          "precision": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "precision"
+        ],
+        "type": "object"
+      },
+      "Entry": {
+        "additionalProperties": false,
+        "properties": {
+          "added": {
+            "$ref": "#/components/schemas/Date"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "position": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "position",
+          "external_id",
+          "added"
         ],
         "type": "object"
       },
@@ -97,6 +348,65 @@
           "source",
           "ref",
           "title"
+        ],
+        "type": "object"
+      },
+      "File": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "text_status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sha256",
+          "filename",
+          "mime_type",
+          "size_bytes",
+          "item_ids",
+          "provenance",
+          "text_status",
+          "source",
+          "account",
+          "external_id"
         ],
         "type": "object"
       },
@@ -205,6 +515,286 @@
         "required": [
           "_tag",
           "message"
+        ],
+        "type": "object"
+      },
+      "Item": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "album": {
+            "type": "string"
+          },
+          "creators": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "duration_seconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "episode": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Provenance"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "file_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_id": {
+            "type": "string"
+          },
+          "season": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "series": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/State"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "year": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "description",
+          "url",
+          "provider",
+          "provider_id",
+          "creators",
+          "series",
+          "album",
+          "provenance",
+          "evidence",
+          "state",
+          "file_ids",
+          "source",
+          "account",
+          "external_id"
+        ],
+        "type": "object"
+      },
+      "ItemSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "source"
+        ],
+        "type": "object"
+      },
+      "LibraryFile": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "last_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "messages": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "mime_type": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "snippet": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sha256",
+          "filename",
+          "mime_type",
+          "size_bytes",
+          "messages",
+          "last_at"
+        ],
+        "type": "object"
+      },
+      "LibraryRevisionConflictError": {
+        "description": "The record changed since expected_revision was read. Read it again and repeat the edit on its current revision.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "LibraryRevisionConflict"
+            ],
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "LibrarySearchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "activity": {
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "collections": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionSummary"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "coverage": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/File"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/Page"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "activity",
+          "collections",
+          "files",
+          "pages",
+          "coverage"
         ],
         "type": "object"
       },
@@ -318,6 +908,66 @@
           "kind",
           "path",
           "n"
+        ],
+        "type": "object"
+      },
+      "MemberMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "archive": {
+            "description": "Every place the archive lives, present copies first.",
+            "items": {
+              "$ref": "#/components/schemas/Place"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "crc32": {
+            "type": "string"
+          },
+          "display": {
+            "description": "Path of the archive's best copy, then the member's path inside it.",
+            "type": "string"
+          },
+          "encrypted": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "modified": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "score": {
+            "format": "double",
+            "type": "number"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "display",
+          "online",
+          "archive",
+          "id",
+          "kind",
+          "path",
+          "size"
         ],
         "type": "object"
       },
@@ -482,6 +1132,165 @@
         ],
         "type": "object"
       },
+      "Page": {
+        "additionalProperties": false,
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "answers": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "sensitivity": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "title",
+          "body",
+          "answers",
+          "tags",
+          "aliases",
+          "content_hash",
+          "revision",
+          "sensitivity",
+          "provenance",
+          "source",
+          "account",
+          "external_id"
+        ],
+        "type": "object"
+      },
+      "Place": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "description": "Path to open on the machine serving the catalogue, or label:\\path while the disk is detached.",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "missing": {
+            "type": "boolean"
+          },
+          "modified": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "online": {
+            "description": "Whether the entry's disk is attached to that machine now.",
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "score": {
+            "format": "double",
+            "type": "number"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          },
+          "volume": {
+            "type": "string"
+          },
+          "volume_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "display",
+          "online",
+          "id",
+          "volume_id",
+          "volume",
+          "kind",
+          "path",
+          "size"
+        ],
+        "type": "object"
+      },
+      "Provenance": {
+        "additionalProperties": false,
+        "properties": {
+          "locator": {
+            "type": "string"
+          },
+          "raw_ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "raw_ref",
+          "locator"
+        ],
+        "type": "object"
+      },
       "RefCandidate": {
         "additionalProperties": false,
         "properties": {
@@ -560,6 +1369,233 @@
         ],
         "type": "object"
       },
+      "Result": {
+        "additionalProperties": false,
+        "properties": {
+          "activity": {
+            "items": {
+              "$ref": "#/components/schemas/Activity"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/LibraryFile"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "collections": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionSummary"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "coverage": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "disks": {
+            "$ref": "#/components/schemas/SearchResult"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/File"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/Page"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "messages",
+          "attachments",
+          "disks",
+          "items",
+          "activity",
+          "collections",
+          "files",
+          "pages",
+          "coverage"
+        ],
+        "type": "object"
+      },
+      "SearchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "analyses": {
+            "description": "Files whose OCR or image description matches.",
+            "items": {
+              "$ref": "#/components/schemas/AnalysisMatch"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "entries": {
+            "description": "Files, folders and links whose name or path matches.",
+            "items": {
+              "$ref": "#/components/schemas/Place"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "members": {
+            "description": "Files and folders inside archives.",
+            "items": {
+              "$ref": "#/components/schemas/MemberMatch"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "metadata": {
+            "description": "Files whose embedded tags match.",
+            "items": {
+              "$ref": "#/components/schemas/TextMatch"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "texts": {
+            "description": "Documents whose extracted text matches.",
+            "items": {
+              "$ref": "#/components/schemas/TextMatch"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "entries",
+          "members",
+          "texts",
+          "metadata",
+          "analyses"
+        ],
+        "type": "object"
+      },
+      "Snapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "captured": {
+            "$ref": "#/components/schemas/Date"
+          },
+          "completeness": {
+            "type": "string"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "external_id",
+          "captured",
+          "completeness",
+          "provenance",
+          "entries"
+        ],
+        "type": "object"
+      },
+      "SnapshotSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "captured": {
+            "$ref": "#/components/schemas/Date"
+          },
+          "completeness": {
+            "type": "string"
+          },
+          "entry_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "id",
+          "external_id",
+          "captured",
+          "completeness",
+          "provenance",
+          "entry_count"
+        ],
+        "type": "object"
+      },
       "SourceStats": {
         "additionalProperties": false,
         "properties": {
@@ -604,6 +1640,94 @@
           "last_ingest",
           "last_sync",
           "stale"
+        ],
+        "type": "object"
+      },
+      "State": {
+        "additionalProperties": false,
+        "properties": {
+          "favorite": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "progress": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "progress_unit": {
+            "type": "string"
+          },
+          "rating": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "revision",
+          "status",
+          "favorite",
+          "progress",
+          "progress_unit",
+          "notes",
+          "tags"
+        ],
+        "type": "object"
+      },
+      "TextMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "display": {
+            "description": "Path of the best copy: attached, present and current where possible.",
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "places": {
+            "description": "Every place the content lives or lived, present copies first.",
+            "items": {
+              "$ref": "#/components/schemas/Place"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": "string"
+          },
+          "score": {
+            "format": "double",
+            "type": "number"
+          },
+          "snippet": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "display",
+          "online",
+          "places",
+          "ref",
+          "snippet"
         ],
         "type": "object"
       },
@@ -700,6 +1824,2711 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/find": {
+      "get": {
+        "description": "q is required. Messages are ranked by relevance; library groups are sorted by title or date. from, to, person, subject, mailbox_id and has_attachment restrict the search to messages, and cannot be combined with a kind other than message or with account. since and until take YYYY-MM-DD here. limit and offset apply to each group on its own. coverage says what the result does not prove.",
+        "operationId": "findRecords",
+        "parameters": [
+          {
+            "description": "Words to find, at most 4096 bytes.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Words to find, at most 4096 bytes.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "any word (the default), every word, or the words adjacent and in order.",
+            "explode": false,
+            "in": "query",
+            "name": "match",
+            "schema": {
+              "description": "any word (the default), every word, or the words adjacent and in order.",
+              "enum": [
+                "any",
+                "all",
+                "phrase"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records from this source, such as netflix, youtube-media or manual.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only records from this source, such as netflix, youtube-media or manual.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records of this account at the source.",
+            "explode": false,
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "description": "Only records of this account at the source.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+              "enum": [
+                "message",
+                "item",
+                "activity",
+                "collection",
+                "file",
+                "page",
+                "video",
+                "movie",
+                "series",
+                "episode",
+                "track",
+                "album",
+                "podcast",
+                "book",
+                "article",
+                "other",
+                "watch",
+                "listen",
+                "read",
+                "play",
+                "view",
+                "purchase",
+                "playlist",
+                "library",
+                "watchlist",
+                "list"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity for this item, or files linked to it.",
+            "explode": false,
+            "in": "query",
+            "name": "item_id",
+            "schema": {
+              "description": "Only activity for this item, or files linked to it.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "0 means 50.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "0 means 50.",
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Message sender contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "Message sender contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A message recipient contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "A message recipient contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Messages sent or received by this contact, by name.",
+            "explode": false,
+            "in": "query",
+            "name": "person",
+            "schema": {
+              "description": "Messages sent or received by this contact, by name.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Message subject contains this, ignoring case.",
+            "explode": false,
+            "in": "query",
+            "name": "subject",
+            "schema": {
+              "description": "Message subject contains this, ignoring case.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Typos tolerated per word in messages.",
+            "explode": false,
+            "in": "query",
+            "name": "fuzzy",
+            "schema": {
+              "default": 1,
+              "description": "Typos tolerated per word in messages.",
+              "format": "int64",
+              "maximum": 2,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only this mail folder. Needs source.",
+            "explode": false,
+            "in": "query",
+            "name": "mailbox_id",
+            "schema": {
+              "description": "Only this mail folder. Needs source.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only messages with, or without, attachments.",
+            "explode": false,
+            "in": "query",
+            "name": "has_attachment",
+            "schema": {
+              "description": "Only messages with, or without, attachments.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Search messages, the media library, files and files on disks at once",
+        "tags": [
+          "search"
+        ]
+      }
+    },
+    "/v1/library/activity": {
+      "get": {
+        "operationId": "listLibraryActivity",
+        "parameters": [
+          {
+            "description": "Words to find, at most 4096 bytes.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Words to find, at most 4096 bytes.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "any word (the default), every word, or the words adjacent and in order.",
+            "explode": false,
+            "in": "query",
+            "name": "match",
+            "schema": {
+              "description": "any word (the default), every word, or the words adjacent and in order.",
+              "enum": [
+                "any",
+                "all",
+                "phrase"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records from this source, such as netflix, youtube-media or manual.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only records from this source, such as netflix, youtube-media or manual.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records of this account at the source.",
+            "explode": false,
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "description": "Only records of this account at the source.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+              "enum": [
+                "message",
+                "item",
+                "activity",
+                "collection",
+                "file",
+                "page",
+                "video",
+                "movie",
+                "series",
+                "episode",
+                "track",
+                "album",
+                "podcast",
+                "book",
+                "article",
+                "other",
+                "watch",
+                "listen",
+                "read",
+                "play",
+                "view",
+                "purchase",
+                "playlist",
+                "library",
+                "watchlist",
+                "list"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity for this item, or files linked to it.",
+            "explode": false,
+            "in": "query",
+            "name": "item_id",
+            "schema": {
+              "description": "Only activity for this item, or files linked to it.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "0 means 50.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "0 means 50.",
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Activity"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List what was watched, listened to, read, played or bought, newest first",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/activity/{id}": {
+      "get": {
+        "operationId": "getLibraryActivity",
+        "parameters": [
+          {
+            "description": "The record's ID, such as item_… or file_….",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The record's ID, such as item_… or file_….",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Activity"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Return one activity record with its evidence",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/collections": {
+      "get": {
+        "description": "Each collection carries its current snapshot: with its entry count by default, with the entries themselves when projection is full.",
+        "operationId": "listLibraryCollections",
+        "parameters": [
+          {
+            "description": "Words to find, at most 4096 bytes.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Words to find, at most 4096 bytes.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "any word (the default), every word, or the words adjacent and in order.",
+            "explode": false,
+            "in": "query",
+            "name": "match",
+            "schema": {
+              "description": "any word (the default), every word, or the words adjacent and in order.",
+              "enum": [
+                "any",
+                "all",
+                "phrase"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records from this source, such as netflix, youtube-media or manual.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only records from this source, such as netflix, youtube-media or manual.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records of this account at the source.",
+            "explode": false,
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "description": "Only records of this account at the source.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+              "enum": [
+                "message",
+                "item",
+                "activity",
+                "collection",
+                "file",
+                "page",
+                "video",
+                "movie",
+                "series",
+                "episode",
+                "track",
+                "album",
+                "podcast",
+                "book",
+                "article",
+                "other",
+                "watch",
+                "listen",
+                "read",
+                "play",
+                "view",
+                "purchase",
+                "playlist",
+                "library",
+                "watchlist",
+                "list"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity for this item, or files linked to it.",
+            "explode": false,
+            "in": "query",
+            "name": "item_id",
+            "schema": {
+              "description": "Only activity for this item, or files linked to it.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "0 means 50.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "0 means 50.",
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "full answers with every snapshot's entries, where the default has their count.",
+            "explode": false,
+            "in": "query",
+            "name": "projection",
+            "schema": {
+              "description": "full answers with every snapshot's entries, where the default has their count.",
+              "enum": [
+                "summary",
+                "full"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/CollectionSummary"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/Collection"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List playlists, watchlists and other collections, sorted by title",
+        "tags": [
+          "library"
+        ]
+      },
+      "post": {
+        "description": "title and kind (playlist, watchlist, library or list) are required. snapshot.entries are the first entries. The server assigns id, source (manual), account and external_id.",
+        "operationId": "createLibraryCollection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "account": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "external_id": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "personal": {
+                    "type": "boolean"
+                  },
+                  "revision": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "snapshot": {
+                    "$ref": "#/components/schemas/Snapshot"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collection"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Create a personal collection",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/collections/{id}": {
+      "get": {
+        "operationId": "getLibraryCollection",
+        "parameters": [
+          {
+            "description": "The record's ID, such as item_… or file_….",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The record's ID, such as item_… or file_….",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collection"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Return one collection with the entries of its current snapshot",
+        "tags": [
+          "library"
+        ]
+      },
+      "put": {
+        "description": "Only collections created here can be edited; imported ones are read-only. The body replaces all entries. expected_revision is the collection's revision as last read.",
+        "operationId": "editLibraryCollection",
+        "parameters": [
+          {
+            "description": "The collection's ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The collection's ID.",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "entries": {
+                    "items": {
+                      "$ref": "#/components/schemas/Entry"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "expected_revision": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Collection"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryRevisionConflictError"
+                }
+              }
+            },
+            "description": "LibraryRevisionConflict: the record changed since expected_revision was read. Read it again and repeat the edit on its current revision."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Replace a personal collection's title, description and entries",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/collections/{id}/snapshots": {
+      "get": {
+        "description": "By default a page of snapshots with their entry counts. With projection full, every snapshot with its entries, and limit and offset are ignored.",
+        "operationId": "listLibraryCollectionSnapshots",
+        "parameters": [
+          {
+            "description": "The collection's ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The collection's ID.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "full answers with every snapshot's entries, where the default has their count.",
+            "explode": false,
+            "in": "query",
+            "name": "projection",
+            "schema": {
+              "description": "full answers with every snapshot's entries, where the default has their count.",
+              "enum": [
+                "summary",
+                "full"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "0 means 50.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "0 means 50.",
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/SnapshotSummary"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    {
+                      "items": {
+                        "$ref": "#/components/schemas/Snapshot"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List the recorded states of a collection, newest first",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/collections/{id}/snapshots/{snapshotId}": {
+      "get": {
+        "operationId": "getLibraryCollectionSnapshot",
+        "parameters": [
+          {
+            "description": "The collection's ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The collection's ID.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The snapshot's id, from the list of snapshots.",
+            "in": "path",
+            "name": "snapshotId",
+            "required": true,
+            "schema": {
+              "description": "The snapshot's id, from the list of snapshots.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Snapshot"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Return one recorded state of a collection with its entries",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/files": {
+      "get": {
+        "description": "q also searches the text read from the files. kind does not apply to files.",
+        "operationId": "listLibraryFiles",
+        "parameters": [
+          {
+            "description": "Words to find, at most 4096 bytes.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Words to find, at most 4096 bytes.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "any word (the default), every word, or the words adjacent and in order.",
+            "explode": false,
+            "in": "query",
+            "name": "match",
+            "schema": {
+              "description": "any word (the default), every word, or the words adjacent and in order.",
+              "enum": [
+                "any",
+                "all",
+                "phrase"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records from this source, such as netflix, youtube-media or manual.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only records from this source, such as netflix, youtube-media or manual.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records of this account at the source.",
+            "explode": false,
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "description": "Only records of this account at the source.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+              "enum": [
+                "message",
+                "item",
+                "activity",
+                "collection",
+                "file",
+                "page",
+                "video",
+                "movie",
+                "series",
+                "episode",
+                "track",
+                "album",
+                "podcast",
+                "book",
+                "article",
+                "other",
+                "watch",
+                "listen",
+                "read",
+                "play",
+                "view",
+                "purchase",
+                "playlist",
+                "library",
+                "watchlist",
+                "list"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity for this item, or files linked to it.",
+            "explode": false,
+            "in": "query",
+            "name": "item_id",
+            "schema": {
+              "description": "Only activity for this item, or files linked to it.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "0 means 50.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "0 means 50.",
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/File"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List the files kept in the library, sorted by filename",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/files/{id}": {
+      "get": {
+        "operationId": "getLibraryFile",
+        "parameters": [
+          {
+            "description": "The record's ID, such as item_… or file_….",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The record's ID, such as item_… or file_….",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/File"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Return one library file's record. Its bytes are at /v1/blobs/{sha256}",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/items": {
+      "get": {
+        "operationId": "listLibraryItems",
+        "parameters": [
+          {
+            "description": "Words to find, at most 4096 bytes.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Words to find, at most 4096 bytes.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "any word (the default), every word, or the words adjacent and in order.",
+            "explode": false,
+            "in": "query",
+            "name": "match",
+            "schema": {
+              "description": "any word (the default), every word, or the words adjacent and in order.",
+              "enum": [
+                "any",
+                "all",
+                "phrase"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records from this source, such as netflix, youtube-media or manual.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only records from this source, such as netflix, youtube-media or manual.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records of this account at the source.",
+            "explode": false,
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "description": "Only records of this account at the source.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+              "enum": [
+                "message",
+                "item",
+                "activity",
+                "collection",
+                "file",
+                "page",
+                "video",
+                "movie",
+                "series",
+                "episode",
+                "track",
+                "album",
+                "podcast",
+                "book",
+                "article",
+                "other",
+                "watch",
+                "listen",
+                "read",
+                "play",
+                "view",
+                "purchase",
+                "playlist",
+                "library",
+                "watchlist",
+                "list"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity for this item, or files linked to it.",
+            "explode": false,
+            "in": "query",
+            "name": "item_id",
+            "schema": {
+              "description": "Only activity for this item, or files linked to it.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "0 means 50.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "0 means 50.",
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Item"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List media items (films, episodes, tracks, books and more), sorted by title",
+        "tags": [
+          "library"
+        ]
+      },
+      "post": {
+        "description": "kind and title are required. The server assigns id, source (manual), account and external_id; what the body says for them is ignored.",
+        "operationId": "createLibraryItem",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "account": {
+                    "type": "string"
+                  },
+                  "album": {
+                    "type": "string"
+                  },
+                  "creators": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "duration_seconds": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "episode": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "evidence": {
+                    "items": {
+                      "$ref": "#/components/schemas/Provenance"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "external_id": {
+                    "type": "string"
+                  },
+                  "file_ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "provenance": {
+                    "$ref": "#/components/schemas/Provenance"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "provider_id": {
+                    "type": "string"
+                  },
+                  "season": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "series": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "$ref": "#/components/schemas/State"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "year": {
+                    "format": "int64",
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Add a media item by hand",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/items/summaries": {
+      "post": {
+        "description": "Answers in the order the IDs were given, each item once. Unknown IDs are left out.",
+        "operationId": "summarizeLibraryItems",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ItemSummary"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Look up the title, kind and source of up to 50 items by ID",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/items/{id}": {
+      "get": {
+        "operationId": "getLibraryItem",
+        "parameters": [
+          {
+            "description": "The record's ID, such as item_… or file_….",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The record's ID, such as item_… or file_….",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Item"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Return one media item with its state, evidence and linked files",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/items/{id}/state": {
+      "put": {
+        "description": "The body replaces the whole state, so send every field that should stay. expected_revision is the state's revision as last read, 0 for an item whose state was never set.",
+        "operationId": "setLibraryItemState",
+        "parameters": [
+          {
+            "description": "The item's ID.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The item's ID.",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expected_revision": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "favorite": {
+                    "type": "boolean"
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "progress": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "progress_unit": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/State"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryRevisionConflictError"
+                }
+              }
+            },
+            "description": "LibraryRevisionConflict: the record changed since expected_revision was read. Read it again and repeat the edit on its current revision."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Replace an item's personal state: status, rating, progress, notes and tags",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/items/{id}/state-history": {
+      "get": {
+        "operationId": "listLibraryItemStateHistory",
+        "parameters": [
+          {
+            "description": "The record's ID, such as item_… or file_….",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The record's ID, such as item_… or file_….",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/State"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List every revision of an item's personal state",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/pages/{id}": {
+      "get": {
+        "operationId": "getLibraryPage",
+        "parameters": [
+          {
+            "description": "The record's ID, such as item_… or file_….",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The record's ID, such as item_… or file_….",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Return one published note with its body",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/v1/library/search": {
+      "get": {
+        "description": "kind narrows to one group (item, activity, collection, file, page) or to one kind inside a group. limit and offset apply to each group on its own. An absent activity is not evidence that something was not watched: only imported records are searched.",
+        "operationId": "searchLibrary",
+        "parameters": [
+          {
+            "description": "Words to find, at most 4096 bytes.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Words to find, at most 4096 bytes.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "any word (the default), every word, or the words adjacent and in order.",
+            "explode": false,
+            "in": "query",
+            "name": "match",
+            "schema": {
+              "description": "any word (the default), every word, or the words adjacent and in order.",
+              "enum": [
+                "any",
+                "all",
+                "phrase"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records from this source, such as netflix, youtube-media or manual.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only records from this source, such as netflix, youtube-media or manual.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only records of this account at the source.",
+            "explode": false,
+            "in": "query",
+            "name": "account",
+            "schema": {
+              "description": "Only records of this account at the source.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search.",
+              "enum": [
+                "message",
+                "item",
+                "activity",
+                "collection",
+                "file",
+                "page",
+                "video",
+                "movie",
+                "series",
+                "episode",
+                "track",
+                "album",
+                "podcast",
+                "book",
+                "article",
+                "other",
+                "watch",
+                "listen",
+                "read",
+                "play",
+                "view",
+                "purchase",
+                "playlist",
+                "library",
+                "watchlist",
+                "list"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity for this item, or files linked to it.",
+            "explode": false,
+            "in": "query",
+            "name": "item_id",
+            "schema": {
+              "description": "Only activity for this item, or files linked to it.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "description": "Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "Only activity before this day (YYYY-MM-DD) or instant (RFC 3339).",
+              "type": "string"
+            }
+          },
+          {
+            "description": "0 means 50.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "description": "0 means 50.",
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "format": "int64",
+              "maximum": 100000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySearchResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "Search items, activity, collections, files and pages of the media library",
+        "tags": [
+          "library"
+        ]
+      }
+    },
     "/v1/mailboxes": {
       "get": {
         "operationId": "listMailboxes",
