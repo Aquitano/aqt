@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/gabriel-vasile/mimetype"
 )
@@ -25,60 +24,6 @@ func libraryPage(w http.ResponseWriter, r *http.Request) (int, int, bool) {
 		return 0, 0, false
 	}
 	return limit, offset, true
-}
-
-func (s *Server) handleLibrary(w http.ResponseWriter, r *http.Request) {
-	limit, offset, ok := libraryPage(w, r)
-	if !ok {
-		return
-	}
-	q := r.URL.Query()
-	o := store.AttachmentFilter{Query: q.Get("query"), Source: q.Get("source"), Match: q.Get("match"), Filename: q.Get("q"), Text: q.Get("text"), FileType: q.Get("type"), Person: q.Get("person"), Limit: limit, Offset: offset}
-	if err := (library.ListOptions{Query: o.Query, Match: o.Match}).Validate(); err != nil {
-		writeErr(w, 400, err.Error())
-		return
-	}
-	var err error
-	if o.Since, err = parseDate(q.Get("since")); err != nil {
-		writeErr(w, 400, "invalid since")
-		return
-	}
-	if o.Until, err = parseDate(q.Get("until")); err != nil {
-		writeErr(w, 400, "invalid until")
-		return
-	}
-	if !o.Since.IsZero() && !o.Until.IsZero() && !o.Since.Before(o.Until) {
-		writeErr(w, 400, "until must be after since")
-		return
-	}
-	files, err := s.db.AttachmentLibrary(r.Context(), o)
-	if err != nil {
-		var missing *store.ErrNoContact
-		if errors.As(err, &missing) {
-			writeErr(w, 400, err.Error())
-		} else {
-			writeErr(w, 500, err.Error())
-		}
-		return
-	}
-	writeJSON(w, 200, files)
-}
-
-func (s *Server) handleAttachmentMessages(w http.ResponseWriter, r *http.Request) {
-	sum, ok := pathDigest(w, r)
-	if !ok {
-		return
-	}
-	limit, offset, ok := libraryPage(w, r)
-	if !ok {
-		return
-	}
-	messages, err := s.db.AttachmentMessages(r.Context(), sum, offset, limit)
-	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
-	}
-	writeJSON(w, 200, messages)
 }
 
 func (s *Server) handleImportReports(w http.ResponseWriter, r *http.Request) {

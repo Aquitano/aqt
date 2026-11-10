@@ -1,12 +1,9 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
-	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
@@ -25,34 +22,6 @@ import (
 // rather than as a truncated read.
 const maxTextUpload = 8 << 20
 
-func (s *Server) handleAttachmentList(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	limit, err := parseInt(q.Get("limit"), 0)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid limit")
-		return
-	}
-	o := store.ListBlobsOpts{Source: q.Get("source"), Limit: limit}
-	if status := q.Get("status"); status != "" {
-		o.Statuses = strings.Split(status, ",")
-	}
-	blobs, err := s.db.ListBlobs(r.Context(), o)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, blobs)
-}
-
-func (s *Server) handleAttachmentStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := s.db.ExtractionStats(r.Context())
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, stats)
-}
-
 // pathDigest validates the {sha256} path segment before it reaches a query or
 // a file path, and reports whether the handler should carry on.
 func pathDigest(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -62,23 +31,6 @@ func pathDigest(w http.ResponseWriter, r *http.Request) (string, bool) {
 		return "", false
 	}
 	return sum, true
-}
-
-func (s *Server) handleAttachmentTextGet(w http.ResponseWriter, r *http.Request) {
-	sum, ok := pathDigest(w, r)
-	if !ok {
-		return
-	}
-	bt, err := s.db.GetBlobText(r.Context(), sum)
-	if errors.Is(err, store.ErrNotFound) {
-		writeErr(w, http.StatusNotFound, "no extracted text for "+sum)
-		return
-	}
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, bt)
 }
 
 // handleAttachmentTextPut stores text produced somewhere else. The status is
@@ -135,42 +87,4 @@ func (s *Server) handleAttachmentTextPut(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"sha256": sum, "status": status})
-}
-
-func (s *Server) handleAttachmentTextDelete(w http.ResponseWriter, r *http.Request) {
-	sum, ok := pathDigest(w, r)
-	if !ok {
-		return
-	}
-	err := s.db.DeleteBlobText(r.Context(), sum)
-	if errors.Is(err, store.ErrNotFound) {
-		writeErr(w, http.StatusNotFound, "no extracted text for "+sum)
-		return
-	}
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"sha256": sum, "status": "deleted"})
-}
-
-// handleAttachmentRefresh copies extracted text onto the messages that carry
-// it. A remote run calls this once at the end rather than after every blob:
-// the statement sweeps every message unless `since` limits it, so per-blob
-// would be quadratic.
-func (s *Server) handleAttachmentRefresh(w http.ResponseWriter, r *http.Request) {
-	var since time.Time
-	if v := r.URL.Query().Get("since"); v != "" {
-		var err error
-		if since, err = time.Parse(time.RFC3339Nano, v); err != nil {
-			writeErr(w, http.StatusBadRequest, "since must be an RFC 3339 time")
-			return
-		}
-	}
-	n, err := s.db.RefreshAttachmentText(r.Context(), since)
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]int64{"messages_reindexed": n})
 }
