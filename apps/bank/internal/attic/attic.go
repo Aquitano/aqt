@@ -31,16 +31,33 @@ type Catalogue struct {
 // Start migrates the catalogue in databaseURL and opens it read-only, in the
 // background. A migration can rebuild search indexes for minutes, and the
 // host must neither wait for that nor stop when it fails: until the catalogue
-// is open, every use answers ErrNotReady.
+// is open, every use answers ErrNotReady. A failure the database may recover
+// from, such as it still starting, is retried until ctx ends.
 func Start(ctx context.Context, databaseURL string) *Catalogue {
 	c := &Catalogue{opened: make(chan struct{})}
 	go func() {
 		defer close(c.opened)
-		if c.store, c.err = migrateAndOpen(ctx, databaseURL); c.err != nil {
-			slog.Error("the file catalogue is unavailable", "error", c.err)
+		for wait := time.Second; ; wait = min(2*wait, time.Minute) {
+			if c.store, c.err = migrateAndOpen(ctx, databaseURL); c.err == nil {
+				return
+			}
+			if permanent(c.err) || ctx.Err() != nil {
+				slog.Error("the file catalogue is unavailable", "error", c.err)
+				return
+			}
+			slog.Warn("the file catalogue could not open; retrying", "error", c.err, "in", wait)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(wait):
+			}
 		}
 	}()
 	return c
+}
+
+func permanent(err error) bool {
+	return errors.Is(err, store.ErrBinaryOutdated) || errors.Is(err, store.ErrPredatesVersioning)
 }
 
 // Open opens a migrated catalogue read-only.

@@ -1,6 +1,7 @@
 package attic_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -41,8 +42,10 @@ func stats(t *testing.T, url, token string) int {
 
 func TestHostKeepsServingWhileTheCatalogueCannotOpen(t *testing.T) {
 	// Nothing listens here, so the migration fails.
-	catalogue := attic.Start(t.Context(), "postgres://attic:attic@127.0.0.1:1/attic?sslmode=disable&connect_timeout=1")
+	ctx, cancel := context.WithCancel(t.Context())
+	catalogue := attic.Start(ctx, "postgres://attic:attic@127.0.0.1:1/attic?sslmode=disable&connect_timeout=1")
 	defer catalogue.Close()
+	defer cancel()
 	h, token := host(t)
 	server := httptest.NewServer(catalogue.Handler(h))
 	defer server.Close()

@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aquitano/aqt/packages/go/pgschema"
@@ -22,6 +23,7 @@ var ErrNotFound = errors.New("not found")
 var (
 	ErrCatalogueNotMigrated = errors.New("run attic migrate (or a scan) to bring it up to date")
 	ErrBinaryOutdated       = errors.New("this attic binary is older than the catalogue; install a newer build")
+	ErrPredatesVersioning   = errors.New("the catalogue in public predates schema_version; run attic migrate from the previous build first")
 )
 
 type Store struct {
@@ -49,7 +51,18 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 	}
 	if _, err := pool.Exec(ctx, adoptStandaloneCatalogue); err != nil {
 		pool.Close()
+		// The adoption raises only when the catalogue predates schema_version.
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "P0001" {
+			return nil, ErrPredatesVersioning
+		}
 		return nil, fmt.Errorf("move the catalogue into the %s schema: %w", Schema, err)
+	}
+	if current, latest, err := pgschema.SchemaVersion(ctx, pool, Schema, Migrations); err != nil || current > latest {
+		pool.Close()
+		if err == nil {
+			err = fmt.Errorf("catalogue schema is at version %d, this attic knows %d: %w", current, latest, ErrBinaryOutdated)
+		}
+		return nil, err
 	}
 	if err := pgschema.MigrateSchema(ctx, pool, Schema, migrationLock, Migrations); err != nil {
 		pool.Close()
