@@ -3,58 +3,6 @@ import { useState, type SubmitEvent } from "react";
 import { brand } from "../brand";
 import { CopyButton, Prompt, Section, Terminal } from "../parts";
 
-type State = "works" | "in review" | "later";
-
-const pieces: [string, State][] = [
-  ["message archive", "works"],
-  ["library and watch history", "works"],
-  ["text and OCR", "works"],
-  ["command line", "works"],
-  ["web UI", "works"],
-  ["drive catalogue in the same database", "in review"],
-  ["scoped tokens", "in review"],
-  ["timeline", "in review"],
-  ["refs across domains", "in review"],
-  ["generated API, 49 operations", "in review"],
-  ["MCP tools", "in review"],
-  ["search by meaning", "later"],
-  ["hosted version", "later"],
-];
-
-const cell = {
-  works: "bg-ink text-ground border border-ink",
-  "in review": "border border-ink",
-  later: "border border-dashed border-dim text-dim",
-} satisfies Record<State, string>;
-
-const legend: [State, string][] = [
-  ["works", "in daily use"],
-  ["in review", "written, in pull requests"],
-  ["later", "not started"],
-];
-
-export function Status() {
-  return (
-    <Section id="status" title="Where it stands">
-      <ul className="mono text-code flex flex-wrap gap-2">
-        {pieces.map(([name, state]) => (
-          <li key={name} className={`px-3 py-2 ${cell[state]}`}>
-            {name}
-          </li>
-        ))}
-      </ul>
-      <ul className="mono text-code text-dim mt-6 flex flex-wrap gap-x-8 gap-y-2">
-        {legend.map(([state, meaning]) => (
-          <li key={state} className="flex items-center gap-2.5">
-            <span aria-hidden="true" className={`block size-3.5 ${cell[state]}`} />
-            {meaning}
-          </li>
-        ))}
-      </ul>
-    </Section>
-  );
-}
-
 type Sent = "idle" | "sending" | "done" | "failed";
 
 function Waitlist() {

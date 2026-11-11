@@ -158,9 +158,11 @@ export function Intake() {
 
         <ul className="grid grid-cols-2 gap-x-6 gap-y-4 lg:grid-cols-1 lg:grid-rows-4 lg:gap-y-0">
           {outputs.map(([name, what]) => (
-            <li key={name} data-output className="flex flex-col justify-center">
+            <li key={name} className="flex flex-col justify-center lg:relative lg:pl-3">
               <span>{name}</span>
-              <span className="text-faint text-[0.68rem]">{what}</span>
+              <span className="text-faint text-[0.68rem] lg:absolute lg:top-1/2 lg:mt-3.5">
+                {what}
+              </span>
             </li>
           ))}
         </ul>
