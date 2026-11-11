@@ -75,6 +75,12 @@ run = [
   "bun run --cwd apps/bank/internal/webui/app check:dist",
 ]
 
+[tasks."bank-site:check"]
+depends = ["shared:ts", "bank-site:ts"]
+
+[tasks."bank-site:ts"]
+run = ["bunx --no-install vp check apps/bank-site", "bun run --cwd apps/bank-site build"]
+
 [tasks."bank:go"]
 dir = "apps/bank"
 # Without the workspace, as the image builds.

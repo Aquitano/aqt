@@ -18,6 +18,30 @@
         "apps": "0.0.1-beta.101",
       },
     },
+    "apps/bank-site": {
+      "name": "@aqt/bank-site",
+      "version": "0.0.0",
+      "dependencies": {
+        "@fontsource-variable/martian-mono": "^5.2.5",
+        "@fontsource-variable/source-serif-4": "^5.2.5",
+        "@gsap/react": "^2.1.2",
+        "@tailwindcss/vite": "^4.3.4",
+        "gsap": "^3.13.0",
+        "react": "catalog:",
+        "react-dom": "catalog:",
+        "tailwindcss": "^4.3.3",
+      },
+      "devDependencies": {
+        "@aqt/config": "workspace:*",
+        "@types/node": "catalog:",
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "catalog:",
+        "@vitejs/plugin-react": "^6.1.2",
+        "typescript": "~7.0.2",
+        "vite": "catalog:",
+        "vite-plus": "catalog:",
+      },
+    },
     "apps/bank/internal/webui/app": {
       "name": "@aqt/bank-webui",
       "version": "0.0.0",
@@ -499,6 +523,8 @@
 
     "@aqt/bank-scripts": ["@aqt/bank-scripts@workspace:apps/bank/scripts"],
 
+    "@aqt/bank-site": ["@aqt/bank-site@workspace:apps/bank-site"],
+
     "@aqt/bank-webui": ["@aqt/bank-webui@workspace:apps/bank/internal/webui/app"],
 
     "@aqt/config": ["@aqt/config@workspace:packages/ts/config"],
@@ -730,6 +756,12 @@
     "@floating-ui/utils": ["@floating-ui/utils@0.2.12", "", {}, "sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww=="],
 
     "@fontsource-variable/ibm-plex-sans": ["@fontsource-variable/ibm-plex-sans@5.3.0", "", {}, "sha512-agG8tXFEo0hD9+J7npa4vbbWult52eMLVaQ6WQRlhs/iCAojrMAoejru85W9HTVXHfyUj96KM7gp/KGAS87XaQ=="],
+
+    "@fontsource-variable/martian-mono": ["@fontsource-variable/martian-mono@5.3.0", "", {}, "sha512-0wVODx9ILwNnaYC4XCuSaFRYtj1Prd89MRVaSuv2ng6zLiQkS4SepaWEPefs7vqCZS8sbEOA8jb/4F5KNMnGdg=="],
+
+    "@fontsource-variable/source-serif-4": ["@fontsource-variable/source-serif-4@5.3.1", "", {}, "sha512-4Rtay22SC4lMvw11r/+9kxANB6P3M0X8s1NudBC2v0J1KU2y3DcMoNcT3lBoZ/CqLirzf+StlO6UlJilyrvaUg=="],
+
+    "@gsap/react": ["@gsap/react@2.1.2", "", { "peerDependencies": { "gsap": "^3.12.5", "react": ">=17" } }, "sha512-JqliybO1837UcgH2hVOM4VO+38APk3ECNrsuSM4MuXp+rbf+/2IG2K1YJiqfTcXQHH7XlA0m3ykniFYstfq0Iw=="],
 
     "@hono/mcp": ["@hono/mcp@0.3.5", "", { "dependencies": { "pkce-challenge": "^5.0.0" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.29.0", "hono": "*", "hono-rate-limiter": "^0.5.4", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-CquYSjbl9BuprbMMjvgO2owK7kdEA9wh2CJqAjn1Zk2QAM24y2OBSv5gz5O8jHCp39ae4dgIxOSonEVR+2PpJQ=="],
 
@@ -1794,6 +1826,8 @@
     "gopd": ["gopd@1.2.0", "", {}, "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg=="],
 
     "graceful-fs": ["graceful-fs@4.2.11", "", {}, "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ=="],
+
+    "gsap": ["gsap@3.15.1", "", {}, "sha512-63yjWRFWj3QRP1UOuD8kcidCcy3nxb1mMRpwHr/xJRvPfm9GtWOXFAYUiL0ro1fgPq2nY53LR+98pAgy9BumBg=="],
 
     "h3": ["h3@2.0.1-rc.32", "", { "dependencies": { "rou3": "^0.9.2", "srvx": "^1.0.5" }, "peerDependencies": { "crossws": "^0.4.12", "ocache": ">=0.3.0" }, "optionalPeers": ["crossws", "ocache"], "bin": { "h3": "./bin/h3.mjs" } }, "sha512-Epg1E85L8yIKd9UeAQAVdm6QVrnHbppMsQ641EjpNi4c0IlAg+PJlwp4Xw03Z1loRXPQaH9k64gJT5qDELqm+g=="],
 
