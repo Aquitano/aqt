@@ -161,6 +161,9 @@ export function Hero() {
             "+=0.1",
           )
           .from("[data-note]", { opacity: 0, duration: 0.4 }, "-=0.15");
+        return () => {
+          el.textContent = example.query;
+        };
       });
     },
     { scope, dependencies: [index], revertOnUpdate: true },
@@ -172,10 +175,8 @@ export function Hero() {
         <h1 className="display max-w-[24ch] text-[2rem] sm:text-[2.8rem] lg:text-[3.5rem]">
           Everything you wrote, received and saved, in one database your agents can cite.
         </h1>
-        <p className="text-dim max-w-[60ch] text-[1.2rem]">
-          Your mail, chats, documents and drives live in a dozen places no agent can read.{" "}
-          {brand.name} imports them into one Postgres you run yourself, extracts the text, and gives
-          every record a ref that keeps working.
+        <p className="text-dim max-w-[52ch] text-[1.2rem]">
+          Mail, chats, documents and drives, imported into one Postgres you run yourself.
         </p>
         <div className="mono flex flex-wrap items-center gap-x-8 gap-y-3 text-[0.85rem]">
           <a href="#run" className="border-ink hover:bg-ink hover:text-ground border px-5 py-3">

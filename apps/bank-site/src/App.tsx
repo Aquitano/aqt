@@ -1,20 +1,22 @@
 import { brand } from "./brand";
+import { Access } from "./sections/Access";
 import { Architecture } from "./sections/Architecture";
-import { Ask } from "./sections/Ask";
+import { Day } from "./sections/Day";
+import { Run, Status } from "./sections/Ending";
 import { Hero } from "./sections/Hero";
-import { Hosted, Rules, Run, Status } from "./sections/Rest";
-import { Sources } from "./sections/Sources";
+import { Intake } from "./sections/Intake";
+import { Refs } from "./sections/Refs";
 
 const links = [
-  ["What goes in", "#sources"],
-  ["How it is built", "#architecture"],
-  ["Where it stands", "#status"],
-  ["Source", brand.repo],
+  ["Sources", "#sources"],
+  ["Architecture", "#architecture"],
+  ["Status", "#status"],
+  ["GitHub", brand.repo],
 ] as const;
 
 export function App() {
   return (
-    <div className="relative mx-auto max-w-[70rem] px-5 pb-24 sm:px-8">
+    <div className="relative mx-auto max-w-[70rem] px-5 pb-20 sm:px-8">
       <nav
         aria-label="Main"
         className="mono border-rule flex flex-wrap items-baseline justify-between gap-x-8 gap-y-2 border-b py-5 text-[0.82rem]"
@@ -33,23 +35,16 @@ export function App() {
         </ul>
       </nav>
 
-      <main id="top" className="grid grid-cols-[minmax(0,1fr)] gap-24 md:gap-28">
+      <main id="top" className="grid grid-cols-[minmax(0,1fr)] gap-24 md:gap-32">
         <Hero />
-        <Sources />
-        <Ask />
+        <Intake />
+        <Refs />
+        <Day />
         <Architecture />
-        <Rules />
+        <Access />
         <Status />
         <Run />
-        <Hosted />
       </main>
-
-      <footer className="mono border-rule text-code text-faint mt-24 flex flex-wrap justify-between gap-x-8 gap-y-2 border-t pt-6">
-        <span>{brand.name}, the system of record for a second brain</span>
-        <a href={brand.docs} className="hover:text-ink">
-          Documentation
-        </a>
-      </footer>
     </div>
   );
 }
