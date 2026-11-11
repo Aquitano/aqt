@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 
 import { kindColor, type Kind } from "../brand";
-import { Note, Section } from "../ui";
+import { Section } from "../parts";
 
 type Domain = "bank" | "attic";
 type Source = { name: string; kind: Kind; domain: Domain; path: string };
@@ -76,12 +76,8 @@ export function Architecture() {
   const off = (domain: Domain) => lit !== null && lit.domain !== domain;
 
   return (
-    <Section
-      id="architecture"
-      title="How it is built"
-      lede="One database, one server, one token file. Each kind of data is a domain with its own Postgres schema and its own routes, so adding watch history never touches mail."
-    >
-      <div className="grid gap-x-12 gap-y-10 lg:grid-cols-[minmax(0,7fr)_minmax(0,4fr)]">
+    <Section id="architecture" title="One database, one server, one token file">
+      <div>
         <div className="min-w-0 overflow-x-auto">
           <div className="mono text-code grid min-w-[36rem]">
             <Lane label="Sources">
@@ -170,22 +166,6 @@ export function Architecture() {
             {lit ? lit.path : "Point at a source to follow it through."}
           </p>
         </div>
-        <Note>
-          <p>
-            <strong className="text-ink font-medium">Domains, not plugins.</strong> A domain is a Go
-            package, a schema and a group of routes. It ships in the binary and is reviewed like any
-            other code.
-          </p>
-          <p>
-            <strong className="text-ink font-medium">The API document is generated.</strong>{" "}
-            Handlers are typed functions, the OpenAPI document is built from them and checked in CI.
-            What an agent reads is what the server does.
-          </p>
-          <p>
-            <strong className="text-ink font-medium">A slow domain cannot stop the server.</strong>{" "}
-            The catalogue starts in the background and answers 503 until it is ready.
-          </p>
-        </Note>
       </div>
     </Section>
   );
