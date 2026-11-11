@@ -36,7 +36,7 @@ func (s *Server) registerContactsAPI(api huma.API) {
 		Description: "An existing contact is kept and gains the aliases that are new. A conflict does not fail the " +
 			"request: each entry's result lists its own errors, and the rest is applied.",
 	}.For(api)
-	importContacts.MaxBodyBytes = maxContactImport
+	importContacts.MaxBodyBytes, importContacts.BodyReadTimeout = maxContactImport, bulkBodyReadTimeout
 	huma.Register(api, importContacts, s.contactImport)
 	huma.Register(api, httpapi.Operation{ID: "suggestContacts", Method: http.MethodGet, Path: "/v1/contacts/suggest", Tag: "contacts",
 		Summary: "List the identities no contact claims yet, the ones with most messages first",

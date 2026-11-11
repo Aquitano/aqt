@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -122,10 +123,15 @@ func (s *Server) registerLibraryAPI(api huma.API) {
 	}.For(api), s.libraryPage)
 }
 
+// bulkBodyReadTimeout replaces Huma's 5 second default on routes whose body
+// can be many megabytes from a slow client.
+const bulkBodyReadTimeout = 2 * time.Minute
+
 // The older library routes took 32 MiB of JSON, required no field and
 // refused unknown ones. libraryWrite and strictJSON keep all three.
 func libraryWrite(op huma.Operation, status int) huma.Operation {
 	op.DefaultStatus, op.MaxBodyBytes, op.SkipValidateBody = status, 32<<20, true
+	op.BodyReadTimeout = bulkBodyReadTimeout
 	return op
 }
 
