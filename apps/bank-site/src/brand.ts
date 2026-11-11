@@ -8,12 +8,12 @@ export const brand = {
   waitlistUrl: import.meta.env.VITE_WAITLIST_URL,
 } as const;
 
-export type Kind = "mail" | "chat" | "ai" | "library" | "disks";
+export type Kind = "mail" | "chat" | "ai" | "library" | "drives";
 
 export const kindColor = {
   mail: "text-mail",
   chat: "text-chat",
   ai: "text-ai",
   library: "text-library",
-  disks: "text-disks",
+  drives: "text-drives",
 } satisfies Record<Kind, string>;

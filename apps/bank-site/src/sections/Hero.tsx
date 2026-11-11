@@ -1,10 +1,7 @@
-import { useGSAP } from "@gsap/react";
-import { gsap } from "gsap";
 import { useLayoutEffect, useRef, useState } from "react";
 
 import { brand, kindColor, type Kind } from "../brand";
-
-gsap.registerPlugin(useGSAP);
+import { gsap, riseLines, useGSAP, whenMoving } from "../motion";
 
 type Row = { kind: Kind; ref: string; date: string; from: string; text: string };
 type Example = { query: string; rows: Row[]; same: [number, number]; note: string };
@@ -16,14 +13,14 @@ const examples: [Example, ...Example[]] = [
       {
         kind: "mail",
         ref: "3fa91c20b7e4",
-        date: "2024-03-11",
+        date: "2024-02-26",
         from: "Property office",
         text: "Re: Deposit and key handover",
       },
       {
         kind: "mail",
         ref: "a04d77e19c52",
-        date: "2024-02-27",
+        date: "2024-02-26",
         from: "me",
         text: "Fwd: Signed lease, 1 attachment",
       },
@@ -35,9 +32,9 @@ const examples: [Example, ...Example[]] = [
         text: "did you already transfer the deposit?",
       },
       {
-        kind: "disks",
+        kind: "drives",
         ref: "attic:7c1e5ab0",
-        date: "2024-02-25",
+        date: "2024-02-26",
         from: "archive-2",
         text: "/scans/2024/lease_signed.pdf",
       },
@@ -60,7 +57,7 @@ const examples: [Example, ...Example[]] = [
         ref: "e77a0c93d1f4",
         date: "2025-06-04",
         from: "notes",
-        text: "decision-search-engine.md, page 1",
+        text: "decision-search-engine.md",
       },
       {
         kind: "mail",
@@ -70,7 +67,7 @@ const examples: [Example, ...Example[]] = [
         text: "Re: one database or two?",
       },
       {
-        kind: "disks",
+        kind: "drives",
         ref: "attic:b2904fe1",
         date: "2025-06-04",
         from: "laptop",
@@ -98,7 +95,7 @@ const examples: [Example, ...Example[]] = [
         text: "send me your arrival time when you have it",
       },
       {
-        kind: "disks",
+        kind: "drives",
         ref: "attic:4ea17f30",
         date: "2025-09-15",
         from: "nas",
@@ -117,6 +114,19 @@ export function Hero() {
   const typed = useRef<HTMLSpanElement>(null);
   const list = useRef<HTMLOListElement>(null);
   const [bracket, setBracket] = useState({ top: 0, height: 0 });
+  const intro = useRef<HTMLDivElement>(null);
+  const opened = useRef(false);
+
+  useGSAP(
+    () => {
+      whenMoving(() => {
+        const heading = intro.current?.querySelector("h1");
+        if (heading) riseLines(heading, { duration: 1.1, stagger: 0.11 });
+        gsap.from("[data-after]", { opacity: 0, y: 10, duration: 0.6, stagger: 0.12, delay: 0.55 });
+      });
+    },
+    { scope: intro },
+  );
 
   useLayoutEffect(() => {
     const el = list.current;
@@ -140,12 +150,13 @@ export function Hero() {
       const el = typed.current;
       if (!el) return;
       el.textContent = example.query;
-      const mm = gsap.matchMedia();
-      mm.add("(prefers-reduced-motion: no-preference)", () => {
+      whenMoving(() => {
         const count = { n: 0 };
         el.textContent = "";
+        const delay = opened.current ? 0 : 1.1;
+        opened.current = true;
         gsap
-          .timeline({ defaults: { ease: "power2.out" } })
+          .timeline({ delay, defaults: { ease: "power2.out" } })
           .to(count, {
             n: example.query.length,
             duration: example.query.length * 0.035,
@@ -171,15 +182,15 @@ export function Hero() {
 
   return (
     <header className="grid grid-cols-[minmax(0,1fr)] gap-12 pt-14 md:pt-20">
-      <div className="grid gap-7">
+      <div ref={intro} className="grid gap-7">
         <h1 className="display max-w-[24ch] text-[2rem] sm:text-[2.8rem] lg:text-[3.5rem]">
           Everything you wrote, received and saved, in one database your agents can cite.
         </h1>
-        <p className="text-dim max-w-[52ch] text-[1.2rem]">
+        <p data-after className="text-dim max-w-[52ch] text-[1.2rem]">
           Mail, chats, documents and drives, imported into one Postgres you run yourself.
         </p>
-        <div className="mono flex flex-wrap items-center gap-x-8 gap-y-3 text-[0.85rem]">
-          <a href="#run" className="border-ink hover:bg-ink hover:text-ground border px-5 py-3">
+        <div data-after className="mono flex flex-wrap items-center gap-x-8 gap-y-3 text-[0.85rem]">
+          <a href="#run" className="btn">
             Run it yourself
           </a>
           <a
@@ -191,13 +202,14 @@ export function Hero() {
         </div>
       </div>
 
-      <div ref={scope} className="mono border-rule bg-panel text-code min-w-0 border">
-        <p
-          className="border-rule border-b px-4 py-3 sm:px-6"
-          aria-label={`${brand.cmd} search "${example.query}"`}
-        >
-          <span className="text-faint select-none">$ </span>
-          {brand.cmd} search "<span ref={typed} />"
+      <div ref={scope} className="frame mono border-rule bg-panel text-code min-w-0 border">
+        <p className="border-rule border-b px-4 py-3 sm:px-6">
+          <span className="sr-only">{`${brand.cmd} search "${example.query}"`}</span>
+          <span aria-hidden="true">
+            <span className="text-faint select-none">$ </span>
+            {brand.cmd} search "<span ref={typed} />
+            <span className="caret" />"
+          </span>
         </p>
 
         <div className="relative px-4 py-5 sm:px-6">
@@ -218,7 +230,9 @@ export function Hero() {
                 <span className="ref">{row.ref}</span>
                 <span className="text-faint col-start-2 lg:col-start-auto">{row.date}</span>
                 <span className="text-dim col-start-2 lg:col-start-auto">{row.from}</span>
-                <span className="col-start-2 lg:col-start-auto">{row.text}</span>
+                <span className="col-start-2 [overflow-wrap:anywhere] lg:col-start-auto">
+                  {row.text}
+                </span>
               </li>
             ))}
           </ol>
