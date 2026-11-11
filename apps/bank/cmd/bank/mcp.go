@@ -48,7 +48,7 @@ type refArgs struct {
 type timelineArgs struct {
 	Period string   `json:"period" jsonschema:"A year (2019), a month (2019-03) or a day (2019-03-14)."`
 	Groups []string `json:"groups,omitempty" jsonschema:"Only these groups: message, activity, file. Default: all three."`
-	Limit  int      `json:"limit,omitempty" jsonschema:"Events per group. Default 200."`
+	Limit  int      `json:"limit,omitempty" jsonschema:"Events per group, 1 to 2000. Default 200."`
 }
 
 type messageArgs struct {
@@ -59,6 +59,9 @@ type threadArgs struct {
 	ThreadID string `json:"thread_id" jsonschema:"The thread_id a message carries."`
 	Source   string `json:"source,omitempty" jsonschema:"The source the thread belongs to, as the message carries it."`
 	Around   int64  `json:"around,omitempty" jsonschema:"Center the page on this message's numeric id."`
+	Before   int64  `json:"before,omitempty" jsonschema:"Only messages older than this message's numeric id. Pass the page's first id to read the page before it."`
+	After    int64  `json:"after,omitempty" jsonschema:"Only messages newer than this message's numeric id. Pass the page's last id to read the page after it."`
+	Current  bool   `json:"current,omitempty" jsonschema:"Open the conversation as it is grouped now. Needed when a mail conversation was split and the thread_id also names the older, larger one."`
 	Limit    int    `json:"limit,omitempty" jsonschema:"Messages per page, 1 to 2000. Default 100."`
 }
 
@@ -104,7 +107,11 @@ func newMCPServer(r reads) *mcp.Server {
 		if err != nil {
 			return nil, catalog.Timeline{}, err
 		}
-		events, err := r.Timeline(ctx, since, until, in.Groups, cmp.Or(in.Limit, 200))
+		limit := cmp.Or(in.Limit, 200)
+		if limit < 1 || limit > 2000 {
+			return nil, catalog.Timeline{}, fmt.Errorf("limit must be between 1 and 2000, got %d", limit)
+		}
+		events, err := r.Timeline(ctx, since, until, in.Groups, limit)
 		return nil, events, err
 	})
 
@@ -117,6 +124,9 @@ func newMCPServer(r reads) *mcp.Server {
 			return nil, store.MessageDetail{}, err
 		}
 		m, err := r.GetMessageDetailByRef(ctx, ref)
+		if _, retired := errors.AsType[*store.RetiredError](err); retired {
+			return nil, m, fmt.Errorf("message %s was retired; the ref tool says what replaced it", ref)
+		}
 		if errors.Is(err, store.ErrNotFound) {
 			err = fmt.Errorf("no message has ref %s", ref)
 		}
@@ -125,9 +135,10 @@ func newMCPServer(r reads) *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{Name: "thread", Annotations: readOnly,
 		Description: "Read one conversation, oldest first. has_before and has_after say whether more messages lie " +
-			"outside the page; around with an edge message's id moves the page.",
+			"outside the page. Pass the last message's id as after for the next page, or the first as before " +
+			"for the previous one.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in threadArgs) (*mcp.CallToolResult, store.Thread, error) {
-		thread, err := r.GetThreadPage(ctx, in.Source, in.ThreadID, store.ThreadOpts{Limit: cmp.Or(in.Limit, 100), Around: in.Around})
+		thread, err := r.GetThreadPage(ctx, in.Source, in.ThreadID, store.ThreadOpts{Limit: cmp.Or(in.Limit, 100), Around: in.Around, Before: in.Before, After: in.After, Current: in.Current})
 		if errors.Is(err, store.ErrNotFound) {
 			err = fmt.Errorf("no thread %q", in.ThreadID)
 		}

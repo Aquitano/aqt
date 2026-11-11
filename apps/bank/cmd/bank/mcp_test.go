@@ -60,4 +60,9 @@ func TestMCPListsTheToolsAndSearchesWithRefs(t *testing.T) {
 	if err := json.Unmarshal(raw, &result); err != nil || fake.query != "lease" || len(result.Messages) != 1 || result.Messages[0].Ref != "0123456789ab" {
 		t.Fatalf("search result = %s, query %q, %v", raw, fake.query, err)
 	}
+
+	refused, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "timeline", Arguments: map[string]any{"period": "2026-03", "limit": -1}})
+	if err != nil || !refused.IsError {
+		t.Fatalf("timeline with a negative limit: %+v, %v", refused, err)
+	}
 }
