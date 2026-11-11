@@ -54,6 +54,7 @@ type Server struct {
 	dataDir         string
 	jsonReadTimeout time.Duration
 	extraction      extraction
+	digests         digestPass
 	mounts          map[string]http.Handler
 	catalogue       catalog.Catalogue
 }
