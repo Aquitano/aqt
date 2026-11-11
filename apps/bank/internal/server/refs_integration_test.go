@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,9 +13,12 @@ import (
 
 	"lukechampine.com/blake3"
 
+	"github.com/aquitano/aqt/apps/bank/internal/attic"
+	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 func TestExtractionTakesTextTheCatalogueAlreadyRead(t *testing.T) {
@@ -98,5 +104,48 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 		if _, err := c.Resolve(ctx, unknown); err == nil {
 			t.Fatalf("%s resolved", unknown)
 		}
+	}
+}
+
+type failingContents struct {
+	modifiedFiles
+	err error
+}
+
+func (f failingContents) Content(context.Context, string) (view.Content, error) {
+	return view.Content{}, f.err
+}
+
+func TestRefRouteSaysWhenTheCatalogueCannotAnswer(t *testing.T) {
+	s, _ := attachmentServer(t)
+	token, err := Tokens(s.dataDir).New("refs-test", tokens.Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.Handler())
+	t.Cleanup(srv.Close)
+	type answer struct {
+		Tag        string                    `json:"_tag"`
+		Candidates []atticstore.RefCandidate `json:"candidates"`
+	}
+	get := func() (int, answer) {
+		t.Helper()
+		status, body := authedGet(t, srv, token, "/v1/refs/attic:abab")
+		var got answer
+		if err := json.Unmarshal([]byte(body), &got); err != nil {
+			t.Fatalf("status %d: %s: %v", status, body, err)
+		}
+		return status, got
+	}
+
+	s.UseCatalogue(failingContents{err: attic.ErrNotReady})
+	if status, got := get(); status != http.StatusServiceUnavailable || got.Tag != "NotReady" {
+		t.Fatalf("catalogue not ready: %d %+v", status, got)
+	}
+
+	candidates := []atticstore.RefCandidate{{Ref: "abab0001", Size: 10}, {Ref: "abab0002", Size: 20}}
+	s.UseCatalogue(failingContents{err: &atticstore.AmbiguousRefError{Ref: "abab", Candidates: candidates}})
+	if status, got := get(); status != http.StatusConflict || got.Tag != "AmbiguousRef" || len(got.Candidates) != 2 || got.Candidates[1] != candidates[1] {
+		t.Fatalf("ambiguous prefix: %d %+v", status, got)
 	}
 }
