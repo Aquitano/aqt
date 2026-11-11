@@ -154,12 +154,12 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 			}
 		}
 		if !ok {
-			writeErr(w, http.StatusUnauthorized, "invalid or missing bearer token")
+			httpapi.Write(w, httpapi.Unauthorized.New("invalid or missing bearer token"))
 			return
 		}
 		write := r.Method != http.MethodGet && r.Method != http.MethodHead && !readOnlyPosts[r.URL.Path]
 		if !scope.Allows(TokenDomain, write) {
-			writeErr(w, http.StatusForbidden, "this token's scope ("+scope.String()+") does not allow the request")
+			httpapi.Write(w, httpapi.Forbidden.New("this token's scope ("+scope.String()+") does not allow the request"))
 			return
 		}
 		next.ServeHTTP(w, r)
