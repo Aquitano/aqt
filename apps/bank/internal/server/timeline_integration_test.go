@@ -66,7 +66,10 @@ func TestTimelineMergesMessagesActivityAndFiles(t *testing.T) {
 	if len(got.Events) != 3 || got.Events[1].Ref != "attic:abababababababab" || got.Events[1].Source != "Data" {
 		t.Fatalf("the file is not between the message and the watch: %+v", got.Events)
 	}
-	if only, err := c.Timeline(ctx, day, day.AddDate(0, 0, 1), []string{"activity"}, 1); err != nil || len(only.Events) != 1 || len(only.Truncated) != 1 {
-		t.Fatalf("one group at its limit: %+v, %v", only, err)
+	if only, err := c.Timeline(ctx, day, day.AddDate(0, 0, 1), []string{"activity"}, 1); err != nil || len(only.Events) != 1 || len(only.Truncated) != 0 {
+		t.Fatalf("one group with exactly limit events: %+v, %v", only, err)
+	}
+	if only, err := c.Timeline(ctx, day, day.AddDate(0, 0, 8), []string{"message"}, 1); err != nil || len(only.Events) != 1 || len(only.Truncated) != 1 {
+		t.Fatalf("one group past its limit: %+v, %v", only, err)
 	}
 }

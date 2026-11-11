@@ -71,9 +71,11 @@ func BuildTimeline(ctx context.Context, dated Dated, files Files, o TimelineOpti
 		}
 	}
 	wants := func(group string) bool { return len(o.Groups) == 0 || slices.Contains(o.Groups, group) }
+	// Each group asks for one row past the limit, so a group that has
+	// exactly limit rows is not reported as truncated.
 	add := func(group string, rows []store.Dated) {
-		if len(rows) >= o.Limit {
-			out.Truncated = append(out.Truncated, group)
+		if len(rows) > o.Limit {
+			out.Truncated, rows = append(out.Truncated, group), rows[:o.Limit]
 		}
 		for _, r := range rows {
 			e := Event{At: r.At, Precision: "instant", Group: group, Kind: r.Kind, Source: r.Source, Ref: r.Ref, Title: r.Title}
@@ -87,14 +89,14 @@ func BuildTimeline(ctx context.Context, dated Dated, files Files, o TimelineOpti
 		}
 	}
 	if wants("message") {
-		rows, err := dated.MessagesBetween(ctx, o.Since, o.Until, o.Limit)
+		rows, err := dated.MessagesBetween(ctx, o.Since, o.Until, o.Limit+1)
 		if err != nil {
 			return out, err
 		}
 		add("message", rows)
 	}
 	if wants("activity") {
-		rows, err := dated.ActivityBetween(ctx, o.Since, o.Until, o.Limit)
+		rows, err := dated.ActivityBetween(ctx, o.Since, o.Until, o.Limit+1)
 		if err != nil {
 			return out, err
 		}
@@ -107,8 +109,8 @@ func BuildTimeline(ctx context.Context, dated Dated, files Files, o TimelineOpti
 			// The archive answers without the catalogue, which may still be migrating.
 			out.Coverage = append(out.Coverage, "Files on disks are missing from this timeline: "+err.Error()+".")
 		default:
-			if len(places) >= o.Limit {
-				out.Truncated = append(out.Truncated, "file")
+			if len(places) > o.Limit {
+				out.Truncated, places = append(out.Truncated, "file"), places[:o.Limit]
 			}
 			for _, p := range places {
 				e := Event{At: *p.Modified, Precision: "instant", Group: "file", Kind: "file", Source: p.Volume, Title: p.Display}
@@ -128,5 +130,5 @@ func modified(ctx context.Context, files Files, o TimelineOptions) ([]view.Place
 	if files == nil {
 		return nil, fmt.Errorf("this server has no file catalogue")
 	}
-	return files.ModifiedFiles(ctx, o.Since, o.Until, o.Limit)
+	return files.ModifiedFiles(ctx, o.Since, o.Until, o.Limit+1)
 }
