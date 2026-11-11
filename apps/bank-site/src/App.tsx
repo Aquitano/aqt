@@ -1,8 +1,9 @@
 import { brand } from "./brand";
+import { RefTip } from "./RefTip";
 import { Access } from "./sections/Access";
 import { Architecture } from "./sections/Architecture";
 import { Day } from "./sections/Day";
-import { Footer, Run, Status } from "./sections/Ending";
+import { Footer, Run } from "./sections/Ending";
 import { Hero } from "./sections/Hero";
 import { Intake } from "./sections/Intake";
 import { Refs } from "./sections/Refs";
@@ -11,7 +12,6 @@ const links = [
   ["Sources", "#sources"],
   ["Refs", "#refs"],
   ["Architecture", "#architecture"],
-  ["Status", "#status"],
   ["GitHub", brand.repo],
 ] as const;
 
@@ -43,11 +43,11 @@ export function App() {
         <Day />
         <Architecture />
         <Access />
-        <Status />
         <Run />
       </main>
 
       <Footer />
+      <RefTip />
     </div>
   );
 }

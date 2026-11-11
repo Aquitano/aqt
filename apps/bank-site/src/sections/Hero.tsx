@@ -1,113 +1,24 @@
 import { useLayoutEffect, useRef, useState } from "react";
 
-import { brand, kindColor, type Kind } from "../brand";
+import { brand, kindColor } from "../brand";
 import { gsap, useGSAP, whenMoving } from "../motion";
+import { Ref } from "../parts";
+import { record, type RefId } from "../records";
 
-type Row = { kind: Kind; ref: string; date: string; from: string; text: string };
-type Example = { query: string; rows: Row[]; same: [number, number] };
+type Example = { query: string; refs: RefId[] };
 
 const examples: [Example, ...Example[]] = [
   {
     query: "lease deposit handover",
-    rows: [
-      {
-        kind: "mail",
-        ref: "3fa91c20b7e4",
-        date: "2024-02-26",
-        from: "Property office",
-        text: "Re: Deposit and key handover",
-      },
-      {
-        kind: "mail",
-        ref: "a04d77e19c52",
-        date: "2024-02-26",
-        from: "me",
-        text: "Fwd: Signed lease, 1 attachment",
-      },
-      {
-        kind: "chat",
-        ref: "9be2f0416a3d",
-        date: "2024-02-26",
-        from: "Anna",
-        text: "did you already transfer the deposit?",
-      },
-      {
-        kind: "drives",
-        ref: "attic:7c1e5ab0",
-        date: "2024-02-26",
-        from: "archive-2",
-        text: "/scans/2024/lease_signed.pdf",
-      },
-    ],
-    same: [1, 3],
+    refs: ["3fa91c20b7e4", "a04d77e19c52", "9be2f0416a3d", "attic:7c1e5ab0"],
   },
   {
     query: "why did we pick postgres",
-    rows: [
-      {
-        kind: "ai",
-        ref: "c18f3d9e0a77",
-        date: "2025-06-03",
-        from: "coding session",
-        text: "compare sqlite fts5 and paradedb",
-      },
-      {
-        kind: "library",
-        ref: "e77a0c93d1f4",
-        date: "2025-06-04",
-        from: "notes",
-        text: "decision-search-engine.md",
-      },
-      {
-        kind: "mail",
-        ref: "51c0e7a2bb19",
-        date: "2025-06-05",
-        from: "Jonas",
-        text: "Re: one database or two?",
-      },
-      {
-        kind: "drives",
-        ref: "attic:b2904fe1",
-        date: "2025-06-04",
-        from: "laptop",
-        text: "/notes/decision-search-engine.md",
-      },
-    ],
-    same: [1, 3],
+    refs: ["c18f3d9e0a77", "e77a0c93d1f4", "51c0e7a2bb19", "attic:b2904fe1"],
   },
   {
     query: "flight confirmation lisbon",
-    rows: [
-      {
-        kind: "mail",
-        ref: "7d02b9c4e1aa",
-        date: "2025-09-14",
-        from: "Airline",
-        text: "Your booking LIS, 2 attachments",
-      },
-      {
-        kind: "chat",
-        ref: "20c6f18d93b5",
-        date: "2025-09-14",
-        from: "Miguel",
-        text: "send me your arrival time",
-      },
-      {
-        kind: "drives",
-        ref: "attic:4ea17f30",
-        date: "2025-09-15",
-        from: "nas",
-        text: "/travel/2025/boarding-pass.pdf",
-      },
-      {
-        kind: "library",
-        ref: "b83e1d5c7a20",
-        date: "2025-09-16",
-        from: "notes",
-        text: "lisbon-trip.md",
-      },
-    ],
-    same: [0, 2],
+    refs: ["7d02b9c4e1aa", "20c6f18d93b5", "attic:4ea17f30", "b83e1d5c7a20"],
   },
 ];
 
@@ -116,11 +27,18 @@ const typingTime = (query: string) => query.length * 0.035;
 /** The prompt line reserves room for this one, so a shorter query never changes its height. */
 const longest = examples.reduce((a, e) => (e.query.length > a.length ? e.query : a), "");
 
+/** The two results that hold the same bytes, as row numbers. */
+function twins(refs: RefId[]): [number, number] {
+  const first = refs.findIndex((id) => record(id).same !== undefined);
+  const twin = refs.map((id) => record(id).same)[first];
+  return [first, refs.findIndex((id) => id === twin)];
+}
+
 /** One example's rows. Every example sits in the same grid cell, so switching never changes the height. */
 function Results({ example, active }: { example: Example; active: boolean }) {
-  const scope = useRef<HTMLDivElement>(null);
+  const scope = useRef<HTMLOListElement>(null);
   const [bracket, setBracket] = useState({ top: 0, height: 0 });
-  const [first, second] = example.same;
+  const [first, second] = twins(example.refs);
 
   useLayoutEffect(() => {
     const el = scope.current;
@@ -151,48 +69,52 @@ function Results({ example, active }: { example: Example; active: boolean }) {
             { scaleY: 0, transformOrigin: "top", duration: 0.5, ease: "power3.inOut" },
             "+=0.1",
           )
-          .from("[data-same]", { opacity: 0, duration: 0.3 }, "-=0.15");
+          .from("[data-equal]", { opacity: 0, duration: 0.25 }, "-=0.1");
       });
     },
     { scope, dependencies: [active], revertOnUpdate: true },
   );
 
   return (
-    <div
+    <ol
       ref={scope}
       aria-hidden={!active}
-      className={`col-start-1 row-start-1 grid content-start gap-y-5 ${active ? "" : "invisible"}`}
+      className={`relative col-start-1 row-start-1 grid content-start gap-y-3 pl-8 ${active ? "" : "invisible"}`}
     >
-      <ol className="relative grid gap-y-3 pl-7">
-        <li
-          data-bracket
-          aria-hidden="true"
-          className="border-ink absolute left-0 w-3 border-y border-l"
-          style={{ top: bracket.top, height: bracket.height }}
-        />
-        {example.rows.map((row) => (
+      <li
+        aria-hidden="true"
+        className="absolute left-1 w-3"
+        style={{ top: bracket.top, height: bracket.height }}
+      >
+        <span data-bracket className="border-ink absolute inset-0 border-y border-l" />
+        <span
+          data-equal
+          className="bg-panel absolute top-1/2 -left-1.5 -translate-y-1/2 py-0.5 leading-none"
+        >
+          =
+        </span>
+      </li>
+      {example.refs.map((id) => {
+        const row = record(id);
+        return (
           <li
-            key={row.ref}
+            key={id}
             data-row
             className="grid grid-cols-[4.2rem_minmax(0,1fr)] gap-x-4 lg:grid-cols-[4.2rem_8.8rem_6.6rem_8.5rem_minmax(0,1fr)]"
           >
             <span className={kindColor[row.kind]}>{row.kind}</span>
-            <span className="ref">{row.ref}</span>
+            <span>
+              <Ref id={id} />
+            </span>
             <span className="text-faint col-start-2 lg:col-start-auto">{row.date}</span>
             <span className="text-dim col-start-2 lg:col-start-auto">{row.from}</span>
             <span className="col-start-2 [overflow-wrap:anywhere] lg:col-start-auto">
               {row.text}
             </span>
           </li>
-        ))}
-      </ol>
-      <p data-same className="text-dim pl-7">
-        same bytes{"  "}
-        <span className="text-ink">{example.rows[first]?.ref}</span>
-        {" = "}
-        <span className="text-ink">{example.rows[second]?.ref}</span>
-      </p>
-    </div>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -281,7 +203,6 @@ export function Hero() {
               {e.query}
             </button>
           ))}
-          <span className="text-faint ml-auto">sample data</span>
         </div>
       </div>
     </header>

@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from "react";
 
+import type { RefId } from "./records";
+
 export function Section({
   id,
   title,
@@ -20,6 +22,15 @@ export function Section({
       </h2>
       <div className="mt-10">{children}</div>
     </section>
+  );
+}
+
+/** A ref the visitor can point at. RefTip shows what it names. */
+export function Ref({ id, className = "ref" }: { id: RefId; className?: string }) {
+  return (
+    <span data-ref={id} tabIndex={0} className={`cursor-help ${className}`}>
+      {id}
+    </span>
   );
 }
 

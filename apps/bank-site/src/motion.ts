@@ -9,4 +9,4 @@ export function whenMoving(animate: () => void) {
   gsap.matchMedia().add("(prefers-reduced-motion: no-preference)", animate);
 }
 
-export { gsap, useGSAP };
+export { gsap, ScrollTrigger, useGSAP };

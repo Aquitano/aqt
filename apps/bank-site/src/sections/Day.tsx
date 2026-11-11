@@ -2,53 +2,24 @@ import { useRef, useState } from "react";
 
 import { brand, kindColor, type Kind } from "../brand";
 import { gsap, useGSAP, whenMoving } from "../motion";
-import { Section } from "../parts";
+import { Ref, Section } from "../parts";
+import { record, type RefId } from "../records";
 
-type Event = { at: string; kind: Kind; ref: string; text: string };
+type Event = { at: string; ref: RefId };
 
 const events: [Event, ...Event[]] = [
-  {
-    at: "06:10",
-    kind: "library",
-    ref: "0d94aa17e6b3",
-    text: "Watched: how to read a lease, 14 min",
-  },
-  {
-    at: "07:30",
-    kind: "mail",
-    ref: "5b1e09d3c7f2",
-    text: "Property office: handover moved to Thursday",
-  },
-  {
-    at: "08:40",
-    kind: "chat",
-    ref: "9be2f0416a3d",
-    text: "Anna: did you already transfer the deposit?",
-  },
-  {
-    at: "09:50",
-    kind: "drives",
-    ref: "attic:7c1e5ab0",
-    text: "archive-2:/scans/2024/lease_signed.pdf written",
-  },
-  { at: "10:30", kind: "chat", ref: "41c7d2ee90ab", text: "me: doing it now" },
-  { at: "11:20", kind: "mail", ref: "a04d77e19c52", text: "me: Fwd: Signed lease, 1 attachment" },
-  {
-    at: "12:10",
-    kind: "drives",
-    ref: "attic:e3380b12",
-    text: "archive-2:/scans/2024/deposit_receipt.pdf written",
-  },
-  { at: "13:30", kind: "ai", ref: "d41b7e02f9a6", text: "Asked: summarise the handover checklist" },
-  { at: "14:40", kind: "library", ref: "6f0c2ab94e15", text: "Saved: handover-checklist.md" },
-  {
-    at: "16:31",
-    kind: "mail",
-    ref: "3fa91c20b7e4",
-    text: "Property office: Re: Deposit and key handover",
-  },
-  { at: "19:05", kind: "chat", ref: "77f0c1a2d458", text: "Anna: keys on Thursday then" },
-  { at: "22:18", kind: "library", ref: "9a6b20fd3c41", text: "Watched: two episodes, 48 min" },
+  { at: "06:10", ref: "0d94aa17e6b3" },
+  { at: "07:30", ref: "5b1e09d3c7f2" },
+  { at: "08:40", ref: "9be2f0416a3d" },
+  { at: "09:50", ref: "attic:7c1e5ab0" },
+  { at: "10:30", ref: "41c7d2ee90ab" },
+  { at: "11:20", ref: "a04d77e19c52" },
+  { at: "12:10", ref: "attic:e3380b12" },
+  { at: "13:30", ref: "d41b7e02f9a6" },
+  { at: "14:40", ref: "6f0c2ab94e15" },
+  { at: "16:31", ref: "3fa91c20b7e4" },
+  { at: "19:05", ref: "77f0c1a2d458" },
+  { at: "22:18", ref: "9a6b20fd3c41" },
 ];
 
 const lanes: Kind[] = ["mail", "chat", "ai", "library", "drives"];
@@ -60,47 +31,49 @@ const fill = {
   drives: "bg-drives",
 } satisfies Record<Kind, string>;
 
-const minutes = (at: string) => {
+const dayPart = (at: string) => {
   const [h = "0", m = "0"] = at.split(":");
-  return Number(h) * 60 + Number(m);
+  return (Number(h) * 60 + Number(m)) / 1440;
 };
-const left = (at: string) => `${(minutes(at) / 1440) * 100}%`;
 
 const hours = [
-  ["00", "left-0"],
-  ["06", "left-1/4 -translate-x-1/2"],
-  ["12", "left-1/2 -translate-x-1/2"],
-  ["18", "left-3/4 -translate-x-1/2"],
-  ["24", "left-full -translate-x-full"],
+  ["00", "left-0", ""],
+  ["06", "left-1/4", "-translate-x-1/2"],
+  ["12", "left-1/2", "-translate-x-1/2"],
+  ["18", "left-3/4", "-translate-x-1/2"],
+  ["24", "left-full", "-translate-x-full"],
 ] as const;
+
+const sweep = 4.2;
 
 export function Day() {
   const scope = useRef<HTMLDivElement>(null);
   const [picked, setPicked] = useState<Event>(events[5] ?? events[0]);
+  const entry = record(picked.ref);
 
   useGSAP(
     () => {
       whenMoving(() => {
-        const clock = { minute: 0 };
-        let shown = -1;
-        gsap
+        const day = gsap
           .timeline({ scrollTrigger: { trigger: scope.current, start: "top 70%", once: true } })
           .set("[data-playhead]", { opacity: 1 })
-          .to(clock, {
-            minute: 1440,
-            duration: 4.2,
-            ease: "none",
-            onUpdate: () => {
-              gsap.set("[data-playhead]", { left: `${(clock.minute / 1440) * 100}%` });
-              const reached = events.findLastIndex((e) => minutes(e.at) <= clock.minute);
-              if (reached === shown) return;
-              shown = reached;
-              const event = events[reached];
-              if (!event) return;
-              setPicked(event);
-            },
-          })
-          .to("[data-playhead]", { opacity: 0, duration: 0.4 });
+          .fromTo(
+            "[data-playhead]",
+            { left: "0%" },
+            { left: "100%", duration: sweep, ease: "none" },
+            0,
+          );
+        for (const event of events) {
+          const at = dayPart(event.at) * sweep;
+          day
+            .from(
+              `[data-dot="${event.ref}"]`,
+              { scale: 0, duration: 0.35, ease: "back.out(3)" },
+              at,
+            )
+            .call(setPicked, [event], at);
+        }
+        day.to("[data-playhead]", { opacity: 0, duration: 0.4 }, sweep);
       });
     },
     { scope },
@@ -126,7 +99,7 @@ export function Day() {
               <span
                 key={hour}
                 aria-hidden="true"
-                className={`border-rule-soft absolute inset-y-0 border-l ${at.split(" ")[0]}`}
+                className={`border-rule-soft absolute inset-y-0 border-l ${at}`}
               />
             ))}
             <span
@@ -137,18 +110,18 @@ export function Day() {
             {lanes.map((lane) => (
               <div key={lane} className="relative h-9">
                 {events
-                  .filter((e) => e.kind === lane)
+                  .filter((e) => record(e.ref).kind === lane)
                   .map((e) => (
                     <button
                       key={e.ref}
                       type="button"
                       data-dot={e.ref}
-                      aria-label={`${e.at} ${e.text}`}
+                      aria-label={`${e.at} ${record(e.ref).from}: ${record(e.ref).text}`}
                       aria-current={e.ref === picked.ref}
                       onMouseEnter={() => setPicked(e)}
                       onFocus={() => setPicked(e)}
                       onClick={() => setPicked(e)}
-                      style={{ left: left(e.at) }}
+                      style={{ left: `${dayPart(e.at) * 100}%` }}
                       className={`${fill[lane]} aria-[current=true]:outline-ink absolute top-1/2 -mt-1.5 -ml-1.5 size-3 cursor-pointer rounded-full outline-offset-4 before:absolute before:-inset-2.5 aria-[current=true]:outline aria-[current=true]:outline-1`}
                     />
                   ))}
@@ -156,8 +129,8 @@ export function Day() {
             ))}
           </div>
           <div className="text-faint relative col-start-2 h-6">
-            {hours.map(([hour, at]) => (
-              <span key={hour} className={`absolute top-1.5 ${at}`}>
+            {hours.map(([hour, at, shift]) => (
+              <span key={hour} className={`absolute top-1.5 ${at} ${shift}`}>
                 {hour}
               </span>
             ))}
@@ -165,8 +138,12 @@ export function Day() {
         </div>
         <p className="border-rule bg-panel grid min-h-[3.1rem] items-center gap-x-5 gap-y-1 border-t px-4 py-3 sm:grid-cols-[3rem_9rem_minmax(0,1fr)]">
           <span className="text-faint">{picked.at}</span>
-          <span className="ref">{picked.ref}</span>
-          <span className={kindColor[picked.kind]}>{picked.text}</span>
+          <span>
+            <Ref id={picked.ref} />
+          </span>
+          <span className={kindColor[entry.kind]}>
+            {entry.from}: {entry.text}
+          </span>
         </p>
       </div>
     </Section>
