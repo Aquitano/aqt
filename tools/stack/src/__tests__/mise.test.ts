@@ -105,6 +105,7 @@ describe("mise registration", () => {
         };
         const all = await run("check");
         expect(all.map((entry) => entry.task).toSorted()).toEqual([
+          "bank-site:ts",
           "bank:go",
           "bank:ts",
           "example:ts",
@@ -121,6 +122,7 @@ describe("mise registration", () => {
         ]);
         const ts = await run("ts:check");
         expect(ts.map((entry) => entry.task).toSorted()).toEqual([
+          "bank-site:ts",
           "bank:ts",
           "example:ts",
           "gallery:ts",
