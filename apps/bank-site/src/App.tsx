@@ -1,7 +1,4 @@
-import { useRef } from "react";
-
 import { brand } from "./brand";
-import { gsap, useGSAP, whenMoving } from "./motion";
 import { Access } from "./sections/Access";
 import { Architecture } from "./sections/Architecture";
 import { Day } from "./sections/Day";
@@ -19,19 +16,6 @@ const links = [
 ] as const;
 
 export function App() {
-  const progress = useRef<HTMLSpanElement>(null);
-
-  useGSAP(() => {
-    gsap.set(progress.current, { scaleX: 0 });
-    whenMoving(() => {
-      gsap.to(progress.current, {
-        scaleX: 1,
-        ease: "none",
-        scrollTrigger: { start: 0, end: "max", scrub: 0.3 },
-      });
-    });
-  });
-
   return (
     <div className="relative mx-auto max-w-[70rem] px-5 pb-10 sm:px-8">
       <nav
@@ -50,11 +34,6 @@ export function App() {
             </li>
           ))}
         </ul>
-        <span
-          ref={progress}
-          aria-hidden="true"
-          className="bg-ink absolute inset-x-0 -bottom-px h-px origin-left"
-        />
       </nav>
 
       <main id="top" className="grid scroll-mt-20 grid-cols-[minmax(0,1fr)] gap-24 md:gap-32">

@@ -1,7 +1,6 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { kindColor, type Kind } from "../brand";
-import { gsap, useGSAP, whenMoving } from "../motion";
 import { Section } from "../parts";
 
 type Domain = "bank" | "attic";
@@ -54,7 +53,7 @@ const sources: Source[] = [
 
 function Box({ children, sub }: { children: ReactNode; sub?: string }) {
   return (
-    <span className="border-rule bg-panel border px-2.5 py-1.5">
+    <span className="border-rule bg-panel block border px-2.5 py-1.5">
       {children}
       {sub ? <span className="text-faint block text-[0.68rem]">{sub}</span> : null}
     </span>
@@ -63,7 +62,7 @@ function Box({ children, sub }: { children: ReactNode; sub?: string }) {
 
 function Lane({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div data-lane className="frame border-rule grid gap-3 border p-4">
+    <div className="frame border-rule grid gap-3 border p-4">
       <span className="text-faint">{label}</span>
       {children}
     </div>
@@ -73,29 +72,11 @@ function Lane({ label, children }: { label: string; children: ReactNode }) {
 export function Architecture() {
   const [lit, setLit] = useState<Source | null>(null);
   const off = (domain: Domain) => lit !== null && lit.domain !== domain;
-  const scope = useRef<HTMLDivElement>(null);
-
-  useGSAP(
-    () => {
-      whenMoving(() => {
-        gsap.from("[data-lane], [data-arrow]", {
-          opacity: 0,
-          y: 14,
-          duration: 0.45,
-          stagger: 0.14,
-          ease: "power2.out",
-          clearProps: "opacity,transform",
-          scrollTrigger: { trigger: scope.current, start: "top 72%", once: true },
-        });
-      });
-    },
-    { scope },
-  );
 
   return (
-    <Section id="architecture" title="One database, one server">
-      <div ref={scope}>
-        <div className="min-w-0 overflow-x-auto">
+    <Section id="architecture" title="How it is built">
+      <div>
+        <div className="min-w-0 max-lg:overflow-x-auto">
           <div className="mono text-code grid min-w-[36rem]">
             <Lane label="Sources">
               <div className="flex flex-wrap gap-2" onMouseLeave={() => setLit(null)}>
@@ -114,7 +95,7 @@ export function Architecture() {
                 ))}
               </div>
             </Lane>
-            <pre data-arrow className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
+            <pre className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
               {"│\n▼"}
             </pre>
             <Lane label="One Postgres, with ParadeDB for search">
@@ -149,7 +130,7 @@ export function Architecture() {
                 blob_digests: SHA-256 to BLAKE3, the join between a mail and a drive
               </span>
             </Lane>
-            <pre data-arrow className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
+            <pre className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
               {"│\n▼"}
             </pre>
             <Lane label="One server">
@@ -168,7 +149,7 @@ export function Architecture() {
                 <Box sub="read-only, per domain">scoped tokens</Box>
               </div>
             </Lane>
-            <pre data-arrow className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
+            <pre className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
               {"│\n▼"}
             </pre>
             <Lane label="Readers">

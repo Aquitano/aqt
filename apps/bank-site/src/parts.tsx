@@ -1,6 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
-
-import { gsap, riseLines, useGSAP, whenMoving } from "./motion";
+import { useState, type ReactNode } from "react";
 
 export function Section({
   id,
@@ -11,30 +9,13 @@ export function Section({
   title: string;
   children: ReactNode;
 }) {
-  const scope = useRef<HTMLElement>(null);
-
-  useGSAP(
-    () => {
-      whenMoving(() => {
-        const trigger = { trigger: scope.current, start: "top 82%", once: true };
-        gsap.from("[data-rule]", {
-          scaleX: 0,
-          transformOrigin: "left",
-          duration: 1.1,
-          ease: "power3.inOut",
-          scrollTrigger: trigger,
-        });
-        const heading = scope.current?.querySelector("h2");
-        if (heading) riseLines(heading, { scrollTrigger: trigger });
-      });
-    },
-    { scope },
-  );
-
   return (
-    <section ref={scope} id={id} aria-labelledby={`${id}-title`} className="scroll-mt-20">
-      <div data-rule className="bg-rule h-px" />
-      <h2 id={`${id}-title`} className="display mt-8 max-w-[26ch] text-[1.5rem] md:text-[2.1rem]">
+    <section
+      id={id}
+      aria-labelledby={`${id}-title`}
+      className="border-rule scroll-mt-20 border-t pt-8"
+    >
+      <h2 id={`${id}-title`} className="display text-[1.5rem] md:text-[1.9rem]">
         {title}
       </h2>
       <div className="mt-10">{children}</div>
@@ -47,7 +28,7 @@ export function Terminal({
   action,
   children,
 }: {
-  title: string;
+  title: ReactNode;
   action?: ReactNode;
   children: ReactNode;
 }) {
@@ -67,7 +48,6 @@ export function Prompt({ children }: { children: ReactNode }) {
     <>
       <span className="text-faint select-none">$ </span>
       {children}
-      {"\n"}
     </>
   );
 }
@@ -86,12 +66,7 @@ export function CopyButton({ text }: { text: string }) {
   };
 
   return (
-    <button
-      type="button"
-      onClick={copy}
-      className="hover:text-ink cursor-pointer"
-      aria-live="polite"
-    >
+    <button type="button" onClick={copy} className="hover:text-ink cursor-pointer">
       {copied ? "Copied" : "Copy"}
     </button>
   );
