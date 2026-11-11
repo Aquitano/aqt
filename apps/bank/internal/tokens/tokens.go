@@ -19,7 +19,8 @@ import (
 	"strings"
 
 	"github.com/gofrs/flock"
-	"github.com/natefinch/atomic"
+
+	"github.com/aquitano/aqt/apps/bank/internal/atomicfile"
 )
 
 type Store struct {
@@ -129,7 +130,7 @@ func (s Store) update(change func([]Token) ([]Token, error)) (err error) {
 		}
 		b.WriteByte('\n')
 	}
-	return atomic.WriteFile(s.Path, strings.NewReader(b.String()))
+	return atomicfile.Write(s.Path, strings.NewReader(b.String()))
 }
 
 // New mints a token for name and stores only its digest. The returned
