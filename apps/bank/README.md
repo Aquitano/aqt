@@ -136,6 +136,26 @@ server-file, program-execution, or administrative grants. READ ONLY transactions
 a 15-second timeout and a row cap provide additional limits. Other read commands
 work without this setting.
 
+## MCP
+
+`bank mcp` serves the archive to an agent as MCP tools over stdio: `search` (messages, attachment text, the media library and files on disks at once), `ref` (what a cited ref names and where its bytes are elsewhere), `timeline` (a year, month or day), `message` (one message by ref, with its attachments) and `thread` (one conversation). All five only read, and every result carries the refs to cite. Like the CLI, it reads the local database, or the server named by `BANK_URL`; a read-only token is enough there (`bank token new agent --read-only`).
+
+For Claude Code, in the project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "bank": {
+      "command": "bank",
+      "args": ["mcp"],
+      "env": { "BANK_URL": "${BANK_URL}", "BANK_TOKEN": "${BANK_TOKEN}" }
+    }
+  }
+}
+```
+
+or `claude mcp add bank -e BANK_URL=$BANK_URL -e BANK_TOKEN=$BANK_TOKEN -- bank mcp`.
+
 ## Retrieve conversation history
 
 `bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <message-id>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with a page's first and last message IDs. These positions are mutually exclusive. Each page contains up to 2,000 messages and includes attachment metadata.
