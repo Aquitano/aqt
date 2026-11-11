@@ -23,6 +23,7 @@ var ErrNotFound = errors.New("not found")
 var (
 	ErrCatalogueNotMigrated = errors.New("run attic migrate (or a scan) to bring it up to date")
 	ErrBinaryOutdated       = errors.New("this attic binary is older than the catalogue; install a newer build")
+	ErrNoCatalogue          = errors.New("the database has no file catalogue")
 	ErrPredatesVersioning   = errors.New("the catalogue in public predates schema_version; run attic migrate from the previous build first")
 )
 
@@ -96,7 +97,7 @@ func (s *Store) checkSchema(ctx context.Context) error {
 	case err != nil:
 		return err
 	case current == 0:
-		return fmt.Errorf("catalogue has no schema: %w", ErrCatalogueNotMigrated)
+		return fmt.Errorf("%w: %w", ErrNoCatalogue, ErrCatalogueNotMigrated)
 	case current < latest:
 		return fmt.Errorf("catalogue schema is at version %d, this attic expects %d: %w", current, latest, ErrCatalogueNotMigrated)
 	case current > latest:

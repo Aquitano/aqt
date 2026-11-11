@@ -115,6 +115,9 @@ func (c *Catalogue) Handler(host api.Host) http.Handler {
 // ErrNotFound means no content matches a ref.
 var ErrNotFound = store.ErrNotFound
 
+// ErrNoCatalogue means Open found a database the catalogue was never migrated into.
+var ErrNoCatalogue = store.ErrNoCatalogue
+
 // Content is one unique content and every place it lives or lived. ref is a
 // content ref, with or without attic:, or a whole BLAKE3 digest in hex.
 func (c *Catalogue) Content(ctx context.Context, ref string) (view.Content, error) {

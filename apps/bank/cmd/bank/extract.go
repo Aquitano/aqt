@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,7 +60,8 @@ func (c *extractCmd) Run(ctx context.Context) error {
 	o.OCRLang = c.Lang
 	o.TempDir = stagingDir()
 
-	sel := blobtext.Selection{Statuses: statuses, Source: c.Source, Limit: c.Limit}
+	sel := blobtext.Selection{Statuses: statuses, Source: c.Source, Limit: c.Limit,
+		ReadAgain: slices.Contains(statuses, string(extract.StatusOK)) || slices.Contains(statuses, string(extract.StatusEmpty))}
 
 	var progress func(store.BlobRef, extract.Result)
 	if !c.JSON {
@@ -164,6 +167,9 @@ func openAttachments(ctx context.Context) (attachmentBackend, func(), error) {
 	// A database without the catalogue reads every blob itself.
 	catalogue, err := attic.Open(ctx, databaseURL())
 	if err != nil {
+		if !errors.Is(err, attic.ErrNoCatalogue) {
+			slog.Warn("the file catalogue is unavailable, so every blob is read here", "error", err)
+		}
 		return local, closeStore, nil
 	}
 	local.Known = catalogue

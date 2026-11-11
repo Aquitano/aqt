@@ -48,6 +48,10 @@ type Selection struct {
 	// RefreshSince limits the closing refresh to messages whose attachments
 	// were stored or extracted since it; zero refreshes every message.
 	RefreshSince time.Time
+	// ReadAgain reads every blob itself, never taking text another store
+	// already holds: a deliberate re-extract of ok or empty content wants
+	// bank's own extractors.
+	ReadAgain bool
 }
 
 // Summary is what a run did, in the shape `--json` prints.
@@ -118,7 +122,7 @@ func Run(ctx context.Context, a Archive, sel Selection, o extract.Options, progr
 		res, known := extract.Result{}, false
 		if reuse, ok := a.(interface {
 			KnownText(context.Context, string) (extract.Result, bool)
-		}); ok {
+		}); ok && !sel.ReadAgain {
 			res, known = reuse.KnownText(ctx, b.SHA256)
 		}
 		if !known {
