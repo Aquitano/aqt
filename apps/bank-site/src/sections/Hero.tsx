@@ -190,17 +190,13 @@ export function Hero() {
   useGSAP(
     () => {
       whenMoving(() => {
-        gsap
-          .timeline({ defaults: { ease: "power3.out" } })
-          .from("[data-word]", {
-            opacity: 0,
-            y: "0.3em",
-            filter: "blur(8px)",
-            duration: 0.7,
-            stagger: 0.04,
-            clearProps: "filter",
-          })
-          .from("[data-after]", { opacity: 0, y: 8, duration: 0.5, stagger: 0.1 }, "-=0.45");
+        gsap.from("[data-word]", {
+          opacity: 0,
+          y: "0.18em",
+          duration: 0.55,
+          stagger: 0.03,
+          ease: "power2.out",
+        });
       });
     },
     { scope: intro },
@@ -245,15 +241,12 @@ export function Hero() {
             </span>
           ))}
         </h1>
-        <p data-after className="text-dim relative max-w-[54ch] text-[1.2rem]">
+        <p className="text-dim relative max-w-[54ch] text-[1.2rem]">
           {brand.name} is the data layer for your personal AI. It keeps your mail, chats, documents
           and drives in one place your agents can search, and every answer they give cites the
           record it came from.
         </p>
-        <div
-          data-after
-          className="mono relative flex flex-wrap items-center gap-x-8 gap-y-3 text-[0.85rem]"
-        >
+        <div className="mono relative flex flex-wrap items-center gap-x-8 gap-y-3 text-[0.85rem]">
           <a href="#run" className="btn">
             Run it yourself
           </a>
@@ -264,7 +257,7 @@ export function Hero() {
             Wait for the hosted version
           </a>
         </div>
-        <p data-after className="mono text-code text-faint relative flex flex-wrap gap-x-6 gap-y-1">
+        <p className="mono text-code text-faint relative flex flex-wrap gap-x-6 gap-y-1">
           <span>Open source</span>
           <span>Self-hosted</span>
           <span>One Postgres</span>
