@@ -1,6 +1,52 @@
 {
   "components": {
     "schemas": {
+      "AmbiguousRefError": {
+        "description": "The ref prefix matches several contents. Retry with one of the candidates' longer refs.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "AmbiguousRef"
+            ],
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RefCandidate"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "candidates",
+          "message"
+        ],
+        "type": "object"
+      },
       "Event": {
         "additionalProperties": false,
         "properties": {
@@ -229,6 +275,65 @@
         ],
         "type": "object"
       },
+      "NotReadyError": {
+        "description": "The file catalogue is still opening, or failed to; retry later.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "NotReady"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "RefCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "volume": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "size"
+        ],
+        "type": "object"
+      },
       "Resolved": {
         "additionalProperties": false,
         "properties": {
@@ -434,6 +539,16 @@
             },
             "description": "NotFound: nothing matches."
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbiguousRefError"
+                }
+              }
+            },
+            "description": "AmbiguousRef: the ref prefix matches several contents. Retry with one of the candidates' longer refs."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -453,6 +568,16 @@
               }
             },
             "description": "Internal: the server failed; message says how."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotReadyError"
+                }
+              }
+            },
+            "description": "NotReady: the file catalogue is still opening, or failed to; retry later."
           }
         },
         "summary": "Say what a cited ref names, whichever store holds it",

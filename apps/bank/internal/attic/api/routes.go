@@ -56,20 +56,20 @@ func (s *Server) register(api huma.API) {
 	huma.Register(api, op(operation{ID: "getContent", Method: http.MethodGet, Path: "/v1/contents/{ref}", Tag: "contents",
 		Summary:     "Show one content and every place it lives or lived",
 		Description: "Occurrences list current places first, then places that held this content before their bytes changed.",
-		Errors:      []httpapi.Kind{errNotFound, errAmbiguous}}), s.content)
+		Errors:      []httpapi.Kind{errNotFound, AmbiguousRef}}), s.content)
 
 	huma.Register(api, op(operation{ID: "getContentText", Method: http.MethodGet, Path: "/v1/contents/{ref}/text", Tag: "contents",
 		Summary:     "Read a document's extracted text",
 		Description: "Text is extracted once per content, up to the first 1 MB; status says whether it was cut.",
-		Errors:      []httpapi.Kind{errNotFound, errAmbiguous}}), s.text)
+		Errors:      []httpapi.Kind{errNotFound, AmbiguousRef}}), s.text)
 
 	huma.Register(api, op(operation{ID: "getContentMetadata", Method: http.MethodGet, Path: "/v1/contents/{ref}/metadata", Tag: "contents",
 		Summary: "Read embedded image, document, audio and video tags",
-		Errors:  []httpapi.Kind{errNotFound, errAmbiguous}}), s.metadata)
+		Errors:  []httpapi.Kind{errNotFound, AmbiguousRef}}), s.metadata)
 
 	huma.Register(api, op(operation{ID: "listContentAnalyses", Method: http.MethodGet, Path: "/v1/contents/{ref}/analyses", Tag: "contents",
 		Summary: "List OCR and image descriptions, one per task, provider, model and prompt version",
-		Errors:  []httpapi.Kind{errNotFound, errAmbiguous}}), s.analyses)
+		Errors:  []httpapi.Kind{errNotFound, AmbiguousRef}}), s.analyses)
 
 	download := op(operation{ID: "downloadContent", Method: http.MethodGet, Path: "/v1/contents/{ref}/file", Tag: "contents",
 		Summary: "Download a file's bytes from an attached disk",
@@ -77,7 +77,7 @@ func (s *Server) register(api huma.API) {
 			"and checks it against the catalogued BLAKE3 digest while streaming. A copy that changed since its scan " +
 			"ends the response short of Content-Length rather than delivering wrong bytes. While no copy is attached, " +
 			"the error lists the disks that hold one.",
-		Errors: []httpapi.Kind{errNotFound, errAmbiguous, errUnavailable}})
+		Errors: []httpapi.Kind{errNotFound, AmbiguousRef, errUnavailable}})
 	download.Responses["200"] = &huma.Response{
 		Description: "The file's bytes. ETag is its BLAKE3 digest.",
 		Content:     map[string]*huma.MediaType{"application/octet-stream": {Schema: &huma.Schema{Type: "string", Format: "binary"}}},

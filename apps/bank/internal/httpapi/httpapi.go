@@ -84,8 +84,8 @@ var (
 		Doc: "Nothing matches."}
 	Internal = Kind{Tag: "Internal", Status: http.StatusInternalServerError,
 		Doc: "The server failed; message says how."}
-	// A host answers NotReady before an API exists, so no operation documents it.
-	NotReady = Kind{Tag: "NotReady", Status: http.StatusServiceUnavailable}
+	NotReady = Kind{Tag: "NotReady", Status: http.StatusServiceUnavailable,
+		Doc: "The file catalogue is still opening, or failed to; retry later."}
 )
 
 // EveryOperation can fail on any route: authentication, parameter validation

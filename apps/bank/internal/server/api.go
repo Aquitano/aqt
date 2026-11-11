@@ -10,6 +10,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/aquitano/aqt/apps/bank/internal/attic"
+	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
+	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 )
@@ -43,7 +46,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 			"bytes are in the other store: a message attachment's copies on disks, or the messages and library " +
 			"files that hold a disk file's bytes. Those links appear once the server has read the blob's BLAKE3 " +
 			"digest, shortly after an import.",
-		Errors: []httpapi.Kind{httpapi.NotFound},
+		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef, httpapi.NotReady},
 	}.For(api), s.resolve)
 	httpapi.Finish(api)
 	return api
@@ -65,10 +68,15 @@ func (s *Server) resolve(ctx context.Context, in *resolveInput) (*httpapi.Body[c
 		contents = s.catalogue
 	}
 	resolved, err := catalog.Resolve(ctx, s.db, contents, in.Ref)
-	if errors.Is(err, catalog.ErrNoRecord) {
-		return nil, httpapi.NotFound.New(err.Error())
+	if ambiguous, ok := errors.AsType[*atticstore.AmbiguousRefError](err); ok {
+		return nil, atticapi.AmbiguousRef.New(err.Error()).With("candidates", ambiguous.Candidates)
 	}
-	if err != nil {
+	switch {
+	case errors.Is(err, catalog.ErrNoRecord):
+		return nil, httpapi.NotFound.New(err.Error())
+	case errors.Is(err, attic.ErrNotReady):
+		return nil, atticapi.NotReadyError()
+	case err != nil:
 		return nil, httpapi.Internal.New(err.Error())
 	}
 	return &httpapi.Body[catalog.Resolved]{Body: resolved}, nil

@@ -14,7 +14,7 @@ import (
 var (
 	errNotFound = httpapi.Kind{Tag: httpapi.NotFound.Tag, Status: http.StatusNotFound,
 		Doc: "No content, entry, volume or scan matches."}
-	errAmbiguous = httpapi.Kind{Tag: "AmbiguousRef", Status: http.StatusConflict,
+	AmbiguousRef = httpapi.Kind{Tag: "AmbiguousRef", Status: http.StatusConflict,
 		Doc:   "The ref prefix matches several contents. Retry with one of the candidates' longer refs.",
 		Extra: map[string]reflect.Type{"candidates": reflect.TypeFor[[]store.RefCandidate]()}}
 	errUnavailable = httpapi.Kind{Tag: "Unavailable", Status: http.StatusConflict,
@@ -25,7 +25,7 @@ var (
 // fail turns a store or retrieval error into the documented failure.
 func fail(err error) error {
 	if ambiguous, ok := errors.AsType[*store.AmbiguousRefError](err); ok {
-		return errAmbiguous.New(err.Error()).With("candidates", ambiguous.Candidates)
+		return AmbiguousRef.New(err.Error()).With("candidates", ambiguous.Candidates)
 	}
 	if unavailable, ok := errors.AsType[*retrieve.UnavailableError](err); ok {
 		// Never nil, so the documented list is present even when it is empty.
