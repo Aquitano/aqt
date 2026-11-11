@@ -91,7 +91,7 @@ func apiConfig(host Host) huma.Config {
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/v1/") {
-			token, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+			token, _ := httpapi.BearerToken(r)
 			scope, ok, err := s.host.Tokens.Verify(token)
 			if err != nil {
 				slog.Error("read tokens", "err", err)

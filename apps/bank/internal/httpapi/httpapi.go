@@ -200,6 +200,13 @@ func Config(title, description, mintCommand, basePath string) huma.Config {
 	return cfg
 }
 
+// BearerToken is the token in r's Authorization header. The scheme is
+// case-insensitive, as RFC 7235 says.
+func BearerToken(r *http.Request) (string, bool) {
+	scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+	return token, ok && strings.EqualFold(scheme, "bearer") && token != ""
+}
+
 // Write sends e outside a Huma handler, such as from authentication.
 func Write(w http.ResponseWriter, e *Error) {
 	w.Header().Set("Content-Type", "application/json")

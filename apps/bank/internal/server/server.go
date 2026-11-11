@@ -23,6 +23,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
@@ -168,15 +169,17 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return Run(ctx, srv)
 }
 
+// readOnlyPosts take a POST body and only read: ad-hoc SQL runs in read-only
+// sessions, and summaries looks up a list of item IDs.
+var readOnlyPosts = map[string]bool{"/v1/query": true, "/v1/library/items/summaries": true}
+
 func (s *Server) requireToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		const prefix = "bearer " // scheme is case-insensitive per RFC 7235
-		auth := r.Header.Get("Authorization")
-		ok := len(auth) > len(prefix) && strings.EqualFold(auth[:len(prefix)], prefix)
+		token, ok := httpapi.BearerToken(r)
 		var scope tokens.Scope
 		if ok {
 			var err error
-			if scope, ok, err = Tokens(s.dataDir).Verify(auth[len(prefix):]); err != nil {
+			if scope, ok, err = Tokens(s.dataDir).Verify(token); err != nil {
 				slog.Error("read tokens", "error", err)
 			}
 		}
@@ -184,8 +187,7 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 			writeErr(w, http.StatusUnauthorized, "invalid or missing bearer token")
 			return
 		}
-		// Ad-hoc SQL is a POST that only reads: its sessions are read-only.
-		write := r.Method != http.MethodGet && r.Method != http.MethodHead && r.URL.Path != "/v1/query"
+		write := r.Method != http.MethodGet && r.Method != http.MethodHead && !readOnlyPosts[r.URL.Path]
 		if !scope.Allows(TokenDomain, write) {
 			writeErr(w, http.StatusForbidden, "this token's scope ("+scope.String()+") does not allow the request")
 			return
