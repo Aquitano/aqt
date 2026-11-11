@@ -1,8 +1,5 @@
-import { useRef } from "react";
-
 import { brand } from "../brand";
-import { gsap, useGSAP, whenMoving } from "../motion";
-import { Section } from "../parts";
+import { Prompt, Section } from "../parts";
 
 type Line = { rail: string; label: string; value: string; tone?: "drives" | "mail" | "dim" };
 
@@ -21,67 +18,55 @@ const tree: Line[] = [
 
 const tones = { drives: "text-drives", mail: "text-mail", dim: "text-dim" } as const;
 
-const facts = [
-  "derived from the record, not from a row number",
-  "survives a rebuild of the database",
-  "answers 410 with a forwarding note when retired",
-];
+function Cite({ id, lit }: { id: string; lit?: boolean }) {
+  return (
+    <span
+      className={`mono text-code whitespace-nowrap ${lit ? "bg-ink text-ground px-1" : "text-dim"}`}
+    >
+      {brand.cmd}:{id}
+    </span>
+  );
+}
 
 export function Refs() {
-  const scope = useRef<HTMLDivElement>(null);
-
-  useGSAP(
-    () => {
-      whenMoving(() => {
-        gsap
-          .timeline({ scrollTrigger: { trigger: scope.current, start: "top 72%", once: true } })
-          .to("[data-hash]", {
-            duration: 1.1,
-            scrambleText: { text: ref, chars: "0123456789abcdef", speed: 0.5 },
-            ease: "none",
-          })
-          .from("[data-fact]", { opacity: 0, x: -8, duration: 0.35, stagger: 0.1 }, "-=0.5")
-          .from("[data-root]", { opacity: 0, duration: 0.2 }, "-=0.4")
-          .from("[data-branch]", { opacity: 0, x: -6, duration: 0.25, stagger: 0.09 }, "-=0.1");
-      });
-    },
-    { scope },
-  );
-
   return (
-    <Section id="refs" title="Every record has a ref, and a ref resolves to everything">
-      <div
-        ref={scope}
-        className="mono grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center"
-      >
-        <div className="grid gap-5">
-          <p className="display text-[1.35rem] break-all sm:text-[1.9rem]">
-            <span className="text-faint">{brand.cmd}:</span>
-            <span data-hash>{ref}</span>
-          </p>
-          <ul className="text-code text-dim grid gap-1.5">
-            {facts.map((fact) => (
-              <li key={fact} data-fact>
-                {fact}
-              </li>
-            ))}
+    <Section id="refs" title="What a ref resolves to">
+      <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+        <figure className="frame border-rule bg-panel min-w-0 border">
+          <figcaption className="mono border-rule text-code text-faint border-b px-4 py-2">
+            notes/lease.md, written by an agent
+          </figcaption>
+          <ul className="grid gap-4 p-5 text-[1rem] leading-normal">
+            <li>
+              Signed lease sent to the property office on 26 February. <Cite id={ref} lit />
+            </li>
+            <li>
+              Deposit and key handover confirmed the same day. <Cite id="3fa91c20b7e4" />
+            </li>
+            <li>
+              Anna asked about the transfer that morning. <Cite id="9be2f0416a3d" />
+            </li>
           </ul>
-        </div>
-        <pre className="frame border-rule bg-panel text-code overflow-x-auto border p-5 leading-[1.9]">
-          <span data-root className="ref">
-            {ref}
-          </span>
-          {"\n"}
-          {tree.map((line) => (
-            <span key={line.rail + line.label} data-branch className="block">
-              <span className="text-faint">{line.rail}</span>
-              <span className={line.tone === "drives" ? "text-drives" : ""}>
-                {line.label.padEnd(12)}
+        </figure>
+
+        <figure className="frame mono border-rule bg-panel text-code min-w-0 border">
+          <figcaption className="border-rule border-b px-4 py-2">
+            <Prompt>
+              {brand.cmd} ref {ref}
+            </Prompt>
+          </figcaption>
+          <pre className="overflow-x-auto p-5 leading-[1.9]">
+            {tree.map((line) => (
+              <span key={line.rail + line.label} className="block">
+                <span className="text-faint">{line.rail}</span>
+                <span className={line.tone === "drives" ? "text-drives" : ""}>
+                  {line.label.padEnd(12)}
+                </span>
+                <span className={line.tone ? tones[line.tone] : ""}>{line.value}</span>
               </span>
-              <span className={line.tone ? tones[line.tone] : ""}>{line.value}</span>
-            </span>
-          ))}
-        </pre>
+            ))}
+          </pre>
+        </figure>
       </div>
     </Section>
   );

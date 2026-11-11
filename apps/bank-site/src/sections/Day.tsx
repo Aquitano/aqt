@@ -81,10 +81,8 @@ export function Day() {
   useGSAP(
     () => {
       whenMoving(() => {
-        const dots = gsap.utils.toArray<HTMLElement>("[data-dot]");
         const clock = { minute: 0 };
         let shown = -1;
-        gsap.set(dots, { scale: 0 });
         gsap
           .timeline({ scrollTrigger: { trigger: scope.current, start: "top 70%", once: true } })
           .set("[data-playhead]", { opacity: 1 })
@@ -100,11 +98,6 @@ export function Day() {
               const event = events[reached];
               if (!event) return;
               setPicked(event);
-              gsap.to(`[data-dot="${event.ref}"]`, {
-                scale: 1,
-                duration: 0.35,
-                ease: "back.out(3)",
-              });
             },
           })
           .to("[data-playhead]", { opacity: 0, duration: 0.4 });
@@ -114,7 +107,7 @@ export function Day() {
   );
 
   return (
-    <Section id="day" title="Any day, in the order it happened">
+    <Section id="day" title="What happened on a day">
       <div ref={scope} className="frame mono border-rule text-code border">
         <p className="border-rule bg-panel border-b px-4 py-3">
           <span className="text-faint select-none">$ </span>

@@ -1,7 +1,6 @@
-import { useRef, useState, type SubmitEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 
 import { brand } from "../brand";
-import { gsap, useGSAP, whenMoving } from "../motion";
 import { CopyButton, Prompt, Section, Terminal } from "../parts";
 
 type State = "works" | "in review" | "later";
@@ -30,48 +29,28 @@ const cell = {
 
 const legend: [State, string][] = [
   ["works", "in daily use"],
-  ["in review", "written and shown on this page, in pull requests"],
+  ["in review", "written, in pull requests"],
   ["later", "not started"],
 ];
 
 export function Status() {
-  const scope = useRef<HTMLDivElement>(null);
-
-  useGSAP(
-    () => {
-      whenMoving(() => {
-        gsap.from("[data-piece]", {
-          opacity: 0,
-          y: 10,
-          duration: 0.35,
-          stagger: 0.045,
-          ease: "power2.out",
-          scrollTrigger: { trigger: scope.current, start: "top 80%", once: true },
-        });
-      });
-    },
-    { scope },
-  );
-
   return (
     <Section id="status" title="Where it stands">
-      <div ref={scope}>
-        <ul className="mono text-code flex flex-wrap gap-2">
-          {pieces.map(([name, state]) => (
-            <li key={name} data-piece className={`px-3 py-2 ${cell[state]}`}>
-              {name}
-            </li>
-          ))}
-        </ul>
-        <ul className="mono text-code text-dim mt-6 flex flex-wrap gap-x-8 gap-y-2">
-          {legend.map(([state, meaning]) => (
-            <li key={state} className="flex items-center gap-2.5">
-              <span aria-hidden="true" className={`block size-3.5 ${cell[state]}`} />
-              {meaning}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <ul className="mono text-code flex flex-wrap gap-2">
+        {pieces.map(([name, state]) => (
+          <li key={name} className={`px-3 py-2 ${cell[state]}`}>
+            {name}
+          </li>
+        ))}
+      </ul>
+      <ul className="mono text-code text-dim mt-6 flex flex-wrap gap-x-8 gap-y-2">
+        {legend.map(([state, meaning]) => (
+          <li key={state} className="flex items-center gap-2.5">
+            <span aria-hidden="true" className={`block size-3.5 ${cell[state]}`} />
+            {meaning}
+          </li>
+        ))}
+      </ul>
     </Section>
   );
 }
@@ -136,30 +115,29 @@ function Waitlist() {
   );
 }
 
-export function Run() {
-  const commands = [
-    `git clone ${brand.repo} && cd aqt/apps/bank`,
-    "docker compose up -d",
-    "go build -o bank ./cmd/bank",
-    "./bank import mbox ~/Takeout/mail.mbox",
-    './bank search "the thing you could not find"',
-  ];
+const commands = [
+  `git clone ${brand.repo} && cd aqt/apps/bank`,
+  "docker compose up -d",
+  "go build -o bank ./cmd/bank",
+  "./bank import mbox ~/Takeout/mail.mbox",
+  './bank search "the thing you could not find"',
+];
 
+export function Run() {
   return (
     <Section id="run" title="Run it yourself">
-      <div className="grid gap-x-12 gap-y-8 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-end">
-        <Terminal
-          title="A Gmail Takeout is enough to start"
-          action={<CopyButton text={commands.join("\n")} />}
-        >
+      <div className="grid gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-end">
+        <Terminal title="needs Docker and Go" action={<CopyButton text={commands.join("\n")} />}>
           {commands.map((command) => (
-            <Prompt key={command}>{command}</Prompt>
+            <span key={command} className="block">
+              <Prompt>{command}</Prompt>
+            </span>
           ))}
         </Terminal>
         <div id="hosted" className="grid scroll-mt-24 gap-5">
           <p className="mono text-code text-dim">
             The binary is called <span className="text-ink">bank</span> until the first tagged
-            release. Elsewhere on this page it already goes by {brand.cmd}.
+            release.
           </p>
           <Waitlist />
         </div>
@@ -169,25 +147,8 @@ export function Run() {
 }
 
 export function Footer() {
-  const scope = useRef<HTMLElement>(null);
-
-  useGSAP(
-    () => {
-      whenMoving(() => {
-        gsap.from("[data-letter]", {
-          yPercent: 105,
-          duration: 0.9,
-          stagger: 0.06,
-          ease: "power4.out",
-          scrollTrigger: { trigger: scope.current, start: "top 92%", once: true },
-        });
-      });
-    },
-    { scope },
-  );
-
   return (
-    <footer ref={scope} className="mt-28">
+    <footer className="mt-28">
       <p
         role="img"
         aria-label={brand.name}
@@ -197,13 +158,13 @@ export function Footer() {
           .toLowerCase()
           .split("")
           .map((letter) => (
-            <span key={letter} data-letter aria-hidden="true" className="inline-block">
+            <span key={letter} aria-hidden="true">
               {letter}
             </span>
           ))}
       </p>
       <div className="mono border-rule text-code text-faint mt-6 flex flex-wrap justify-between gap-x-8 gap-y-2 border-t pt-5">
-        <span>The mark that names a source.</span>
+        <span>siglum, n. the mark an editor uses to cite one source</span>
         <span className="flex gap-x-7">
           <a href={brand.repo} className="hover:text-ink">
             GitHub

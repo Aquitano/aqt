@@ -106,24 +106,17 @@ export function Intake() {
       whenMoving(() => {
         gsap
           .timeline({ scrollTrigger: { trigger: scope.current, start: "top 72%", once: true } })
-          .from("[data-source]", { opacity: 0, x: -10, duration: 0.4, stagger: 0.04 })
-          .from(
-            "[data-wire=in]",
-            { strokeDashoffset: 100, duration: 1, stagger: 0.05, ease: "power2.inOut" },
-            "<0.1",
-          )
-          .from(
-            "[data-core]",
-            { opacity: 0, scale: 0.96, duration: 0.5, ease: "power3.out" },
-            "-=0.45",
-          )
-          .from("[data-core] li", { opacity: 0, y: 6, duration: 0.3, stagger: 0.07 }, "-=0.2")
+          .from("[data-wire=in]", {
+            strokeDashoffset: 100,
+            duration: 1,
+            stagger: 0.05,
+            ease: "power2.inOut",
+          })
           .from(
             "[data-wire=out]",
             { strokeDashoffset: 100, duration: 0.7, stagger: 0.07, ease: "power2.out" },
-            "-=0.3",
+            "-=0.2",
           )
-          .from("[data-output]", { opacity: 0, duration: 0.4, stagger: 0.07 }, "-=0.4")
           .add(flow("in"))
           .add(flow("out"), "<1.2");
       });
@@ -132,7 +125,7 @@ export function Intake() {
   );
 
   return (
-    <Section id="sources" title="Ten sources in, one database out">
+    <Section id="sources" title="What goes in">
       <div
         ref={scope}
         className="mono text-code grid items-stretch gap-y-6 lg:grid-cols-[minmax(0,15rem)_minmax(3rem,1fr)_minmax(0,14rem)_minmax(3rem,1fr)_minmax(0,13rem)]"
