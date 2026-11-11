@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 import { kindColor, type Kind } from "../brand";
+import { gsap, useGSAP, whenMoving } from "../motion";
 import { Section } from "../parts";
 
 type Domain = "bank" | "attic";
@@ -45,7 +46,7 @@ const sources: Source[] = [
   },
   {
     name: "drives",
-    kind: "disks",
+    kind: "drives",
     domain: "attic",
     path: "Drives are read by the scanner into the attic schema. The bytes stay on the drive.",
   },
@@ -60,11 +61,9 @@ function Box({ children, sub }: { children: ReactNode; sub?: string }) {
   );
 }
 
-function Lane({ label, dim, children }: { label: string; dim?: boolean; children: ReactNode }) {
+function Lane({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div
-      className={`border-dim grid gap-3 border p-4 transition-opacity duration-200 ${dim ? "opacity-35" : ""}`}
-    >
+    <div data-lane className="frame border-rule grid gap-3 border p-4">
       <span className="text-faint">{label}</span>
       {children}
     </div>
@@ -74,10 +73,28 @@ function Lane({ label, dim, children }: { label: string; dim?: boolean; children
 export function Architecture() {
   const [lit, setLit] = useState<Source | null>(null);
   const off = (domain: Domain) => lit !== null && lit.domain !== domain;
+  const scope = useRef<HTMLDivElement>(null);
+
+  useGSAP(
+    () => {
+      whenMoving(() => {
+        gsap.from("[data-lane], [data-arrow]", {
+          opacity: 0,
+          y: 14,
+          duration: 0.45,
+          stagger: 0.14,
+          ease: "power2.out",
+          clearProps: "opacity,transform",
+          scrollTrigger: { trigger: scope.current, start: "top 72%", once: true },
+        });
+      });
+    },
+    { scope },
+  );
 
   return (
-    <Section id="architecture" title="One database, one server, one token file">
-      <div>
+    <Section id="architecture" title="One database, one server">
+      <div ref={scope}>
         <div className="min-w-0 overflow-x-auto">
           <div className="mono text-code grid min-w-[36rem]">
             <Lane label="Sources">
@@ -88,18 +105,19 @@ export function Architecture() {
                     type="button"
                     onMouseEnter={() => setLit(s)}
                     onFocus={() => setLit(s)}
+                    onClick={() => setLit(s)}
                     onBlur={() => setLit(null)}
-                    className={`border-rule bg-panel hover:border-ink focus-visible:border-ink cursor-default border px-2.5 py-1.5 ${kindColor[s.kind]}`}
+                    className={`border-rule bg-panel hover:border-ink focus-visible:border-ink cursor-pointer border px-2.5 py-1.5 ${kindColor[s.kind]}`}
                   >
                     {s.name}
                   </button>
                 ))}
               </div>
             </Lane>
-            <pre className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
+            <pre data-arrow className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
               {"│\n▼"}
             </pre>
-            <Lane label="One ParadeDB">
+            <Lane label="One Postgres, with ParadeDB for search">
               <div className="grid grid-cols-2 gap-3">
                 <div
                   className={`border-rule grid content-start gap-2.5 border border-dashed p-3 transition-opacity duration-200 ${off("bank") ? "opacity-35" : ""}`}
@@ -131,7 +149,7 @@ export function Architecture() {
                 blob_digests: SHA-256 to BLAKE3, the join between a mail and a drive
               </span>
             </Lane>
-            <pre className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
+            <pre data-arrow className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
               {"│\n▼"}
             </pre>
             <Lane label="One server">
@@ -150,7 +168,7 @@ export function Architecture() {
                 <Box sub="read-only, per domain">scoped tokens</Box>
               </div>
             </Lane>
-            <pre className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
+            <pre data-arrow className="text-faint py-1 pl-10 leading-tight" aria-hidden="true">
               {"│\n▼"}
             </pre>
             <Lane label="Readers">
@@ -162,7 +180,7 @@ export function Architecture() {
               </div>
             </Lane>
           </div>
-          <p className="text-dim mt-4 min-h-[3.2em]" aria-live="polite">
+          <p className="text-dim mt-4 min-h-[3.2em]">
             {lit ? lit.path : "Point at a source to follow it through."}
           </p>
         </div>
