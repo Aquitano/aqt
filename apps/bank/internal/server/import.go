@@ -198,8 +198,6 @@ func (s *Server) extractUntilCurrent() {
 		s.extraction.arrived = time.Time{}
 		s.extraction.mu.Unlock()
 		started := time.Now()
-		// Digests first: with one, a blob can take its text from the catalogue.
-		s.digestBlobs(ctx)
 		backlog := s.extractPending(ctx, since, refreshSince)
 		refreshSince = started
 		s.extraction.mu.Lock()
@@ -208,9 +206,12 @@ func (s *Server) extractUntilCurrent() {
 		s.extraction.running = again
 		s.extraction.mu.Unlock()
 		if !again {
-			return
+			break
 		}
 	}
+	// After extraction, so an upload is not kept waiting while the archive is
+	// hashed. Blobs extraction did not hash still need a digest for /v1/refs.
+	s.digestBlobs(ctx)
 }
 
 func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Time) (backlog bool) {

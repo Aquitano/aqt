@@ -24,16 +24,25 @@ type TextSource interface {
 	ReadText(ctx context.Context, blake3 []byte) (text, extractor string, err error)
 }
 
-// KnownText is the text Known holds for a blob. Nothing is known before the
-// blob's BLAKE3 digest is recorded, and any failure means reading the blob
-// as usual.
+// KnownText is the text Known holds for a blob. A blob without a recorded
+// BLAKE3 digest is hashed here, and the digest kept, so a new upload can match
+// before the server's digest pass reaches it. Any failure means reading the
+// blob as usual.
 func (l Local) KnownText(ctx context.Context, sha256 string) (extract.Result, bool) {
 	if l.Known == nil {
 		return extract.Result{}, false
 	}
 	digest, err := l.Store.BlobDigest(ctx, sha256)
-	if err != nil || digest == nil {
+	if err != nil {
 		return extract.Result{}, false
+	}
+	if digest == nil {
+		if digest, err = l.Blobs.BLAKE3(ctx, sha256); err != nil {
+			return extract.Result{}, false
+		}
+		if err := l.Store.SetBlobDigest(ctx, sha256, digest); err != nil {
+			return extract.Result{}, false
+		}
 	}
 	text, extractor, err := l.Known.ReadText(ctx, digest)
 	if err != nil || text == "" {
