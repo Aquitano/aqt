@@ -60,9 +60,11 @@ const views: Record<string, string> = {
    FROM t3_runs r JOIN machines m ON m.id = r.machine_id`,
 };
 
+export const viewNames = Object.keys(views);
+
 export const grantReader = [
   `GRANT USAGE ON SCHEMA analytics TO ${readerRole}`,
-  ...Object.keys(views).map((name) => `GRANT SELECT ON analytics.${name} TO ${readerRole}`),
+  ...viewNames.map((name) => `GRANT SELECT ON analytics.${name} TO ${readerRole}`),
 ];
 
 export const dropAnalytics = Effect.fn("Db.dropAnalytics")(function* (db: Database) {

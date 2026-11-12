@@ -123,19 +123,34 @@ test("only the semicolons that end the query are removed, whatever its literals 
   expect(performance.now() - started).toBeLessThan(100);
 });
 
-test("a reader role with more than read access is not given a login", async () => {
+test("a reader role with more than read access loses its login", async () => {
   await runTest(
     Effect.gen(function* () {
-      yield* ensureReaderRole();
       const db = yield* Db;
-      yield* db.execute(sql.raw(`ALTER ROLE ${readerRole} CREATEDB`));
-      const refused = yield* ensureReaderRole().pipe(
-        Effect.flip,
-        Effect.ensuring(
-          db.execute(sql.raw(`ALTER ROLE ${readerRole} NOCREATEDB`)).pipe(Effect.orDie),
-        ),
-      );
-      expect(refused._tag).toBe("UnsafeReaderRole");
+      for (const [grant, revoke] of [
+        [`ALTER ROLE ${readerRole} CREATEDB`, `ALTER ROLE ${readerRole} NOCREATEDB`],
+        [
+          `GRANT SELECT (token_hash) ON public.api_tokens TO ${readerRole}`,
+          `REVOKE SELECT (token_hash) ON public.api_tokens FROM ${readerRole}`,
+        ],
+        [
+          `GRANT SELECT ON pg_catalog.pg_authid TO ${readerRole}`,
+          `REVOKE SELECT ON pg_catalog.pg_authid FROM ${readerRole}`,
+        ],
+      ] as const) {
+        yield* ensureReaderRole();
+        yield* db.execute(sql.raw(grant));
+        const refused = yield* ensureReaderRole().pipe(
+          Effect.flip,
+          Effect.ensuring(db.execute(sql.raw(revoke)).pipe(Effect.orDie)),
+        );
+        const [role] = yield* db.execute<{ login: boolean }>(
+          sql.raw(`SELECT rolcanlogin AS login FROM pg_roles WHERE rolname = '${readerRole}'`),
+          "objects",
+        );
+        expect([grant, refused._tag, role?.login]).toEqual([grant, "UnsafeReaderRole", false]);
+      }
+      yield* ensureReaderRole();
     }),
   );
 });

@@ -8,7 +8,7 @@ import * as Reactivity from "effect/reactivity/Reactivity";
 import type { SqlError } from "effect/sql/SqlError";
 
 import { ServerConfig } from "./config.ts";
-import { grantReader, readerRole } from "./db/analytics.ts";
+import { grantReader, readerRole, viewNames } from "./db/analytics.ts";
 import { Db } from "./db/client.ts";
 
 // Derived from the owner's connection URL, so every server process on the database agrees on it without
@@ -21,25 +21,30 @@ export class UnsafeReaderRole extends Schema.TaggedError<UnsafeReaderRole>()(
   {},
 ) {
   override get message() {
-    return `${readerRole} has privileges beyond reading the analytics views, so it is not given a login`;
+    return `${readerRole} has privileges beyond reading the analytics views, so its login is turned off`;
   }
 }
 
-// A role of this name that existed before the server created it could hold any privilege, and every query would
-// run with it. It is given a login only when it has no administrative attribute or membership, owns nothing,
-// cannot create in the database, cannot write any other table or read one beyond what every role may read,
-// such as PostGIS's spatial_ref_sys, and cannot read server files.
+// A role of this name that existed before the server created it, or that someone granted more since, could hold
+// any privilege, and every query would run with it. It keeps a login only when it has no administrative
+// attribute or membership, owns nothing, cannot create in the database, and has no access to any table or column
+// beyond the analytics views and what every role has, such as reading PostGIS's spatial_ref_sys or updating
+// pg_settings. The catalog counts too, because a grant on pg_authid would expose password hashes.
 const restrictedCheck = `
   SELECT NOT (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls)
      AND NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE member = r.oid)
      AND NOT has_database_privilege(r.oid, current_database(), 'CREATE')
      AND NOT EXISTS (SELECT 1 FROM pg_class c WHERE c.relowner = r.oid)
      AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-                     WHERE n.nspname NOT IN ('analytics', 'information_schema') AND n.nspname !~ '^pg_'
-                       AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
-                       AND (has_table_privilege(r.oid, c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE')
-                            OR (has_table_privilege(r.oid, c.oid, 'SELECT')
-                                AND NOT has_table_privilege('public', c.oid, 'SELECT'))))
+                     WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+                       AND NOT (n.nspname = 'analytics' AND c.relname IN (${viewNames.map((name) => `'${name}'`).join(", ")}))
+                       AND EXISTS (
+                         SELECT 1 FROM unnest(ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) AS p(privilege)
+                         WHERE CASE WHEN p.privilege IN ('DELETE', 'TRUNCATE')
+                                 THEN has_table_privilege(r.oid, c.oid, p.privilege)
+                                      AND NOT has_table_privilege('public', c.oid, p.privilege)
+                                 ELSE has_any_column_privilege(r.oid, c.oid, p.privilege)
+                                      AND NOT has_any_column_privilege('public', c.oid, p.privilege) END))
      AND NOT EXISTS (SELECT 1 FROM pg_proc p
                      WHERE p.pronamespace = 'pg_catalog'::regnamespace
                        AND p.proname IN ('pg_read_file', 'pg_read_binary_file', 'pg_stat_file', 'pg_ls_dir',
@@ -64,7 +69,10 @@ export const ensureReaderRole = Effect.fn("Query.ensureReaderRole")(function* ()
       END $$`),
   );
   const [role] = yield* db.execute<{ restricted: boolean }>(sql.raw(restrictedCheck), "objects");
-  if (role?.restricted !== true) yield* new UnsafeReaderRole();
+  if (role?.restricted !== true) {
+    yield* db.execute(sql.raw(`ALTER ROLE ${readerRole} WITH NOLOGIN`));
+    yield* new UnsafeReaderRole();
+  }
   yield* db.execute(
     sql.raw(`ALTER ROLE ${readerRole} WITH LOGIN CONNECTION LIMIT 4 PASSWORD '${password}'`),
   );
