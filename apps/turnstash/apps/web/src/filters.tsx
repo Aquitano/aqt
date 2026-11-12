@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 import { isUnauthorized } from "./api";
 import { FilterSelect } from "./components/FilterSelect";
-import { PageHead } from "./components/Page";
+import { PageHead, Toolbar } from "./components/Page";
 import { Segmented } from "./components/Segmented";
 import { type DayRange, isPeriodId, type PeriodId, periodRange, periods, ymd } from "./period";
 import { isProvider, providerOptions } from "./providers";
@@ -130,13 +130,21 @@ export const useFilters = (): Filters => {
 export const FilterBar = ({
   title,
   note,
+  back,
+  meta,
+  actions,
+  search,
   selection,
   showProvider = true,
   showMachine = true,
   children,
 }: {
-  readonly title: string;
+  readonly title: ReactNode;
   readonly note?: ReactNode;
+  readonly back?: ReactNode;
+  readonly meta?: ReactNode;
+  readonly actions?: ReactNode;
+  readonly search?: ReactNode;
   readonly selection?: Pick<Filters, "period" | "provider" | "setPeriod" | "setProvider">;
   readonly showProvider?: boolean;
   readonly showMachine?: boolean;
@@ -147,8 +155,9 @@ export const FilterBar = ({
   const machines = useQuery(machineRosterQuery());
   return (
     <div className="flex flex-col gap-4">
-      <PageHead title={title} note={note} />
-      <div className="flex flex-wrap items-center gap-2">
+      <PageHead title={title} note={note} back={back} meta={meta} actions={actions} />
+      {search}
+      <Toolbar label="Filters">
         <Segmented
           label="Period"
           options={periods.map((entry) => ({ value: entry.id, label: entry.label }))}
@@ -180,7 +189,7 @@ export const FilterBar = ({
           />
         )}
         {children}
-      </div>
+      </Toolbar>
     </div>
   );
 };
