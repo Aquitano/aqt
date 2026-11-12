@@ -52,8 +52,10 @@ const views: Record<string, string> = {
           extract(epoch FROM r.completed_at - r.started_at)::float8 AS duration_seconds,
           r.attempts, r.native_session_id,
           (SELECT c.id FROM conversations c
-           WHERE (c.provider = 'claude' AND c.conversation_key = r.native_session_id)
-              OR (c.provider = 'codex' AND c.conversation_key = lower(r.native_session_id))
+           WHERE (r.provider LIKE 'claude%' AND c.provider = 'claude'
+                  AND c.conversation_key = r.native_session_id)
+              OR (r.provider LIKE 'codex%' AND c.provider = 'codex'
+                  AND c.conversation_key = lower(r.native_session_id))
            LIMIT 1) AS session_id
    FROM t3_runs r JOIN machines m ON m.id = r.machine_id`,
 };

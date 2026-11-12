@@ -25,7 +25,7 @@ export const t3StateDb = (host: HostEnv, path: Path.Path) => {
   const override = host.env["TURNSTASH_T3_STATE_DB"]?.trim();
   return override === undefined || override === ""
     ? path.join(host.home, ".t3", "userdata", "statev2.sqlite")
-    : override;
+    : path.resolve(override);
 };
 
 const optionValue = (source: string, ids: string) =>
