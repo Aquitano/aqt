@@ -108,6 +108,8 @@ ${body}
     ) AS q LIMIT ${limit + 1}
   ) AS numbered`;
 
+// A "$" or an "e" inside a word, such as total$usd$ or time'12:00', is part of that word, not a quote or prefix.
+const identifierChar = /[\p{L}\p{N}_$]/u;
 const dollarQuote = /\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/y;
 
 // The end of a quoted literal or identifier that opens at start. E'' strings also escape with a backslash.
@@ -157,12 +159,20 @@ export const withoutFinalTerminators = (text: string) => {
     } else {
       terminators = [];
       dollarQuote.lastIndex = index;
-      const tag = char === "$" ? dollarQuote.exec(text)?.[0] : undefined;
+      const afterWord = identifierChar.test(text[index - 1] ?? "");
+      const tag = char === "$" && !afterWord ? dollarQuote.exec(text)?.[0] : undefined;
       if (tag !== undefined) {
         const close = text.indexOf(tag, index + tag.length);
         index = close < 0 ? text.length : close + tag.length;
       } else if (char === "'" || char === '"')
-        index = closingQuote(text, index, char, char === "'" && /[eE]/.test(text[index - 1] ?? ""));
+        index = closingQuote(
+          text,
+          index,
+          char,
+          char === "'" &&
+            /[eE]/.test(text[index - 1] ?? "") &&
+            !identifierChar.test(text[index - 2] ?? ""),
+        );
       else index += 1;
     }
   }
