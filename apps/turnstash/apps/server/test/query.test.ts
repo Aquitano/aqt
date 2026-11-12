@@ -127,28 +127,40 @@ test("a reader role with more than read access loses its login", async () => {
   await runTest(
     Effect.gen(function* () {
       const db = yield* Db;
-      for (const [grant, revoke] of [
-        [`ALTER ROLE ${readerRole} CREATEDB`, `ALTER ROLE ${readerRole} NOCREATEDB`],
+      for (const [grants, revokes] of [
+        [[`ALTER ROLE ${readerRole} CREATEDB`], [`ALTER ROLE ${readerRole} NOCREATEDB`]],
         [
-          `GRANT SELECT (token_hash) ON public.api_tokens TO ${readerRole}`,
-          `REVOKE SELECT (token_hash) ON public.api_tokens FROM ${readerRole}`,
+          [
+            "GRANT SELECT (name) ON public.api_tokens TO PUBLIC",
+            `GRANT SELECT (token_hash) ON public.api_tokens TO ${readerRole}`,
+          ],
+          [
+            "REVOKE SELECT (name) ON public.api_tokens FROM PUBLIC",
+            `REVOKE SELECT (token_hash) ON public.api_tokens FROM ${readerRole}`,
+          ],
         ],
         [
-          `GRANT SELECT ON pg_catalog.pg_authid TO ${readerRole}`,
-          `REVOKE SELECT ON pg_catalog.pg_authid FROM ${readerRole}`,
+          [`GRANT SELECT ON pg_catalog.pg_authid TO ${readerRole}`],
+          [`REVOKE SELECT ON pg_catalog.pg_authid FROM ${readerRole}`],
         ],
       ] as const) {
         yield* ensureReaderRole();
-        yield* db.execute(sql.raw(grant));
+        for (const grant of grants) yield* db.execute(sql.raw(grant));
         const refused = yield* ensureReaderRole().pipe(
           Effect.flip,
-          Effect.ensuring(db.execute(sql.raw(revoke)).pipe(Effect.orDie)),
+          Effect.ensuring(
+            Effect.forEach(revokes, (revoke) => db.execute(sql.raw(revoke))).pipe(Effect.orDie),
+          ),
         );
         const [role] = yield* db.execute<{ login: boolean }>(
           sql.raw(`SELECT rolcanlogin AS login FROM pg_roles WHERE rolname = '${readerRole}'`),
           "objects",
         );
-        expect([grant, refused._tag, role?.login]).toEqual([grant, "UnsafeReaderRole", false]);
+        expect([grants[0], refused._tag, role?.login]).toEqual([
+          grants[0],
+          "UnsafeReaderRole",
+          false,
+        ]);
       }
       yield* ensureReaderRole();
     }),
