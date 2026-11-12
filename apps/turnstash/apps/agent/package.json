@@ -1,6 +1,6 @@
 {
   "name": "@aqt/turnstash",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Collects AI coding-agent transcripts and usage on this machine and syncs them to your aqt-turnstash server",
   "bin": {
     "turnstash": "dist/turnstash.js"

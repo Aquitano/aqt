@@ -265,7 +265,7 @@
     },
     "apps/turnstash/apps/agent": {
       "name": "@aqt/turnstash",
-      "version": "0.8.0",
+      "version": "0.9.0",
       "bin": {
         "turnstash": "dist/turnstash.js",
       },
