@@ -63,6 +63,7 @@ export const SearchPage = () => {
     <Page>
       <FilterBar
         title="Search"
+        note="Full-text search over messages and their tool inputs."
         showMachine={false}
         selection={{
           period,

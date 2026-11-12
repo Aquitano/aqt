@@ -53,7 +53,7 @@ export const ConversationsPage = () => {
 
   return (
     <Page>
-      <FilterBar title="Conversations">
+      <FilterBar title="Conversations" note="Archived sessions from every enrolled machine.">
         <FilterSelect
           label="Project"
           anyLabel="All projects"

@@ -146,7 +146,7 @@ export const FilterBar = ({
   const { period, provider, setPeriod, setProvider } = selection ?? filters;
   const machines = useQuery(machineRosterQuery());
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="flex flex-col gap-4">
       <PageHead title={title} note={note} />
       <div className="flex flex-wrap items-center gap-2">
         <Segmented

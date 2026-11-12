@@ -1,13 +1,16 @@
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "@aqt/ui/components/alert";
 import { Button } from "@aqt/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@aqt/ui/components/card";
+import { Kbd } from "@aqt/ui/components/kbd";
 import { Progress } from "@aqt/ui/components/progress";
+import { Separator } from "@aqt/ui/components/separator";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -15,17 +18,18 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarRail,
   SidebarTrigger,
   useSidebar,
 } from "@aqt/ui/components/sidebar";
 import { ThemeToggle } from "@aqt/ui/components/theme-toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@aqt/ui/components/tooltip";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   BookmarkIcon,
   ChartPieIcon,
   CircleAlertIcon,
-  ChevronLeftIcon,
   FlameIcon,
   GaugeIcon,
   LayoutDashboardIcon,
@@ -49,20 +53,29 @@ import { QuotaAlerts } from "./QuotaAlerts";
 import { SecretInput } from "./SecretInput";
 
 const navGroups = [
-  [
-    { to: "/", label: "Overview", Icon: LayoutDashboardIcon },
-    { to: "/limits", label: "Limits", Icon: GaugeIcon },
-  ],
-  [
-    { to: "/conversations", label: "Conversations", Icon: MessagesSquareIcon },
-    { to: "/bookmarks", label: "Bookmarks", Icon: BookmarkIcon },
-    { to: "/search", label: "Search", Icon: SearchIcon },
-  ],
-  [
-    { to: "/analysis", label: "Analysis", Icon: ChartPieIcon },
-    { to: "/machines", label: "Machines", Icon: MonitorIcon },
-    { to: "/settings", label: "Settings", Icon: SettingsIcon },
-  ],
+  {
+    label: "Usage",
+    items: [
+      { to: "/", label: "Overview", Icon: LayoutDashboardIcon },
+      { to: "/limits", label: "Limits", Icon: GaugeIcon },
+      { to: "/analysis", label: "Analysis", Icon: ChartPieIcon },
+    ],
+  },
+  {
+    label: "Archive",
+    items: [
+      { to: "/conversations", label: "Conversations", Icon: MessagesSquareIcon },
+      { to: "/bookmarks", label: "Bookmarks", Icon: BookmarkIcon },
+      { to: "/search", label: "Search", Icon: SearchIcon },
+    ],
+  },
+  {
+    label: "Manage",
+    items: [
+      { to: "/machines", label: "Machines", Icon: MonitorIcon },
+      { to: "/settings", label: "Settings", Icon: SettingsIcon },
+    ],
+  },
 ] as const;
 
 const useSignedOut = () => {
@@ -70,19 +83,27 @@ const useSignedOut = () => {
   return session.data?.mode === "oidc" && session.data.user === null;
 };
 
-const CollapseHandle = () => {
-  const { state, toggleSidebar } = useSidebar();
+// Lives in the top bar on every viewport: it collapses the sidebar to icons on desktop and opens
+// the drawer on phones. The sidebar also takes Ctrl+B on macOS, so one hint fits every platform.
+const SidebarToggle = () => {
+  const { state, isMobile, openMobile } = useSidebar();
+  const open = isMobile ? openMobile : state === "expanded";
+  const label = open ? "Collapse sidebar" : "Expand sidebar";
   return (
-    <button
-      type="button"
-      aria-label={state === "expanded" ? "Collapse sidebar" : "Expand sidebar"}
-      onClick={toggleSidebar}
-      className="absolute top-1/2 -right-3 z-20 flex h-12 w-6 -translate-y-1/2 items-center justify-center rounded-lg bg-card text-muted-foreground ring-1 ring-foreground/8 transition-colors outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 max-md:hidden"
-    >
-      <ChevronLeftIcon
-        className={`size-3.5 transition-transform duration-200 ${state === "collapsed" ? "rotate-180" : ""}`}
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <SidebarTrigger
+            aria-label={isMobile ? "Open navigation" : label}
+            aria-expanded={open}
+            className="text-muted-foreground hover:text-foreground"
+          />
+        }
       />
-    </button>
+      <TooltipContent side="bottom" className="max-md:hidden">
+        {label} <Kbd>Ctrl B</Kbd>
+      </TooltipContent>
+    </Tooltip>
   );
 };
 
@@ -91,39 +112,38 @@ const Navigation = () => {
   const machines = useQuery(machineRosterQuery());
   const health = useQuery(healthQuery());
   const { isMobile, setOpenMobile } = useSidebar();
+  const close = () => {
+    if (isMobile) setOpenMobile(false);
+  };
   return (
-    <Sidebar collapsible="icon" className="border-r-0!">
-      <SidebarHeader className="px-3 pt-3 pb-1">
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="h-12 justify-center px-3 py-0 group-data-[collapsible=icon]:px-2">
         <Link
           to="/"
           aria-label="Turnstash overview"
-          onClick={() => {
-            if (isMobile) setOpenMobile(false);
-          }}
-          className="flex h-8 items-center gap-2 overflow-hidden rounded-md text-base font-semibold tracking-tight outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          onClick={close}
+          className="flex h-8 items-center gap-2 overflow-hidden rounded-md px-1 text-[15px] font-semibold tracking-tight outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
           <FlameIcon className="size-4.5 shrink-0 fill-primary text-primary" />
           <span className="group-data-[collapsible=icon]:hidden">turnstash</span>
         </Link>
       </SidebarHeader>
-      <SidebarContent role="navigation" aria-label="Main" className="gap-0 pt-2">
+      <SidebarContent role="navigation" aria-label="Main" className="gap-0">
         {navGroups.map((group) => (
-          <SidebarGroup key={group[0].to} className="py-1.5">
+          <SidebarGroup key={group.label} className="py-1">
+            <SidebarGroupLabel className="h-7 text-[11px] text-muted-foreground">
+              {group.label}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
-                {group.map(({ to, label, Icon }) => (
+              <SidebarMenu className="gap-0.5">
+                {group.items.map(({ to, label, Icon }) => (
                   <SidebarMenuItem key={to}>
                     <SidebarMenuButton
                       tooltip={label}
                       isActive={to === "/" ? pathname === "/" : pathname.startsWith(to)}
-                      className="h-9 rounded-md text-muted-foreground hover:text-foreground data-active:font-medium data-active:text-foreground"
+                      className="h-9 text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-foreground max-md:h-10 data-active:bg-sidebar-accent data-active:text-foreground data-active:[&_svg]:text-primary"
                       render={
-                        <Link
-                          to={to}
-                          onClick={() => {
-                            if (isMobile) setOpenMobile(false);
-                          }}
-                        />
+                        <Link to={to} activeOptions={{ exact: to === "/" }} onClick={close} />
                       }
                     >
                       <Icon />
@@ -132,7 +152,7 @@ const Navigation = () => {
                     {to === "/machines" &&
                       machines.data !== undefined &&
                       !(machines.isError && isUnauthorized(machines.error)) && (
-                        <SidebarMenuBadge className="text-muted-foreground">
+                        <SidebarMenuBadge className="top-2! text-muted-foreground max-md:top-2.5!">
                           {machines.data.length}
                         </SidebarMenuBadge>
                       )}
@@ -146,7 +166,7 @@ const Navigation = () => {
       <SidebarFooter className="px-4 pb-3 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
         turnstash{health.data === undefined ? "" : ` ${health.data.version}`}
       </SidebarFooter>
-      <CollapseHandle />
+      <SidebarRail />
     </Sidebar>
   );
 };
@@ -162,11 +182,12 @@ const TopBar = () => {
   };
 
   return (
-    <header className="sticky top-0 z-20 flex h-12 items-center gap-1.5 bg-background px-4 sm:px-8">
-      <SidebarTrigger className="md:hidden" />
+    <header className="sticky top-0 z-20 flex h-12 items-center gap-1.5 border-b border-border/70 bg-background/85 px-3 backdrop-blur-md sm:px-5">
+      <SidebarToggle />
+      <Separator orientation="vertical" className="mx-1 my-auto h-4 md:hidden" />
       <Link
         to="/"
-        className="inline-flex items-center gap-2 text-base font-semibold tracking-tight md:hidden"
+        className="inline-flex items-center gap-2 rounded-md text-[15px] font-semibold tracking-tight outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:hidden"
       >
         <FlameIcon className="size-4.5 fill-primary text-primary" />
         <span className="max-sm:sr-only">turnstash</span>

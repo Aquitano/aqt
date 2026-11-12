@@ -37,7 +37,7 @@ import { DrainRange } from "../components/DrainRange";
 import { DrainChart, type LimitSelection, RemainingChart } from "../components/LimitChart";
 import { Page, PageHead } from "../components/Page";
 import { ProviderIcon } from "../components/ProviderIcon";
-import { Section, surface } from "../components/Section";
+import { Section, sectionTitle, surface } from "../components/Section";
 import { quietControl, Segmented } from "../components/Segmented";
 import { useCollapse } from "../components/Tables";
 import { UseFirstLine } from "../components/UseFirstLine";
@@ -303,7 +303,7 @@ const LimitCard = ({
   return (
     <section className={cn(surface, "p-4 sm:p-6")}>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h2 className="flex min-w-0 items-center gap-2 text-[15px] font-medium tracking-tight">
+        <h2 className={cn(sectionTitle, "flex min-w-0 items-center gap-2")}>
           <ProviderIcon provider={limits.provider} />
           {name}
           {limits.plan !== null && (
