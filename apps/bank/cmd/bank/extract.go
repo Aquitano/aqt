@@ -178,22 +178,33 @@ type lazyCatalogue struct {
 }
 
 func (l *lazyCatalogue) ReadText(ctx context.Context, blake3 []byte) (text, extractor string, err error) {
-	l.mu.Lock()
-	if l.catalogue == nil && !time.Now().Before(l.retryAt) {
-		// A database without the catalogue reads every blob itself.
-		if l.catalogue, err = attic.Open(ctx, databaseURL()); err != nil {
-			l.retryAt = time.Now().Add(time.Minute)
-			if !errors.Is(err, attic.ErrNoCatalogue) {
-				slog.Warn("the file catalogue is unavailable, so blobs are read here for now", "error", err)
-			}
-		}
-	}
-	catalogue := l.catalogue
-	l.mu.Unlock()
+	catalogue := l.open(ctx)
 	if catalogue == nil {
 		return "", "", attic.ErrNoCatalogue
 	}
 	return catalogue.ReadText(ctx, blake3)
+}
+
+// Ready reports whether the catalogue can be asked right now.
+func (l *lazyCatalogue) Ready(ctx context.Context) bool { return l.open(ctx) != nil }
+
+func (l *lazyCatalogue) open(ctx context.Context) *attic.Catalogue {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.catalogue != nil || time.Now().Before(l.retryAt) {
+		return l.catalogue
+	}
+	// A database without the catalogue reads every blob itself.
+	catalogue, err := attic.Open(ctx, databaseURL())
+	if err != nil {
+		l.retryAt = time.Now().Add(time.Minute)
+		if !errors.Is(err, attic.ErrNoCatalogue) {
+			slog.Warn("the file catalogue is unavailable, so blobs are read here for now", "error", err)
+		}
+		return nil
+	}
+	l.catalogue = catalogue
+	return catalogue
 }
 
 func (l *lazyCatalogue) Close() {
