@@ -1,14 +1,16 @@
 import { expect, test } from "bun:test";
 
+import { sql } from "drizzle-orm";
 import { Effect } from "effect";
 
+import { readerRole } from "../src/db/analytics.ts";
 import { Db } from "../src/db/client.ts";
 import { apiTokens, conversations, modelRequests } from "../src/db/schema.ts";
 import { ensureReaderRole, runQuery, withoutFinalTerminators } from "../src/query.ts";
 import { runTest, testDatabaseUrl } from "./support.ts";
 
-const failureMessage = (sql: string) =>
-  runQuery({ sql }).pipe(
+const failureMessage = (query: string) =>
+  runQuery({ sql: query }).pipe(
     Effect.as("succeeded"),
     Effect.catchTag("BadRequest", (error) => Effect.succeed(error.message)),
   );
@@ -82,7 +84,7 @@ test("queries cannot reach the tables behind the views, change anything or retur
       );
       expect(
         yield* failureMessage(
-          `select set_config('role', '${new URL(testDatabaseUrl).username}', true), query_to_xml('select * from public.api_tokens', true, false, '')`,
+          `select set_config('role', '${decodeURIComponent(new URL(testDatabaseUrl).username)}', true), query_to_xml('select * from public.api_tokens', true, false, '')`,
         ),
       ).toContain("permission denied");
       for (const smuggled of [
@@ -119,4 +121,21 @@ test("only the semicolons that end the query are removed, whatever its literals 
     `select 1${" ".repeat(60_000)}`,
   );
   expect(performance.now() - started).toBeLessThan(100);
+});
+
+test("a reader role with more than read access is not given a login", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* ensureReaderRole();
+      const db = yield* Db;
+      yield* db.execute(sql.raw(`ALTER ROLE ${readerRole} CREATEDB`));
+      const refused = yield* ensureReaderRole().pipe(
+        Effect.flip,
+        Effect.ensuring(
+          db.execute(sql.raw(`ALTER ROLE ${readerRole} NOCREATEDB`)).pipe(Effect.orDie),
+        ),
+      );
+      expect(refused._tag).toBe("UnsafeReaderRole");
+    }),
+  );
 });

@@ -28,6 +28,9 @@ const StaticLive = Layer.unwrap(
 
 // Without the reader role only the SQL endpoint fails, for example when the database user cannot create roles.
 const readerRole = ensureReaderRole().pipe(
+  Effect.catchTag("UnsafeReaderRole", (error) =>
+    Effect.logWarning("read-only SQL is unavailable", error.message),
+  ),
   Effect.catch((error) => Effect.logWarning("read-only SQL is unavailable", failureSummary(error))),
 );
 
