@@ -7,7 +7,7 @@ import { isRef, record, type RefId } from "./records";
 /** A preview of whichever ref the pointer is on. It trails the pointer instead of sticking to it. */
 export function RefTip() {
   const card = useRef<HTMLDivElement>(null);
-  const [id, setId] = useState<RefId>("a04d77e19c52");
+  const [id, setId] = useState<RefId>("bank:a04d77e19c52");
   const [open, setOpen] = useState(false);
 
   useGSAP(() => {
@@ -57,11 +57,16 @@ export function RefTip() {
     document.addEventListener("pointermove", move);
     document.addEventListener("focusin", focus);
     document.addEventListener("focusout", hide);
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") hide();
+    };
+    document.addEventListener("keydown", key);
     return () => {
       document.removeEventListener("pointerover", over);
       document.removeEventListener("pointermove", move);
       document.removeEventListener("focusin", focus);
       document.removeEventListener("focusout", hide);
+      document.removeEventListener("keydown", key);
     };
   });
 
@@ -70,8 +75,8 @@ export function RefTip() {
   return (
     <div
       ref={card}
-      role="status"
-      className={`frame mono border-rule bg-panel text-code pointer-events-none fixed top-0 left-0 z-20 grid w-[17.5rem] gap-1 border p-3 shadow-[0_12px_32px_rgb(0_0_0/0.35)] transition-opacity duration-150 ${open ? "opacity-100" : "opacity-0"}`}
+      aria-hidden="true"
+      className={`frame mono border-rule bg-panel-solid text-code pointer-events-none fixed top-0 left-0 z-20 grid w-[17.5rem] gap-1 border p-3 shadow-[0_12px_32px_rgb(0_0_0/0.35)] transition-opacity duration-150 ${open ? "opacity-100" : "opacity-0"}`}
     >
       <span className="flex justify-between gap-4">
         <span className={kindColor[entry.kind]}>{entry.kind}</span>
@@ -79,7 +84,13 @@ export function RefTip() {
       </span>
       <span className="text-dim">{entry.from}</span>
       <span className="[overflow-wrap:anywhere]">{entry.text}</span>
-      {entry.same ? <span className="text-dim mt-1">= {entry.same}</span> : null}
+      {entry.same ? (
+        <span className="text-dim mt-1">
+          {entry.kind === "drives"
+            ? `same bytes as an attachment on ${entry.same}`
+            : `attachment also on drives as ${entry.same}`}
+        </span>
+      ) : null}
     </div>
   );
 }
