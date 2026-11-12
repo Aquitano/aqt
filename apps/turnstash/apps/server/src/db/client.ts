@@ -12,6 +12,7 @@ import type { PgEffectDatabase } from "drizzle-orm/pg-core/effect";
 import { Context, Effect, Layer } from "effect";
 
 import { ServerConfig } from "../config.ts";
+import { createAnalytics, dropAnalytics } from "./analytics.ts";
 
 export type Database = PgEffectDatabase<EffectPgQueryEffectHKT, EffectPgQueryResultHKT>;
 
@@ -51,7 +52,9 @@ export const runMigrations = Effect.fn("Db.migrate")(function* () {
           END IF;
         END $$
       `);
+      yield* dropAnalytics(db);
       yield* migrate(db, { migrationsFolder });
+      yield* createAnalytics(db);
     }),
   );
 });
