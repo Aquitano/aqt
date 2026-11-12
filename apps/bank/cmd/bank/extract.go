@@ -163,17 +163,45 @@ func openAttachments(ctx context.Context) (attachmentBackend, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	local := blobtext.Local{Store: d.Store, Blobs: d.Blobs}
-	// A database without the catalogue reads every blob itself.
-	catalogue, err := attic.Open(ctx, databaseURL())
-	if err != nil {
-		if !errors.Is(err, attic.ErrNoCatalogue) {
-			slog.Warn("the file catalogue is unavailable, so every blob is read here", "error", err)
+	known := &lazyCatalogue{}
+	local := blobtext.Local{Store: d.Store, Blobs: d.Blobs, Known: known}
+	return local, func() { known.Close(); closeStore() }, nil
+}
+
+// lazyCatalogue opens the file catalogue when text is first asked of it, and
+// tries again a minute after a failure. A watching OCR worker can start before
+// the server has migrated the catalogue, and must find it once it is there.
+type lazyCatalogue struct {
+	mu        sync.Mutex
+	catalogue *attic.Catalogue
+	retryAt   time.Time
+}
+
+func (l *lazyCatalogue) ReadText(ctx context.Context, blake3 []byte) (text, extractor string, err error) {
+	l.mu.Lock()
+	if l.catalogue == nil && !time.Now().Before(l.retryAt) {
+		// A database without the catalogue reads every blob itself.
+		if l.catalogue, err = attic.Open(ctx, databaseURL()); err != nil {
+			l.retryAt = time.Now().Add(time.Minute)
+			if !errors.Is(err, attic.ErrNoCatalogue) {
+				slog.Warn("the file catalogue is unavailable, so blobs are read here for now", "error", err)
+			}
 		}
-		return local, closeStore, nil
 	}
-	local.Known = catalogue
-	return local, func() { catalogue.Close(); closeStore() }, nil
+	catalogue := l.catalogue
+	l.mu.Unlock()
+	if catalogue == nil {
+		return "", "", attic.ErrNoCatalogue
+	}
+	return catalogue.ReadText(ctx, blake3)
+}
+
+func (l *lazyCatalogue) Close() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.catalogue != nil {
+		l.catalogue.Close()
+	}
 }
 
 // stagingDir is where downloads and rasterized pages go: the data directory,
