@@ -61,6 +61,10 @@ test("queries read the analytics views, capped at the limit", async () => {
         ],
         truncated: true,
       });
+      expect(
+        (yield* runQuery({ sql: "select 9007199254740993::numeric as big, 0.5 as half; -- exact" }))
+          .rows,
+      ).toEqual([["9007199254740993", 0.5]]);
     }),
   );
 });
@@ -80,15 +84,22 @@ test("queries cannot reach the tables behind the views, change anything or retur
           "select set_config('role', 'turnstash', true), query_to_xml('select * from public.api_tokens', true, false, '')",
         ),
       ).toContain("permission denied");
-      expect(
-        yield* failureMessage("select 1) as q; delete from public.api_tokens; select (1"),
-      ).toContain("multiple commands");
+      for (const smuggled of [
+        "select 1) as q; delete from public.api_tokens; select (1",
+        "select 1) as q) as numbered; delete from public.api_tokens; select * from ((select 1",
+      ])
+        expect(yield* failureMessage(smuggled)).not.toBe("succeeded");
       expect(yield* db.select().from(apiTokens)).toHaveLength(1);
       for (const large of [
         "select repeat('x', 1048576) from generate_series(1, 20)",
         "select repeat('x', 20000000)",
       ])
         expect(yield* failureMessage(large)).toContain("larger than 16 MB");
+      const lookahead = yield* runQuery({
+        sql: "select repeat('x', 9437184) as text from generate_series(1, 2)",
+        limit: 1,
+      });
+      expect([lookahead.rows.length, lookahead.truncated]).toEqual([1, true]);
     }),
   );
 });

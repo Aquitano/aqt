@@ -44,7 +44,7 @@ const views: Record<string, string> = {
 
 export const grantReader = [
   `GRANT USAGE ON SCHEMA analytics TO ${readerRole}`,
-  `GRANT SELECT ON ALL TABLES IN SCHEMA analytics TO ${readerRole}`,
+  ...Object.keys(views).map((name) => `GRANT SELECT ON analytics.${name} TO ${readerRole}`),
 ];
 
 export const dropAnalytics = Effect.fn("Db.dropAnalytics")(function* (db: Database) {

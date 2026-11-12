@@ -77,15 +77,29 @@ const isPostgresMessage = Schema.is(PostgresMessage);
 const unavailable = /^(08|53|57P|58|XX)/;
 
 // Each row goes out as its values in column order, because a JSON object would silently keep only one of two
-// columns with the same name, such as two sum() aggregates.
+// columns with the same name, such as two sum() aggregates. A number a JavaScript double cannot hold exactly,
+// such as a large numeric, goes out as its decimal string. The row after the limit only marks the result as
+// truncated, so its values are never sent.
 const cellsOf = (body: string, limit: number) => `
-  SELECT CASE WHEN row_number() OVER () = 1 THEN
-           (SELECT json_agg(e.key ORDER BY e.n) FROM json_each(to_json(q)) WITH ORDINALITY AS e(key, value, n))
+  SELECT CASE WHEN n = 1 THEN
+           (SELECT json_agg(e.key ORDER BY e.n) FROM json_each(row) WITH ORDINALITY AS e(key, value, n))
          END::text AS columns,
-         (SELECT json_agg(e.value ORDER BY e.n) FROM json_each(to_json(q)) WITH ORDINALITY AS e(key, value, n))::text AS cells
+         CASE WHEN n <= ${limit} THEN
+           (SELECT json_agg(
+              CASE WHEN json_typeof(e.value) <> 'number' THEN e.value
+                   WHEN e.value::text::numeric <> 0
+                        AND abs(e.value::text::numeric) NOT BETWEEN 1e-300 AND 1e300 THEN to_json(e.value::text)
+                   WHEN e.value::text::numeric::float8::numeric = e.value::text::numeric THEN e.value
+                   ELSE to_json(e.value::text) END
+              ORDER BY e.n)
+            FROM json_each(row) WITH ORDINALITY AS e(key, value, n))
+         END::text AS cells
   FROM (
+    SELECT to_json(q) AS row, row_number() OVER () AS n
+    FROM (
 ${body}
-  ) AS q LIMIT ${limit + 1}`;
+    ) AS q LIMIT ${limit + 1}
+  ) AS numbered`;
 
 // The query is wrapped as a subquery so the row cap and the JSON encoding happen in Postgres, and the
 // extended protocol the driver uses refuses a second statement smuggled past the closing parenthesis. Rows are
@@ -105,27 +119,31 @@ export const runQuery = Effect.fn("Query.run")(
         search_path: "analytics",
       },
     });
-    const body = input.sql.trim().replace(/;+$/, "").trimEnd();
+    const body = input.sql
+      .trim()
+      .replace(/;+\s*(?:--[^\n]*\s*)*$/, "")
+      .trimEnd();
     const cells: Array<string> = [];
     let columns: string | null = null;
     let bytes = 0;
+    let received = 0;
     yield* client.unsafe(cellsOf(body, limit)).stream.pipe(
       Stream.runForEach((raw) =>
         Effect.gen(function* () {
           const row = yield* decodeRawRow(raw).pipe(Effect.orDie);
-          bytes += (row.cells?.length ?? 0) + (row.columns?.length ?? 0);
+          received += 1;
+          if (row.cells === null) return;
+          bytes += Buffer.byteLength(row.cells) + Buffer.byteLength(row.columns ?? "");
           if (bytes > resultBudgetBytes) yield* tooLarge;
           columns ??= row.columns;
-          cells.push(row.cells ?? "[]");
+          cells.push(row.cells);
         }),
       ),
     );
     return {
       columns: columns === null ? [] : yield* decodeColumns(columns).pipe(Effect.orDie),
-      rows: yield* Effect.forEach(cells.slice(0, limit), (row) =>
-        decodeCells(row).pipe(Effect.orDie),
-      ),
-      truncated: cells.length > limit,
+      rows: yield* Effect.forEach(cells, (row) => decodeCells(row).pipe(Effect.orDie)),
+      truncated: received > cells.length,
     } satisfies QueryResult;
   },
   Effect.scoped,
