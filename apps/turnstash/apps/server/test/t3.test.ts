@@ -40,7 +40,7 @@ test("a resent run replaces its earlier copy and joins the session it wrote", as
         .insert(conversations)
         .values({
           provider: "claude",
-          conversationKey: "6f1c2a4e-0000-4000-8000-000000000001",
+          conversationKey: "6F1C2A4E-0000-4000-8000-000000000001",
           startedAt: new Date("2026-11-01T10:00:00Z"),
           endedAt: new Date("2026-11-01T10:05:00Z"),
           parserVersion: 1,
@@ -54,18 +54,10 @@ test("a resent run replaces its earlier copy and joins the session it wrote", as
         runs: [run({ status: "completed", completedAt: "2026-11-01T10:05:02.000Z" })],
       });
 
-      const { rows } = yield* runQuery({
+      const result = yield* runQuery({
         sql: "select machine, status, queued_seconds, duration_seconds, session_id from t3_runs",
       });
-      expect(rows).toEqual([
-        {
-          machine: "laptop",
-          status: "completed",
-          queued_seconds: 2,
-          duration_seconds: 300,
-          session_id: session?.id ?? null,
-        },
-      ]);
+      expect(result.rows).toEqual([["laptop", "completed", 2, 300, session?.id ?? null]]);
     }),
   );
 });

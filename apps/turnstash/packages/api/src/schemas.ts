@@ -504,7 +504,8 @@ export const QueryInput = Schema.Struct({
 export type QueryInput = typeof QueryInput.Type;
 
 export const QueryResult = Schema.Struct({
-  rows: Schema.Array(Schema.Record(Schema.String, Schema.Json)),
+  columns: Schema.Array(Schema.String),
+  rows: Schema.Array(Schema.Array(Schema.Json)),
   truncated: Schema.Boolean,
 });
 export type QueryResult = typeof QueryResult.Type;
