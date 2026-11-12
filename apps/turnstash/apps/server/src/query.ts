@@ -45,8 +45,11 @@ const restrictedCheck = `
                          WHERE CASE WHEN p.privilege IN ('DELETE', 'TRUNCATE')
                                  THEN has_table_privilege(r.oid, c.oid, p.privilege)
                                       AND NOT has_table_privilege('public', c.oid, p.privilege)
-                                 ELSE has_any_column_privilege(r.oid, c.oid, p.privilege)
-                                      AND NOT has_any_column_privilege('public', c.oid, p.privilege) END))
+                                 ELSE EXISTS (
+                                   SELECT 1 FROM pg_attribute a
+                                   WHERE a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
+                                     AND has_column_privilege(r.oid, c.oid, a.attnum, p.privilege)
+                                     AND NOT has_column_privilege('public', c.oid, a.attnum, p.privilege)) END))
      AND NOT EXISTS (SELECT 1 FROM pg_proc p
                      WHERE p.prosecdef AND has_function_privilege(r.oid, p.oid, 'EXECUTE')
                        AND NOT EXISTS (SELECT 1 FROM pg_depend d JOIN pg_extension e ON e.oid = d.refobjid
@@ -76,11 +79,10 @@ export const ensureReaderRole = Effect.fn("Query.ensureReaderRole")(function* ()
         END IF;
       END $$`),
   );
+  // The login is off until the check passes, so a check that fails or errors leaves the endpoint closed.
+  yield* db.execute(sql.raw(`ALTER ROLE ${readerRole} WITH NOLOGIN`));
   const [role] = yield* db.execute<{ restricted: boolean }>(sql.raw(restrictedCheck), "objects");
-  if (role?.restricted !== true) {
-    yield* db.execute(sql.raw(`ALTER ROLE ${readerRole} WITH NOLOGIN`));
-    yield* new UnsafeReaderRole();
-  }
+  if (role?.restricted !== true) yield* new UnsafeReaderRole();
   yield* db.execute(
     sql.raw(`ALTER ROLE ${readerRole} WITH LOGIN CONNECTION LIMIT 4 PASSWORD '${password}'`),
   );
