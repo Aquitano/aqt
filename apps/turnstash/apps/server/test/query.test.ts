@@ -111,6 +111,8 @@ test("only the semicolons that end the query are removed, whatever its literals 
   );
   expect(withoutFinalTerminators("select E'\\';' /* ; */;")).toBe("select E'\\';' /* ; */ ");
   expect(withoutFinalTerminators("select 1; select 2")).toBe("select 1; select 2");
+  expect(withoutFinalTerminators("select 1 as total$usd$;")).toBe("select 1 as total$usd$ ");
+  expect(withoutFinalTerminators("select time'12:00\\';")).toBe("select time'12:00\\' ");
   const started = performance.now();
   withoutFinalTerminators(`select 1; ${"--".repeat(30_000)}'`);
   expect(withoutFinalTerminators(`select 1${";".repeat(60_000)}`)).toBe(
