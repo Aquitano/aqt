@@ -11,8 +11,8 @@ const finite = (value: number | string): number | null => {
 
 // A stacked series may report its [base, top] range. Its own amount is the difference, never the
 // cumulative top.
-export const tooltipAmount = (value: TooltipValueType | undefined): number | null => {
-  if (value === undefined) return null;
+export const tooltipAmount = (value: TooltipValueType | null | undefined): number | null => {
+  if (value == null) return null;
   const parts = new Array<number | string>().concat(value).map(finite);
   const [first, second] = parts;
   if (parts.length === 1) return first ?? null;
@@ -23,7 +23,7 @@ export const tooltipAmount = (value: TooltipValueType | undefined): number | nul
 export const chartRow =
   (format: (value: number) => string) =>
   (
-    value: TooltipValueType | undefined,
+    value: TooltipValueType | null | undefined,
     name: string | number | undefined,
     item: TooltipPayloadEntry,
   ): ReactNode => {

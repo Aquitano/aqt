@@ -1,9 +1,8 @@
 import type { Schema } from "effect";
 
-export const missing = "—";
+export const missing = "Unknown";
 
-// Missing data reads as a dash and a positive amount below the last digit as "<$0.01", so
-// neither can pass for a genuine zero.
+// Missing data and amounts below display precision must stay distinguishable from a genuine zero.
 const dollars = (maximumFractionDigits: number) => {
   const format = new Intl.NumberFormat(undefined, {
     style: "currency",

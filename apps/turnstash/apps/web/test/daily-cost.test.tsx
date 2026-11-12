@@ -8,7 +8,7 @@ import { dailyAxisKey } from "../src/components/DailyChart";
 import { missing, usd } from "../src/format";
 import { withQuietDays } from "../src/period";
 
-const costCell = (value: TooltipValueType | undefined) =>
+const costCell = (value: TooltipValueType | null | undefined) =>
   renderToStaticMarkup(
     <>{chartRow(usd)(value, "Cost", { graphicalItemId: "cost", color: "red" })}</>,
   ).match(/tabular-nums">([^<]*)</)?.[1];
@@ -38,6 +38,7 @@ test("tooltip costs never pass missing data or a fraction of a cent off as zero"
   expect(costCell(0)).toBe("$0.00");
   expect(costCell(0.003)).toBe("&lt;$0.01");
   expect(costCell(undefined)).toBe(missing);
+  expect(costCell(null)).toBe(missing);
   expect(costCell(Number.NaN)).toBe(missing);
   expect(costCell("")).toBe(missing);
   expect(costCell([100, 683.486855])).toBe("$583.49");
