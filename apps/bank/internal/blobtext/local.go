@@ -33,6 +33,10 @@ func (l Local) KnownText(ctx context.Context, b store.BlobRef) (extract.Result, 
 	if l.Known == nil {
 		return extract.Result{}, false
 	}
+	// Hashing a blob is wasted when the source cannot be asked.
+	if source, ok := l.Known.(interface{ Ready(context.Context) bool }); ok && !source.Ready(ctx) {
+		return extract.Result{}, false
+	}
 	sha256 := b.SHA256
 	digest, err := l.Store.BlobDigest(ctx, sha256)
 	if err != nil {
