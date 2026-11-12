@@ -16,6 +16,37 @@ import { Db } from "./db/client.ts";
 const readerPassword = (databaseUrl: string) =>
   createHmac("sha256", databaseUrl).update(readerRole).digest("hex");
 
+export class UnsafeReaderRole extends Schema.TaggedError<UnsafeReaderRole>()(
+  "UnsafeReaderRole",
+  {},
+) {
+  override get message() {
+    return `${readerRole} has privileges beyond reading the analytics views, so it is not given a login`;
+  }
+}
+
+// A role of this name that existed before the server created it could hold any privilege, and every query would
+// run with it. It is given a login only when it has no administrative attribute or membership, owns nothing,
+// cannot create in the database, cannot write any other table or read one beyond what every role may read,
+// such as PostGIS's spatial_ref_sys, and cannot read server files.
+const restrictedCheck = `
+  SELECT NOT (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls)
+     AND NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE member = r.oid)
+     AND NOT has_database_privilege(r.oid, current_database(), 'CREATE')
+     AND NOT EXISTS (SELECT 1 FROM pg_class c WHERE c.relowner = r.oid)
+     AND NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                     WHERE n.nspname NOT IN ('analytics', 'information_schema') AND n.nspname !~ '^pg_'
+                       AND c.relkind IN ('r', 'p', 'v', 'm', 'f')
+                       AND (has_table_privilege(r.oid, c.oid, 'INSERT,UPDATE,DELETE,TRUNCATE')
+                            OR (has_table_privilege(r.oid, c.oid, 'SELECT')
+                                AND NOT has_table_privilege('public', c.oid, 'SELECT'))))
+     AND NOT EXISTS (SELECT 1 FROM pg_proc p
+                     WHERE p.pronamespace = 'pg_catalog'::regnamespace
+                       AND p.proname IN ('pg_read_file', 'pg_read_binary_file', 'pg_stat_file', 'pg_ls_dir',
+                                         'lo_import', 'lo_export')
+                       AND has_function_privilege(r.oid, p.oid, 'EXECUTE')) AS restricted
+  FROM pg_roles r WHERE r.rolname = '${readerRole}'`;
+
 // Queries run as their own login role rather than through SET ROLE, which a query could undo with set_config.
 // The role can read the analytics views and nothing else, and each query gets a fresh connection, so nothing a
 // query leaves on its session, such as an advisory lock, outlives it. Postgres lets an owner that is not a
@@ -32,6 +63,8 @@ export const ensureReaderRole = Effect.fn("Query.ensureReaderRole")(function* ()
         END IF;
       END $$`),
   );
+  const [role] = yield* db.execute<{ restricted: boolean }>(sql.raw(restrictedCheck), "objects");
+  if (role?.restricted !== true) yield* new UnsafeReaderRole();
   yield* db.execute(
     sql.raw(`ALTER ROLE ${readerRole} WITH LOGIN CONNECTION LIMIT 4 PASSWORD '${password}'`),
   );
@@ -110,7 +143,8 @@ ${body}
 
 // A "$" or an "e" inside a word, such as total$usd$ or time'12:00', is part of that word, not a quote or prefix.
 const identifierChar = /[\p{L}\p{N}_$]/u;
-const dollarQuote = /\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/y;
+const dollarQuote = /\$(?:[\p{L}_][\p{L}\p{N}_]*)?\$/uy;
+const lineBreak = /[\r\n]/g;
 
 // The end of a quoted literal or identifier that opens at start. E'' strings also escape with a backslash.
 const closingQuote = (text: string, start: number, quote: string, backslashEscapes: boolean) => {
@@ -149,8 +183,8 @@ export const withoutFinalTerminators = (text: string) => {
   while (index < text.length) {
     const char = text[index] ?? "";
     if (text.startsWith("--", index)) {
-      const lineEnd = text.indexOf("\n", index);
-      index = lineEnd < 0 ? text.length : lineEnd;
+      lineBreak.lastIndex = index;
+      index = lineBreak.exec(text)?.index ?? text.length;
     } else if (text.startsWith("/*", index)) index = blockCommentEnd(text, index);
     else if (/\s/.test(char)) index += 1;
     else if (char === ";") {
