@@ -63,12 +63,12 @@ test("a newer copy of a run replaces the stored one, an older one does not, and 
       yield* applyT3Batch(machineId, {
         machineId,
         threads: [],
-        runs: [
-          run({ attempts: 2, nativeSessionId: null, completedAt: "2026-11-01T10:09:00.000Z" }),
-        ],
+        runs: [run({ attempts: 2, nativeSessionId: null })],
       });
-      const retried = yield* runQuery({ sql: "select attempts, native_session_id from t3_runs" });
-      expect(retried.rows).toEqual([[2, null]]);
+      const retried = yield* runQuery({
+        sql: "select attempts, status, completed_at, native_session_id from t3_runs",
+      });
+      expect(retried.rows).toEqual([[2, "running", null, null]]);
     }),
   );
 });

@@ -9,8 +9,8 @@ import { excluded } from "./db/sql.ts";
 const dateOrNull = (value: string | null) => (value === null ? null : new Date(value));
 
 // The agent resends a thread or run whenever T3 may have changed it. A scheduled and a manual sync can overlap,
-// so a copy replaces the stored one only if it is at least as new: a thread by its update time, a run by
-// finishing or retrying, never by going back to running or to an earlier attempt. A delayed copy of the same
+// so a copy replaces the stored one only if it is at least as new: a thread by its update time, a run by a later
+// attempt or, within one attempt, by finishing, never by going back to running or to an earlier attempt. A delayed copy of the same
 // attempt can still lack the start time or session that a newer one already recorded, so those are kept. A new
 // attempt's session replaces the earlier attempt's, even before it has one.
 export const applyT3Batch = Effect.fn("T3.applyBatch")(function* (
@@ -88,8 +88,9 @@ export const applyT3Batch = Effect.fn("T3.applyBatch")(function* (
           THEN coalesce(excluded.native_session_id, ${t3Runs.nativeSessionId})
           ELSE excluded.native_session_id END`,
         },
-        setWhere: sql`(${t3Runs.completedAt} IS NULL OR excluded.completed_at IS NOT NULL)
-          AND excluded.attempts >= ${t3Runs.attempts}`,
+        setWhere: sql`excluded.attempts > ${t3Runs.attempts}
+          OR (excluded.attempts = ${t3Runs.attempts}
+              AND (${t3Runs.completedAt} IS NULL OR excluded.completed_at IS NOT NULL))`,
       });
   return { threads: batch.threads.length, runs: batch.runs.length } satisfies T3BatchResult;
 });

@@ -104,8 +104,9 @@ const fixture = () => {
 };
 
 test("reads threads changed since the checkpoint and runs that changed or are still going", async () => {
+  using db = fixture();
   const { threads, runs } = await Effect.runPromise(
-    readT3(fixture(), ":memory:", "2026-10-15T00:00:00.000Z", providerIds),
+    readT3(db, ":memory:", "2026-10-15T00:00:00.000Z", providerIds),
   );
 
   expect(threads).toEqual([
@@ -145,7 +146,7 @@ test("reads threads changed since the checkpoint and runs that changed or are st
 });
 
 test("reads a thread with an option it does not know and leaves out excluded providers", async () => {
-  const db = fixture();
+  using db = fixture();
   db.query(
     "INSERT INTO orchestration_v2_projection_threads VALUES (?, 'p1', ?, ?, ?, ?, NULL, NULL, ?)",
   ).run(
