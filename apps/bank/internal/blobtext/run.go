@@ -121,9 +121,9 @@ func Run(ctx context.Context, a Archive, sel Selection, o extract.Options, progr
 		}
 		res, known := extract.Result{}, false
 		if reuse, ok := a.(interface {
-			KnownText(context.Context, string) (extract.Result, bool)
+			KnownText(context.Context, store.BlobRef) (extract.Result, bool)
 		}); ok && !sel.ReadAgain {
-			res, known = reuse.KnownText(ctx, b.SHA256)
+			res, known = reuse.KnownText(ctx, b)
 		}
 		if !known {
 			res = extractOne(ctx, a, b, o)

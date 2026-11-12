@@ -26,17 +26,22 @@ type TextSource interface {
 
 // KnownText is the text Known holds for a blob. A blob without a recorded
 // BLAKE3 digest is hashed here, and the digest kept, so a new upload can match
-// before the server's digest pass reaches it. Any failure means reading the
-// blob as usual.
-func (l Local) KnownText(ctx context.Context, sha256 string) (extract.Result, bool) {
+// before the server's digest pass reaches it. A blob too large to extract is
+// not hashed here: reading a film to learn it has no text would hold up every
+// document behind it. Any failure means reading the blob as usual.
+func (l Local) KnownText(ctx context.Context, b store.BlobRef) (extract.Result, bool) {
 	if l.Known == nil {
 		return extract.Result{}, false
 	}
+	sha256 := b.SHA256
 	digest, err := l.Store.BlobDigest(ctx, sha256)
 	if err != nil {
 		return extract.Result{}, false
 	}
 	if digest == nil {
+		if b.SizeBytes > extract.DefaultOptions().MaxBytes {
+			return extract.Result{}, false
+		}
 		if digest, err = l.Blobs.BLAKE3(ctx, sha256); err != nil {
 			return extract.Result{}, false
 		}
