@@ -1,0 +1,32 @@
+{
+  "name": "@aqt/bank-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --port 4310",
+    "build": "tsc -b && vp build",
+    "preview": "vp preview",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@fontsource-variable/martian-mono": "^5.2.5",
+    "@fontsource-variable/source-serif-4": "^5.2.5",
+    "@gsap/react": "^2.1.2",
+    "@tailwindcss/vite": "^4.3.4",
+    "gsap": "^3.13.0",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@aqt/config": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "~7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
