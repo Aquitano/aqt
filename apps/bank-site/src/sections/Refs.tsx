@@ -1,70 +1,126 @@
 import { brand } from "../brand";
-import { Prompt, Ref, Section } from "../parts";
+import { Across, Down, Flow, Fork, Node } from "../diagram";
+import { Cell, Cells, Prompt, Ref, Section } from "../parts";
 import type { RefId } from "../records";
 
-type Line = { rail: string; label: string; value: string; tone?: "drives" | "mail" | "dim" };
-
-const cited: RefId = "a04d77e19c52";
-
-const tree: Line[] = [
-  { rail: "├─ ", label: "message", value: "mail, 2024-02-26, me to Property office", tone: "mail" },
-  { rail: "├─ ", label: "attachment", value: "lease_signed.pdf, 1.8 MB" },
-  { rail: "│  ├─ ", label: "sha-256", value: "91d0c4…e7a2", tone: "dim" },
-  { rail: "│  ├─ ", label: "blake3", value: "7c1e5a…b04f", tone: "dim" },
-  { rail: "│  └─ ", label: "text", value: "OCR, 4 pages, complete", tone: "dim" },
-  { rail: "└─ ", label: "same file", value: "2 other places" },
-  { rail: "   ├─ ", label: "archive-2", value: "/scans/2024/lease_signed.pdf", tone: "drives" },
-  { rail: "   └─ ", label: "nas", value: "/backup/documents/lease_signed.pdf", tone: "drives" },
-];
-
-const tones = { drives: "text-drives", mail: "text-mail", dim: "text-dim" } as const;
-
-const note: [string, RefId][] = [
-  ["Signed lease sent to the property office on 26 February.", cited],
-  ["Deposit and key handover confirmed the same day.", "3fa91c20b7e4"],
-  ["Anna asked about the transfer that morning.", "9be2f0416a3d"],
-];
+const cited: RefId = "bank:a04d77e19c52";
 
 export function Refs() {
   return (
-    <Section id="refs" title="What a ref resolves to">
-      <div className="grid gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-        <figure className="frame border-rule bg-panel min-w-0 border">
-          <figcaption className="mono border-rule text-code text-faint border-b px-4 py-2">
-            notes/lease.md, written by an agent
-          </figcaption>
-          <ul className="grid gap-4 p-5 text-[1rem] leading-normal">
-            {note.map(([sentence, id]) => (
-              <li key={id}>
-                {sentence}{" "}
-                <Ref
-                  id={id}
-                  className={`mono text-code whitespace-nowrap ${id === cited ? "bg-ink text-ground px-1" : "ref text-dim"}`}
-                />
-              </li>
-            ))}
-          </ul>
-        </figure>
-
-        <figure className="frame mono border-rule bg-panel text-code min-w-0 border">
-          <figcaption className="border-rule border-b px-4 py-2">
+    <Section
+      id="refs"
+      title="Every record has a ref."
+      sub="A stable ID for a message, a library record, an attachment or a file on a drive. Paste it into a note and resolve it years later."
+    >
+      <figure className="frame mono border-rule bg-panel text-code border">
+        <figcaption className="border-rule flex flex-wrap items-baseline justify-between gap-x-6 border-b px-4 py-3 sm:px-6">
+          <span>
             <Prompt>
               {brand.cmd} ref {cited}
             </Prompt>
-          </figcaption>
-          <pre className="overflow-x-auto p-5 leading-[1.9]">
-            {tree.map((line) => (
-              <span key={line.rail + line.label} className="block">
-                <span className="text-faint">{line.rail}</span>
-                <span className={line.tone === "drives" ? "text-drives" : ""}>
-                  {line.label.padEnd(12)}
-                </span>
-                <span className={line.tone ? tones[line.tone] : ""}>{line.value}</span>
-              </span>
-            ))}
-          </pre>
-        </figure>
-      </div>
+          </span>
+          <span className="text-faint whitespace-nowrap">sample data</span>
+        </figcaption>
+        <div className="grid gap-y-1 px-4 py-8 sm:px-6 xl:flex xl:items-center xl:gap-x-2 xl:py-12">
+          <Node sub="cited in a note" className="xl:shrink-0" strong>
+            <Ref id={cited} />
+          </Node>
+          <Flow at="xl" label="names" />
+          <Node sub="mail to Property office" className="xl:shrink-0">
+            <span className="text-mail">Fwd: Signed lease</span>
+          </Node>
+          <Flow at="xl" label="attachment" />
+          <Node sub="attachment 91d0c4…e7a2" className="xl:shrink-0">
+            lease_signed.pdf
+          </Node>
+          <Down label="same bytes" className="xl:hidden" />
+          <Across open label="same bytes" className="min-w-28 max-xl:hidden" />
+          <Fork className="my-[1.45rem] max-xl:hidden" />
+          <span className="border-rule grid gap-2 max-xl:border max-xl:border-dashed max-xl:p-2 xl:shrink-0">
+            <Node sub="/scans/2024/">
+              <span className="text-drives">archive-2</span>
+            </Node>
+            <Node sub="/backup/">
+              <span className="text-drives">nas</span>
+            </Node>
+          </span>
+        </div>
+      </figure>
+
+      <Cells cols={3}>
+        <Cell
+          fold
+          title="Derived, not assigned"
+          text="A message ref is the first 12 hex digits of SHA‑256 over its source and its import key: the Message-ID header for mail, the source's own ID for chats, or a hash of the content when the export has neither. Rebuild the archive from its exports and every message gets the same ref."
+        >
+          <span className="border-rule grid grid-cols-2 gap-2 border border-dashed p-2">
+            <Node sub="source">gmail</Node>
+            <Node sub="message ID">{"<CAF2k9…>"}</Node>
+          </span>
+          <Down label="SHA-256, first 12 hex digits" className="lg:hidden" />
+          <Down label="SHA-256" className="max-lg:hidden" />
+          <Node sub="digest" className="max-lg:hidden">
+            a04d77e19c52<span className="text-faint font-normal">8f03b1c4…</span>
+          </Node>
+          <Down label="first 12 digits" className="max-lg:hidden" />
+          <Node strong sub="the same after every rebuild">
+            bank:a04d77e19c52
+          </Node>
+        </Cell>
+        <Cell
+          title="Four kinds, one command"
+          text="Messages, library records, files on drives and attachments each have their own form. One command resolves all four. For attachments and files, it also finds other copies of the same bytes."
+        >
+          <span className="border-rule grid gap-2 border border-dashed p-2">
+            <Node compact sub="a message">
+              <span className="text-mail">bank:a04d77e19c52</span>
+            </Node>
+            <Node compact sub="a library record">
+              <span className="text-library">activity_4c9e21f0…</span>
+            </Node>
+            <Node
+              compact
+              sub={
+                <>
+                  <span className="lg:hidden">on drives</span>
+                  <span className="max-lg:hidden">a file's bytes on drives</span>
+                </>
+              }
+            >
+              <span className="text-drives">attic:7c1e5ab04f2d9e61</span>
+            </Node>
+            <Node
+              compact
+              sub={
+                <>
+                  an attachment<span className="max-lg:hidden">, by SHA-256</span>
+                </>
+              }
+            >
+              91d0c4…e7a2
+            </Node>
+          </span>
+          <Down label={`${brand.cmd} ref`} />
+          <Node strong sub="and any other copies of the same bytes">
+            what it names
+          </Node>
+        </Cell>
+        <Cell
+          fold
+          title="Retired refs still resolve"
+          text="When records move, such as YouTube watches from messages to the library, the old rows are deleted and leave a tombstone. The old ref resolves to that tombstone, which says what it named and, if the move recorded it, what replaced it."
+        >
+          <Node sub="a YouTube watch, imported as a message">bank:0d94aa17e6b3</Node>
+          <Down label="retired 2025-03-02" />
+          <Node dashed sub="the ref still resolves here">
+            tombstone
+          </Node>
+          <Down label="replaced by" />
+          <Node strong sub="the library record that replaced it">
+            <span className="text-library">activity_4c9e21f0…</span>
+          </Node>
+        </Cell>
+      </Cells>
     </Section>
   );
 }

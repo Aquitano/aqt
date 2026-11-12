@@ -6,12 +6,13 @@
    a row in a search result and a box in the diagram. */
 @theme {
   --color-ground: #2a2a27;
-  --color-panel: #31312d;
-  --color-rule: #4b4b45;
-  --color-rule-soft: #3a3a35;
+  --color-panel: rgb(236 232 220 / 0.04);
+  --color-panel-solid: #31312d;
+  --color-rule: #5c5c54;
+  --color-rule-soft: #45453f;
   --color-ink: #ece8dc;
-  --color-dim: #b3af9f;
-  --color-faint: #9c9884;
+  --color-dim: #c4c0b0;
+  --color-faint: #a5a18d;
   --color-mail: #dcc58c;
   --color-chat: #a5c39c;
   --color-ai: #c0add9;
@@ -21,7 +22,7 @@
   --font-mono: "Martian Mono Variable", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
   --font-serif: "Source Serif 4 Variable", "Iowan Old Style", Georgia, serif;
 
-  --text-code: 0.78rem;
+  --text-code: 0.8125rem;
   --text-code--line-height: 1.75;
 }
 
@@ -32,7 +33,12 @@ html {
 }
 
 body {
-  background: var(--color-ground);
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(90rem 46rem at 50% -12rem, rgb(236 232 220 / 0.07), transparent 70%),
+    var(--color-ground);
+  background-repeat: no-repeat;
   color: var(--color-ink);
   font-family: var(--font-serif);
   font-size: 1.0625rem;
@@ -41,15 +47,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Paper grain, so the flat grey reads as a surface. */
+/* Film grain in the surfaces. It sits behind the content, and panels are translucent, so the
+   page and every panel carry it while type stays crisp. */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
+  z-index: -1;
   pointer-events: none;
-  opacity: 0.16;
+  opacity: 0.42;
   mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 1.6 0 0 0 -.3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 * {
@@ -72,6 +80,88 @@ body::before {
     font-family: var(--font-mono);
     font-variation-settings: "wdth" 88;
     font-feature-settings: "zero" 0;
+  }
+
+  /* Bright type and lines bloom a little, like a phosphor screen. */
+  .glow,
+  .display {
+    text-shadow:
+      0 0 1.2em color-mix(in srgb, currentColor 30%, transparent),
+      0 0 0.3em color-mix(in srgb, currentColor 22%, transparent);
+  }
+  .glow-box {
+    box-shadow:
+      0 0 20px rgb(236 232 220 / 0.14),
+      inset 0 0 16px rgb(236 232 220 / 0.05);
+  }
+  .glow-line {
+    filter: drop-shadow(0 0 2px rgb(236 232 220 / 0.32));
+  }
+
+  /* Small explanations under a section's main visual. Rows are shared, so titles,
+     texts and diagrams line up across cells and the diagrams end level. */
+  .cells {
+    display: grid;
+    margin-top: 2.5rem;
+    border-top: 1px solid var(--color-rule-soft);
+  }
+  .cell {
+    position: relative;
+    display: grid;
+    grid-row: span 3;
+    grid-template-rows: subgrid;
+    row-gap: 0.5rem;
+    min-width: 0;
+    padding-block: 1.75rem;
+  }
+  .cell + .cell {
+    border-top: 1px solid var(--color-rule-soft);
+  }
+  .cells > .cell:last-child {
+    padding-bottom: 0;
+  }
+  @media (min-width: 64rem) {
+    .cells.at-lg {
+      column-gap: 3rem;
+    }
+    .cells.at-lg > .cell {
+      padding-bottom: 0;
+    }
+    .cells.at-lg > .cell + .cell {
+      border-top: 0;
+    }
+    .cells.at-lg > .cell + .cell::before {
+      content: "";
+      position: absolute;
+      inset-block: 0;
+      left: -1.5rem;
+      border-left: 1px solid var(--color-rule-soft);
+    }
+  }
+  @media (min-width: 80rem) {
+    .cells.at-xl {
+      column-gap: 3rem;
+    }
+    .cells.at-xl > .cell {
+      padding-bottom: 0;
+    }
+    .cells.at-xl > .cell + .cell {
+      border-top: 0;
+    }
+    .cells.at-xl > .cell + .cell::before {
+      content: "";
+      position: absolute;
+      inset-block: 0;
+      left: -1.5rem;
+      border-left: 1px solid var(--color-rule-soft);
+    }
+  }
+
+  /* A bar built from short blocks, for counts. */
+  .bar {
+    height: 0.85rem;
+    background: repeating-linear-gradient(90deg, var(--color-ink) 0 5px, transparent 5px 7px);
+    filter: drop-shadow(0 0 4px rgb(236 232 220 / 0.45));
   }
 
   .display {
@@ -109,6 +199,7 @@ body::before {
     height: 10px;
     pointer-events: none;
     border: 0 solid var(--color-ink);
+    filter: drop-shadow(0 0 3px rgb(236 232 220 / 0.6));
   }
   .frame::before {
     top: -1px;

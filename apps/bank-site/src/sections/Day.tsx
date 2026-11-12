@@ -8,18 +8,18 @@ import { record, type RefId } from "../records";
 type Event = { at: string; ref: RefId };
 
 const events: [Event, ...Event[]] = [
-  { at: "06:10", ref: "0d94aa17e6b3" },
-  { at: "07:30", ref: "5b1e09d3c7f2" },
-  { at: "08:40", ref: "9be2f0416a3d" },
-  { at: "09:50", ref: "attic:7c1e5ab0" },
-  { at: "10:30", ref: "41c7d2ee90ab" },
-  { at: "11:20", ref: "a04d77e19c52" },
-  { at: "12:10", ref: "attic:e3380b12" },
-  { at: "13:30", ref: "d41b7e02f9a6" },
-  { at: "14:40", ref: "6f0c2ab94e15" },
-  { at: "16:31", ref: "3fa91c20b7e4" },
-  { at: "19:05", ref: "77f0c1a2d458" },
-  { at: "22:18", ref: "9a6b20fd3c41" },
+  { at: "06:10", ref: "activity_4c9e21f0…" },
+  { at: "07:30", ref: "bank:5b1e09d3c7f2" },
+  { at: "08:40", ref: "bank:9be2f0416a3d" },
+  { at: "09:50", ref: "attic:7c1e5ab04f2d9e61" },
+  { at: "10:30", ref: "bank:41c7d2ee90ab" },
+  { at: "11:20", ref: "bank:a04d77e19c52" },
+  { at: "12:10", ref: "attic:e3380b12a95c07d4" },
+  { at: "13:30", ref: "bank:d41b7e02f9a6" },
+  { at: "14:40", ref: "activity_b61d08e3…" },
+  { at: "16:31", ref: "bank:3fa91c20b7e4" },
+  { at: "19:05", ref: "bank:77f0c1a2d458" },
+  { at: "22:18", ref: "activity_e2057ac4…" },
 ];
 
 const lanes: Kind[] = ["mail", "chat", "ai", "library", "drives"];
@@ -50,6 +50,8 @@ export function Day() {
   const scope = useRef<HTMLDivElement>(null);
   const [picked, setPicked] = useState<Event>(events[5] ?? events[0]);
   const entry = record(picked.ref);
+  const step = (by: number) =>
+    setPicked(events[(events.indexOf(picked) + by + events.length) % events.length] ?? picked);
 
   useGSAP(
     () => {
@@ -73,20 +75,33 @@ export function Day() {
             )
             .call(setPicked, [event], at);
         }
-        day.to("[data-playhead]", { opacity: 0, duration: 0.4 }, sweep);
+        // The sweep ends on the last event of the day; settle back on the one the page is about.
+        day
+          .to("[data-playhead]", { opacity: 0, duration: 0.4 }, sweep)
+          .call(setPicked, [events[5] ?? events[0]], sweep + 0.4);
       });
     },
     { scope },
   );
 
   return (
-    <Section id="day" title="What happened on a day">
-      <div ref={scope} className="frame mono border-rule text-code border">
-        <p className="border-rule bg-panel border-b px-4 py-3">
-          <span className="text-faint select-none">$ </span>
-          {brand.cmd} timeline 2024-02-26
+    <Section
+      id="day"
+      title="One day, across every source."
+      sub="Messages by when they were sent, watches by when they happened, files by when they changed."
+    >
+      <div ref={scope} className="frame mono border-rule bg-panel text-code border">
+        <p className="border-rule flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b px-4 py-3 sm:px-6">
+          <span>
+            <span className="text-faint select-none">$ </span>
+            {brand.cmd} timeline 2024-02-26
+          </span>
+          <span className="text-faint whitespace-nowrap">
+            sample data<span className="max-sm:hidden">, select an event</span>
+            <span className="sm:hidden">, tap an event</span>
+          </span>
         </p>
-        <div className="grid grid-cols-[4.2rem_minmax(0,1fr)] gap-y-1 px-4 pt-5 pb-3">
+        <div className="grid grid-cols-[4.2rem_minmax(0,1fr)] gap-y-1 px-4 pt-5 pb-3 sm:px-6">
           <div className="grid gap-y-1">
             {lanes.map((lane) => (
               <span key={lane} className={`${kindColor[lane]} flex h-9 items-center`}>
@@ -95,11 +110,11 @@ export function Day() {
             ))}
           </div>
           <div className="relative grid gap-y-1">
-            {hours.map(([hour, at]) => (
+            {hours.map(([hour, at], i) => (
               <span
                 key={hour}
                 aria-hidden="true"
-                className={`border-rule-soft absolute inset-y-0 border-l ${at}`}
+                className={`border-rule absolute inset-y-0 border-l ${i % 4 ? "border-dashed" : ""} ${at}`}
               />
             ))}
             <span
@@ -122,7 +137,7 @@ export function Day() {
                       onFocus={() => setPicked(e)}
                       onClick={() => setPicked(e)}
                       style={{ left: `${dayPart(e.at) * 100}%` }}
-                      className={`${fill[lane]} aria-[current=true]:outline-ink absolute top-1/2 -mt-1.5 -ml-1.5 size-3 cursor-pointer rounded-full outline-offset-4 before:absolute before:-inset-2.5 aria-[current=true]:outline aria-[current=true]:outline-1`}
+                      className={`${fill[lane]} ${kindColor[lane]} aria-[current=true]:outline-ink absolute top-1/2 -mt-1.5 -ml-1.5 size-3 cursor-pointer rounded-full shadow-[0_0_10px_currentColor] outline-offset-4 before:absolute before:-inset-3.5 aria-[current=true]:outline aria-[current=true]:outline-1 max-sm:before:-inset-1.5`}
                     />
                   ))}
               </div>
@@ -136,15 +151,37 @@ export function Day() {
             ))}
           </div>
         </div>
-        <p className="border-rule bg-panel grid min-h-[3.1rem] items-center gap-x-5 gap-y-1 border-t px-4 py-3 sm:grid-cols-[3rem_9rem_minmax(0,1fr)]">
-          <span className="text-faint">{picked.at}</span>
-          <span>
-            <Ref id={picked.ref} />
+        <div className="border-rule flex flex-wrap items-center justify-between gap-x-5 gap-y-3 border-t px-4 py-3 sm:px-6">
+          <p className="grid min-h-[1.6rem] items-center gap-x-5 gap-y-1 sm:grid-cols-[3rem_auto_minmax(0,1fr)]">
+            <span className="text-faint">{picked.at}</span>
+            <span>
+              <Ref bare id={picked.ref} />
+            </span>
+            <span>
+              <span className="text-dim">{entry.from}: </span>
+              {entry.text}
+            </span>
+          </p>
+          <span className="flex items-center gap-2 sm:hidden">
+            <span className="text-faint mr-2">
+              {events.indexOf(picked) + 1} of {events.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => step(-1)}
+              className="border-rule text-dim cursor-pointer border px-3 py-1.5"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => step(1)}
+              className="border-rule text-dim cursor-pointer border px-3 py-1.5"
+            >
+              Next
+            </button>
           </span>
-          <span className={kindColor[entry.kind]}>
-            {entry.from}: {entry.text}
-          </span>
-        </p>
+        </div>
       </div>
     </Section>
   );
