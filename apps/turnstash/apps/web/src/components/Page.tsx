@@ -12,7 +12,7 @@ export const BackLink = ({
   to,
   children,
 }: {
-  readonly to: "/" | "/conversations" | "/machines";
+  readonly to: "/conversations";
   readonly children: ReactNode;
 }) => (
   <Link

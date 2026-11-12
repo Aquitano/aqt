@@ -206,29 +206,17 @@ export const ProvidersTable = ({ rows }: { readonly rows: ReadonlyArray<Provider
   );
 };
 
-const freshnessOf = (lastSeenAt: string | null) => {
+const freshnessDot = (lastSeenAt: string | null) => {
   const hours = hoursSince(lastSeenAt);
-  if (hours <= 24) return { label: "Synced", dot: "bg-success" } as const;
-  if (hours <= 24 * 7) return { label: "Quiet", dot: "bg-warning" } as const;
-  return { label: "Stale", dot: "bg-destructive" } as const;
+  return hours <= 24 ? "bg-success" : hours <= 24 * 7 ? "bg-warning" : "bg-destructive";
 };
 
-export const Freshness = ({
-  lastSeenAt,
-  showLabel = false,
-}: {
-  readonly lastSeenAt: string | null;
-  readonly showLabel?: boolean;
-}) => {
-  const { label, dot } = freshnessOf(lastSeenAt);
-  return (
-    <Badge variant="outline" title={lastSeenAt === null ? "Never synced" : dateTime(lastSeenAt)}>
-      <span className={cn("size-1.5 rounded-full", dot)} />
-      {showLabel && <span className="sr-only sm:not-sr-only">{label},</span>}
-      {lastSeenAt === null ? "never synced" : relativeTime(lastSeenAt)}
-    </Badge>
-  );
-};
+const Freshness = ({ lastSeenAt }: { readonly lastSeenAt: string | null }) => (
+  <Badge variant="outline" title={lastSeenAt === null ? "Never synced" : dateTime(lastSeenAt)}>
+    <span className={cn("size-1.5 rounded-full", freshnessDot(lastSeenAt))} />
+    {lastSeenAt === null ? "never synced" : relativeTime(lastSeenAt)}
+  </Badge>
+);
 
 export const MachinesTable = ({
   rows,
