@@ -5,7 +5,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@aqt/ui/components/chart";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { compact, usd } from "../format";
@@ -37,8 +37,31 @@ const seriesOf: Record<Metric, ReadonlyArray<Series>> = {
   requests: ["requests"],
 };
 
-const dayLabel = (date: string) =>
-  new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const dayOf = (date: string) => new Date(`${date}T00:00:00`);
+
+const dayTick = (date: string) =>
+  dayOf(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+// Recharts types the row behind each tooltip entry as `any`; it is always one of the days.
+interface DayEntry {
+  readonly payload?: DayRow;
+}
+
+const dayTitle = (_label: ReactNode, payload: ReadonlyArray<DayEntry>) => {
+  const day = payload[0]?.payload;
+  return day === undefined
+    ? null
+    : dayOf(day.date).toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+};
+
+// Recharts finds the hovered row by its axis value, so the axis is keyed by the full date: a
+// "Nov 7" label would match last year's Nov 7 first on any range longer than a year.
+export const dailyAxisKey = "date" satisfies keyof DayRow;
 
 export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> }) => {
   const [metric, setMetric] = useState<Metric>("cost");
@@ -49,7 +72,7 @@ export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> })
   return (
     <div className="min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-[13px] text-muted-foreground">Daily activity</h3>
+        <h3 className="text-sm font-medium">Daily activity</h3>
         <Segmented label="Metric" options={metricTabs} value={metric} onChange={setMetric} />
       </div>
       <ChartContainer
@@ -61,7 +84,8 @@ export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> })
         <BarChart data={days} margin={{ left: 0, right: 0 }}>
           <CartesianGrid vertical={false} stroke="var(--border)" />
           <XAxis
-            dataKey={(row: DayRow) => dayLabel(row.date)}
+            dataKey={dailyAxisKey}
+            tickFormatter={dayTick}
             tickLine={false}
             axisLine={false}
             tickMargin={8}
@@ -74,7 +98,12 @@ export const DailyChart = ({ daily }: { readonly daily: ReadonlyArray<DayRow> })
             tickFormatter={(value: number) => (money ? `$${compact(value)}` : compact(value))}
           />
           <ChartTooltip
-            content={<ChartTooltipContent formatter={chartRow(money ? usd : compact)} />}
+            content={
+              <ChartTooltipContent
+                labelFormatter={dayTitle}
+                formatter={chartRow(money ? usd : compact)}
+              />
+            }
           />
           {series.map((key, index) => (
             <Bar

@@ -1,5 +1,9 @@
 import type { Schema } from "effect";
 
+export const missing = "—";
+
+// Missing data reads as a dash and a positive amount below the last digit as "<$0.01", so
+// neither can pass for a genuine zero.
 const dollars = (maximumFractionDigits: number) => {
   const format = new Intl.NumberFormat(undefined, {
     style: "currency",
@@ -8,7 +12,12 @@ const dollars = (maximumFractionDigits: number) => {
     minimumFractionDigits: 2,
     maximumFractionDigits,
   });
-  return (value: number): string => format.format(Number.isFinite(value) ? value : 0);
+  const smallest = 10 ** -maximumFractionDigits;
+  return (value: number): string => {
+    if (!Number.isFinite(value)) return missing;
+    if (value > 0 && value < smallest / 2) return `<${format.format(smallest)}`;
+    return format.format(value);
+  };
 };
 
 export const usd = dollars(2);
@@ -62,7 +71,7 @@ export const hoursSince = (iso: string | null): number => {
 
 export const duration = (fromIso: string, toIso: string): string => {
   const ms = Date.parse(toIso) - Date.parse(fromIso);
-  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (!Number.isFinite(ms) || ms < 0) return missing;
   const seconds = Math.round(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
@@ -73,7 +82,7 @@ export const duration = (fromIso: string, toIso: string): string => {
 
 export const dateTime = (iso: string): string => {
   const parsed = Date.parse(iso);
-  if (!Number.isFinite(parsed)) return "—";
+  if (!Number.isFinite(parsed)) return missing;
   return new Date(parsed).toLocaleString(undefined, {
     month: "short",
     day: "numeric",
