@@ -83,9 +83,9 @@ const isPostgresMessage = Schema.is(PostgresMessage);
 const unavailable = /^(08|53|57P|58|XX)/;
 
 // Each row goes out as its values in column order, because a JSON object would silently keep only one of two
-// columns with the same name, such as two sum() aggregates. A number goes out as a JSON number only when a
-// JavaScript double holds it exactly: a safe integer, or a fraction of at most 15 digits. Any other goes out as
-// its decimal string. The row after the limit only marks the result as
+// columns with the same name, such as two sum() aggregates. A column's number goes out as a JSON number only
+// when a JavaScript double holds it exactly: a safe integer, or a fraction of at most 15 digits. Any other goes
+// out as its decimal string. Numbers nested in an array or JSON value keep Postgres's text and may round. The row after the limit only marks the result as
 // truncated, so its values are never sent.
 const cellsOf = (body: string, limit: number) => `
   SELECT CASE WHEN n = 1 THEN
@@ -108,6 +108,70 @@ ${body}
     ) AS q LIMIT ${limit + 1}
   ) AS numbered`;
 
+const dollarQuote = /\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/y;
+
+// The end of a quoted literal or identifier that opens at start. E'' strings also escape with a backslash.
+const closingQuote = (text: string, start: number, quote: string, backslashEscapes: boolean) => {
+  let index = start + 1;
+  while (index < text.length) {
+    if (backslashEscapes && text[index] === "\\") index += 2;
+    else if (text[index] === quote && text[index + 1] === quote) index += 2;
+    else if (text[index] === quote) return index + 1;
+    else index += 1;
+  }
+  return text.length;
+};
+
+const blockCommentEnd = (text: string, start: number) => {
+  let depth = 0;
+  let index = start;
+  while (index < text.length) {
+    if (text.startsWith("/*", index)) {
+      depth += 1;
+      index += 2;
+    } else if (text.startsWith("*/", index)) {
+      depth -= 1;
+      index += 2;
+      if (depth === 0) return index;
+    } else index += 1;
+  }
+  return text.length;
+};
+
+// A query file usually ends with ";", often followed by a comment, which cannot stay inside the subquery. One
+// pass over the text skips literals, quoted identifiers, dollar-quoted bodies and comments, so a ";" inside
+// them is kept, and blanks only the semicolons that no other code follows.
+export const withoutFinalTerminators = (text: string) => {
+  let terminators: Array<number> = [];
+  let index = 0;
+  while (index < text.length) {
+    const char = text[index] ?? "";
+    if (text.startsWith("--", index)) {
+      const lineEnd = text.indexOf("\n", index);
+      index = lineEnd < 0 ? text.length : lineEnd;
+    } else if (text.startsWith("/*", index)) index = blockCommentEnd(text, index);
+    else if (/\s/.test(char)) index += 1;
+    else if (char === ";") {
+      terminators.push(index);
+      index += 1;
+    } else {
+      terminators = [];
+      dollarQuote.lastIndex = index;
+      const tag = char === "$" ? dollarQuote.exec(text)?.[0] : undefined;
+      if (tag !== undefined) {
+        const close = text.indexOf(tag, index + tag.length);
+        index = close < 0 ? text.length : close + tag.length;
+      } else if (char === "'" || char === '"')
+        index = closingQuote(text, index, char, char === "'" && /[eE]/.test(text[index - 1] ?? ""));
+      else index += 1;
+    }
+  }
+  return terminators.reduce(
+    (blanked, position) => `${blanked.slice(0, position)} ${blanked.slice(position + 1)}`,
+    text,
+  );
+};
+
 // The query is wrapped as a subquery so the row cap and the JSON encoding happen in Postgres, and the
 // extended protocol the driver uses refuses a second statement smuggled past the closing parenthesis. Rows are
 // streamed and counted, so a large result is refused before the server holds all of it.
@@ -126,11 +190,7 @@ export const runQuery = Effect.fn("Query.run")(
         search_path: "analytics",
       },
     });
-    const body = input.sql
-      .trim()
-      // A comment that contains a quote may be the end of a string literal holding ";--", so it is left alone.
-      .replace(/;+\s*(?:--[^\n'"$]*\s*)*$/, "")
-      .trimEnd();
+    const body = withoutFinalTerminators(input.sql);
     const cells: Array<string> = [];
     let columns: string | null = null;
     let bytes = 0;
