@@ -45,6 +45,7 @@ const makeServer = (
   const IngestLive = HttpApiBuilder.group(TestApi, "ingest", (handlers) =>
     handlers
       .handle("pushLimits", () => Effect.succeed({ accepted: 0 }))
+      .handle("pushT3", () => Effect.succeed({ threads: 0, runs: 0 }))
       .handle("pushBatch", ({ payload }) =>
         Effect.sync(() => {
           const stored = applied.get(payload.batchId);

@@ -43,6 +43,7 @@ import { Providers, providersLayer } from "./providers.ts";
 import { apiClientFor, push, type PushSummary } from "./push.ts";
 import { currentTarget, installSchedule, uninstallSchedule } from "./schedule.ts";
 import { AgentState, type RejectionReason } from "./state.ts";
+import { syncT3, type T3SyncSummary } from "./t3.ts";
 import {
   ago,
   bold,
@@ -147,6 +148,15 @@ const describeLimits = ({ readings, accepted, error }: LimitSyncSummary): Summar
     : readings === 0
       ? ["No Claude plan limits on this machine"]
       : [accepted === 0 ? "Claude plan limits unchanged" : "Sent Claude plan limits"];
+
+const describeT3 = ({ found, threads, runs, error }: T3SyncSummary): Summary =>
+  error !== null
+    ? [`${mark.warn} Could not send T3 Code threads: ${error}`]
+    : !found
+      ? ["No T3 Code state on this machine"]
+      : threads === 0 && runs === 0
+        ? ["T3 Code threads unchanged"]
+        : [`Sent ${count(threads, "T3 Code thread")} and ${count(runs, "run")}`];
 
 const describeConfigWritten = (headline: string) =>
   print([
@@ -289,6 +299,11 @@ const sync = Command.make(
             () => syncLimits(client, config.machineId, host),
             describeLimits,
           );
+        yield* step(
+          "Reading T3 Code threads",
+          () => syncT3(client, config.machineId, host),
+          describeT3,
+        );
       }),
     );
   }),

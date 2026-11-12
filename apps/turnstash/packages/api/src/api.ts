@@ -11,6 +11,8 @@ import {
   LimitBatchResult,
   MachineId,
   RepositoryTask,
+  T3Batch,
+  T3BatchResult,
   Tombstone,
 } from "@aqt/turnstash-core";
 import { Schema } from "effect";
@@ -183,6 +185,13 @@ export const ingestGroup = HttpApiGroup.make("ingest")
     HttpApiEndpoint.post("pushLimits", "/limits", {
       payload: LimitBatch,
       success: LimitBatchResult,
+      error: BadRequest,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.post("pushT3", "/t3", {
+      payload: T3Batch,
+      success: T3BatchResult,
       error: BadRequest,
     }),
   )

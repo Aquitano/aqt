@@ -45,6 +45,7 @@ import {
   projectDetail,
   projectRows,
 } from "./stats.ts";
+import { applyT3Batch } from "./t3.ts";
 import {
   activateCatalog,
   deleteRule,
@@ -117,6 +118,12 @@ const IngestLive = HttpApiBuilder.group(Api, "ingest", (handlers) =>
     .handle("pushLimits", ({ payload }) =>
       ownMachine(payload.machineId).pipe(
         Effect.flatMap(() => applyLimitBatch(payload)),
+        databaseFailure,
+      ),
+    )
+    .handle("pushT3", ({ payload }) =>
+      ownMachine(payload.machineId).pipe(
+        Effect.flatMap((actor) => applyT3Batch(actor.machineId, payload)),
         databaseFailure,
       ),
     ),
