@@ -28,7 +28,7 @@ const run = (patch: Partial<T3Run>): T3Run => ({
   ...patch,
 });
 
-test("a resent run replaces its earlier copy and joins the session it wrote", async () => {
+test("a newer copy of a run replaces the stored one, an older one does not, and it joins its session", async () => {
   await runTest(
     Effect.gen(function* () {
       yield* ensureReaderRole();
@@ -53,6 +53,7 @@ test("a resent run replaces its earlier copy and joins the session it wrote", as
         threads: [],
         runs: [run({ status: "completed", completedAt: "2026-11-01T10:05:02.000Z" })],
       });
+      yield* applyT3Batch(machineId, { machineId, threads: [], runs: [run({})] });
 
       const result = yield* runQuery({
         sql: "select machine, status, queued_seconds, duration_seconds, session_id from t3_runs",

@@ -5,8 +5,8 @@ import {
   IsoTimestamp,
   type MachineId,
   redact,
-  type T3Run,
-  type T3Thread,
+  T3Run,
+  T3Thread,
   t3BatchLimits,
 } from "@aqt/turnstash-core";
 import { Array as Arr, DateTime, Duration, Effect, FileSystem, Option, Path, Schema } from "effect";
@@ -15,7 +15,8 @@ import type { ApiClient } from "./push.ts";
 import { openSqlite, sqliteOperation } from "./sqlite.ts";
 import { AgentState } from "./state.ts";
 
-const checkpointKey = "t3_synced_until";
+// Kept per database, so pointing TURNSTASH_T3_STATE_DB at another one reads that one from the start.
+const checkpointKeyOf = (file: string) => `t3_synced_until:${file}`;
 
 // T3 writes a row's timestamps before it commits the row, so the next sync looks back past its own start.
 const checkpointOverlap = Duration.minutes(10);
@@ -117,7 +118,7 @@ const threadOf = (row: typeof ThreadRow.Type): T3Thread => ({
   id: row.id,
   title: redactedOrNull(row.title),
   project: redactedOrNull(row.project),
-  projectRoot: row.project_root,
+  projectRoot: redactedOrNull(row.project_root),
   provider: row.provider,
   createdBy: row.created_by,
   creationSource: row.creation_source,
@@ -127,8 +128,8 @@ const threadOf = (row: typeof ThreadRow.Type): T3Thread => ({
   effort: row.effort,
   fast: fastOf(row.fast),
   branch: redactedOrNull(row.branch),
-  worktreePath: row.worktree_path,
-  pullRequests: row.pull_requests.filter((url) => url !== null),
+  worktreePath: redactedOrNull(row.worktree_path),
+  pullRequests: row.pull_requests.flatMap((url) => (url === null ? [] : [redact(url).text])),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   archivedAt: row.archived_at,
@@ -151,22 +152,33 @@ const runOf = (row: typeof RunRow.Type): T3Run => ({
   nativeSessionId: row.native_session_id,
 });
 
-// A row T3 wrote in a shape this agent does not know is skipped, so one odd thread cannot hold back the rest.
+const isT3Thread = Schema.is(T3Thread);
+const isT3Run = Schema.is(T3Run);
+
+// A row T3 wrote in a shape this agent does not know, or one the server would refuse, such as a title with a
+// NUL in it, is skipped, so one odd thread cannot hold back the rest.
 const decodeEach = <S extends Schema.Decoder<unknown>, A>(
   schema: S,
   rows: ReadonlyArray<unknown>,
   to: (row: S["Type"]) => A,
+  accepted: (value: A) => boolean,
 ) => {
   const decode = Schema.decodeUnknownOption(schema);
   return rows.flatMap((row) =>
-    Option.match(decode(row), { onNone: () => [], onSome: (decoded) => [to(decoded)] }),
+    Option.match(decode(row), {
+      onNone: () => [],
+      onSome: (decoded) => {
+        const value = to(decoded);
+        return accepted(value) ? [value] : [];
+      },
+    }),
   );
 };
 
 export const readT3 = (db: Database, path: string, since: string) =>
   sqliteOperation("readT3", path, () => ({
-    threads: decodeEach(ThreadRow, db.query(threadsQuery).all(since), threadOf),
-    runs: decodeEach(RunRow, db.query(runsQuery).all(since), runOf),
+    threads: decodeEach(ThreadRow, db.query(threadsQuery).all(since), threadOf, isT3Thread),
+    runs: decodeEach(RunRow, db.query(runsQuery).all(since), runOf, isT3Run),
   }));
 
 export interface T3SyncSummary {
@@ -186,7 +198,7 @@ export const syncT3 = (client: ApiClient, machineId: MachineId, host: HostEnv) =
     const file = t3StateDb(host, path);
     if (!(yield* fs.exists(file))) return { found: false, threads: 0, runs: 0, error: null };
     const startedAt = yield* DateTime.now;
-    const since = (yield* state.getMeta(checkpointKey)) ?? "";
+    const since = (yield* state.getMeta(checkpointKeyOf(file))) ?? "";
     const { threads, runs } = yield* Effect.scoped(
       Effect.flatMap(openSqlite(file, { readonly: true }), (db) => readT3(db, file, since)),
     );
@@ -198,7 +210,7 @@ export const syncT3 = (client: ApiClient, machineId: MachineId, host: HostEnv) =
       });
     }
     yield* state.setMeta(
-      checkpointKey,
+      checkpointKeyOf(file),
       DateTime.formatIso(DateTime.subtractDuration(startedAt, checkpointOverlap)),
     );
     return { found: true, threads: threads.length, runs: runs.length, error: null };

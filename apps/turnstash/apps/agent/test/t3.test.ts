@@ -56,6 +56,14 @@ const fixture = () => {
     "{}",
   );
   thread.run("broken", "No dates", "claudeAgent", "yesterday", "today", "{}");
+  thread.run(
+    "nul",
+    "Bad\u0000title",
+    "claudeAgent",
+    "2026-11-01T10:00:00.000Z",
+    "2026-11-01T10:00:00.000Z",
+    "{}",
+  );
   const run = db.query(
     "INSERT INTO orchestration_v2_projection_runs VALUES (?, ?, ?, 'claudeAgent', ?, ?, ?, ?)",
   );
