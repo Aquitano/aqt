@@ -166,10 +166,13 @@ export const withoutFinalTerminators = (text: string) => {
       else index += 1;
     }
   }
-  return terminators.reduce(
-    (blanked, position) => `${blanked.slice(0, position)} ${blanked.slice(position + 1)}`,
-    text,
-  );
+  let blanked = "";
+  let from = 0;
+  for (const position of terminators) {
+    blanked += `${text.slice(from, position)} `;
+    from = position + 1;
+  }
+  return blanked + text.slice(from);
 };
 
 // The query is wrapped as a subquery so the row cap and the JSON encoding happen in Postgres, and the
