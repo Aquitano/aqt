@@ -51,6 +51,12 @@ const tooLarge = new BadRequest({
   message: `The result is larger than ${resultBudgetBytes / 1024 / 1024} MB. Select fewer rows or columns, or aggregate in SQL.`,
 });
 
+// Numbers nested in an array or JSON value are passed through as Postgres wrote them.
+const unrepresentable = new BadRequest({
+  message:
+    "The result holds a number JavaScript cannot represent inside an array or JSON value. Cast it to text.",
+});
+
 const RawRow = Schema.Struct({
   columns: Schema.NullOr(Schema.String),
   cells: Schema.NullOr(Schema.String),
@@ -77,8 +83,9 @@ const isPostgresMessage = Schema.is(PostgresMessage);
 const unavailable = /^(08|53|57P|58|XX)/;
 
 // Each row goes out as its values in column order, because a JSON object would silently keep only one of two
-// columns with the same name, such as two sum() aggregates. A number a JavaScript double cannot hold exactly,
-// such as a large numeric, goes out as its decimal string. The row after the limit only marks the result as
+// columns with the same name, such as two sum() aggregates. A number goes out as a JSON number only when a
+// JavaScript double holds it exactly: a safe integer, or a fraction of at most 15 digits. Any other goes out as
+// its decimal string. The row after the limit only marks the result as
 // truncated, so its values are never sent.
 const cellsOf = (body: string, limit: number) => `
   SELECT CASE WHEN n = 1 THEN
@@ -87,9 +94,9 @@ const cellsOf = (body: string, limit: number) => `
          CASE WHEN n <= ${limit} THEN
            (SELECT json_agg(
               CASE WHEN json_typeof(e.value) <> 'number' THEN e.value
-                   WHEN e.value::text::numeric <> 0
-                        AND abs(e.value::text::numeric) NOT BETWEEN 1e-300 AND 1e300 THEN to_json(e.value::text)
-                   WHEN e.value::text::numeric::float8::numeric = e.value::text::numeric THEN e.value
+                   WHEN abs(e.value::text::numeric) <= 9007199254740991
+                        AND (e.value::text::numeric = trunc(e.value::text::numeric)
+                             OR length(regexp_replace(e.value::text, '[^0-9]', '', 'g')) <= 15) THEN e.value
                    ELSE to_json(e.value::text) END
               ORDER BY e.n)
             FROM json_each(row) WITH ORDINALITY AS e(key, value, n))
@@ -121,7 +128,8 @@ export const runQuery = Effect.fn("Query.run")(
     });
     const body = input.sql
       .trim()
-      .replace(/;+\s*(?:--[^\n]*\s*)*$/, "")
+      // A comment that contains a quote may be the end of a string literal holding ";--", so it is left alone.
+      .replace(/;+\s*(?:--[^\n'"$]*\s*)*$/, "")
       .trimEnd();
     const cells: Array<string> = [];
     let columns: string | null = null;
@@ -142,12 +150,16 @@ export const runQuery = Effect.fn("Query.run")(
     );
     return {
       columns: columns === null ? [] : yield* decodeColumns(columns).pipe(Effect.orDie),
-      rows: yield* Effect.forEach(cells, (row) => decodeCells(row).pipe(Effect.orDie)),
+      rows: yield* Effect.forEach(cells, (row) =>
+        decodeCells(row).pipe(Effect.mapError(() => unrepresentable)),
+      ),
       truncated: received > cells.length,
     } satisfies QueryResult;
   },
   Effect.scoped,
   Effect.provide(Reactivity.layer),
+  // The statement text is the caller's query, which can hold pasted transcript text or secrets.
+  Effect.withTracerEnabled(false),
   Effect.catchTag("SqlError", (error): Effect.Effect<never, BadRequest | SqlError> => {
     const { cause } = error.reason;
     if (isOversizedRow(cause)) return Effect.fail(tooLarge);

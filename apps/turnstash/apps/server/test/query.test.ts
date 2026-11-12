@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import { Db } from "../src/db/client.ts";
 import { apiTokens, conversations, modelRequests } from "../src/db/schema.ts";
 import { ensureReaderRole, runQuery } from "../src/query.ts";
-import { runTest } from "./support.ts";
+import { runTest, testDatabaseUrl } from "./support.ts";
 
 const failureMessage = (sql: string) =>
   runQuery({ sql }).pipe(
@@ -62,9 +62,10 @@ test("queries read the analytics views, capped at the limit", async () => {
         truncated: true,
       });
       expect(
-        (yield* runQuery({ sql: "select 9007199254740993::numeric as big, 0.5 as half; -- exact" }))
-          .rows,
-      ).toEqual([["9007199254740993", 0.5]]);
+        (yield* runQuery({
+          sql: "select 9007199254740993::numeric, 999999999999999000::numeric, 0.5, ';--x'; -- exact",
+        })).rows,
+      ).toEqual([["9007199254740993", "999999999999999000", 0.5, ";--x"]]);
     }),
   );
 });
@@ -81,7 +82,7 @@ test("queries cannot reach the tables behind the views, change anything or retur
       );
       expect(
         yield* failureMessage(
-          "select set_config('role', 'turnstash', true), query_to_xml('select * from public.api_tokens', true, false, '')",
+          `select set_config('role', '${new URL(testDatabaseUrl).username}', true), query_to_xml('select * from public.api_tokens', true, false, '')`,
         ),
       ).toContain("permission denied");
       for (const smuggled of [
