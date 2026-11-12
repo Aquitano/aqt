@@ -113,5 +113,8 @@ test("only the semicolons that end the query are removed, whatever its literals 
   expect(withoutFinalTerminators("select 1; select 2")).toBe("select 1; select 2");
   const started = performance.now();
   withoutFinalTerminators(`select 1; ${"--".repeat(30_000)}'`);
+  expect(withoutFinalTerminators(`select 1${";".repeat(60_000)}`)).toBe(
+    `select 1${" ".repeat(60_000)}`,
+  );
   expect(performance.now() - started).toBeLessThan(100);
 });
