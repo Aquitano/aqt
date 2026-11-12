@@ -492,6 +492,23 @@ export type SearchHit = typeof SearchHit.Type;
 export const SearchResult = Schema.Struct({ hits: Schema.Array(SearchHit) });
 export type SearchResult = typeof SearchResult.Type;
 
+export const QueryLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 5000 }));
+
+export const QueryInput = Schema.Struct({
+  sql: NulFreeString.check(
+    Schema.isMaxLength(65_536),
+    Schema.makeFilter((value) => value.trim().length > 0),
+  ),
+  limit: Schema.optionalKey(QueryLimit),
+});
+export type QueryInput = typeof QueryInput.Type;
+
+export const QueryResult = Schema.Struct({
+  rows: Schema.Array(Schema.Record(Schema.String, Schema.Json)),
+  truncated: Schema.Boolean,
+});
+export type QueryResult = typeof QueryResult.Type;
+
 export const MachineDetail = Schema.Struct({
   machine: MachineSummary,
   streamCount: Schema.Natural,

@@ -59,6 +59,8 @@ import {
   PricingRuleView,
   ProjectDetail,
   ProjectRow,
+  QueryInput,
+  QueryResult,
   RequestDetail,
   SearchQuery,
   SearchResult,
@@ -271,6 +273,13 @@ export const readGroup = HttpApiGroup.make("read")
     }),
   )
   .add(HttpApiEndpoint.get("search", "/search", { query: SearchQuery, success: SearchResult }))
+  .add(
+    HttpApiEndpoint.post("query", "/query", {
+      payload: QueryInput,
+      success: QueryResult,
+      error: BadRequest,
+    }),
+  )
   .add(HttpApiEndpoint.get("listMachines", "/machines", { success: Schema.Array(MachineSummary) }))
   .add(
     HttpApiEndpoint.get("machineRoster", "/machines/roster", {

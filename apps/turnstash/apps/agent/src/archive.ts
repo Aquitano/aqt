@@ -13,6 +13,9 @@ import {
   PageLimit,
   providerIds,
   providerLabels,
+  QueryInput,
+  QueryLimit,
+  type QueryResult,
   type RequestSummary,
   SearchQuery,
   type SearchResult,
@@ -23,7 +26,7 @@ import {
   Uuid,
 } from "@aqt/turnstash-api";
 import { hostEnvFromProcess, type MessagePart, Role, type ToolStatus } from "@aqt/turnstash-core";
-import { Config, DateTime, Effect, Match, Option, Record, Schema } from "effect";
+import { Config, DateTime, Effect, Match, Option, Predicate, Record, Schema } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 
 import { agentPaths, readConfig } from "./config.ts";
@@ -642,4 +645,48 @@ const analysis = Command.make(
   ),
 );
 
-export const archiveCommands = [sessions, search, stats, analysis] as const;
+const cellOf = (value: QueryResult["rows"][number][string]) =>
+  oneLine(Predicate.isString(value) ? value : JSON.stringify(value), 60);
+
+const describeQuery = ({ rows, truncated }: QueryResult) => {
+  const [first] = rows;
+  if (first === undefined) return [`${mark.idle} No rows`];
+  const columns = Object.keys(first);
+  return [
+    ...table([
+      columns.map((column) => dim(column)),
+      ...rows.map((row) => columns.map((column) => cellOf(row[column] ?? null))),
+    ]),
+    truncated ? dim(`Only the first ${count(rows.length, "row")}; raise --limit for more`) : null,
+  ];
+};
+
+const query = Command.make(
+  "sql",
+  {
+    ...connection,
+    limit: Flag.Int("limit").pipe(
+      Flag.withSchema(QueryLimit),
+      Flag.optional,
+      Flag.withDescription("Number of rows, at most 5000 (default 500)"),
+    ),
+    query: Argument.String("query").pipe(
+      Argument.withSchema(QueryInput.fields.sql),
+      Argument.withDescription("One SELECT over the analytics views, or - to read it from stdin"),
+    ),
+  },
+  Effect.fn("cli.sql")(function* (flags) {
+    const { client } = yield* clientFor(flags);
+    const sql = flags.query === "-" ? yield* Effect.promise(() => Bun.stdin.text()) : flags.query;
+    const result = yield* client.read.query({
+      payload: { sql, ...optionalKey("limit", flags.limit) },
+    });
+    yield* output(flags, result, describeQuery);
+  }, explainFailures),
+).pipe(
+  Command.withDescription(
+    "Run a read-only SQL query over the analytics views, such as sessions, requests, turns and tools",
+  ),
+);
+
+export const archiveCommands = [sessions, search, stats, analysis, query] as const;

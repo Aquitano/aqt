@@ -33,6 +33,7 @@ import { databaseFailure } from "./http-errors.ts";
 import { applyBatch, tombstonesSince } from "./ingest.ts";
 import { applyLimitBatch, limitDrain, limitsReport, limitsOverview } from "./limits.ts";
 import { exportMarkdown } from "./markdown-export.ts";
+import { runQuery } from "./query.ts";
 import { search } from "./search.ts";
 import {
   computeStats,
@@ -144,6 +145,7 @@ const ReadLive = HttpApiBuilder.group(Api, "read", (handlers) =>
     .handle("getBlob", ({ params }) => getBlob(params.sha256).pipe(databaseFailure))
     .handle("getRequest", ({ params }) => getRequest(params.id).pipe(databaseFailure))
     .handle("search", ({ query }) => search(query).pipe(databaseFailure))
+    .handle("query", ({ payload }) => runQuery(payload).pipe(databaseFailure))
     .handle("listMachines", () => machineSummaries({}).pipe(databaseFailure))
     .handle("machineRoster", () => machineRoster().pipe(databaseFailure))
     .handle("getMachine", ({ params, query }) =>
