@@ -4,7 +4,7 @@ import { Effect } from "effect";
 
 import { Db } from "../src/db/client.ts";
 import { apiTokens, conversations, modelRequests } from "../src/db/schema.ts";
-import { ensureReaderRole, runQuery } from "../src/query.ts";
+import { ensureReaderRole, runQuery, withoutFinalTerminators } from "../src/query.ts";
 import { runTest, testDatabaseUrl } from "./support.ts";
 
 const failureMessage = (sql: string) =>
@@ -103,4 +103,15 @@ test("queries cannot reach the tables behind the views, change anything or retur
       expect([lookahead.rows.length, lookahead.truncated]).toEqual([1, true]);
     }),
   );
+});
+
+test("only the semicolons that end the query are removed, whatever its literals and comments hold", () => {
+  expect(withoutFinalTerminators("select ';--x', \"a;b\", $q$;$q$ ;; -- today's total")).toBe(
+    "select ';--x', \"a;b\", $q$;$q$    -- today's total",
+  );
+  expect(withoutFinalTerminators("select E'\\';' /* ; */;")).toBe("select E'\\';' /* ; */ ");
+  expect(withoutFinalTerminators("select 1; select 2")).toBe("select 1; select 2");
+  const started = performance.now();
+  withoutFinalTerminators(`select 1; ${"--".repeat(30_000)}'`);
+  expect(performance.now() - started).toBeLessThan(100);
 });
