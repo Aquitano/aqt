@@ -42,9 +42,11 @@ const views: Record<string, string> = {
   limit_hits: `SELECT id, provider, conversation_id AS session_id, window_minutes, occurred_at, message FROM limit_hits`,
 };
 
+export const viewNames = Object.keys(views);
+
 export const grantReader = [
   `GRANT USAGE ON SCHEMA analytics TO ${readerRole}`,
-  ...Object.keys(views).map((name) => `GRANT SELECT ON analytics.${name} TO ${readerRole}`),
+  ...viewNames.map((name) => `GRANT SELECT ON analytics.${name} TO ${readerRole}`),
 ];
 
 export const dropAnalytics = Effect.fn("Db.dropAnalytics")(function* (db: Database) {
