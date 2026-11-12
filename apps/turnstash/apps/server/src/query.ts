@@ -29,7 +29,9 @@ export class UnsafeReaderRole extends Schema.TaggedError<UnsafeReaderRole>()(
 // any privilege, and every query would run with it. It keeps a login only when it has no administrative
 // attribute or membership, owns nothing, cannot create in the database, and has no access to any table or column
 // beyond the analytics views and what every role has, such as reading PostGIS's spatial_ref_sys or updating
-// pg_settings. The catalog counts too, because a grant on pg_authid would expose password hashes.
+// pg_settings. The catalog counts too, because a grant on pg_authid would expose password hashes. It also may
+// not run a SECURITY DEFINER function, which would read with its owner's privileges, other than pg_search's own
+// index bookkeeping, as the bank app's query role also allows.
 const restrictedCheck = `
   SELECT NOT (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls)
      AND NOT EXISTS (SELECT 1 FROM pg_auth_members WHERE member = r.oid)
@@ -45,6 +47,12 @@ const restrictedCheck = `
                                       AND NOT has_table_privilege('public', c.oid, p.privilege)
                                  ELSE has_any_column_privilege(r.oid, c.oid, p.privilege)
                                       AND NOT has_any_column_privilege('public', c.oid, p.privilege) END))
+     AND NOT EXISTS (SELECT 1 FROM pg_proc p
+                     WHERE p.prosecdef AND has_function_privilege(r.oid, p.oid, 'EXECUTE')
+                       AND NOT EXISTS (SELECT 1 FROM pg_depend d JOIN pg_extension e ON e.oid = d.refobjid
+                                       WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid
+                                         AND d.refclassid = 'pg_extension'::regclass AND d.deptype = 'e'
+                                         AND e.extname = 'pg_search'))
      AND NOT EXISTS (SELECT 1 FROM pg_proc p
                      WHERE p.pronamespace = 'pg_catalog'::regnamespace
                        AND p.proname IN ('pg_read_file', 'pg_read_binary_file', 'pg_stat_file', 'pg_ls_dir',
