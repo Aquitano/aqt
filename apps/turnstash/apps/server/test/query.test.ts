@@ -48,15 +48,16 @@ test("queries read the analytics views, capped at the limit", async () => {
       );
 
       const result = yield* runQuery({
-        sql: `select s.project_key, s.duration_seconds, r.input_tokens, r.cost_usd
+        sql: `select s.project_key, r.input_tokens as tokens, r.output_tokens as tokens, r.cost_usd
               from requests r join sessions s on s.id = r.session_id
               order by r.input_tokens -- cheapest first`,
         limit: 2,
       });
       expect(result).toEqual({
+        columns: ["project_key", "tokens", "tokens", "cost_usd"],
         rows: [
-          { project_key: "aqt", duration_seconds: 1800, input_tokens: 10, cost_usd: null },
-          { project_key: "aqt", duration_seconds: 1800, input_tokens: 20, cost_usd: null },
+          ["aqt", 10, 5, null],
+          ["aqt", 20, 5, null],
         ],
         truncated: true,
       });
@@ -64,7 +65,7 @@ test("queries read the analytics views, capped at the limit", async () => {
   );
 });
 
-test("queries cannot reach the tables behind the views or change anything", async () => {
+test("queries cannot reach the tables behind the views, change anything or return too much", async () => {
   await runTest(
     Effect.gen(function* () {
       yield* ensureReaderRole();
@@ -83,6 +84,11 @@ test("queries cannot reach the tables behind the views or change anything", asyn
         yield* failureMessage("select 1) as q; delete from public.api_tokens; select (1"),
       ).toContain("multiple commands");
       expect(yield* db.select().from(apiTokens)).toHaveLength(1);
+      for (const large of [
+        "select repeat('x', 1048576) from generate_series(1, 20)",
+        "select repeat('x', 20000000)",
+      ])
+        expect(yield* failureMessage(large)).toContain("larger than 16 MB");
     }),
   );
 });

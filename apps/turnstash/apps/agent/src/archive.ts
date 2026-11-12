@@ -645,21 +645,18 @@ const analysis = Command.make(
   ),
 );
 
-const cellOf = (value: QueryResult["rows"][number][string]) =>
+const cellOf = (value: QueryResult["rows"][number][number]) =>
   oneLine(Predicate.isString(value) ? value : JSON.stringify(value), 60);
 
-const describeQuery = ({ rows, truncated }: QueryResult) => {
-  const [first] = rows;
-  if (first === undefined) return [`${mark.idle} No rows`];
-  const columns = Object.keys(first);
-  return [
-    ...table([
-      columns.map((column) => dim(column)),
-      ...rows.map((row) => columns.map((column) => cellOf(row[column] ?? null))),
-    ]),
-    truncated ? dim(`Only the first ${count(rows.length, "row")}; raise --limit for more`) : null,
-  ];
-};
+const describeQuery = ({ columns, rows, truncated }: QueryResult) =>
+  rows.length === 0
+    ? [`${mark.idle} No rows`]
+    : [
+        ...table([columns.map((column) => dim(column)), ...rows.map((row) => row.map(cellOf))]),
+        truncated
+          ? dim(`Only the first ${count(rows.length, "row")}; raise --limit for more`)
+          : null,
+      ];
 
 const query = Command.make(
   "sql",

@@ -3,7 +3,7 @@ import { createHmac } from "node:crypto";
 import { BadRequest, type QueryInput, type QueryResult } from "@aqt/turnstash-api";
 import { PgClient } from "@effect/sql-pg";
 import { sql } from "drizzle-orm";
-import { Effect, Redacted, Schema } from "effect";
+import { Effect, Redacted, Schema, Stream } from "effect";
 import * as Reactivity from "effect/reactivity/Reactivity";
 import type { SqlError } from "effect/sql/SqlError";
 
@@ -18,23 +18,25 @@ const readerPassword = (databaseUrl: string) =>
 
 // Queries run as their own login role rather than through SET ROLE, which a query could undo with set_config.
 // The role can read the analytics views and nothing else, and each query gets a fresh connection, so nothing a
-// query leaves on its session, such as an advisory lock, outlives it.
+// query leaves on its session, such as an advisory lock, outlives it. Postgres lets an owner that is not a
+// superuser set the restricted attributes only when it creates the role, so later starts change only the login.
+// Tracing stays off because the password is part of the statement text.
 export const ensureReaderRole = Effect.fn("Query.ensureReaderRole")(function* () {
   const db = yield* Db;
   const config = yield* ServerConfig;
   const password = readerPassword(Redacted.value(config.databaseUrl));
   yield* db.execute(
     sql.raw(`DO $$ BEGIN
-      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${readerRole}') THEN CREATE ROLE ${readerRole}; END IF;
-    END $$`),
+        IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${readerRole}') THEN
+          CREATE ROLE ${readerRole} NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+        END IF;
+      END $$`),
   );
   yield* db.execute(
-    sql.raw(
-      `ALTER ROLE ${readerRole} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 4 PASSWORD '${password}'`,
-    ),
+    sql.raw(`ALTER ROLE ${readerRole} WITH LOGIN CONNECTION LIMIT 4 PASSWORD '${password}'`),
   );
   for (const grant of grantReader) yield* db.execute(sql.raw(grant));
-});
+}, Effect.withTracerEnabled(false));
 
 const readerUrl = (databaseUrl: string) => {
   const url = new URL(databaseUrl);
@@ -43,15 +45,51 @@ const readerUrl = (databaseUrl: string) => {
   return Redacted.make(url.toString());
 };
 
-const decodeRows = Schema.decodeUnknownEffect(
-  Schema.Array(Schema.Struct({ row: Schema.Record(Schema.String, Schema.Json) })),
+export const resultBudgetBytes = 16 * 1024 * 1024;
+
+const tooLarge = new BadRequest({
+  message: `The result is larger than ${resultBudgetBytes / 1024 / 1024} MB. Select fewer rows or columns, or aggregate in SQL.`,
+});
+
+const RawRow = Schema.Struct({
+  columns: Schema.NullOr(Schema.String),
+  cells: Schema.NullOr(Schema.String),
+});
+const decodeRawRow = Schema.decodeUnknownEffect(RawRow);
+const decodeColumns = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(Schema.Array(Schema.String)),
+);
+const decodeCells = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Array(Schema.Json)));
+
+// A single row past the budget never reaches the stream: the driver refuses the protocol message that carries it.
+const isOversizedRow = Schema.is(
+  Schema.Struct({
+    _tag: Schema.Literal("PgProtocolParseError"),
+    message: Schema.String.check(Schema.isPattern(/exceeds maxMessageSize/)),
+  }),
 );
 
 const PostgresMessage = Schema.Struct({ message: Schema.String, code: Schema.String });
 const isPostgresMessage = Schema.is(PostgresMessage);
 
+// Connection loss, exhausted resources, shutdowns and internal errors are the database failing to serve the
+// query, not the query being wrong. A statement timeout is the query's own cost, so it is reported to the caller.
+const unavailable = /^(08|53|57P|58|XX)/;
+
+// Each row goes out as its values in column order, because a JSON object would silently keep only one of two
+// columns with the same name, such as two sum() aggregates.
+const cellsOf = (body: string, limit: number) => `
+  SELECT CASE WHEN row_number() OVER () = 1 THEN
+           (SELECT json_agg(e.key ORDER BY e.n) FROM json_each(to_json(q)) WITH ORDINALITY AS e(key, value, n))
+         END::text AS columns,
+         (SELECT json_agg(e.value ORDER BY e.n) FROM json_each(to_json(q)) WITH ORDINALITY AS e(key, value, n))::text AS cells
+  FROM (
+${body}
+  ) AS q LIMIT ${limit + 1}`;
+
 // The query is wrapped as a subquery so the row cap and the JSON encoding happen in Postgres, and the
-// extended protocol the driver uses refuses a second statement smuggled past the closing parenthesis.
+// extended protocol the driver uses refuses a second statement smuggled past the closing parenthesis. Rows are
+// streamed and counted, so a large result is refused before the server holds all of it.
 export const runQuery = Effect.fn("Query.run")(
   function* (input: QueryInput) {
     const config = yield* ServerConfig;
@@ -59,6 +97,7 @@ export const runQuery = Effect.fn("Query.run")(
     const client = yield* PgClient.make({
       url: readerUrl(Redacted.value(config.databaseUrl)),
       maxConnections: 1,
+      maxMessageSize: resultBudgetBytes,
       applicationName: "turnstash-query",
       startupParameters: {
         statement_timeout: String(config.statementTimeoutMillis),
@@ -67,22 +106,37 @@ export const runQuery = Effect.fn("Query.run")(
       },
     });
     const body = input.sql.trim().replace(/;+$/, "").trimEnd();
-    const rows = yield* client.unsafe(
-      `SELECT to_json(q) AS row FROM (\n${body}\n) AS q LIMIT ${limit + 1}`,
+    const cells: Array<string> = [];
+    let columns: string | null = null;
+    let bytes = 0;
+    yield* client.unsafe(cellsOf(body, limit)).stream.pipe(
+      Stream.runForEach((raw) =>
+        Effect.gen(function* () {
+          const row = yield* decodeRawRow(raw).pipe(Effect.orDie);
+          bytes += (row.cells?.length ?? 0) + (row.columns?.length ?? 0);
+          if (bytes > resultBudgetBytes) yield* tooLarge;
+          columns ??= row.columns;
+          cells.push(row.cells ?? "[]");
+        }),
+      ),
     );
-    const decoded = yield* decodeRows(rows).pipe(Effect.orDie);
     return {
-      rows: decoded.slice(0, limit).map(({ row }) => row),
-      truncated: decoded.length > limit,
+      columns: columns === null ? [] : yield* decodeColumns(columns).pipe(Effect.orDie),
+      rows: yield* Effect.forEach(cells.slice(0, limit), (row) =>
+        decodeCells(row).pipe(Effect.orDie),
+      ),
+      truncated: cells.length > limit,
     } satisfies QueryResult;
   },
   Effect.scoped,
   Effect.provide(Reactivity.layer),
-  // An error Postgres raised while running the query is the query's fault, so its message goes back to the
-  // caller. Failing to connect stays a server failure.
-  Effect.catchTag("SqlError", (error): Effect.Effect<never, BadRequest | SqlError> =>
-    error.reason.operation === "query" && isPostgresMessage(error.reason.cause)
-      ? Effect.fail(new BadRequest({ message: error.reason.cause.message }))
-      : Effect.fail(error),
-  ),
+  Effect.catchTag("SqlError", (error): Effect.Effect<never, BadRequest | SqlError> => {
+    const { cause } = error.reason;
+    if (isOversizedRow(cause)) return Effect.fail(tooLarge);
+    return error.reason.operation === "query" &&
+      isPostgresMessage(cause) &&
+      !unavailable.test(cause.code)
+      ? Effect.fail(new BadRequest({ message: cause.message }))
+      : Effect.fail(error);
+  }),
 );
