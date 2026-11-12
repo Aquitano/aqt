@@ -8,6 +8,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { absurd } from "effect/Function";
+import { ReceiptTextIcon } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 
@@ -48,7 +49,7 @@ const requestLabel = (request: RequestSummary) =>
   `${request.modelId} · ${request.costUsd === null ? "unpriced" : usd(request.costUsd)} · ${compact(billedTokens(request))} tok`;
 
 const quietButton =
-  "cursor-pointer rounded-sm text-left underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50";
+  "-mx-1 inline-flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 text-left outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 export const Requests = ({
   requests,
@@ -61,7 +62,13 @@ export const Requests = ({
   if (only === undefined) return null;
   if (rest.length === 0)
     return (
-      <button type="button" className={quietButton} onClick={() => onInspect(only.id)}>
+      <button
+        type="button"
+        className={quietButton}
+        title="Inspect this request"
+        onClick={() => onInspect(only.id)}
+      >
+        <ReceiptTextIcon className="size-3 shrink-0" aria-hidden="true" />
         {requestLabel(only)}
       </button>
     );
@@ -74,7 +81,13 @@ export const Requests = ({
       <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
         {requests.map((request) => (
           <li key={request.id}>
-            <button type="button" className={quietButton} onClick={() => onInspect(request.id)}>
+            <button
+              type="button"
+              className={quietButton}
+              title="Inspect this request"
+              onClick={() => onInspect(request.id)}
+            >
+              <ReceiptTextIcon className="size-3 shrink-0" aria-hidden="true" />
               {requestLabel(request)}
             </button>
           </li>

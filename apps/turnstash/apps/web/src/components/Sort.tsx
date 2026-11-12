@@ -56,17 +56,20 @@ export const SortHeader = <K extends string>({
   sort,
   onToggle,
   numeric = false,
+  secondary = false,
 }: {
   readonly label: string;
   readonly column: K;
   readonly sort: SortState<K>;
   readonly onToggle: (key: K) => void;
   readonly numeric?: boolean;
+  readonly secondary?: boolean;
 }) => {
   const active = sort.key === column;
   return (
     <Th
       numeric={numeric}
+      secondary={secondary}
       aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
     >
       <button

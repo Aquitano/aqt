@@ -2,22 +2,28 @@ import type { ConversationListQuery } from "@aqt/turnstash-api";
 import { Button } from "@aqt/ui/components/button";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
 } from "@aqt/ui/components/empty";
-import { Input } from "@aqt/ui/components/input";
-import { Spinner } from "@aqt/ui/components/spinner";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@aqt/ui/components/input-group";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { MessagesSquareIcon } from "lucide-react";
+import { MessagesSquareIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
 import { isUnauthorized } from "../api";
 import { Pending, RequestFailure } from "../components/Async";
 import { ConversationsTable } from "../components/ConversationsTable";
 import { FilterSelect } from "../components/FilterSelect";
+import { type ActiveFilter, FilterChips, LoadMore } from "../components/ListControls";
 import { Page } from "../components/Page";
 import { Section } from "../components/Section";
 import { FilterBar, useFilters } from "../filters";
@@ -50,10 +56,55 @@ export const ConversationsPage = () => {
   const pages = useInfiniteQuery(conversationPagesQuery(query));
   const rows = useMemo(() => (pages.data?.pages ?? []).flatMap((page) => page.items), [pages.data]);
   const unauthorized = pages.isError && isUnauthorized(pages.error);
+  const active: ReadonlyArray<ActiveFilter> = [
+    ...(q === ""
+      ? []
+      : [{ key: "q", label: `Title contains "${q}"`, onClear: () => update({ q: undefined }) }]),
+    ...(projectKey === null
+      ? []
+      : [
+          {
+            key: "project",
+            label: `Project ${projectKey}`,
+            onClear: () => update({ projectKey: undefined }),
+          },
+        ]),
+  ];
+  const clearAll = () => update({ q: undefined, projectKey: undefined });
 
   return (
     <Page>
-      <FilterBar title="Conversations">
+      <FilterBar
+        title="Conversations"
+        note="Archived sessions from every enrolled machine, newest first."
+        search={
+          <form
+            role="search"
+            className="w-full max-w-xl"
+            onSubmit={(event) => {
+              event.preventDefault();
+              update({ q: titleInput.current?.value.trim() || undefined });
+            }}
+          >
+            <InputGroup className="h-9">
+              <InputGroupAddon>
+                <SearchIcon />
+              </InputGroupAddon>
+              <InputGroupInput
+                ref={titleInput}
+                name="q"
+                aria-label="Title contains"
+                placeholder="Filter by title"
+                maxLength={1024}
+                defaultValue={q}
+              />
+              <InputGroupAddon align="inline-end">
+                <InputGroupButton type="submit">Filter</InputGroupButton>
+              </InputGroupAddon>
+            </InputGroup>
+          </form>
+        }
+      >
         <FilterSelect
           label="Project"
           anyLabel="All projects"
@@ -69,26 +120,6 @@ export const ConversationsPage = () => {
           ].map((key) => ({ value: key, label: key }))}
           onChange={(value) => update({ projectKey: value ?? undefined })}
         />
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            update({ q: titleInput.current?.value.trim() || undefined });
-          }}
-        >
-          <Input
-            ref={titleInput}
-            name="q"
-            aria-label="Title contains"
-            placeholder="Title contains"
-            className="h-8 w-36"
-            maxLength={1024}
-            defaultValue={q}
-          />
-          <Button size="sm" variant="outline" type="submit">
-            Filter
-          </Button>
-        </form>
       </FilterBar>
 
       {pages.isPending && <Pending />}
@@ -110,33 +141,43 @@ export const ConversationsPage = () => {
       {!unauthorized &&
         pages.data !== undefined &&
         (rows.length === 0 ? (
-          <Empty>
+          <Empty className="border border-dashed">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <MessagesSquareIcon />
               </EmptyMedia>
               <EmptyTitle>No conversations match</EmptyTitle>
-              <EmptyDescription>Widen the period or clear a filter.</EmptyDescription>
+              <EmptyDescription>
+                {active.length > 0
+                  ? "Nothing in this period matches these filters."
+                  : "Nothing was recorded in this period. Choose a longer period."}
+              </EmptyDescription>
             </EmptyHeader>
+            {active.length > 0 && (
+              <EmptyContent>
+                <FilterChips filters={active} onClearAll={clearAll} />
+                <Button size="sm" variant="outline" onClick={clearAll}>
+                  Clear filters
+                </Button>
+              </EmptyContent>
+            )}
           </Empty>
         ) : (
           <Section
-            title="Conversations"
-            note={`${rows.length} loaded${pages.hasNextPage ? ", more available" : ""}`}
+            title="Results"
+            note={`${rows.length}${pages.hasNextPage ? "+" : ""} ${rows.length === 1 ? "conversation" : "conversations"}`}
+            action={<FilterChips filters={active} onClearAll={clearAll} />}
           >
             <ConversationsTable rows={rows} />
             {pages.hasNextPage && (
-              <div className="flex items-center gap-2 pt-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pages.isFetchingNextPage}
-                  onClick={() => void pages.fetchNextPage()}
-                >
-                  {pages.isFetchingNextPage && <Spinner data-icon="inline-start" />}
-                  {pages.isFetchNextPageError ? "Retry loading conversations" : "Load 50 more"}
-                </Button>
-              </div>
+              <LoadMore
+                shown={rows.length}
+                noun="conversations"
+                loading={pages.isFetchingNextPage}
+                failed={pages.isFetchNextPageError}
+                onLoad={() => void pages.fetchNextPage()}
+                label="Load 50 more"
+              />
             )}
           </Section>
         ))}
