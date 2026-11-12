@@ -12,7 +12,7 @@
         "vite-plus": "catalog:",
       },
     },
-    "apps/attic/executor": {
+    "apps/bank/attic/executor": {
       "name": "attic",
       "dependencies": {
         "apps": "0.0.1-beta.101",
@@ -1429,7 +1429,7 @@
 
     "atomically": ["atomically@1.7.0", "", {}, "sha512-Xcz9l0z7y9yQ9rdDaxlmaI4uJHf/T8g9hOEzJcsEqX2SjCj4J20uK7+ldkDHMbpJDK76wF7xEIgxc/vSlsfw5w=="],
 
-    "attic": ["attic@workspace:apps/attic/executor"],
+    "attic": ["attic@workspace:apps/bank/attic/executor"],
 
     "babel-dead-code-elimination": ["babel-dead-code-elimination@1.0.12", "", { "dependencies": { "@babel/core": "^7.23.7", "@babel/parser": "^7.23.6", "@babel/traverse": "^7.23.7", "@babel/types": "^7.23.6" } }, "sha512-GERT7L2TiYcYDtYk1IpD+ASAYXjKbLTDPhBtYj7X1NuRMDTMtAx9kyBenub1Ev41lo91OHCKdmP+egTDmfQ7Ig=="],
 

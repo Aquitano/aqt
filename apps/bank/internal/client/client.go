@@ -16,8 +16,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
@@ -157,6 +159,20 @@ func (c *Client) GetMessageDetailByRef(ctx context.Context, ref string) (store.M
 
 func (c *Client) Stats(ctx context.Context) ([]store.SourceStats, error) {
 	return getJSON[[]store.SourceStats](ctx, c, "/v1/stats", nil)
+}
+
+// Resolve asks the server what a cited ref names.
+func (c *Client) Resolve(ctx context.Context, ref string) (catalog.Resolved, error) {
+	return getJSON[catalog.Resolved](ctx, c, "/v1/refs/"+url.PathEscape(ref), nil)
+}
+
+// Timeline asks the server for what happened in [since, until).
+func (c *Client) Timeline(ctx context.Context, since, until time.Time, groups []string, limit int) (catalog.Timeline, error) {
+	q := url.Values{"since": {since.Format(time.DateOnly)}, "until": {until.Format(time.DateOnly)}, "limit": {strconv.Itoa(limit)}}
+	if len(groups) > 0 {
+		q.Set("group", strings.Join(groups, ","))
+	}
+	return getJSON[catalog.Timeline](ctx, c, "/v1/timeline", q)
 }
 
 // SetCoverage records what a source is known to hold; an empty text clears it.

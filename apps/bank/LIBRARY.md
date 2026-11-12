@@ -66,7 +66,13 @@ Bank searches the most recent successful publication. Changes in Brain are visib
 
 ## Query and edit
 
-`bank search` and the UI Search tab return separate groups for correspondence, media, activity, collections, files, message attachments, and published pages. Each group has its own bounded page. Existing message citations still work with `bank show`.
+`bank ref <ref>` says what any cited ref names: `bank:<ref>` or a bare message ref, a library ID, a blob's SHA-256, or `attic:<ref>`. It prints the record's kind and title, the route that returns it in full, and where the same bytes are in the other store. A message lists its attachments and the places on disks that hold them; a file on a disk lists the messages and library files that hold its bytes.
+
+That match uses BLAKE3, the digest attic identifies a file by. Bank keeps storing blobs under SHA-256 and records each blob's BLAKE3 in `blob_digests`. The server fills that table when it starts and after each import, so the first start after this upgrade reads every stored blob once, and a link can be missing for a moment after an import.
+
+`bank timeline 2019-03` lists what happened in a year, a month or a day, oldest first: messages by when they were sent, activity by when it happened, and files on disks by when they were last modified. `--group message`, `activity` or `file` narrows it. `--limit` caps each group on its own, so a day with thousands of files cannot push the messages out, and the output names the groups that reached it. Activity without a date and files that have gone missing are left out.
+
+`bank search` and the UI Search tab return separate groups for correspondence, media, activity, collections, files, message attachments, and published pages. `bank search` adds the files [attic](attic/README.md) catalogues on disks, cited as `attic:<ref>`: names and paths, archive members, document text, embedded tags and OCR. For that group every word has to match. It is left out when a sender, source, account, date or a kind other than `file` narrows the search, and when the catalogue cannot answer, which `coverage` then says. Each group has its own bounded page. Existing message citations still work with `bank show`.
 
 ```sh
 bank search "arrival" --json

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 func TestThreadContextIncludesLateSearchHit(t *testing.T) {
@@ -24,7 +25,7 @@ func TestThreadContextIncludesLateSearchHit(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := ids[2002]
-	token, err := NewToken(s.dataDir, "test")
+	token, err := Tokens(s.dataDir).New("test", tokens.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}

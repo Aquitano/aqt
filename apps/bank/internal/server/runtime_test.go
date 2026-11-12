@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 func TestHealthChecksDatabase(t *testing.T) {
@@ -42,7 +43,7 @@ func TestInternalErrorsDoNotExposeDetails(t *testing.T) {
 func newJSONTestServer(t *testing.T, timeout time.Duration) (*httptest.Server, string) {
 	t.Helper()
 	dir := t.TempDir()
-	token, err := NewToken(dir, "test")
+	token, err := Tokens(dir).New("test", tokens.Scope{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/alecthomas/kong"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
@@ -398,6 +399,14 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 	return printJSON(files)
 }
 
+// atticRef cites a file on a disk. Folders and unhashed files have no ref.
+func atticRef(ref string) string {
+	if ref == "" {
+		return "attic:-"
+	}
+	return "attic:" + ref
+}
+
 func printCatalog(result catalog.Result, limit, offset int) error {
 	count := 0
 	largest := 0
@@ -437,7 +446,24 @@ func printCatalog(result catalog.Result, limit, offset int) error {
 	for _, v := range result.Attachments {
 		report("attachment", v.SHA256, v.Filename)
 	}
-	for _, n := range []int{len(result.Messages), len(result.Items), len(result.Activity), len(result.Collections), len(result.Files), len(result.Pages), len(result.Attachments)} {
+	for _, v := range result.Disks.Entries {
+		report("on disk", atticRef(v.Ref), v.Display)
+	}
+	for _, v := range result.Disks.Members {
+		report("in archive", atticRef(v.Shown.Ref), v.Display)
+	}
+	for _, group := range [][]view.TextMatch{result.Disks.Texts, result.Disks.Metadata} {
+		for _, v := range group {
+			report("disk text", atticRef(v.Ref), v.Display)
+			fmt.Printf("              %s\n", excerpt(v.Snippet, 160))
+		}
+	}
+	for _, v := range result.Disks.Analyses {
+		report("disk image", atticRef(v.Ref), v.Display)
+		fmt.Printf("              %s\n", excerpt(v.Snippet, 160))
+	}
+	for _, n := range []int{len(result.Messages), len(result.Items), len(result.Activity), len(result.Collections), len(result.Files), len(result.Pages), len(result.Attachments),
+		len(result.Disks.Entries), len(result.Disks.Members), len(result.Disks.Texts), len(result.Disks.Metadata), len(result.Disks.Analyses)} {
 		if n > largest {
 			largest = n
 		}

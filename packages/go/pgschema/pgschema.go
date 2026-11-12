@@ -20,6 +20,43 @@ import (
 // serialize on lockKey, which must stay the key the legacy runner took, so an
 // older binary cannot migrate while a database adopts its history.
 func Migrate(ctx context.Context, pool *pgxpool.Pool, lockKey int64, migrations fs.FS) error {
+	return run(ctx, pool, lockKey, func(conn *pgx.Conn) (*migrate.Migrator, error) {
+		return adoptLegacyHistory(ctx, conn, migrations)
+	})
+}
+
+// MigrateSchema is Migrate for an app that keeps its tables in a schema of its
+// own, so several apps can share one database. It creates the schema, records
+// the version in its schema_version table and runs every migration with the
+// schema first on the search path, so migration files stay unqualified.
+func MigrateSchema(ctx context.Context, pool *pgxpool.Pool, schema string, lockKey int64, migrations fs.FS) error {
+	return run(ctx, pool, lockKey, func(conn *pgx.Conn) (*migrate.Migrator, error) {
+		name := pgx.Identifier{schema}.Sanitize()
+		if _, err := conn.Exec(ctx, `create schema if not exists `+name); err != nil {
+			return nil, err
+		}
+		if _, err := conn.Exec(ctx, `select set_config('search_path', $1, false)`, SearchPath(schema)); err != nil {
+			return nil, err
+		}
+		m, err := migrate.NewMigrator(ctx, conn, versionTable(schema))
+		if err != nil {
+			return nil, err
+		}
+		return m, m.LoadMigrations(migrations)
+	})
+}
+
+// SearchPath is the search_path for sessions of an app that owns schema.
+// public stays on it for the extensions installed there.
+func SearchPath(schema string) string {
+	return pgx.Identifier{schema}.Sanitize() + ",public"
+}
+
+func versionTable(schema string) string {
+	return pgx.Identifier{schema, "schema_version"}.Sanitize()
+}
+
+func run(ctx context.Context, pool *pgxpool.Pool, lockKey int64, prepare func(*pgx.Conn) (*migrate.Migrator, error)) error {
 	pooled, err := pool.Acquire(ctx)
 	if err != nil {
 		return err
@@ -38,7 +75,7 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, lockKey int64, migrations 
 	if _, err := conn.Exec(ctx, paradedb.UpdatePgSearch); err != nil {
 		return err
 	}
-	m, err := adoptLegacyHistory(ctx, conn, migrations)
+	m, err := prepare(conn)
 	if err != nil {
 		return err
 	}
@@ -99,16 +136,22 @@ func adoptLegacyHistory(ctx context.Context, conn *pgx.Conn, migrations fs.FS) (
 // define, without changing the database. A database Migrate never ran on
 // reports version zero.
 func Version(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS) (current, latest int32, err error) {
+	return SchemaVersion(ctx, pool, "public", migrations)
+}
+
+// SchemaVersion is Version for an app MigrateSchema migrates.
+func SchemaVersion(ctx context.Context, pool *pgxpool.Pool, schema string, migrations fs.FS) (current, latest int32, err error) {
 	names, err := migrate.FindMigrations(migrations)
 	if err != nil {
 		return 0, 0, err
 	}
+	table := versionTable(schema)
 	var initialized bool
-	if err := pool.QueryRow(ctx, `select to_regclass('public.schema_version') is not null`).Scan(&initialized); err != nil {
+	if err := pool.QueryRow(ctx, `select to_regclass($1) is not null`, table).Scan(&initialized); err != nil {
 		return 0, 0, err
 	}
 	if initialized {
-		if err := pool.QueryRow(ctx, `select version from public.schema_version`).Scan(&current); err != nil {
+		if err := pool.QueryRow(ctx, `select version from `+table).Scan(&current); err != nil {
 			return 0, 0, err
 		}
 	}

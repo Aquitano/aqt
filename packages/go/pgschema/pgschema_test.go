@@ -126,3 +126,29 @@ func TestVersionReadsWithoutMigrating(t *testing.T) {
 		t.Fatalf("migrated: %d, %d, %v", current, latest, err)
 	}
 }
+
+func TestMigrateSchemaKeepsAnAppInItsOwnSchema(t *testing.T) {
+	dsn := legacyDatabase(t, 0)
+	pool, err := pgxpool.New(t.Context(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	// Another app already owns public in the shared database.
+	if err := pgschema.Migrate(t.Context(), pool, lockKey, files); err != nil {
+		t.Fatal(err)
+	}
+	guest := fstest.MapFS{"001_items.sql": files["001_items.sql"]}
+	if err := pgschema.MigrateSchema(t.Context(), pool, "guest", lockKey+1, guest); err != nil {
+		t.Fatal(err)
+	}
+	if current, latest, err := pgschema.SchemaVersion(t.Context(), pool, "guest", guest); err != nil || current != 1 || latest != 1 {
+		t.Fatalf("guest: %d, %d, %v", current, latest, err)
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from pg_tables where schemaname = 'guest' and tablename in ('items', 'schema_version')`); n != 2 {
+		t.Fatalf("%d of the guest's two tables are in its schema", n)
+	}
+	if v := pgschematest.QueryInt(t, dsn, `select version from public.schema_version`); v != int64(len(files)) {
+		t.Fatalf("the public app's version moved to %d", v)
+	}
+}

@@ -15,13 +15,17 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 // reader is the read side of the store, an interface only so the handlers can
@@ -51,6 +55,21 @@ type Server struct {
 	dataDir         string
 	jsonReadTimeout time.Duration
 	extraction      extraction
+	digests         digestPass
+	mounts          map[string]http.Handler
+	catalogue       catalog.Catalogue
+}
+
+// UseCatalogue adds the files on disks to combined search and the timeline.
+func (s *Server) UseCatalogue(c catalog.Catalogue) { s.catalogue = c }
+
+// Mount serves another domain's API below prefix, such as /attic. The handler
+// sees the full path and does its own authentication.
+func (s *Server) Mount(prefix string, h http.Handler) {
+	if s.mounts == nil {
+		s.mounts = map[string]http.Handler{}
+	}
+	s.mounts[prefix] = h
 }
 
 func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server {
@@ -60,6 +79,13 @@ func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server
 		slog.Warn("pruning abandoned uploads", "error", err)
 	}
 	return s
+}
+
+// TokenDomain is the domain a token needs for bank's own routes.
+const TokenDomain = "bank"
+
+func Tokens(dataDir string) tokens.Store {
+	return tokens.Store{Path: filepath.Join(dataDir, "tokens"), Prefix: "bank_"}
 }
 
 // Sized for Gmail Takeout mboxes, which routinely exceed 1 GiB.
@@ -115,13 +141,19 @@ func (s *Server) Handler() http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	})
+	s.registerAPI(v1)
+	mux.Handle("GET /openapi.json", v1)
 	mux.Handle("/v1/", s.requireToken(v1))
+	for prefix, h := range s.mounts {
+		mux.Handle(prefix+"/", h)
+	}
 	return mux
 }
 
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	workCtx, cancelWork := context.WithCancel(context.Background())
 	s.extraction.ctx = workCtx
+	s.extraction.done.Go(func() { s.digestBlobs(workCtx) })
 	defer func() {
 		s.extraction.mu.Lock()
 		s.extraction.stopping = true
@@ -137,12 +169,27 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return Run(ctx, srv)
 }
 
+// readOnlyPosts take a POST body and only read: ad-hoc SQL runs in read-only
+// sessions, and summaries looks up a list of item IDs.
+var readOnlyPosts = map[string]bool{"/v1/query": true, "/v1/library/items/summaries": true}
+
 func (s *Server) requireToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		const prefix = "bearer " // scheme is case-insensitive per RFC 7235
-		auth := r.Header.Get("Authorization")
-		if len(auth) <= len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) || !VerifyToken(s.dataDir, auth[len(prefix):]) {
+		token, ok := httpapi.BearerToken(r)
+		var scope tokens.Scope
+		if ok {
+			var err error
+			if scope, ok, err = Tokens(s.dataDir).Verify(token); err != nil {
+				slog.Error("read tokens", "error", err)
+			}
+		}
+		if !ok {
 			writeErr(w, http.StatusUnauthorized, "invalid or missing bearer token")
+			return
+		}
+		write := r.Method != http.MethodGet && r.Method != http.MethodHead && !readOnlyPosts[r.URL.Path]
+		if !scope.Allows(TokenDomain, write) {
+			writeErr(w, http.StatusForbidden, "this token's scope ("+scope.String()+") does not allow the request")
 			return
 		}
 		next.ServeHTTP(w, r)

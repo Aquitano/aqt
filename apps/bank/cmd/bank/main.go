@@ -32,6 +32,8 @@ import (
 	"github.com/alecthomas/kong"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/attic"
+	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
@@ -40,6 +42,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 	"github.com/aquitano/aqt/apps/bank/internal/verify"
 	"github.com/aquitano/aqt/apps/bank/internal/webui"
 )
@@ -73,6 +76,9 @@ type cli struct {
 	Contact     contactCmd     `cmd:"" help:"One person across their many identities."`
 	Show        showCmd        `cmd:"" help:"Print one message and its attachments."`
 	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness."`
+	Ref         refCmd         `cmd:"" help:"Say what any cited ref names (bank:…, attic:…, a library ID, a blob's SHA-256) and where the same bytes are elsewhere."`
+	Timeline    timelineCmd    `cmd:"" help:"What happened in a year, month or day: messages, activity and files on disks."`
+	OpenAPI     openapiCmd     `cmd:"" name:"openapi" help:"Print the OpenAPI document of the typed routes." hidden:""`
 	Coverage    coverageCmd    `cmd:"" help:"Note what a source holds (empty text clears)."`
 	Query       queryCmd       `cmd:"" help:"Read-only ad-hoc SQL: READ ONLY tx, 15s timeout, row cap 100."`
 	Fetch       fetchCmd       `cmd:"" help:"Write an attachment to a file."`
@@ -340,7 +346,13 @@ func (c *searchCmd) Run(ctx context.Context) error {
 	if remote, ok := b.(*client.Client); ok {
 		result, err = remote.Find(ctx, query, o, findOptions)
 	} else {
-		result, err = catalog.Find(ctx, b, query, o, findOptions)
+		// A database without the catalogue searches the archive alone.
+		var disks catalog.Disks
+		if catalogue, openErr := attic.Open(ctx, databaseURL()); openErr == nil {
+			defer catalogue.Close()
+			disks = catalogue
+		}
+		result, err = catalog.Find(ctx, b, disks, query, o, findOptions)
 	}
 	if err != nil {
 		return err
@@ -877,13 +889,23 @@ func (c *serveCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeStore()
-	if names, err := server.ListTokens(dataDir()); err == nil && len(names) == 0 {
+	if listed, err := server.Tokens(dataDir()).List(); err == nil && len(listed) == 0 {
 		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
 	srv := server.New(d.Store, d.Blobs, dataDir(), d.ArchiveDir)
+	catalogueCtx, stopCatalogue := context.WithCancel(ctx)
+	catalogue := attic.Start(catalogueCtx, databaseURL())
+	defer catalogue.Close()
+	defer stopCatalogue()
+	srv.Mount(atticBasePath, catalogue.Handler(atticapi.Host{
+		Tokens: server.Tokens(dataDir()), MintCommand: "bank token new <name>", BasePath: atticBasePath,
+	}))
+	srv.UseCatalogue(catalogue)
 	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
 	return srv.ListenAndServe(ctx, c.Listen)
 }
+
+const atticBasePath = "/attic"
 
 // uiCmd starts the local archive browser: the embedded page plus a proxy that
 // signs /v1 requests with BANK_TOKEN, so the token stays out of the browser.
@@ -952,21 +974,23 @@ func refuseRemoteToken() error {
 }
 
 type tokenNewCmd struct {
-	Name string `arg:""`
+	Name     string   `arg:""`
+	ReadOnly bool     `help:"The token reads and searches but cannot import, edit or delete."`
+	Domain   []string `help:"Limit the token to these APIs: bank (the archive and library) or attic (the file catalogue). Default: both." enum:"bank,attic"`
 }
 
 func (c *tokenNewCmd) Run() error {
 	if err := refuseRemoteToken(); err != nil {
 		return err
 	}
-	token, err := server.NewToken(dataDir(), c.Name)
+	token, err := server.Tokens(dataDir()).New(c.Name, tokens.Scope{ReadOnly: c.ReadOnly, Domains: c.Domain})
 	if err != nil {
 		return err
 	}
 	// Only the digest is stored, so this is the one chance to copy it.
 	// The directory is printed because a token written into the wrong
 	// BANK_DATA_DIR is the usual reason a server keeps answering 401.
-	fmt.Fprintf(os.Stderr, "token stored in %s\n", server.TokensPath(dataDir()))
+	fmt.Fprintf(os.Stderr, "token stored in %s\n", server.Tokens(dataDir()).Path)
 	fmt.Println(token)
 	return nil
 }
@@ -977,13 +1001,17 @@ func (tokenListCmd) Run() error {
 	if err := refuseRemoteToken(); err != nil {
 		return err
 	}
-	names, err := server.ListTokens(dataDir())
+	listed, err := server.Tokens(dataDir()).List()
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "tokens in %s\n", server.TokensPath(dataDir()))
-	for _, n := range names {
-		fmt.Println(n)
+	fmt.Fprintf(os.Stderr, "tokens in %s\n", server.Tokens(dataDir()).Path)
+	for _, token := range listed {
+		if scope := token.Scope.String(); scope != "" {
+			fmt.Printf("%s\t%s\n", token.Name, scope)
+		} else {
+			fmt.Println(token.Name)
+		}
 	}
 	return nil
 }
@@ -996,7 +1024,7 @@ func (c *tokenRevokeCmd) Run() error {
 	if err := refuseRemoteToken(); err != nil {
 		return err
 	}
-	return server.RevokeToken(dataDir(), c.Name)
+	return server.Tokens(dataDir()).Revoke(c.Name)
 }
 
 func parseDate(s string) (time.Time, error) {

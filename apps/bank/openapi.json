@@ -1,0 +1,717 @@
+{
+  "components": {
+    "schemas": {
+      "AmbiguousRefError": {
+        "description": "The ref prefix matches several contents. Retry with one of the candidates' longer refs.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "AmbiguousRef"
+            ],
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RefCandidate"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "candidates",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Event": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "description": "When it happened. Midnight when precision is day.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "group": {
+            "description": "Which records the event comes from.",
+            "enum": [
+              "message",
+              "activity",
+              "file"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "description": "message, the activity kind such as watch or listen, or file.",
+            "type": "string"
+          },
+          "precision": {
+            "description": "day when the source recorded a date without a time.",
+            "enum": [
+              "instant",
+              "day"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "description": "What to cite and resolve: bank:\u003cref\u003e for a message, an activity ID, or attic:\u003cref\u003e for a hashed file.",
+            "type": "string"
+          },
+          "source": {
+            "description": "The message or activity source, such as gmail or netflix, or the disk's label.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Subject or opening words, the activity's title, or the file's path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "precision",
+          "group",
+          "kind",
+          "source",
+          "ref",
+          "title"
+        ],
+        "type": "object"
+      },
+      "ForbiddenError": {
+        "description": "The token is valid, and its scope does not allow the request.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "Forbidden"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "InternalError": {
+        "description": "The server failed; message says how.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "Internal"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "InvalidRequestError": {
+        "description": "A parameter is malformed, out of range or contradicts another.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "InvalidRequest"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Link": {
+        "additionalProperties": false,
+        "properties": {
+          "href": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "relation": {
+            "description": "attachment: a blob attached to this message. on_disk: a place on a disk holding the same bytes. in_archive: a blob in the archive holding the same bytes. replaced_by: what a retired message became.",
+            "enum": [
+              "attachment",
+              "on_disk",
+              "in_archive",
+              "replaced_by"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "relation",
+          "ref",
+          "title",
+          "href"
+        ],
+        "type": "object"
+      },
+      "NotFoundError": {
+        "description": "Nothing matches.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "NotFound"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "NotReadyError": {
+        "description": "The file catalogue is still opening, or failed to; retry later.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "NotReady"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "RefCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "volume": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "size"
+        ],
+        "type": "object"
+      },
+      "Resolved": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "description": "When the message was sent.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "href": {
+            "description": "The route that returns the whole record.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "blob is bytes the archive stores; content is bytes the catalogue saw on a disk.",
+            "enum": [
+              "message",
+              "retired_message",
+              "item",
+              "activity",
+              "collection",
+              "file",
+              "page",
+              "blob",
+              "content"
+            ],
+            "type": "string"
+          },
+          "links": {
+            "description": "Attachments, and the same bytes in the other store.",
+            "items": {
+              "$ref": "#/components/schemas/Link"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "The form to cite: bank:\u003cref\u003e for a message, a library ID, a blob's SHA-256, or attic:\u003cref\u003e for a file's bytes on disks.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Subject or opening words, a title, a filename or a path.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "kind",
+          "title",
+          "href",
+          "links"
+        ],
+        "type": "object"
+      },
+      "Timeline": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "description": "What this answer leaves out and why.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "events": {
+            "description": "Oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/Event"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "truncated": {
+            "description": "Groups that reached limit; narrow the dates or ask for one group to see the rest.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "events",
+          "truncated",
+          "coverage"
+        ],
+        "type": "object"
+      },
+      "UnauthorizedError": {
+        "description": "The bearer token is missing or unknown.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "Unauthorized"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "description": "A token from `bank token new \u003cname\u003e`.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "bank is one person's archive: messages (mail, chats, AI conversations), a media\nlibrary with what was watched, listened to and read, files, and published notes. The\nfile catalogue of disks that come and go is served below /attic, with a document of\nits own at /attic/openapi.json.\n\nCite a message as bank:\u003cref\u003e, a library record by its ID, and a file on a disk as\nattic:\u003cref\u003e.\n\nThis document describes the operations defined from typed Go handlers. The older /v1\nroutes that the bank CLI uses are not in it yet.",
+    "title": "bank",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/refs/{ref}": {
+      "get": {
+        "description": "Takes bank:\u003cref\u003e or a bare message ref, a library ID such as item_… or file_…, a blob's SHA-256, or attic:\u003cref\u003e. The answer names the record, the route that returns it in full, and where the same bytes are in the other store: a message attachment's copies on disks, or the messages and library files that hold a disk file's bytes. Those links appear once the server has read the blob's BLAKE3 digest, shortly after an import.",
+        "operationId": "resolveRef",
+        "parameters": [
+          {
+            "description": "The ref as cited.",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "description": "The ref as cited.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Resolved"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: nothing matches."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbiguousRefError"
+                }
+              }
+            },
+            "description": "AmbiguousRef: the ref prefix matches several contents. Retry with one of the candidates' longer refs."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotReadyError"
+                }
+              }
+            },
+            "description": "NotReady: the file catalogue is still opening, or failed to; retry later."
+          }
+        },
+        "summary": "Say what a cited ref names, whichever store holds it",
+        "tags": [
+          "refs"
+        ]
+      }
+    },
+    "/v1/timeline": {
+      "get": {
+        "description": "Messages by when they were sent, activity (watching, listening, reading) by when it happened, and files on disks by when they were last modified, merged oldest first. limit caps each group on its own; truncated names the groups that reached it.",
+        "operationId": "getTimeline",
+        "parameters": [
+          {
+            "description": "First day, as YYYY-MM-DD in the server's time zone.",
+            "explode": false,
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "description": "First day, as YYYY-MM-DD in the server's time zone.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The day after the last day. Default: the day after since.",
+            "explode": false,
+            "in": "query",
+            "name": "until",
+            "schema": {
+              "description": "The day after the last day. Default: the day after since.",
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only these groups. Default: all three.",
+            "explode": false,
+            "in": "query",
+            "name": "group",
+            "schema": {
+              "description": "Only these groups. Default: all three.",
+              "items": {
+                "enum": [
+                  "message",
+                  "activity",
+                  "file"
+                ],
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Maximum events per group.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 200,
+              "description": "Maximum events per group.",
+              "format": "int64",
+              "maximum": 2000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Timeline"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid, and its scope does not allow the request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter is malformed, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List what happened between two days, across messages, activity and files",
+        "tags": [
+          "timeline"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ]
+}

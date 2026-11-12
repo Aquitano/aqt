@@ -9,3 +9,4 @@
 *.pem
 /state/
 /imap-state/
+/attic.exe

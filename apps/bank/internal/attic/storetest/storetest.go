@@ -1,0 +1,58 @@
+// Package storetest gives each integration test a migrated ParadeDB database
+// on the server ATTIC_TEST_DATABASE_URL names. It creates databases there, so
+// it never uses the application's DATABASE_URL.
+package storetest
+
+import (
+	"context"
+	"net/url"
+	"testing"
+
+	"github.com/peterldowns/pgtestdb"
+
+	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/packages/go/pgschema"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
+)
+
+var migrator = pgschematest.Migrator(store.Migrations, func(ctx context.Context, dsn string) error {
+	st, err := store.Open(ctx, dsn)
+	if err != nil {
+		return err
+	}
+	st.Close()
+	return nil
+})
+
+// New returns a Store and connection URL on a database cloned from a migrated
+// template. A successful test drops its database; a failure preserves it.
+func New(t *testing.T) (*store.Store, string) {
+	t.Helper()
+	dsn := pgschematest.Database(t, "ATTIC_TEST_DATABASE_URL", migrator)
+	st, err := store.Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(st.Close)
+	return st, InSchema(t, dsn)
+}
+
+// InSchema returns dsn with the catalogue's search path, so a test's own
+// connection reads and writes the tables the store does.
+func InSchema(t testing.TB, dsn string) string {
+	t.Helper()
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("parse test database URL: %v", err)
+	}
+	q := u.Query()
+	q.Set("search_path", pgschema.SearchPath(store.Schema))
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// Empty returns the URL of a database no migration has touched.
+func Empty(t *testing.T) string {
+	t.Helper()
+	return pgschematest.Database(t, "ATTIC_TEST_DATABASE_URL", pgtestdb.NoopMigrator{})
+}

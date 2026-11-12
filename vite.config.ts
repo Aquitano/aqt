@@ -15,6 +15,9 @@ const ignorePatterns = [
   "**/.wrangler/**",
   "**/.output/**",
   "apps/gallery/packages/db/src/migrations/**",
+  // Written by `bank openapi` and `attic openapi`; Go tests compare their bytes.
+  "apps/bank/openapi.json",
+  "apps/bank/attic/openapi.json",
 ];
 
 const rules = {
