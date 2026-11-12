@@ -260,12 +260,14 @@ export const runQuery = Effect.fn("Query.run")(
     let columns: string | null = null;
     let bytes = 0;
     let received = 0;
+    // The LIMIT sits in SQL the caller's text could get around, such as with a UNION, so the stream stops too.
     yield* client.unsafe(cellsOf(body, limit)).stream.pipe(
+      Stream.take(limit + 1),
       Stream.runForEach((raw) =>
         Effect.gen(function* () {
           const row = yield* decodeRawRow(raw).pipe(Effect.orDie);
           received += 1;
-          if (row.cells === null) return;
+          if (row.cells === null || cells.length === limit) return;
           bytes += Buffer.byteLength(row.cells) + Buffer.byteLength(row.columns ?? "");
           if (bytes > resultBudgetBytes) yield* tooLarge;
           columns ??= row.columns;

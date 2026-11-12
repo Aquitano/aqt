@@ -103,6 +103,11 @@ test("queries cannot reach the tables behind the views, change anything or retur
         limit: 1,
       });
       expect([lookahead.rows.length, lookahead.truncated]).toEqual([1, true]);
+      const unioned = yield* runQuery({
+        sql: "select 1 as n) as q limit 2) as numbered union all select null, '[2]' from generate_series(1, 5) union all select null, null from (select 1 as n from (select 1",
+        limit: 1,
+      });
+      expect([unioned.rows.length, unioned.truncated]).toEqual([1, true]);
     }),
   );
 });
