@@ -28,7 +28,7 @@ const run = (patch: Partial<T3Run>): T3Run => ({
   ...patch,
 });
 
-test("a newer copy of a run replaces the stored one, an older one does not, and it joins its session", async () => {
+test("a newer copy of a run replaces the stored one, an older one does not, and a retry drops the old session", async () => {
   await runTest(
     Effect.gen(function* () {
       yield* ensureReaderRole();
@@ -59,6 +59,16 @@ test("a newer copy of a run replaces the stored one, an older one does not, and 
         sql: "select machine, status, queued_seconds, duration_seconds, session_id from t3_runs",
       });
       expect(result.rows).toEqual([["laptop", "completed", 2, 300, session?.id ?? null]]);
+
+      yield* applyT3Batch(machineId, {
+        machineId,
+        threads: [],
+        runs: [
+          run({ attempts: 2, nativeSessionId: null, completedAt: "2026-11-01T10:09:00.000Z" }),
+        ],
+      });
+      const retried = yield* runQuery({ sql: "select attempts, native_session_id from t3_runs" });
+      expect(retried.rows).toEqual([[2, null]]);
     }),
   );
 });

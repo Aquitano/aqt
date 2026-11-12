@@ -4,6 +4,8 @@ import {
   type HostEnv,
   IsoTimestamp,
   type MachineId,
+  type ProviderId,
+  providerIds,
   redact,
   T3Run,
   T3Thread,
@@ -15,8 +17,21 @@ import type { ApiClient } from "./push.ts";
 import { openSqlite, sqliteOperation } from "./sqlite.ts";
 import { AgentState } from "./state.ts";
 
-// Kept per database, so pointing TURNSTASH_T3_STATE_DB at another one reads that one from the start.
-const checkpointKeyOf = (file: string) => `t3_synced_until:${file}`;
+// Kept per database and provider selection, so pointing TURNSTASH_T3_STATE_DB at another database, or enabling a
+// provider that was excluded, reads from the start.
+const checkpointKeyOf = (file: string, providers: ReadonlyArray<ProviderId>) =>
+  `t3_synced_until:${file}:${providers.toSorted().join(",")}`;
+
+// T3 names its provider instances claudeAgent, codex and so on. One with no matching turnstash provider has no
+// setting that could exclude it.
+const providerOf = (t3Provider: string | null) =>
+  providerIds.find((id) => t3Provider?.toLowerCase().startsWith(id) === true);
+
+const selected =
+  (providers: ReadonlyArray<ProviderId>) => (row: { readonly provider: string | null }) => {
+    const provider = providerOf(row.provider);
+    return provider === undefined || providers.includes(provider);
+  };
 
 // T3 writes a row's timestamps before it commits the row, so the next sync looks back past its own start.
 const checkpointOverlap = Duration.minutes(10);
@@ -28,9 +43,10 @@ export const t3StateDb = (host: HostEnv, path: Path.Path) => {
     : path.resolve(override);
 };
 
+// An option that is not an object, which this agent does not know, is skipped instead of failing json_extract.
 const optionValue = (source: string, ids: string) =>
   `SELECT json_extract(o.value, '$.value') FROM json_each(${source}, '$.modelSelection.options') o
-   WHERE json_extract(o.value, '$.id') IN (${ids}) LIMIT 1`;
+   WHERE CASE WHEN o.type = 'object' THEN json_extract(o.value, '$.id') END IN (${ids}) LIMIT 1`;
 
 // Claude marks fast mode as a boolean option and Codex as the priority service tier.
 const modelSelection = (source: string) => `
@@ -39,7 +55,8 @@ const modelSelection = (source: string) => `
   (SELECT CASE json_extract(o.value, '$.id') WHEN 'fastMode' THEN json_extract(o.value, '$.value') = 1
           ELSE json_extract(o.value, '$.value') = 'priority' END
    FROM json_each(${source}, '$.modelSelection.options') o
-   WHERE json_extract(o.value, '$.id') IN ('fastMode', 'serviceTier') LIMIT 1) AS fast`;
+   WHERE CASE WHEN o.type = 'object' THEN json_extract(o.value, '$.id') END IN ('fastMode', 'serviceTier')
+   LIMIT 1) AS fast`;
 
 const threadsQuery = `
   SELECT t.thread_id AS id, t.title, p.title AS project, p.workspace_root AS project_root,
@@ -56,7 +73,7 @@ const threadsQuery = `
          t.created_at, t.updated_at, t.archived_at, t.deleted_at
   FROM orchestration_v2_projection_threads t
   LEFT JOIN projection_projects p ON p.project_id = t.project_id
-  WHERE t.updated_at >= ?1`;
+  WHERE t.updated_at >= ?1 AND json_valid(t.payload_json)`;
 
 // A run is resent until it completes, so its final status and duration replace the in-flight copy.
 const runsQuery = `
@@ -64,10 +81,10 @@ const runsQuery = `
          ${modelSelection("r.payload_json")},
          r.requested_at, json_extract(r.payload_json, '$.startedAt') AS started_at, r.completed_at,
          (SELECT count(*) FROM orchestration_v2_projection_run_attempts a WHERE a.run_id = r.run_id) AS attempts,
-         (SELECT json_extract(a.payload_json, '$.nativeThreadId') FROM orchestration_v2_projection_run_attempts a
+         (SELECT CASE WHEN json_valid(a.payload_json) THEN json_extract(a.payload_json, '$.nativeThreadId') END FROM orchestration_v2_projection_run_attempts a
           WHERE a.run_id = r.run_id ORDER BY a.attempt_ordinal DESC LIMIT 1) AS native_session_id
   FROM orchestration_v2_projection_runs r
-  WHERE r.requested_at >= ?1 OR r.completed_at >= ?1 OR r.completed_at IS NULL`;
+  WHERE (r.requested_at >= ?1 OR r.completed_at >= ?1 OR r.completed_at IS NULL) AND json_valid(r.payload_json)`;
 
 const Text = Schema.NullOr(Schema.String);
 const Timestamp = Schema.NullOr(IsoTimestamp);
@@ -175,10 +192,19 @@ const decodeEach = <S extends Schema.Decoder<unknown>, A>(
   );
 };
 
-export const readT3 = (db: Database, path: string, since: string) =>
+export const readT3 = (
+  db: Database,
+  path: string,
+  since: string,
+  providers: ReadonlyArray<ProviderId>,
+) =>
   sqliteOperation("readT3", path, () => ({
-    threads: decodeEach(ThreadRow, db.query(threadsQuery).all(since), threadOf, isT3Thread),
-    runs: decodeEach(RunRow, db.query(runsQuery).all(since), runOf, isT3Run),
+    threads: decodeEach(ThreadRow, db.query(threadsQuery).all(since), threadOf, isT3Thread).filter(
+      selected(providers),
+    ),
+    runs: decodeEach(RunRow, db.query(runsQuery).all(since), runOf, isT3Run).filter(
+      selected(providers),
+    ),
   }));
 
 export interface T3SyncSummary {
@@ -190,7 +216,12 @@ export interface T3SyncSummary {
 
 // T3's tables are its own and change with its releases, so a failure here is reported without failing the
 // transcript sync.
-export const syncT3 = (client: ApiClient, machineId: MachineId, host: HostEnv) =>
+export const syncT3 = (
+  client: ApiClient,
+  machineId: MachineId,
+  host: HostEnv,
+  providers: ReadonlyArray<ProviderId>,
+) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -198,9 +229,12 @@ export const syncT3 = (client: ApiClient, machineId: MachineId, host: HostEnv) =
     const file = t3StateDb(host, path);
     if (!(yield* fs.exists(file))) return { found: false, threads: 0, runs: 0, error: null };
     const startedAt = yield* DateTime.now;
-    const since = (yield* state.getMeta(checkpointKeyOf(file))) ?? "";
+    const checkpointKey = checkpointKeyOf(file, providers);
+    const since = (yield* state.getMeta(checkpointKey)) ?? "";
     const { threads, runs } = yield* Effect.scoped(
-      Effect.flatMap(openSqlite(file, { readonly: true }), (db) => readT3(db, file, since)),
+      Effect.flatMap(openSqlite(file, { readonly: true }), (db) =>
+        readT3(db, file, since, providers),
+      ),
     );
     const threadBatches = Arr.chunksOf(threads, t3BatchLimits.maxRows);
     const runBatches = Arr.chunksOf(runs, t3BatchLimits.maxRows);
@@ -210,7 +244,7 @@ export const syncT3 = (client: ApiClient, machineId: MachineId, host: HostEnv) =
       });
     }
     yield* state.setMeta(
-      checkpointKeyOf(file),
+      checkpointKey,
       DateTime.formatIso(DateTime.subtractDuration(startedAt, checkpointOverlap)),
     );
     return { found: true, threads: threads.length, runs: runs.length, error: null };

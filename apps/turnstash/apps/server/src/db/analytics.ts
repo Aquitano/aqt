@@ -40,13 +40,13 @@ const views: Record<string, string> = {
   limit_samples: `SELECT id, provider, conversation_id AS session_id, plan, window_minutes, observed_at, used_percent, resets_at
    FROM limit_samples`,
   limit_hits: `SELECT id, provider, conversation_id AS session_id, window_minutes, occurred_at, message FROM limit_hits`,
-  t3_threads: `SELECT t.id, m.name AS machine, t.title, t.project, t.project_root, t.provider, t.created_by,
+  t3_threads: `SELECT t.id, t.machine_id, m.name AS machine, t.title, t.project, t.project_root, t.provider, t.created_by,
           t.creation_source, t.parent_thread_id, t.relationship, t.model, t.effort, t.fast, t.branch,
           t.worktree_path, t.pull_requests, t.created_at, t.updated_at, t.archived_at, t.deleted_at
    FROM t3_threads t JOIN machines m ON m.id = t.machine_id`,
   // A Claude Code session id or Codex rollout id is the conversation key, so a run joins its archived session.
   // Codex keys are stored in lowercase, while Claude keys keep the transcript's spelling.
-  t3_runs: `SELECT r.id, r.thread_id, m.name AS machine, r.ordinal, r.provider, r.status, r.model, r.effort, r.fast,
+  t3_runs: `SELECT r.id, r.thread_id, r.machine_id, m.name AS machine, r.ordinal, r.provider, r.status, r.model, r.effort, r.fast,
           r.requested_at, r.started_at, r.completed_at,
           extract(epoch FROM r.started_at - r.requested_at)::float8 AS queued_seconds,
           extract(epoch FROM r.completed_at - r.started_at)::float8 AS duration_seconds,

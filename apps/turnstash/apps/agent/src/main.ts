@@ -301,7 +301,7 @@ const sync = Command.make(
           );
         yield* step(
           "Reading T3 Code threads",
-          () => syncT3(client, config.machineId, host),
+          () => syncT3(client, config.machineId, host, providers),
           describeT3,
         );
       }),

@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 
+import { type ProviderId, providerIds } from "@aqt/turnstash-core";
 import { Effect } from "effect";
 
 import { readT3 } from "../src/t3.ts";
@@ -104,7 +105,7 @@ const fixture = () => {
 
 test("reads threads changed since the checkpoint and runs that changed or are still going", async () => {
   const { threads, runs } = await Effect.runPromise(
-    readT3(fixture(), ":memory:", "2026-10-15T00:00:00.000Z"),
+    readT3(fixture(), ":memory:", "2026-10-15T00:00:00.000Z", providerIds),
   );
 
   expect(threads).toEqual([
@@ -141,4 +142,28 @@ test("reads threads changed since the checkpoint and runs that changed or are st
     startedAt: "2026-11-01T10:00:02.000Z",
     completedAt: "2026-11-01T10:05:00.000Z",
   });
+});
+
+test("reads a thread with an option it does not know and leaves out excluded providers", async () => {
+  const db = fixture();
+  db.query(
+    "INSERT INTO orchestration_v2_projection_threads VALUES (?, 'p1', ?, ?, ?, ?, NULL, NULL, ?)",
+  ).run(
+    "odd",
+    "Odd options",
+    "claudeAgent",
+    "2026-11-02T10:00:00.000Z",
+    "2026-11-02T10:00:00.000Z",
+    JSON.stringify({ modelSelection: { model: "claude-opus-5-5", options: ["unexpected"] } }),
+  );
+  const read = (providers: ReadonlyArray<ProviderId>) =>
+    Effect.runPromise(readT3(db, ":memory:", "2026-10-15T00:00:00.000Z", providers));
+
+  const claudeOnly = await read(["claude"]);
+  expect(claudeOnly.threads.map((thread) => [thread.id, thread.model, thread.effort])).toEqual([
+    ["odd", "claude-opus-5-5", null],
+  ]);
+  expect(claudeOnly.runs.map((run) => run.id)).toEqual(["done", "live"]);
+  const codexOnly = await read(["codex"]);
+  expect([codexOnly.threads.map((thread) => thread.id), codexOnly.runs]).toEqual([["child"], []]);
 });
