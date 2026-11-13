@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
+	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -26,6 +27,7 @@ type Catalogue interface {
 	Disks
 	Files
 	Contents
+	blobtext.TextSource
 }
 
 // Event is one thing that happened: a message sent, something watched,

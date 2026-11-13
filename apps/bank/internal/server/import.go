@@ -199,7 +199,6 @@ func (s *Server) extractUntilCurrent() {
 		s.extraction.mu.Unlock()
 		started := time.Now()
 		backlog := s.extractPending(ctx, since, refreshSince)
-		s.digestBlobs(ctx)
 		refreshSince = started
 		s.extraction.mu.Lock()
 		again := !s.extraction.stopping && (backlog || s.extraction.again)
@@ -207,16 +206,23 @@ func (s *Server) extractUntilCurrent() {
 		s.extraction.running = again
 		s.extraction.mu.Unlock()
 		if !again {
-			return
+			break
 		}
 	}
+	// After extraction, so an upload is not kept waiting while the archive is
+	// hashed. Blobs extraction did not hash still need a digest for /v1/refs.
+	s.digestBlobs(ctx)
 }
 
 func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Time) (backlog bool) {
 	o := extract.DefaultOptions()
 	o.TempDir = uploadStagingDir(s.dataDir)
 	sel := blobtext.Selection{Limit: blobtext.PostImportLimit, NewestFirst: true, StoredSince: since, RefreshSince: refreshSince}
-	summary, err := blobtext.Run(ctx, blobtext.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
+	local := blobtext.Local{Store: s.db, Blobs: s.blobs}
+	if s.catalogue != nil {
+		local.Known = s.catalogue
+	}
+	summary, err := blobtext.Run(ctx, local, sel, o, nil)
 	if err != nil {
 		slog.Error("reading attachment text", "error", err)
 		return false

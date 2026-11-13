@@ -7,12 +7,57 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // Local is an Archive backed by Postgres and the blob store on the same box.
 type Local struct {
 	Store *store.Store
 	Blobs *blob.Store
+	// Known, when set, is asked for a blob's text before the blob is read.
+	Known TextSource
+}
+
+// TextSource is another store that may already hold the text of the same
+// bytes, found by their BLAKE3 digest.
+type TextSource interface {
+	ReadText(ctx context.Context, blake3 []byte) (text, extractor string, err error)
+}
+
+// KnownText is the text Known holds for a blob. A blob without a recorded
+// BLAKE3 digest is hashed here, and the digest kept, so a new upload can match
+// before the server's digest pass reaches it. A blob too large to extract is
+// not hashed here: reading a film to learn it has no text would hold up every
+// document behind it. Any failure means reading the blob as usual.
+func (l Local) KnownText(ctx context.Context, b store.BlobRef) (extract.Result, bool) {
+	if l.Known == nil {
+		return extract.Result{}, false
+	}
+	// Hashing a blob is wasted when the source cannot be asked.
+	if source, ok := l.Known.(interface{ Ready(context.Context) bool }); ok && !source.Ready(ctx) {
+		return extract.Result{}, false
+	}
+	sha256 := b.SHA256
+	digest, err := l.Store.BlobDigest(ctx, sha256)
+	if err != nil {
+		return extract.Result{}, false
+	}
+	if digest == nil {
+		if b.SizeBytes > extract.DefaultOptions().MaxBytes {
+			return extract.Result{}, false
+		}
+		if digest, err = l.Blobs.BLAKE3(ctx, sha256); err != nil {
+			return extract.Result{}, false
+		}
+		if err := l.Store.SetBlobDigest(ctx, sha256, digest); err != nil {
+			return extract.Result{}, false
+		}
+	}
+	text, extractor, err := l.Known.ReadText(ctx, digest)
+	if err != nil || text == "" {
+		return extract.Result{}, false
+	}
+	return extract.Result{Text: text, Extractor: "attic: " + extractor, Status: extract.StatusOK}, true
 }
 
 func (l Local) ListBlobs(ctx context.Context, o store.ListBlobsOpts) ([]store.BlobRef, error) {

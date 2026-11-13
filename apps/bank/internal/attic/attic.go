@@ -115,6 +115,9 @@ func (c *Catalogue) Handler(host api.Host) http.Handler {
 // ErrNotFound means no content matches a ref.
 var ErrNotFound = store.ErrNotFound
 
+// ErrNoCatalogue means Open found a database the catalogue was never migrated into.
+var ErrNoCatalogue = store.ErrNoCatalogue
+
 // Content is one unique content and every place it lives or lived. ref is a
 // content ref, with or without attic:, or a whole BLAKE3 digest in hex.
 func (c *Catalogue) Content(ctx context.Context, ref string) (view.Content, error) {
@@ -135,6 +138,16 @@ func (c *Catalogue) Content(ctx context.Context, ref string) (view.Content, erro
 		return view.Content{}, err
 	}
 	return view.NewContent(detail, view.OnlineRoots(vols)), nil
+}
+
+// ReadText returns the complete text the catalogue read from the bytes with
+// this BLAKE3 digest, and what read it. It is ErrNotFound when there is none.
+func (c *Catalogue) ReadText(ctx context.Context, blake3 []byte) (text, extractor string, err error) {
+	st, err := c.ready()
+	if err != nil {
+		return "", "", err
+	}
+	return st.ReadText(ctx, blake3)
 }
 
 // ModifiedFiles lists files on disks last modified in [since, until), oldest first.

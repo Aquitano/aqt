@@ -3,6 +3,7 @@
 package blob
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"lukechampine.com/blake3"
 )
 
 type Store struct {
@@ -100,4 +103,34 @@ func (s *Store) Path(sum string) string {
 		return filepath.Join(s.root, "invalid-"+url.PathEscape(sum))
 	}
 	return filepath.Join(s.root, sum[:2], sum)
+}
+
+// BLAKE3 hashes a stored blob, which is how the file catalogue names the same
+// bytes. A large blob stops being read once ctx ends.
+func (s *Store) BLAKE3(ctx context.Context, sum string) ([]byte, error) {
+	if err := ValidDigest(sum); err != nil {
+		return nil, err
+	}
+	f, err := os.Open(s.Path(sum))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	h := blake3.New(32, nil)
+	if _, err := io.Copy(h, contextReader{ctx, f}); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
+}
+
+type contextReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c contextReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
 }

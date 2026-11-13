@@ -3,15 +3,9 @@ package server
 import (
 	"context"
 	"errors"
-	"io"
 	"io/fs"
 	"log/slog"
-	"os"
 	"sync"
-
-	"lukechampine.com/blake3"
-
-	"github.com/aquitano/aqt/apps/bank/internal/blob"
 )
 
 // digestPass lets one digest pass run at a time. A pass asked for while one
@@ -62,7 +56,7 @@ func (s *Server) digestMissing(ctx context.Context) {
 		}
 		for _, sum := range sums {
 			after = sum
-			digest, err := s.blake3Of(ctx, sum)
+			digest, err := s.blobs.BLAKE3(ctx, sum)
 			if err == nil {
 				err = s.db.SetBlobDigest(ctx, sum, digest)
 			}
@@ -71,34 +65,4 @@ func (s *Server) digestMissing(ctx context.Context) {
 			}
 		}
 	}
-}
-
-func (s *Server) blake3Of(ctx context.Context, sum string) ([]byte, error) {
-	if err := blob.ValidDigest(sum); err != nil {
-		return nil, err
-	}
-	f, err := os.Open(s.blobs.Path(sum))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	h := blake3.New(32, nil)
-	if _, err := io.Copy(h, contextReader{ctx, f}); err != nil {
-		return nil, err
-	}
-	return h.Sum(nil), nil
-}
-
-// contextReader stops a long read once ctx ends, so a large blob cannot hold
-// up shutdown.
-type contextReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (c contextReader) Read(p []byte) (int, error) {
-	if err := c.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return c.r.Read(p)
 }

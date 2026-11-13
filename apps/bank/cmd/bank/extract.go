@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +17,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -57,7 +60,8 @@ func (c *extractCmd) Run(ctx context.Context) error {
 	o.OCRLang = c.Lang
 	o.TempDir = stagingDir()
 
-	sel := blobtext.Selection{Statuses: statuses, Source: c.Source, Limit: c.Limit}
+	sel := blobtext.Selection{Statuses: statuses, Source: c.Source, Limit: c.Limit,
+		ReadAgain: slices.Contains(statuses, string(extract.StatusOK)) || slices.Contains(statuses, string(extract.StatusEmpty))}
 
 	var progress func(store.BlobRef, extract.Result)
 	if !c.JSON {
@@ -159,7 +163,56 @@ func openAttachments(ctx context.Context) (attachmentBackend, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return blobtext.Local{Store: d.Store, Blobs: d.Blobs}, closeStore, nil
+	known := &lazyCatalogue{}
+	local := blobtext.Local{Store: d.Store, Blobs: d.Blobs, Known: known}
+	return local, func() { known.Close(); closeStore() }, nil
+}
+
+// lazyCatalogue opens the file catalogue when text is first asked of it, and
+// tries again a minute after a failure. A watching OCR worker can start before
+// the server has migrated the catalogue, and must find it once it is there.
+type lazyCatalogue struct {
+	mu        sync.Mutex
+	catalogue *attic.Catalogue
+	retryAt   time.Time
+}
+
+func (l *lazyCatalogue) ReadText(ctx context.Context, blake3 []byte) (text, extractor string, err error) {
+	catalogue := l.open(ctx)
+	if catalogue == nil {
+		return "", "", attic.ErrNoCatalogue
+	}
+	return catalogue.ReadText(ctx, blake3)
+}
+
+// Ready reports whether the catalogue can be asked right now.
+func (l *lazyCatalogue) Ready(ctx context.Context) bool { return l.open(ctx) != nil }
+
+func (l *lazyCatalogue) open(ctx context.Context) *attic.Catalogue {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.catalogue != nil || time.Now().Before(l.retryAt) {
+		return l.catalogue
+	}
+	// A database without the catalogue reads every blob itself.
+	catalogue, err := attic.Open(ctx, databaseURL())
+	if err != nil {
+		l.retryAt = time.Now().Add(time.Minute)
+		if !errors.Is(err, attic.ErrNoCatalogue) {
+			slog.Warn("the file catalogue is unavailable, so blobs are read here for now", "error", err)
+		}
+		return nil
+	}
+	l.catalogue = catalogue
+	return catalogue
+}
+
+func (l *lazyCatalogue) Close() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.catalogue != nil {
+		l.catalogue.Close()
+	}
 }
 
 // stagingDir is where downloads and rasterized pages go: the data directory,
