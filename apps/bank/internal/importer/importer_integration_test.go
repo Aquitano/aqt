@@ -8,6 +8,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
@@ -17,7 +18,8 @@ import (
 // the import route would answer 400 instead of 5xx.
 func TestImportersReportADatabaseOutageAsOperational(t *testing.T) {
 	ctx := context.Background()
-	st := storetest.New(t)
+	pool := storetest.Pool(t, storetest.Migrated(t))
+	st := store.New(pool)
 	dir := t.TempDir()
 	blobs, err := blob.New(filepath.Join(dir, "blobs"))
 	if err != nil {
@@ -59,7 +61,7 @@ func TestImportersReportADatabaseOutageAsOperational(t *testing.T) {
 		"discord": filepath.Join(dir, "discord"),
 	}
 
-	st.Close() // the outage
+	pool.Close() // the outage
 
 	for kind, path := range inputs {
 		t.Run(kind, func(t *testing.T) {

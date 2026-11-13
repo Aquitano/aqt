@@ -12,7 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/jackc/pgx/v5"
 	"lukechampine.com/blake3"
 )
@@ -122,7 +122,7 @@ func TestVolumeIdentityNeedsExplicitAmbiguityDecision(t *testing.T) {
 }
 
 func TestCatalogueVerificationScopeAndBaseline(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	ctx := t.Context()
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {

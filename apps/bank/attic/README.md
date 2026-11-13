@@ -2,20 +2,19 @@
 
 Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It changes source files only when `attic dedupe apply` moves duplicate copies into a quarantine folder, or `attic organize apply` and `undo` rename files and folders that a reviewed plan lists. Scanning runs on Windows; search runs wherever the database is reachable.
 
-Attic is part of bank's Go module: `cmd/attic` is the CLI that scans, the packages are under `internal/attic`, and this directory holds its documents, its Compose file and its Executor app. `bank serve` also answers the catalogue's read API, below `/attic` ([Served by bank](#served-by-bank)).
+Attic is part of bank's Go module: `cmd/attic` is the CLI that scans, the packages are under `internal/attic`, and this directory holds its documents and its Executor app. `bank serve` also answers the catalogue's read API, below `/attic` ([Served by bank](#served-by-bank)).
 
 ## Setup
 
 ```sh
-docker compose up -d --wait                                     # in apps/bank/attic
+docker compose up -d --wait                                     # in apps/bank
+go run ./cmd/bank migrate                                       # in apps/bank
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic     # in apps/bank
 ```
 
-The catalogue's tables live in the `attic` schema, so the catalogue can share a database with bank's archive, whose tables are in `public`. The Compose file here starts a database for a catalogue that is on its own. A catalogue an older build kept in `public` is moved into the schema by the first command that migrates, with its search indexes and without rewriting rows.
+The catalogue's tables live in bank's database, beside the archive's, and `bank migrate` creates them.
 
-`DATABASE_URL` defaults to `postgres://attic:attic@127.0.0.1:5436/attic?sslmode=disable`. Use `127.0.0.1` rather than `localhost` in your own URL too: the database listens on IPv4 only, and on Windows a `localhost` connection first spends about a second on IPv6. `attic scan`, `attic enrich`, `attic dedupe apply` and `attic migrate` run database migrations on startup. The other commands only read: they open read-only sessions and stop with an error when the catalogue's schema version differs from the binary's. Run `attic migrate` after installing a new build.
-
-The identity upgrade rewrites catalogue entries once and builds indexes. The search index upgrade also rebuilds BM25 indexes to remove mutable segments. Migration waits for these operations, and PostgreSQL needs additional database storage during the upgrades.
+`DATABASE_URL` defaults to `postgres://bank:bank@127.0.0.1:5433/bank?sslmode=disable`, the same default as bank's. Use `127.0.0.1` rather than `localhost` in your own URL too: the database listens on IPv4 only, and on Windows a `localhost` connection first spends about a second on IPv6. No attic command migrates. Each one stops with an error when the database's schema version differs from the binary's, and the commands that only read open read-only sessions. Run `bank migrate` after installing a new build.
 
 Install ExifTool for embedded metadata. Poppler's `pdftotext` provides a fallback when the PDF text parser fails. OCR also needs Tesseract and Poppler's `pdftoppm`. Missing ExifTool leaves metadata pending and records `metadata_unavailable`; the rest of the scan continues.
 
@@ -40,7 +39,6 @@ attic coverage --volume Data --under /Files
 attic coverage --volume Data --json --limit 50 --offset 0
 attic skips --reason unreadable
 attic stats
-attic migrate
 attic help scan
 ```
 
@@ -189,7 +187,7 @@ attic token new executor
 attic serve --listen 127.0.0.1:8490
 ```
 
-`token new` prints the token once. Every `/v1` route needs it as `Authorization: Bearer <token>`. Tokens are kept as SHA-256 digests in `%APPDATA%\attic\tokens`; `attic token list` and `attic token revoke <name>` manage them, and a revocation applies to the next request. There is no TLS, so listen on localhost, or on a Tailscale address to reach the API from the tailnet. `ATTIC_LISTEN` also sets the address. A catalogue at another schema version stops `serve` from starting; run `attic migrate` or upgrade attic first.
+`token new` prints the token once. Every `/v1` route needs it as `Authorization: Bearer <token>`. Tokens are kept as SHA-256 digests in `%APPDATA%\attic\tokens`; `attic token list` and `attic token revoke <name>` manage them, and a revocation applies to the next request. There is no TLS, so listen on localhost, or on a Tailscale address to reach the API from the tailnet. `ATTIC_LISTEN` also sets the address. A database at another schema version stops `serve` from starting; run `bank migrate` or upgrade attic first.
 
 `/openapi.json` describes every operation and needs no token. `openapi.json` in this directory is the committed copy; regenerate it from `apps/bank` with `go run ./cmd/attic openapi > attic/openapi.json` after changing the API, because a test fails while it is stale. Responses have the same shapes as `--json`. An error is JSON with a `_tag` naming the failure (`Unauthorized`, `InvalidRequest`, `NotFound`, `AmbiguousRef`, `Unavailable` or `Internal`), a `message`, and a `recovery` with what to do where the caller can act. Each tag has its own schema, so code generated from the document can branch on it.
 
@@ -197,7 +195,7 @@ attic serve --listen 127.0.0.1:8490
 
 ### Served by bank
 
-`bank serve` migrates the `attic` schema in bank's database and answers the same routes below `/attic`: `/attic/v1/search`, `/attic/openapi.json` and so on. The migration runs in the background, because it can rebuild search indexes for minutes. Until it finishes, and for as long as it has failed, those routes answer 503 with `_tag: NotReady` while the rest of bank works; the server log has the reason. They take bank's tokens (`bank token new <name>`), so one token reads both the archive and the catalogue. That server has no disks attached, so a download answers `Unavailable` and names the disks that hold a copy. To fetch a file, ask an `attic serve` on the machine with the disk.
+`bank serve` answers the same routes below `/attic`: `/attic/v1/search`, `/attic/openapi.json` and so on. It migrates the database before it starts listening. Those routes take bank's tokens (`bank token new <name>`), so one token reads both the archive and the catalogue. That server has no disks attached, so a download answers `Unavailable` and names the disks that hold a copy. To fetch a file, ask an `attic serve` on the machine with the disk.
 
 `bank search` includes the catalogue: a search without sender, source, account or date filters also returns files on disks, under `disks` in `--json`.
 
@@ -303,7 +301,7 @@ Folder files control scans. Existing catalogue results remain searchable, includ
 
 A deeper archive policy upgrades a shallower cached listing, including when identical copies have different folder policies. Failed upgrades keep the previous listing. Completed, verified upgrade attempts that encounter encryption, parser failures or unpack limits are remembered for that content, requested depth and effective unpack limit. Unchanged scans skip those attempts. Changing the depth or unpack limit can enable another upgrade attempt. Source read failures, missing multipart volumes and changed bytes remain retryable. To retry an initial listing at the same depth after changing its unpack limit, use `--rebuild-content`. Rebuilding also clears remembered upgrade failures for the selected content.
 
-Folder policy lookup preserves directory spelling, so case-sensitive sibling folders can have separate settings. Patterns still ignore case. Existing catalogues do not record their earlier listing depths, so the migration leaves their listings unchanged.
+Folder policy lookup preserves directory spelling, so case-sensitive sibling folders can have separate settings. Patterns still ignore case.
 
 `--rebuild-content` deletes selected archive listings and document text for all copies that share the content. Deletion includes content under depth-zero rules. Depth-zero copies are not relisted. To refresh older listings, set a positive archive depth for the selected copies before running `attic scan E:\Backups --rebuild-content`.
 
@@ -315,6 +313,6 @@ Unreadable directories leave catalogue history intact. Files below them receive 
 mise run bank:check
 ```
 
-Checks cover vet, race tests and lint, plus Linux and Windows builds. Set `ATTIC_TEST_DATABASE_URL` to a superuser on disposable ParadeDB. Set `PGSCHEMA_TEST_DATABASE_URL` for the shared migration tests; both can name the same server. Tests create separate databases, drop successful fixtures and retain failures for inspection. CI requires ExifTool, Tesseract and Poppler. HTTP and Codex tests use local doubles and make no paid API calls.
+Checks cover vet, race tests and lint, plus Linux and Windows builds. Set `BANK_TEST_DATABASE_URL` to a superuser on disposable ParadeDB. Set `PGSCHEMA_TEST_DATABASE_URL` for the shared migration tests; both can name the same server. Tests create separate databases, drop successful fixtures and retain failures for inspection. CI requires ExifTool, Tesseract and Poppler. HTTP and Codex tests use local doubles and make no paid API calls.
 
 [DESIGN.md](DESIGN.md) describes catalogue identity and extraction decisions.

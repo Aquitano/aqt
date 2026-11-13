@@ -12,14 +12,15 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/db"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 const volume = "00000000-0000-0000-0000-000000000001"
 
 func TestAPIAnswersWithTaggedResults(t *testing.T) {
-	_, dsn := storetest.New(t)
+	_, dsn := storetest.NewCatalogue(t)
 	ctx := t.Context()
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
@@ -42,11 +43,12 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	// attic serve reads through a read-only store; so does the test.
-	st, err := store.OpenReadOnly(ctx, dsn)
+	pool, err := db.OpenReadOnly(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	defer pool.Close()
+	st := store.New(pool)
 	issued := tokens.Store{Path: filepath.Join(t.TempDir(), "tokens")}
 	token, err := issued.New("test", tokens.Scope{})
 	if err != nil {

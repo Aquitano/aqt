@@ -84,8 +84,6 @@ var (
 		Doc: "Nothing matches."}
 	Internal = Kind{Tag: "Internal", Status: http.StatusInternalServerError,
 		Doc: "The server failed; message says how."}
-	NotReady = Kind{Tag: "NotReady", Status: http.StatusServiceUnavailable,
-		Doc: "The file catalogue is still opening, or failed to; retry later."}
 )
 
 // EveryOperation can fail on any route: authentication, parameter validation

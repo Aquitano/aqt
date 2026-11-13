@@ -8,14 +8,14 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 // rewrittenDocument scans a document, rewrites it with other words and scans
 // again, returning the entry and both scans.
 func rewrittenDocument(t *testing.T) (st *store.Store, entry store.Hit, first, second Result) {
 	t.Helper()
-	st, _ = storetest.New(t)
+	st, _ = storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "plans/server.txt", "minecraft lobby for the class of 2017")
 	first = scanAt(t, st, root, testVolume)
@@ -79,7 +79,7 @@ func TestShowListsAnEntrysVersions(t *testing.T) {
 // Moving, renaming and touching a file rehash nothing new: the entry keeps
 // the one version it had.
 func TestMovesAndTouchesKeepOneVersion(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a/notes.txt", "same bytes throughout")
 	scanAt(t, st, root, testVolume)

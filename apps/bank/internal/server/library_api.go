@@ -254,12 +254,7 @@ func (s *Server) find(ctx context.Context, in *findInput) (*httpapi.Body[catalog
 	if err = messages.ValidateQuery(o.Query); err != nil {
 		return nil, invalid(err)
 	}
-	// A nil catalogue must reach Find as a nil interface.
-	var disks catalog.Disks
-	if s.catalogue != nil {
-		disks = s.catalogue
-	}
-	result, err := catalog.Find(ctx, s.db, disks, o.Query, messages, o)
+	result, err := catalog.Find(ctx, s.db, s.catalogue, o.Query, messages, o)
 	if _, noContact := errors.AsType[*store.ErrNoContact](err); noContact || errors.Is(err, store.ErrMailboxSource) {
 		return nil, invalid(err)
 	}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/db"
 )
 
 var errMissingFlagValue = errors.New("expected a value")
@@ -41,7 +42,6 @@ type cli struct {
 	Skips    skipsCmd    `cmd:"" help:"Show what a scan left out and why."`
 	Stats    statsCmd    `cmd:"" help:"Show catalogue totals."`
 	Config   configCmd   `cmd:"" help:"Show the configuration and effective rules."`
-	Migrate  migrateCmd  `cmd:"" help:"Upgrade the catalogue schema; read commands never do."`
 	Serve    serveCmd    `cmd:"" help:"Serve the catalogue over HTTP for agents."`
 	Token    tokenCmd    `cmd:"" help:"Manage the API tokens serve accepts."`
 	OpenAPI  openapiCmd  `cmd:"" name:"openapi" help:"Print the API's OpenAPI document."`
@@ -172,19 +172,25 @@ func printHelp(parser *kong.Kong, path []string) error {
 	return target.PrintUsage(false)
 }
 
-// The compose file publishes the database on IPv4 only. With "localhost" the
-// driver tries ::1 first, and Windows takes about a second to give up on it.
 func databaseURL() string {
-	return cmp.Or(os.Getenv("DATABASE_URL"), "postgres://attic:attic@127.0.0.1:5436/attic?sslmode=disable")
+	return cmp.Or(os.Getenv("DATABASE_URL"), db.DefaultURL)
 }
 
-// openStore migrates the catalogue first; only commands that write use it.
-func openStore(ctx context.Context) (*store.Store, error) {
-	return store.Open(ctx, databaseURL())
+// openStore is for the commands that write to the catalogue.
+func openStore(ctx context.Context) (*store.Store, func(), error) {
+	pool, err := db.Open(ctx, databaseURL())
+	if err != nil {
+		return nil, nil, err
+	}
+	return store.New(pool), pool.Close, nil
 }
 
-func openReadOnlyStore(ctx context.Context) (*store.Store, error) {
-	return store.OpenReadOnly(ctx, databaseURL())
+func openReadOnlyStore(ctx context.Context) (*store.Store, func(), error) {
+	pool, err := db.OpenReadOnly(ctx, databaseURL())
+	if err != nil {
+		return nil, nil, err
+	}
+	return store.New(pool), pool.Close, nil
 }
 
 // loadConfig reads --config when given, the default file otherwise, and

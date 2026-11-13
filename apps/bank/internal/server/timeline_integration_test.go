@@ -46,24 +46,15 @@ func TestTimelineMergesMessagesActivityAndFiles(t *testing.T) {
 	}
 	day := time.Date(2026, 8, 14, 0, 0, 0, 0, time.Local)
 
-	// Without a catalogue the archive still answers, and says what is missing.
+	s.catalogue = modifiedFiles{at: sent.Add(30 * time.Minute)}
 	got, err := c.Timeline(ctx, day, day.AddDate(0, 0, 1), nil, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Events) != 2 || got.Events[0].Title != "lunch?" || !strings.HasPrefix(got.Events[0].Ref, "bank:") || got.Events[1].Ref != activity.ID {
+	if len(got.Events) != 3 || got.Events[0].Title != "lunch?" || !strings.HasPrefix(got.Events[0].Ref, "bank:") || got.Events[2].Ref != activity.ID {
 		t.Fatalf("events = %+v", got.Events)
 	}
-	if !strings.Contains(strings.Join(got.Coverage, " "), "Files on disks are missing") {
-		t.Fatalf("coverage = %v", got.Coverage)
-	}
-
-	s.UseCatalogue(modifiedFiles{at: sent.Add(30 * time.Minute)})
-	got, err = c.Timeline(ctx, day, day.AddDate(0, 0, 1), nil, 50)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Events) != 3 || got.Events[1].Ref != "attic:abababababababab" || got.Events[1].Source != "Data" {
+	if got.Events[1].Ref != "attic:abababababababab" || got.Events[1].Source != "Data" {
 		t.Fatalf("the file is not between the message and the watch: %+v", got.Events)
 	}
 	if only, err := c.Timeline(ctx, day, day.AddDate(0, 0, 1), []string{"activity"}, 1); err != nil || len(only.Events) != 1 || len(only.Truncated) != 0 {

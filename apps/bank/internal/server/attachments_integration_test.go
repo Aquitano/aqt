@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
@@ -22,7 +23,7 @@ const testDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 // does not model.
 func attachmentServer(t *testing.T) (*Server, *store.Store) {
 	t.Helper()
-	st := storetest.New(t)
+	st, dsn := storetest.NewNamed(t)
 	dir := t.TempDir()
 	blobs, err := blob.New(filepath.Join(dir, "blobs"))
 	if err != nil {
@@ -42,7 +43,7 @@ func attachmentServer(t *testing.T) (*Server, *store.Store) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{db: st, read: st, blobs: blobs, dataDir: dir, archiveDir: filepath.Join(dir, "archive")}
+	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn)), blobs, dir, filepath.Join(dir, "archive"))
 	t.Cleanup(s.extraction.done.Wait)
 	return s, st
 }

@@ -13,22 +13,18 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/peterldowns/pgtestdb"
 
+	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 const urlVar = "BANK_TEST_DATABASE_URL"
 
-var migrator = pgschematest.Migrator(store.Migrations, func(ctx context.Context, dsn string) error {
-	st, err := store.Open(ctx, dsn)
-	if err != nil {
-		return err
-	}
-	st.Close()
-	return nil
-})
+var migrator = pgschematest.Migrator(db.Migrations, db.Migrate)
 
 // New returns a Store on a migrated database of its own, dropped when the
 // test passes.
@@ -43,15 +39,45 @@ func New(t *testing.T) *store.Store {
 // does not expose.
 func NewNamed(t *testing.T) (*store.Store, string) {
 	t.Helper()
-	dsn := pgschematest.Database(t, urlVar, migrator)
+	dsn := Migrated(t)
 	return Open(t, dsn), dsn
 }
 
-// NewEmpty returns a database no migration has touched, for tests that need
-// to seed a pre-migration state before opening a Store.
+// Migrated returns the connection string of a migrated database of its own.
+func Migrated(t *testing.T) string {
+	t.Helper()
+	return pgschematest.Database(t, urlVar, migrator)
+}
+
+// NewEmpty returns a database no migration has touched.
 func NewEmpty(t *testing.T) string {
 	t.Helper()
 	return pgschematest.Database(t, urlVar, pgtestdb.NoopMigrator{})
+}
+
+// NewCatalogue returns the file catalogue's Store on a migrated database of
+// its own, and the database's connection string.
+func NewCatalogue(t *testing.T) (*atticstore.Store, string) {
+	t.Helper()
+	dsn := Migrated(t)
+	return OpenCatalogue(t, dsn), dsn
+}
+
+// OpenCatalogue returns the file catalogue's Store on an existing test database.
+func OpenCatalogue(t *testing.T, dsn string) *atticstore.Store {
+	t.Helper()
+	return atticstore.New(Pool(t, dsn))
+}
+
+// Pool opens a pool on an existing test database, closed when the test ends.
+func Pool(t *testing.T, dsn string) *pgxpool.Pool {
+	t.Helper()
+	pool, err := db.Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
 }
 
 // Exec runs setup SQL against a test database before or beside a Store.
@@ -68,14 +94,12 @@ func Exec(t *testing.T, dsn, sql string, args ...any) {
 	}
 }
 
-// Open migrates and returns a Store for an existing test database.
+// Open returns a Store, with its query connection, for an existing test
+// database.
 func Open(t *testing.T, dsn string) *store.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(st.Close)
+	st := store.New(Pool(t, dsn))
+	t.Cleanup(st.CloseQuery)
 	queryDSN := QueryDSN(t, dsn)
 	Exec(t, dsn, `grant usage on schema public to bank_query_test; grant select on all tables in schema public to bank_query_test; grant select on all sequences in schema public to bank_query_test`)
 	if err := st.ConfigureQuery(context.Background(), queryDSN); err != nil {

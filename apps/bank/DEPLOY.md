@@ -119,7 +119,9 @@ upgrade. Provisioning uses psql directly and does not run app migrations.
         chmod 600 .env
         grep -q '^BANK_QUERY_DATABASE_URL=.' .env
     fi
-    BANK_VERSION=$(git rev-parse HEAD) docker compose up -d --build
+    BANK_VERSION=$(git rev-parse HEAD) docker compose build
+    docker compose run --rm bank migrate
+    BANK_VERSION=$(git rev-parse HEAD) docker compose up -d
     docker compose exec bank bank healthcheck
 )
 ```
@@ -128,26 +130,15 @@ The ingestion connection still runs migrations and imports. The separate query
 connection is validated at startup. A missing query URL disables ad-hoc SQL; an
 unsafe configured login fails startup.
 
-Tern now records the migration version in `public.schema_version`. On the first
-startup it checks that the legacy `schema_migrations` filenames form a contiguous
-prefix of the embedded migrations, baselines that version in one transaction,
-and applies only the remaining files. It retains the legacy table for audit.
-A gap or unknown filename fails the upgrade without baselining. Keep the old
-processes stopped during this one-off transition and do not run older binaries
-against a database once later Tern migrations have run. Restore the pre-upgrade
-dump to roll back a schema change.
+Tern records the schema version in `public.schema_version`. Restore the
+pre-upgrade dump to roll back a schema change.
 
-Migrations run when the server starts, and in any `docker compose run` that opens the database first. Take the dump before that, because no migration has a down step. A failed dump cannot replace the last good backup or reach the startup command.
-
-Mail imported before the mail metadata migrations (0011 to 0013) stays ungrouped until it is rebuilt. Proton and other EML or MBOX mail shows one conversation per message. Gmail keeps its threads but has no folders or provenance. Rebuild each mail source once, reading the preview before applying it:
-
-```sh
-docker compose run --rm bank mail rebuild --source gmail
-docker compose run --rm bank mail rebuild --source gmail --apply
-docker compose run --rm bank verify --source gmail
-```
-
-Repeat for `proton` and any other mail source. [MAIL.md](MAIL.md) explains the report.
+Migrations run in `bank migrate` and when the server starts. Every other command,
+including `attic`'s, stops with an error while the database is behind its binary,
+and an older binary stops instead of writing to a newer schema. A second migrator
+gives up after ten seconds instead of waiting for the first. Take the dump before
+migrating, because no migration has a down step. A failed dump cannot replace the
+last good backup or reach the migration.
 
 ### Health and shutdown
 
@@ -353,7 +344,7 @@ the stack itself. Everything below runs on the VPS in `/opt/aqt/apps/bank`.
 docker compose stop bank                       # no writes while wiping; db stays up
 
 docker compose exec -T db psql -U bank -d bank -c \
-  "truncate messages, blob_text, contacts, message_id_collapsed, sync_state,
+  "truncate messages, blob_text, contacts, sync_state,
    import_reports, mailboxes, mail_thread_nodes, mail_thread_conflicts,
    mail_thread_aliases, mail_rebuild_progress, library_items,
    library_collections, library_files, library_pages restart identity cascade;"
@@ -372,7 +363,7 @@ This includes `library_activity_aliases` and `library_activity_evidence`.
 Library ratings, statuses, notes, tags and collection edits exist only in Postgres,
 not in the raw archive, so a re-import does not bring them back.
 `message_tombstones` is not in the list, so messages retired with `bank retire` stay out of a re-import; add it to forget them.
-`schema_version` and the legacy `schema_migrations` table stay, so no migration re-runs; `restart identity` resets
+`schema_version` stays, so no migration re-runs; `restart identity` resets
 generated row IDs. If a backup cron from §7 is
 live, take one last snapshot first — the wipe is exactly the kind of action the
 backups exist for.

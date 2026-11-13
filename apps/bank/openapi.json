@@ -1861,42 +1861,6 @@
         ],
         "type": "object"
       },
-      "NotReadyError": {
-        "description": "The file catalogue is still opening, or failed to; retry later.",
-        "properties": {
-          "_tag": {
-            "enum": [
-              "NotReady"
-            ],
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "recovery": {
-            "properties": {
-              "action": {
-                "description": "What to do, in a few words.",
-                "type": "string"
-              },
-              "instructions": {
-                "description": "How to do it.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "action",
-              "instructions"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "_tag",
-          "message"
-        ],
-        "type": "object"
-      },
       "Page": {
         "additionalProperties": false,
         "properties": {
@@ -7751,16 +7715,6 @@
               }
             },
             "description": "Internal: the server failed; message says how."
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotReadyError"
-                }
-              }
-            },
-            "description": "NotReady: the file catalogue is still opening, or failed to; retry later."
           }
         },
         "summary": "Say what a cited ref names, whichever store holds it",

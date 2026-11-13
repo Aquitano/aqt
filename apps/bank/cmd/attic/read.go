@@ -60,11 +60,11 @@ type searchCmd struct {
 }
 
 func (cmd *searchCmd) Run(ctx context.Context) error {
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	vols, err := st.KnownVolumes(ctx)
 	if err != nil {
 		return err
@@ -222,11 +222,11 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	vols, err := st.KnownVolumes(ctx)
 	if err != nil {
 		return err
@@ -353,11 +353,11 @@ type volumesCmd struct {
 }
 
 func (cmd *volumesCmd) Run(ctx context.Context) error {
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	vols, err := st.Volumes(ctx)
 	if err != nil {
 		return err
@@ -395,11 +395,11 @@ func (cmd *dupesCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	dupes, wasted, err := st.Dupes(ctx, floor, cmd.SameVolume, cmd.Limit)
 	if err != nil {
 		return err
@@ -436,11 +436,11 @@ type skipsCmd struct {
 }
 
 func (cmd *skipsCmd) Run(ctx context.Context) error {
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	var sc store.ScanInfo
 	switch {
 	case cmd.Scan != 0:
@@ -494,11 +494,11 @@ type statsCmd struct {
 }
 
 func (cmd *statsCmd) Run(ctx context.Context) error {
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	t, err := st.Totals(ctx)
 	if err != nil {
 		return err
@@ -542,11 +542,11 @@ func (cmd *textCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	d, err := st.Text(ctx, id, ref)
 	if err != nil {
 		return err
@@ -639,11 +639,11 @@ type scansCmd struct {
 }
 
 func (cmd *scansCmd) Run(ctx context.Context) error {
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	volumeID := ""
 	if cmd.Volume != "" {
 		v, err := st.FindVolume(ctx, cmd.Volume)
@@ -683,11 +683,11 @@ func (cmd *metadataCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	d, err := st.Metadata(ctx, id, ref)
 	if err != nil {
 		return err

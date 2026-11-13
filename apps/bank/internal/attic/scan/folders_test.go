@@ -11,7 +11,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
@@ -35,7 +35,7 @@ func TestFolderConfigReadRefusesLinksAndOversizedFiles(t *testing.T) {
 }
 
 func TestMalformedFolderPatternStopsBeforeContentProcessing(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, config.FolderFile, "name_only = ['secret[*.txt']\n")
 	write(t, root, "secret.txt", "private text")
@@ -55,7 +55,7 @@ func TestMalformedFolderPatternStopsBeforeContentProcessing(t *testing.T) {
 }
 
 func TestFolderPolicyUsesLosslessFilesystemPath(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	dir := "folder\xff"
 	if err := os.Mkdir(filepath.Join(root, dir), 0o755); err != nil {
@@ -80,7 +80,7 @@ func TestFolderArchivePolicyKeepsHashAndMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("ATTIC_SCAN_METADATA_HELPER", "1")
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, config.FolderFile, "[archives]\ndepth = 0\n")
 	write(t, root, "backups/closed.zip", zipOf(t, map[string]string{"hidden.txt": "hidden"}))
@@ -120,7 +120,7 @@ func TestFolderArchivePolicyKeepsHashAndMetadata(t *testing.T) {
 func TestUnreadableFolderDoesNotProcessQueuedContent(t *testing.T) {
 	for _, noHash := range []bool{true, false} {
 		t.Run(fmt.Sprint(noHash), func(t *testing.T) {
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			write(t, root, "blocked/archive.zip", zipOf(t, map[string]string{"hidden.txt": "hidden"}))
 			scanAt(t, st, root, testVolume, func(o *Options) { o.NoHash = noHash })
@@ -142,7 +142,7 @@ func TestUnreadableFolderDoesNotProcessQueuedContent(t *testing.T) {
 }
 
 func TestFolderDepthUpgradesIdenticalArchiveCopies(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	data := zipOf(t, map[string]string{"fake.zip": "ordinary bytes", "nested.zip": zipOf(t, map[string]string{"deep.txt": "content"})})
 	write(t, root, "a/copy.zip", data)
@@ -167,7 +167,7 @@ func TestFolderPoliciesKeepCaseSensitiveSiblingsSeparate(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "a")); err == nil {
 		t.Skip("this directory is case-insensitive")
 	}
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	write(t, root, "A/.attic.toml", "[archives]\ndepth = 0\n")
 	write(t, root, "a/.attic.toml", "[archives]\ndepth = 2\n")
 	write(t, root, "A/closed.zip", zipOf(t, map[string]string{"hidden.txt": "hidden"}))
@@ -180,7 +180,7 @@ func TestFolderPoliciesKeepCaseSensitiveSiblingsSeparate(t *testing.T) {
 }
 
 func TestArchiveDepthUpgradeRetainsCacheAfterNestedSkip(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	deepest := zipOf(t, map[string]string{"deep.txt": "content", "closed.zip": zipOf(t, map[string]string{"unopened.txt": "content"})})
 	nested := zipOf(t, map[string]string{"cached.txt": "cached", "deeper.zip": deepest})
@@ -212,7 +212,7 @@ func TestSatisfiedFolderDepthSkipsArchiveTransaction(t *testing.T) {
 }
 
 func TestArchiveDepthUpgradeRemembersUnchangedUnpackLimit(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	small := zipOf(t, map[string]string{"small.txt": "cached"})
 	large := zipOf(t, map[string]string{"large.txt": strings.Repeat("larger", 10000)})
@@ -259,7 +259,7 @@ func TestArchiveUpgradeRemembersPermanentFailuresAtEachDepth(t *testing.T) {
 		{"damaged", whole[:len(whole)-10], "damaged"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			data := zipOf(t, map[string]string{"nested.zip": zipOf(t, map[string]string{"cached.txt": "cached", "closed.zip": tc.nested})})
 			for _, name := range []string{"a/first.zip", "a/second.zip", "b/copy.zip"} {
@@ -300,7 +300,7 @@ func TestArchiveUpgradeRemembersPermanentFailuresAtEachDepth(t *testing.T) {
 func TestArchiveUpgradeRetriesUnverifiedCopies(t *testing.T) {
 	for _, failure := range []string{"missing", "changed"} {
 		t.Run(failure, func(t *testing.T) {
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			data := zipOf(t, map[string]string{"nested.zip": zipOf(t, map[string]string{"deep.txt": "content"})})
 			write(t, root, "a.zip", data)
@@ -333,7 +333,7 @@ func TestArchiveUpgradeRetriesUnverifiedCopies(t *testing.T) {
 }
 
 func TestArchiveListingRetriesCopiesWithMissingVolumes(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	for _, folder := range []string{"a", "b"} {
 		write(t, root, folder+"/test.part01.rar", rarFixture(t, "test.part01.rar"))
@@ -350,7 +350,7 @@ func TestArchiveListingRetriesCopiesWithMissingVolumes(t *testing.T) {
 }
 
 func TestArchiveUpgradeRetriesCopiesWithDamagedVolumes(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	for _, folder := range []string{"a", "b"} {
 		for _, name := range []string{"test.part01.rar", "test.part02.rar"} {

@@ -12,7 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 	"lukechampine.com/blake3"
 )
@@ -20,7 +20,7 @@ import (
 func TestDerivedContentUsesHashedBytes(t *testing.T) {
 	for _, ext := range []string{"txt", "zip"} {
 		t.Run(ext, func(t *testing.T) {
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			original, replacement := "original", "replaced"
 			if ext == "zip" {
@@ -65,7 +65,7 @@ func TestDerivedContentUsesHashedBytes(t *testing.T) {
 }
 
 func TestNonArchiveSkipDoesNotCacheUnverifiedBytes(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "fake.zip", "not an archive")
 	res := scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Archives.Depth = 1 })
@@ -79,7 +79,7 @@ func TestNonArchiveSkipDoesNotCacheUnverifiedBytes(t *testing.T) {
 }
 
 func TestRebuildContentIsScopedAndPreservesOtherCaches(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "selected/a.txt", "original words")
 	write(t, root, "outside/copy.txt", "original words")
@@ -128,7 +128,7 @@ func TestRebuildContentIsScopedAndPreservesOtherCaches(t *testing.T) {
 }
 
 func TestRebuildContentWaitsForListingsAndCancelsAtomically(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a.txt", "retained text")
 	first := scanAt(t, st, root, testVolume)
@@ -176,7 +176,7 @@ func rarFixture(t *testing.T, name string) string {
 func TestMultipartArchivesVerifySiblingsAndPreserveNames(t *testing.T) {
 	for _, changed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("changed=%t", changed), func(t *testing.T) {
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			for _, name := range []string{"test.part01.rar", "test.part02.rar"} {
 				write(t, root, name, rarFixture(t, name))
@@ -230,7 +230,7 @@ func TestScanRejectsRebuildWithoutHashing(t *testing.T) {
 }
 
 func TestFileSystemWithoutChangeTimesRehashesBeforeReading(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a.txt", "original words")
 	scanAt(t, st, root, testVolume)
@@ -255,7 +255,7 @@ func TestRewriteThenRenameRehashesBeforeDerivedContent(t *testing.T) {
 	t.Setenv("ATTIC_SCAN_METADATA_HELPER", "1")
 	for _, ext := range []string{"txt", "zip", "mp4"} {
 		t.Run(ext, func(t *testing.T) {
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			original, replacement := "original", "replaced"
 			if ext == "zip" {
@@ -314,7 +314,7 @@ func TestLegacyHashProvenanceBeforeDirectExtraction(t *testing.T) {
 		for _, ext := range []string{"txt", "zip"} {
 			for _, stale := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%s/stale=%t", fs, ext, stale), func(t *testing.T) {
-					st, dsn := storetest.New(t)
+					st, dsn := storetest.NewCatalogue(t)
 					root := t.TempDir()
 					original, replacement := "original", "replaced"
 					if ext == "zip" {

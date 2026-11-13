@@ -5,7 +5,7 @@ Personal archive and library: messages, media, viewing activity, playlists, file
 Bank imports personal ChatGPT and Claude.ai exports. Turnstash owns coding-session
 ingestion. Removing an importer does not delete previously archived records.
 
-The same Go module holds [attic](attic/README.md), the catalogue of files on disks that come and go. Its tables are in the `attic` schema of this database, `cmd/attic` scans, and `bank serve` answers its read API below `/attic` with bank's tokens, and `bank search` returns its files beside messages and media.
+The same Go module holds [attic](attic/README.md), the catalogue of files on disks that come and go. Its tables are in this database beside the archive's, `cmd/attic` scans, and `bank serve` answers its read API below `/attic` with bank's tokens, and `bank search` returns its files beside messages and media.
 
 Routes are typed Go handlers in `internal/server/*_api.go`, on the operation and error types in `internal/httpapi` that attic's API also uses: parameters and bodies are declared on structs, so their parsing and bounds checks are generated. `GET /openapi.json` describes them, and a failure is JSON with a `_tag`, a `message` and, where the caller can act, a `recovery`. A rejected parameter answers 422. `openapi.json` is the committed copy: regenerate it with `go run ./cmd/bank openapi > openapi.json`, because a test fails while it is stale. Six routes that stream bytes or take uploads are still plain handlers that answer errors as `{"error": "..."}` and are not in the document: blob and preview downloads, imports, library file and page uploads, and replacing an attachment's text.
 
@@ -16,6 +16,7 @@ See [MAIL.md](MAIL.md) for folder-preserving imports, mail filters, conversation
 ```sh
 docker compose up -d          # ParadeDB (Postgres + pg_search)
 go build -o bank ./cmd/bank
+./bank migrate                # create or upgrade the schema
 
 ./bank auth gmail             # once; then:
 ./bank sync                   # incremental Gmail pull (cron this)
@@ -125,9 +126,10 @@ see [IMAP.md](IMAP.md) and [imap.example.json](imap.example.json). The collector
 runs beside Bridge or on another client machine and uploads to `BANK_URL`.
 It keeps local checkpoints, retries failures and preserves mailbox read flags.
 
-Schema migrations are embedded and run automatically through Tern on startup.
-Existing filename-based history is checked and baselined once without replaying
-applied migrations. See [DEPLOY.md](DEPLOY.md) before upgrading.
+Schema migrations are embedded and run through Tern in `bank migrate` and when
+`bank serve` starts. Every other command of `bank` and `attic` stops with an
+error when the database is at another schema version. See [DEPLOY.md](DEPLOY.md)
+before upgrading.
 
 Ad-hoc SQL requires `BANK_QUERY_DATABASE_URL`, a separate restricted login created
 with [deploy/query-role.sql](deploy/query-role.sql). It never falls back to the

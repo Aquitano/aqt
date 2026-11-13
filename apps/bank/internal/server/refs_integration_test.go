@@ -34,7 +34,7 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 	digest := blake3.Sum256(bytes)
 	onDisk := view.Content{Occurrences: []view.Place{{Display: `E:\Docs\plan.pdf`}}}
 	onDisk.BLAKE3, onDisk.Ref = hex.EncodeToString(digest[:]), hex.EncodeToString(digest[:8])
-	s.UseCatalogue(modifiedFiles{content: onDisk})
+	s.catalogue = modifiedFiles{content: onDisk}
 
 	has := func(resolved catalog.Resolved, relation, ref, title string) bool {
 		for _, link := range resolved.Links {

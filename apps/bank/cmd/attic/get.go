@@ -24,11 +24,11 @@ func (cmd *getCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	content, err := st.Retrieval(ctx, id, ref)
 	if err != nil {
 		return err

@@ -59,7 +59,7 @@ type TimelineOptions struct {
 	Limit int
 }
 
-// BuildTimeline merges what happened in the window, oldest first. files may be nil.
+// BuildTimeline merges what happened in the window, oldest first.
 func BuildTimeline(ctx context.Context, dated Dated, files Files, o TimelineOptions) (Timeline, error) {
 	out := Timeline{Events: []Event{}, Truncated: []string{}, Coverage: []string{}}
 	if o.Since.IsZero() || !o.Until.After(o.Since) {
@@ -104,31 +104,22 @@ func BuildTimeline(ctx context.Context, dated Dated, files Files, o TimelineOpti
 		out.Coverage = append(out.Coverage, "Activity an export recorded without a date is left out.")
 	}
 	if wants("file") {
-		switch places, err := modified(ctx, files, o); {
-		case err != nil:
-			// The archive answers without the catalogue, which may still be migrating.
-			out.Coverage = append(out.Coverage, "Files on disks are missing from this timeline: "+err.Error()+".")
-		default:
-			if len(places) > o.Limit {
-				out.Truncated, places = append(out.Truncated, "file"), places[:o.Limit]
-			}
-			for _, p := range places {
-				e := Event{At: *p.Modified, Precision: "instant", Group: "file", Kind: "file", Source: p.Volume, Title: p.Display}
-				if p.Ref != "" {
-					e.Ref = "attic:" + p.Ref
-				}
-				out.Events = append(out.Events, e)
-			}
-			out.Coverage = append(out.Coverage, "A file appears at its last modification, as its disk recorded it; earlier edits and files that have since gone missing are left out.")
+		places, err := files.ModifiedFiles(ctx, o.Since, o.Until, o.Limit+1)
+		if err != nil {
+			return out, err
 		}
+		if len(places) > o.Limit {
+			out.Truncated, places = append(out.Truncated, "file"), places[:o.Limit]
+		}
+		for _, p := range places {
+			e := Event{At: *p.Modified, Precision: "instant", Group: "file", Kind: "file", Source: p.Volume, Title: p.Display}
+			if p.Ref != "" {
+				e.Ref = "attic:" + p.Ref
+			}
+			out.Events = append(out.Events, e)
+		}
+		out.Coverage = append(out.Coverage, "A file appears at its last modification, as its disk recorded it; earlier edits and files that have since gone missing are left out.")
 	}
 	slices.SortStableFunc(out.Events, func(a, b Event) int { return a.At.Compare(b.At) })
 	return out, nil
-}
-
-func modified(ctx context.Context, files Files, o TimelineOptions) ([]view.Place, error) {
-	if files == nil {
-		return nil, fmt.Errorf("this server has no file catalogue")
-	}
-	return files.ModifiedFiles(ctx, o.Since, o.Until, o.Limit+1)
 }

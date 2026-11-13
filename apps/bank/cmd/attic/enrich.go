@@ -63,11 +63,11 @@ func (cmd *enrichCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openStore(ctx)
+	st, closeStore, err := openStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	vols, err := st.KnownVolumes(ctx)
 	if err != nil {
 		return err
@@ -130,11 +130,11 @@ func (cmd *analysisCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	results, err := st.Analyses(ctx, id, ref)
 	if err != nil {
 		return err

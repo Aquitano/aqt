@@ -39,7 +39,7 @@ type Link struct {
 	Href     string `json:"href"`
 }
 
-// Resolve finds what ref names, whichever store holds it. contents may be nil.
+// Resolve finds what ref names, whichever store holds it.
 func Resolve(ctx context.Context, archive *store.Store, contents Contents, ref string) (Resolved, error) {
 	ref = strings.TrimSpace(ref)
 	bare := strings.ToLower(strings.TrimPrefix(ref, "bank:"))
@@ -140,9 +140,6 @@ func resolveBlob(ctx context.Context, archive *store.Store, contents Contents, s
 }
 
 func resolveContent(ctx context.Context, archive *store.Store, contents Contents, ref string) (Resolved, error) {
-	if contents == nil {
-		return Resolved{}, fmt.Errorf("%q: this server has no file catalogue: %w", ref, ErrNoRecord)
-	}
 	content, err := contents.Content(ctx, ref)
 	if errors.Is(err, atticstore.ErrNotFound) {
 		return Resolved{}, fmt.Errorf("%q: %w", ref, ErrNoRecord)
@@ -173,20 +170,19 @@ func resolveContent(ctx context.Context, archive *store.Store, contents Contents
 }
 
 // onDisk lists the places on disks that hold a stored blob's bytes. It is
-// empty until the digest pass has read the blob, and when the catalogue
-// cannot answer: the archive's record stands without it.
+// empty until the digest pass has read the blob, and while no disk holds them.
 func onDisk(ctx context.Context, archive *store.Store, contents Contents, sum string) ([]Link, error) {
 	links := []Link{}
-	if contents == nil {
-		return links, nil
-	}
 	digest, err := archive.BlobDigest(ctx, sum)
 	if err != nil || digest == nil {
 		return links, err
 	}
 	content, err := contents.Content(ctx, hex.EncodeToString(digest))
-	if err != nil {
+	if errors.Is(err, atticstore.ErrNotFound) {
 		return links, nil
+	}
+	if err != nil {
+		return links, err
 	}
 	for _, place := range content.Occurrences {
 		if place.Version != atticstore.VersionPrevious {

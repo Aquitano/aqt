@@ -32,7 +32,7 @@ Register-ScheduledTask -TaskName 'attic nightly scan' -TaskPath '\aqt\' -Action 
     -Trigger $trigger -Settings $settings
 ```
 
-The task uses Windows PowerShell, which every Windows install has, and `-ExecutionPolicy Bypass` lets it run the script under the default `Restricted` policy. It runs while you are signed in, and `-StartWhenAvailable` catches up after a night the PC was off. The catalogue database must be running. Each scan writes a log to `%LOCALAPPDATA%\attic\logs`, and `attic scans` lists the runs. `Start-ScheduledTask -TaskPath '\aqt\' -TaskName 'attic nightly scan'` runs it once now.
+The task uses Windows PowerShell, which every Windows install has, and `-ExecutionPolicy Bypass` lets it run the script under the default `Restricted` policy. It runs while you are signed in, and `-StartWhenAvailable` catches up after a night the PC was off. Bank's database must be running, at the schema version of this attic build (`bank migrate`). Each scan writes a log to `%LOCALAPPDATA%\attic\logs`, and `attic scans` lists the runs. `Start-ScheduledTask -TaskPath '\aqt\' -TaskName 'attic nightly scan'` runs it once now.
 
 ## macOS
 

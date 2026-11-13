@@ -12,7 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
@@ -46,7 +46,7 @@ func requireExifTool(t *testing.T) string {
 
 func TestMetadataScanDeduplicatesAndSearches(t *testing.T) {
 	binary := requireExifTool(t)
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	pngFile(t, root, "foto über.png")
 	data, err := os.ReadFile(filepath.Join(root, "foto über.png"))
@@ -98,7 +98,7 @@ func TestMetadataScanDeduplicatesAndSearches(t *testing.T) {
 
 func TestMetadataSizeCapRetriesAndMissingToolKeepsQueue(t *testing.T) {
 	binary := requireExifTool(t)
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	pngFile(t, root, "image.png")
 	cfg := config.Config{Metadata: config.Metadata{Enabled: true, ExifTool: "nonexistent-attic-exiftool", Temp: t.TempDir(), MaxBytes: 1}}

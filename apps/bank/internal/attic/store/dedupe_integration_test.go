@@ -6,11 +6,11 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 func TestDedupePlanPairsKeptAndExtraCopies(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	ctx := t.Context()
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {

@@ -32,7 +32,7 @@ Deliberately inside ToS everywhere. If WhatsApp manual export gets old, the esca
 
 ## Data model
 
-Correspondence normalizes to `messages`; source-specific richness stays in the raw archive. Media and personal tracking use separate typed tables introduced by `0014_library.sql`. Their search projections do not change message identities or citations.
+Correspondence normalizes to `messages`; source-specific richness stays in the raw archive. Media and personal tracking use separate typed tables. Their search projections do not change message identities or citations.
 
 - `messages(id, source, external_id, thread_id, sender, recipients[], subject, body, sent_at, raw_ref, ingested_at)`
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.
@@ -42,7 +42,6 @@ Correspondence normalizes to `messages`; source-specific richness stays in the r
 - `attachments(id, message_id, filename, mime_type, size_bytes, sha256)` — bytes live in the blob store, not the DB.
 - `blob_text(sha256, text, extractor, status)` + a denormalized `messages.attachment_text` — text read out of attachments, keyed on content so a document attached to forty messages is extracted once. The column is what the BM25 index sees; `store.RefreshAttachmentText` recomputes it in one idempotent statement, so there is no trigger and no bookkeeping to drift. `bank extract` and text edits recompute every message; the passes after an upload pass a cutoff and recompute only messages whose attachments were stored or extracted since the previous pass began. One index means one score and working snippets; two indexes would mean inventing a fusion rule.
 - `contacts(id, name, note)` + `contact_aliases(contact_id, source, value, value_norm)` — one person, many source-specific identities. Aliases are attached by hand and match everywhere unless scoped to a source; nothing merges automatically, so a wrong attachment is undone by detaching it and the identity each source recorded is never rewritten.
-- `message_id_collapsed(…, collapsed_into, collapsed_at)` — rows the Message-ID uniqueness migration deleted, kept so an unattended collapse stays reviewable and the raw files it orphaned stay reachable.
 - `message_tombstones(source, external_id, ref, …, replacement, retired_at)` — rows `bank retire` deleted. Imports skip a tombstoned `(source, external_id)`, and `bank show` resolves a tombstoned ref to it. The ref is stored here because no row is left to compute it from.
 - BM25 index over `subject, body, sender, recipients, attachment_text` via `pg_search`; results are ordered by score, then `sent_at`, then `id` — the id is what makes it a total order, so a page means the same thing twice. Paging is `--offset`, capped at 10000: every offset re-ranks the whole match set, and past that narrowing the query beats paging through it. Search defaults to any-word matching; `--match all` requires each whitespace-separated term across the searchable fields, and `--match phrase` requires adjacent tokens in order within one field. Exact matches receive additional weight and subject matches receive three times the field weight. Fuzzy matching uses `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
 
@@ -96,9 +95,9 @@ bank serve [--listen addr]              # HTTP API for remote CLIs (default 127.
 bank token new|list|revoke <name>       # bearer tokens for bank serve
 ```
 
-With `BANK_URL` (and `BANK_TOKEN`) set, `search`, `thread`, `show`, `stats`, `contact`, `import` and `fetch` talk to a remote `bank serve` instead of Postgres — same flags, same output. `auth`, `sync`, `serve`, `token`, `verify`, `retire`, `reimport` and `import inbox` are always local: they need the archive, the blob store or the token file on the same box. All of them except `auth` and `serve` refuse outright when `BANK_URL` is set — acting on the wrong box is the split-brain the Decisions table's "Remote access" row exists to prevent, and the CLI should not need the operator to remember which side a command belongs on.
+With `BANK_URL` (and `BANK_TOKEN`) set, `search`, `thread`, `show`, `stats`, `contact`, `import` and `fetch` talk to a remote `bank serve` instead of Postgres — same flags, same output. `auth`, `sync`, `migrate`, `serve`, `token`, `verify`, `retire`, `reimport` and `import inbox` are always local: they need the archive, the blob store or the token file on the same box. All of them except `auth` and `serve` refuse outright when `BANK_URL` is set — acting on the wrong box is the split-brain the Decisions table's "Remote access" row exists to prevent, and the CLI should not need the operator to remember which side a command belongs on.
 
-Migrations are embedded in the binary and run automatically on startup — idempotent, no separate step.
+Migrations are embedded in the binary. `bank migrate` and `bank serve` apply them; every other command checks the schema version and stops when the database is behind or ahead of the binary.
 
 ## Milestones
 

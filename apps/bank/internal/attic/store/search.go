@@ -9,15 +9,15 @@ import (
 
 // The tokenizers searchWords casts query words to. ParadeDB records each
 // tokenizer configuration the first time it parses one, in
-// paradedb._typmod_cache. A read-only session cannot make that write, so Open
-// parses these once with write access.
+// paradedb._typmod_cache. A read-only session cannot make that write, so
+// migrating runs RecordTokenizers with write access.
 const (
 	wordTokenizer = `pdb.unicode_words('ascii_folding=true')`
 	codeTokenizer = `pdb.source_code('ascii_folding=true')`
 	gramTokenizer = `pdb.ngram(3, 3, 'ascii_folding=true')`
 )
 
-const recordTokenizers = `select null::` + wordTokenizer + `, null::` + codeTokenizer + `, null::` + gramTokenizer
+const RecordTokenizers = `select null::` + wordTokenizer + `, null::` + codeTokenizer + `, null::` + gramTokenizer
 
 func (s *Store) searchWords(ctx context.Context, words []string, names bool) ([]string, error) {
 	if len(words) == 0 {

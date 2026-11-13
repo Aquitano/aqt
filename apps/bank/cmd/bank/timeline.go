@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
@@ -45,13 +44,7 @@ func (c *timelineCmd) Run(ctx context.Context) error {
 			return openErr
 		}
 		defer st.Close()
-		// A database without the catalogue answers from the archive alone.
-		var files catalog.Files
-		if catalogue, openErr := attic.Open(ctx, databaseURL()); openErr == nil {
-			defer catalogue.Close()
-			files = catalogue
-		}
-		result, err = catalog.BuildTimeline(ctx, st, files, catalog.TimelineOptions{Since: since, Until: until, Groups: c.Group, Limit: c.Limit})
+		result, err = catalog.BuildTimeline(ctx, st, st.catalogue, catalog.TimelineOptions{Since: since, Until: until, Groups: c.Group, Limit: c.Limit})
 	}
 	if err != nil {
 		return err
@@ -94,13 +87,7 @@ func (c *refCmd) Run(ctx context.Context) error {
 			return openErr
 		}
 		defer st.Close()
-		// A database without the catalogue resolves the archive's refs alone.
-		var contents catalog.Contents
-		if catalogue, openErr := attic.Open(ctx, databaseURL()); openErr == nil {
-			defer catalogue.Close()
-			contents = catalogue
-		}
-		resolved, err = catalog.Resolve(ctx, st, contents, c.Ref)
+		resolved, err = catalog.Resolve(ctx, st.Store, st.catalogue, c.Ref)
 	}
 	if err != nil {
 		return err

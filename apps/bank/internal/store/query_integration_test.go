@@ -135,12 +135,8 @@ func TestQueryLoginCannotEscapeReadOnly(t *testing.T) {
 
 func TestQueryConfigurationRejectsPrivilegedConnections(t *testing.T) {
 	ctx := context.Background()
-	_, dsn := storetest.NewNamed(t)
-	st, err := store.Open(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	dsn := storetest.Migrated(t)
+	st := store.New(storetest.Pool(t, dsn))
 	if _, err := st.Query(ctx, "select 1", 1); err == nil {
 		t.Fatal("missing query connection fell back to writer")
 	}

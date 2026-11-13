@@ -111,11 +111,3 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
-// NotReady answers for a catalogue its host has not opened yet.
-func NotReady(w http.ResponseWriter) { httpapi.Write(w, NotReadyError()) }
-
-func NotReadyError() *httpapi.Error {
-	return httpapi.NotReady.New("the catalogue is migrating or its migration failed; the server log says which").
-		Recover("Retry later", "Retry in a minute. If it persists, ask the owner to read the server log.")
-}

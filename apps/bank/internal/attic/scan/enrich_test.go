@@ -17,7 +17,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/enrich"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
@@ -35,7 +35,7 @@ func (p *visionStub) Read(ctx context.Context, path string) (ai.Result, error) {
 }
 
 func TestEnrichDedupRetriesVersionsAndSearch(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a.png", "same image")
 	write(t, root, "b.png", "same image")
@@ -148,7 +148,7 @@ func TestEnrichDedupRetriesVersionsAndSearch(t *testing.T) {
 }
 
 func TestEnrichSelectionRulesChangedFilesLimitAndCancel(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a.png", "first")
 	write(t, root, "b.png", "second")
@@ -217,7 +217,7 @@ func TestEnrichSelectionRulesChangedFilesLimitAndCancel(t *testing.T) {
 }
 
 func TestEnrichPDFQueueAndFolderSelection(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "docs/scanned.pdf", "%PDF-1.4 scanned fixture")
 	write(t, root, "docs/failed.pdf", "%PDF-1.4 broken fixture")
@@ -240,7 +240,7 @@ func TestEnrichPDFQueueAndFolderSelection(t *testing.T) {
 }
 
 func TestEnrichNewWorkPrecedesPermanentFailures(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a.png", "poison")
 	write(t, root, "b.png", "good")
@@ -280,7 +280,7 @@ func TestEnrichUnavailableProviderAndRejectedInput(t *testing.T) {
 	for _, mode := range []string{"unavailable", "disconnect", "rejected"} {
 		t.Run(mode, func(t *testing.T) {
 			unavailable := mode != "rejected"
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			data, err := os.ReadFile("../ai/testdata/invoice.png")
 			if err != nil {

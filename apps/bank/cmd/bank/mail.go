@@ -8,6 +8,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -31,18 +32,16 @@ func (c *mailRebuildCmd) Run(ctx context.Context, mail *mailCmd) error {
 	if client.FromEnv() != nil {
 		return fmt.Errorf("mail rebuild is owner-local; unset BANK_URL and run beside the archive database")
 	}
-	var database *store.Store
-	var err error
+	open := db.OpenReadOnly
 	if c.Apply {
-		database, err = openStore(ctx)
-	} else {
-		database, err = store.OpenReadOnly(ctx, databaseURL())
+		open = db.Open
 	}
+	pool, err := open(ctx, databaseURL())
 	if err != nil {
 		return err
 	}
-	defer database.Close()
-	report, err := eml.RebuildMail(ctx, database, filepath.Join(dataDir(), "archive"), mail.Source, c.Apply)
+	defer pool.Close()
+	report, err := eml.RebuildMail(ctx, store.New(pool), filepath.Join(dataDir(), "archive"), mail.Source, c.Apply)
 	return errors.Join(err, printJSON(report))
 }
 

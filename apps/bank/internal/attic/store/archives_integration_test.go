@@ -13,12 +13,12 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 func archiveCacheScan(t *testing.T) (*store.Scan, *pgx.Conn, int64) {
 	t.Helper()
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	ctx := t.Context()
 	v, err := st.ResolveVolume(ctx, disk.Volume{Fingerprint: disk.Fingerprint{FS: "TEST", Serial: "archives"}}, "", false)
 	if err != nil {

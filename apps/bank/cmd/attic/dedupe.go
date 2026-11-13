@@ -68,11 +68,11 @@ type planGroup struct {
 }
 
 func (cmd *dedupePlanCmd) Run(ctx context.Context) error {
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	groups, mounts, err := cmd.plan(ctx, st)
 	if err != nil {
 		return err
@@ -118,11 +118,11 @@ type dedupeApplyCmd struct {
 }
 
 func (cmd *dedupeApplyCmd) Run(ctx context.Context) error {
-	st, err := openStore(ctx)
+	st, closeStore, err := openStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	groups, mounts, err := cmd.plan(ctx, st)
 	if err != nil {
 		return err

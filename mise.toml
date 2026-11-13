@@ -97,11 +97,6 @@ dir = "apps/bank"
 env = { GOWORK = "off", GOOS = "windows" }
 run = ["go vet ./...", "golangci-lint run"]
 
-[tasks."attic:db"]
-description = "Start a ParadeDB for a catalogue that is not in bank's database"
-dir = "apps/bank/attic"
-run = "docker compose up -d --wait"
-
 [tasks."bank:dev"]
 dir = "apps/bank"
 run = "go run ./cmd/bank serve"

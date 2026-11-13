@@ -1,13 +1,11 @@
-// Package store owns the Postgres schema and all queries. Migrations are
-// embedded and applied automatically on Open, so the binary is self-contained.
+// Package store holds every query on the archive's tables. The schema is
+// package db's.
 package store
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"fmt"
-	"io/fs"
 	"strconv"
 	"strings"
 	"time"
@@ -15,19 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/aquitano/aqt/packages/go/pgschema"
 )
-
-//go:embed migrations/*.sql
-var migrationFiles embed.FS
-
-// Migrations is the schema history Open applies, one numbered file per step.
-var Migrations, _ = fs.Sub(migrationFiles, "migrations")
-
-// migrationLock is an arbitrary but fixed advisory-lock key ("bankmig"). Every
-// process takes it before converting legacy migration history or applying DDL.
-const migrationLock int64 = 0x62616e6b6d6967
 
 type Store struct {
 	pool      *pgxpool.Pool
@@ -164,43 +150,17 @@ func ValidRef(s string) error {
 	return nil
 }
 
-func Open(ctx context.Context, databaseURL string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		return nil, err
-	}
-	if err := pgschema.Migrate(ctx, pool, migrationLock, Migrations); err != nil {
-		pool.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
-	}
-	return &Store{pool: pool}, nil
-}
+// New queries through pool, which stays its opener's to close.
+func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
-func (s *Store) Close() {
+// CloseQuery closes the connection ConfigureQuery opened.
+func (s *Store) CloseQuery() {
 	if s.queryPool != nil {
 		s.queryPool.Close()
 	}
-	s.pool.Close()
 }
 
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
-
-func OpenReadOnly(ctx context.Context, databaseURL string) (*Store, error) {
-	config, err := pgxpool.ParseConfig(databaseURL)
-	if err != nil {
-		return nil, err
-	}
-	config.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
-	pool, err := pgxpool.NewWithConfig(ctx, config)
-	if err != nil {
-		return nil, err
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-	return &Store{pool: pool}, nil
-}
 
 // InsertMessages inserts a batch atomically and returns one id per input, in
 // input order. An id of zero means that row was already present or its key was

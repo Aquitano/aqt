@@ -1,7 +1,6 @@
 package attic_test
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +10,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
@@ -40,35 +39,14 @@ func stats(t *testing.T, url, token string) int {
 	return res.StatusCode
 }
 
-func TestHostKeepsServingWhileTheCatalogueCannotOpen(t *testing.T) {
-	// Nothing listens here, so the migration fails.
-	ctx, cancel := context.WithCancel(t.Context())
-	catalogue := attic.Start(ctx, "postgres://attic:attic@127.0.0.1:1/attic?sslmode=disable&connect_timeout=1")
-	defer catalogue.Close()
-	defer cancel()
+func TestCatalogueServesAndSearches(t *testing.T) {
+	st, _ := storetest.NewCatalogue(t)
+	catalogue := attic.New(st)
 	h, token := host(t)
 	server := httptest.NewServer(catalogue.Handler(h))
 	defer server.Close()
-	if status := stats(t, server.URL, token); status != http.StatusServiceUnavailable {
-		t.Fatalf("status = %d, want 503", status)
-	}
-	if _, err := catalogue.SearchDisks(t.Context(), "report", 5, 0); err == nil {
-		t.Fatal("search answered without a catalogue")
-	}
-}
-
-func TestStartMigratesAnEmptyDatabaseThenServes(t *testing.T) {
-	catalogue := attic.Start(t.Context(), storetest.Empty(t))
-	defer catalogue.Close()
-	h, token := host(t)
-	server := httptest.NewServer(catalogue.Handler(h))
-	defer server.Close()
-	deadline := time.Now().Add(2 * time.Minute)
-	for stats(t, server.URL, token) != http.StatusOK {
-		if time.Now().After(deadline) {
-			t.Fatal("the catalogue never became ready")
-		}
-		time.Sleep(100 * time.Millisecond)
+	if status := stats(t, server.URL, token); status != http.StatusOK {
+		t.Fatalf("stats answered %d", status)
 	}
 	if _, err := catalogue.SearchDisks(t.Context(), "report", 5, 0); err != nil {
 		t.Fatal(err)

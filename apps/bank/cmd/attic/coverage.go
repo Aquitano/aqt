@@ -25,11 +25,11 @@ func (cmd *coverageCmd) Run(ctx context.Context) error {
 	if cmd.Limit < 1 || cmd.Limit > 1000 || cmd.Offset < 0 {
 		return errors.New("coverage needs a limit from 1 to 1000 and a non-negative offset")
 	}
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	o := store.CoverageOptions{Limit: cmd.Limit, Offset: cmd.Offset}
 	if cmd.Volume != "" {
 		v, err := st.FindVolume(ctx, cmd.Volume)

@@ -11,7 +11,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
@@ -51,7 +50,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 			"bytes are in the other store: a message attachment's copies on disks, or the messages and library " +
 			"files that hold a disk file's bytes. Those links appear once the server has read the blob's BLAKE3 " +
 			"digest, shortly after an import.",
-		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef, httpapi.NotReady},
+		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef},
 	}.For(api), s.resolve)
 	httpapi.Finish(api)
 	return api
@@ -91,20 +90,13 @@ type resolveInput struct {
 }
 
 func (s *Server) resolve(ctx context.Context, in *resolveInput) (*httpapi.Body[catalog.Resolved], error) {
-	// A nil catalogue must reach Resolve as a nil interface.
-	var contents catalog.Contents
-	if s.catalogue != nil {
-		contents = s.catalogue
-	}
-	resolved, err := catalog.Resolve(ctx, s.db, contents, in.Ref)
+	resolved, err := catalog.Resolve(ctx, s.db, s.catalogue, in.Ref)
 	if ambiguous, ok := errors.AsType[*atticstore.AmbiguousRefError](err); ok {
 		return nil, atticapi.AmbiguousRef.New(err.Error()).With("candidates", ambiguous.Candidates)
 	}
 	switch {
 	case errors.Is(err, catalog.ErrNoRecord):
 		return nil, httpapi.NotFound.New(err.Error())
-	case errors.Is(err, attic.ErrNotReady):
-		return nil, atticapi.NotReadyError()
 	case err != nil:
 		return nil, internal(err)
 	}
@@ -129,12 +121,7 @@ func (s *Server) timeline(ctx context.Context, in *timelineInput) (*httpapi.Body
 			return nil, httpapi.Invalid.New("until is a YYYY-MM-DD date after since")
 		}
 	}
-	// A nil catalogue must reach BuildTimeline as a nil interface.
-	var files catalog.Files
-	if s.catalogue != nil {
-		files = s.catalogue
-	}
-	result, err := catalog.BuildTimeline(ctx, s.db, files, catalog.TimelineOptions{Since: since, Until: until, Groups: in.Group, Limit: in.Limit})
+	result, err := catalog.BuildTimeline(ctx, s.db, s.catalogue, catalog.TimelineOptions{Since: since, Until: until, Groups: in.Group, Limit: in.Limit})
 	if err != nil {
 		return nil, internal(err)
 	}

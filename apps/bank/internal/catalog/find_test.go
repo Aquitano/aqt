@@ -76,9 +76,8 @@ func TestFindAddsFilesOnDisksUnlessTheSearchIsScopedElsewhere(t *testing.T) {
 		t.Fatalf("the catalogue was searched %d times, want once", found.calls)
 	}
 
-	// A catalogue that cannot answer costs its group, not the archive's results.
-	result, err = Find(ctx, emptyReader{}, &disks{err: errors.New("not ready")}, "minecraft", store.SearchOpts{Limit: 20}, library.ListOptions{})
-	if err != nil || len(result.Disks.Entries) != 0 || !strings.Contains(strings.Join(result.Coverage, " "), "not ready") {
-		t.Fatalf("failing catalogue: %+v, coverage %v, %v", result.Disks, result.Coverage, err)
+	failure := errors.New("connection reset")
+	if _, err = Find(ctx, emptyReader{}, &disks{err: failure}, "minecraft", store.SearchOpts{Limit: 20}, library.ListOptions{}); !errors.Is(err, failure) {
+		t.Fatalf("a failing catalogue answered %v", err)
 	}
 }

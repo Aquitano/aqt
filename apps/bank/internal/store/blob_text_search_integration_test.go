@@ -2,7 +2,6 @@ package store_test
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,41 +12,18 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func TestBlobTextSearchMigrationPreservesOversizedDocuments(t *testing.T) {
+func TestOversizedBlobTextStaysSearchable(t *testing.T) {
 	ctx := context.Background()
-	dsn := storetest.NewEmpty(t)
+	st, dsn := storetest.NewNamed(t)
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	if _, err = conn.Exec(ctx, `create table schema_migrations(filename text primary key,applied_at timestamptz not null default now())`); err != nil {
-		t.Fatal(err)
-	}
-	migrationFiles, err := os.ReadDir("migrations")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, file := range migrationFiles {
-		if file.Name() >= "0018_blob_text_search.sql" {
-			break
-		}
-		migration, err := os.ReadFile("migrations/" + file.Name())
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err = conn.Exec(ctx, string(migration)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err = conn.Exec(ctx, `insert into schema_migrations(filename) values($1)`, file.Name()); err != nil {
-			t.Fatal(err)
-		}
-	}
 	sum := strings.Repeat("a", 64)
 	if _, err = conn.Exec(ctx, `insert into blob_text(sha256,text,status) select $1,'phrase head ' || string_agg('term'||g,' ') || ' suffixneedle','ok' from generate_series(1,300000)g`, sum); err != nil {
 		t.Fatal(err)
 	}
-	st := storetest.Open(t, dsn)
 	var oversized bool
 	if err = conn.QueryRow(ctx, `select search_vector is null from blob_text where sha256=$1`, sum).Scan(&oversized); err != nil || !oversized {
 		t.Fatalf("oversized vector not guarded: %t %v", oversized, err)
@@ -116,5 +92,4 @@ func TestBlobTextSearchMigrationPreservesOversizedDocuments(t *testing.T) {
 	if err = conn.QueryRow(ctx, `select search_vector=to_tsvector('simple',text) from blob_text where sha256=$1`, sum).Scan(&oversized); err != nil || !oversized {
 		t.Fatalf("normal vector not restored: %t %v", oversized, err)
 	}
-	t.Log("Migration accepted a 300000-term existing document; phrase, metadata/text and final token searches passed.")
 }

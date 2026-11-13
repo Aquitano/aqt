@@ -13,13 +13,13 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 	"lukechampine.com/blake3"
 )
 
 func TestHashBatchesKeepDuplicatesAndStampGuards(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	for i := range 130 {
@@ -69,7 +69,7 @@ func TestHashBatchesKeepDuplicatesAndStampGuards(t *testing.T) {
 }
 
 func TestPartialScanKeepsHashBatchesWithOutsideHardLinks(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	ctx := t.Context()
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "outside"), 0o755); err != nil {
@@ -121,7 +121,7 @@ func TestPartialScanKeepsHashBatchesWithOutsideHardLinks(t *testing.T) {
 }
 
 func TestCancelledHashCommitsCompletedWork(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	for i := range 130 {
 		write(t, root, fmt.Sprintf("file-%03d.bin", i), fmt.Sprintf("content-%d", i%5))
@@ -163,7 +163,7 @@ func TestCancelledHashCommitsCompletedWork(t *testing.T) {
 }
 
 func TestHashRequiresHeldObjectToMatchListedStamp(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a.bin", "original")
 	first := scanAt(t, st, root, testVolume, func(o *Options) { o.NoHash = true })

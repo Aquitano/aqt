@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
@@ -80,7 +80,7 @@ func TestMetadataToolFailureDoesNotStarveLaterFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("ATTIC_SCAN_METADATA_HELPER", "1")
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a-poison.png", "poison")
 	write(t, root, "b-good.png", "good")
@@ -117,7 +117,7 @@ func TestMetadataToolReadsVerifiedCopyAfterSourceReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root, temp := t.TempDir(), t.TempDir()
 	write(t, root, "image.png", "original")
 	source := filepath.Join(root, "image.png")
@@ -146,7 +146,7 @@ func TestPDFFallbackReadsVerifiedCopyAfterSourceReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root, temp := t.TempDir(), t.TempDir()
 	write(t, root, "document.pdf", "original")
 	source := filepath.Join(root, "document.pdf")

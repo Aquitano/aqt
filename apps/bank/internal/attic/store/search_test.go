@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/jackc/pgx/v5"
 )
 
 func searchFixture(t *testing.T) (*store.Store, *pgx.Conn) {
 	t.Helper()
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	conn, err := pgx.Connect(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)

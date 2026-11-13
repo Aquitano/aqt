@@ -20,7 +20,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/extract"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
@@ -73,7 +73,7 @@ func find(t *testing.T, st *store.Store, query string) store.Hit {
 }
 
 func TestScanKeepsIdentityAcrossMoves(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	write(t, root, "docs/Werkstudentenvertrag Element.pdf", "signed contract")
@@ -143,7 +143,7 @@ func TestScanKeepsIdentityAcrossMoves(t *testing.T) {
 }
 
 func TestDeletedFolderTakesItsFilesAlong(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "old/report.txt", "quarterly")
 	write(t, root, "old/sub/deep.txt", "quarterly")
@@ -168,7 +168,7 @@ func TestDeletedFolderTakesItsFilesAlong(t *testing.T) {
 // A backup rotation: Latest becomes Old/2025 and Staging takes Latest's name,
 // so the old path of one folder is now another folder's.
 func TestRotatedFoldersKeepTheirFiles(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "Data/Latest/monday.txt", "monday")
 	write(t, root, "Data/Staging/tuesday.txt", "tuesday")
@@ -194,7 +194,7 @@ func TestRotatedFoldersKeepTheirFiles(t *testing.T) {
 }
 
 func TestExclusionAddedAfterListingStopsHashing(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "disk.iso", "image")
 	write(t, root, "notes.txt", "notes")
@@ -213,7 +213,7 @@ func TestExclusionAddedAfterListingStopsHashing(t *testing.T) {
 // the first is gone, the second keeps its own row; created again, the first
 // gets its row back.
 func TestReappearingHardLinkScans(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	a, b := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")
 	write(t, root, "a.txt", "linked")
@@ -277,7 +277,7 @@ func scanUnder(t *testing.T, st *store.Store, root string, rel ...string) Result
 }
 
 func TestCrossDirectoryHardLinksKeepTheirPaths(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	write(t, root, "a/nested/linked.txt", "shared bytes")
@@ -333,7 +333,7 @@ func TestCrossDirectoryHardLinksKeepTheirPaths(t *testing.T) {
 // Only the destination is scanned and another link still holds the file. The
 // owner's path is gone, so its row moves.
 func TestMovedHardLinkKeepsItsRow(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "old/moving.bin", "linked bytes")
 	for _, dir := range []string{"new", "other"} {
@@ -366,7 +366,7 @@ func TestMovedHardLinkKeepsItsRow(t *testing.T) {
 // A path kept as a link that went missing and then received the file by a
 // rename keeps its row, and the file's old path stops counting as present.
 func TestRenameOntoAMissingLinkVacatesTheOldPath(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a/vacate.bin", "linked bytes")
 	if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {
@@ -390,7 +390,7 @@ func TestRenameOntoAMissingLinkVacatesTheOldPath(t *testing.T) {
 // A path that cannot be reopened, here a folder name that is not valid
 // UTF-8, neither fails the scan nor gives up its row to another link.
 func TestHardLinksUnderInvalidNamesKeepTheirPaths(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "b/linked.bin", "linked bytes")
 	for _, dir := range []string{"a\xff", "c\xff"} {
@@ -428,7 +428,7 @@ func zipOf(t *testing.T, files map[string]string) string {
 // Once both copies are rewritten, the old listing is found as a previous
 // version, which --current leaves out.
 func TestArchivesAreListedOncePerContent(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	server := zipOf(t, map[string]string{"server.properties": "motd=hi", "deeper.zip": zipOf(t, map[string]string{"x.txt": "x"})})
@@ -488,7 +488,7 @@ func tarOf(t *testing.T, name string, modified time.Time) string {
 // Documents are read once per content and found by their words; configuration
 // keeps its name only, and text past the cap is kept and marked.
 func TestDocumentsAreReadForTheirWords(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	write(t, root, "Verträge/Werkstudent.txt", "Arbeitszeit <zwanzig> Stunden & pro Woche")
@@ -521,7 +521,7 @@ func TestDocumentsAreReadForTheirWords(t *testing.T) {
 // The size cap is a skip, not a property of the content: raising it reads the
 // document on the next scan.
 func TestOversizedDocumentsWaitForTheCap(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "report.txt", "quarterly figures for the board")
 	capped := func(o *Options) { o.Config.Text.MaxBytes = 10 }
@@ -539,7 +539,7 @@ func TestOversizedDocumentsWaitForTheCap(t *testing.T) {
 // A scan's log tells its story: the start, each phase with its time and
 // counts, each document at debug, the end. The phase times reach the history.
 func TestScanLogsItsPhases(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "notes.txt", "meeting notes")
 	var buf bytes.Buffer
@@ -572,7 +572,7 @@ func TestScanLogsItsPhases(t *testing.T) {
 }
 
 func TestDocumentReadFailureTriesAnotherCopy(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	write(t, root, "a.txt", "the same searchable contract")
@@ -612,7 +612,7 @@ func TestDocumentReadFailureTriesAnotherCopy(t *testing.T) {
 }
 
 func TestCancelledDocumentReadRemainsPending(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "report.txt", "a contract to retry after cancellation")
 	first := scanAt(t, st, root, testVolume, func(o *Options) { o.Config.Text.MaxBytes = 1 })

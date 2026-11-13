@@ -26,11 +26,11 @@ func (cmd *verifyCmd) Run(ctx context.Context) error {
 	if strings.TrimSpace(cmd.Under) == "" {
 		return errors.New("verify requires --under; select the folder to reread explicitly")
 	}
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	volumes, err := st.KnownVolumes(ctx)
 	if err != nil {
 		return err

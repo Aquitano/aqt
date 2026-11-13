@@ -1,26 +1,19 @@
 package store_test
 
 import (
-	"context"
 	"errors"
-	"io/fs"
 	"slices"
 	"testing"
-	"testing/fstest"
 	"time"
-
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
-	"github.com/aquitano/aqt/packages/go/pgschema"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 func TestMissingDeviceSerialRequiresExplicitResolution(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	ctx := t.Context()
 	mounted := disk.Volume{Fingerprint: disk.Fingerprint{FS: "TEST", Serial: "same", DeviceSerial: "hardware"}}
 	known, err := st.ResolveVolume(ctx, mounted, "", false)
@@ -40,68 +33,8 @@ func TestMissingDeviceSerialRequiresExplicitResolution(t *testing.T) {
 	}
 }
 
-func TestIdentityMigrationBackfillsAndRepairsDescendants(t *testing.T) {
-	previous := fstest.MapFS{}
-	names, err := fs.Glob(store.Migrations, "*.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range names {
-		if name >= "0008" {
-			continue
-		}
-		data, err := fs.ReadFile(store.Migrations, name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		previous[name] = &fstest.MapFile{Data: data}
-	}
-	migrator := pgschematest.Migrator(previous, func(ctx context.Context, dsn string) error {
-		pool, err := pgxpool.New(ctx, dsn)
-		if err != nil {
-			return err
-		}
-		defer pool.Close()
-		return pgschema.Migrate(ctx, pool, 12345, previous)
-	})
-	dsn := storetest.InSchema(t, pgschematest.Database(t, "ATTIC_TEST_DATABASE_URL", migrator))
-	ctx := t.Context()
-	conn, err := pgx.Connect(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close(ctx)
-	_, err = conn.Exec(ctx, `
-  insert into volumes(id,fs_type,serial,stable_ids) values ('00000000-0000-0000-0000-000000000001','TEST','1',true);
-  insert into scans(id,volume_id,root,status) overriding system value values (1,'00000000-0000-0000-0000-000000000001','','complete');
-  insert into entries(id,volume_id,parent_id,kind,name,path,file_id,hash_state,first_scan,updated_scan) overriding system value values
-   (1,'00000000-0000-0000-0000-000000000001',null,'dir','','',1,'none',1,1),
-   (2,'00000000-0000-0000-0000-000000000001',1,'file','replaced','/replaced',2,'pending',1,1),
-   (3,'00000000-0000-0000-0000-000000000001',2,'dir','nested','/replaced/nested',3,'none',1,1),
-   (4,'00000000-0000-0000-0000-000000000001',3,'file','child','/replaced/nested/child',4,'pending',1,1),
-   (5,'00000000-0000-0000-0000-000000000001',1,'dir','moved','/moved',5,'none',1,1),
-   (6,'00000000-0000-0000-0000-000000000001',5,'file','valid','/moved/valid',6,'pending',1,1)`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	if n := pgschematest.QueryInt(t, dsn, "select count(*) from entries where missing_scan is not null"); n != 2 {
-		t.Fatalf("marked %d rows missing, want the two descendants", n)
-	}
-	if n := pgschematest.QueryInt(t, dsn, "select count(*) from entries where raw_name=convert_to(name,'UTF8') and physical_file_id=file_id"); n != 6 {
-		t.Fatalf("backfilled %d of six rows", n)
-	}
-	if n := pgschematest.QueryInt(t, dsn, "select count(*) from entries where id in (1,2,5,6) and missing_scan is null"); n != 4 {
-		t.Fatalf("retained %d of four valid rows", n)
-	}
-}
-
 func TestHardLinkReuseRejectsUnverifiedIdentityAndMetadata(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	ctx := t.Context()
 	mounted := disk.Volume{Fingerprint: disk.Fingerprint{FS: "TEST", Serial: "source", DeviceSerial: "hardware", StableIDs: true}}
 	volume, err := st.ResolveVolume(ctx, mounted, "", false)
@@ -192,7 +125,7 @@ func TestHardLinkReuseRejectsUnverifiedIdentityAndMetadata(t *testing.T) {
 }
 
 func TestHardLinkOwnerIsObservedOncePerScan(t *testing.T) {
-	st, dsn := storetest.New(t)
+	st, dsn := storetest.NewCatalogue(t)
 	ctx := t.Context()
 	volume, err := st.ResolveVolume(ctx, disk.Volume{Fingerprint: disk.Fingerprint{
 		FS: "TEST", Serial: "links", StableIDs: true,

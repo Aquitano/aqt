@@ -9,7 +9,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 	"lukechampine.com/blake3"
 )
@@ -17,7 +17,7 @@ import (
 func TestDirectoryReplacementMarksDescendantsMissing(t *testing.T) {
 	for _, kind := range []string{"file", "link"} {
 		t.Run(kind, func(t *testing.T) {
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			write(t, root, "replaced/nested/child.txt", "retained bytes")
 			scanAt(t, st, root, testVolume)
@@ -47,7 +47,7 @@ func TestDirectoryReplacementMarksDescendantsMissing(t *testing.T) {
 func TestRawNamesKeepDistinctRowsAndParents(t *testing.T) {
 	for name, stable := range map[string]bool{"path": false, "stable": true} {
 		t.Run(name, func(t *testing.T) {
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			names := []string{"bad\xed\xa0\x80", "bad\xed\xa0\x81"}
 			for _, name := range names {
@@ -84,7 +84,7 @@ func TestRawNamesKeepDistinctRowsAndParents(t *testing.T) {
 }
 
 func TestHardLinksReuseContentAcrossInitialNewAndChangedLinks(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	root := t.TempDir()
 	write(t, root, "a/linked.bin", "original")
 	if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {
@@ -157,7 +157,7 @@ func TestChangedHardLinkOwnerRenameRefreshesBothLinks(t *testing.T) {
 		{name: "existing conflicting digests", partial: "b", legacy: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			st, dsn := storetest.New(t)
+			st, dsn := storetest.NewCatalogue(t)
 			root := t.TempDir()
 			write(t, root, "a/linked.bin", "original")
 			if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {

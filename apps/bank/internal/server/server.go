@@ -58,9 +58,6 @@ type Server struct {
 	catalogue       catalog.Catalogue
 }
 
-// UseCatalogue adds the files on disks to combined search and the timeline.
-func (s *Server) UseCatalogue(c catalog.Catalogue) { s.catalogue = c }
-
 // Mount serves another domain's API below prefix, such as /attic. The handler
 // sees the full path and does its own authentication.
 func (s *Server) Mount(prefix string, h http.Handler) {
@@ -70,8 +67,10 @@ func (s *Server) Mount(prefix string, h http.Handler) {
 	s.mounts[prefix] = h
 }
 
-func New(db *store.Store, blobs *blob.Store, dataDir, archiveDir string) *Server {
-	s := &Server{db: db, read: db, blobs: blobs, archiveDir: archiveDir, dataDir: dataDir}
+// New serves the archive in db, with the files on disks in catalogue joining
+// combined search, the timeline and ref resolution.
+func New(db *store.Store, catalogue catalog.Catalogue, blobs *blob.Store, dataDir, archiveDir string) *Server {
+	s := &Server{db: db, read: db, catalogue: catalogue, blobs: blobs, archiveDir: archiveDir, dataDir: dataDir}
 	// Uploads staged by a process that died are nobody's to clean up later.
 	if err := pruneUploads(dataDir, uploadMaxAge); err != nil {
 		slog.Warn("pruning abandoned uploads", "error", err)

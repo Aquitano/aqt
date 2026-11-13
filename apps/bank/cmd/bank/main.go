@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -30,13 +31,16 @@ import (
 	_ "time/tzdata"
 
 	"github.com/alecthomas/kong"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
+	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
@@ -50,7 +54,7 @@ import (
 const description = `bank — personal message archive
 
 Environment:
-  DATABASE_URL             default ` + defaultDatabaseURL + `
+  DATABASE_URL             default ` + db.DefaultURL + `
   BANK_QUERY_DATABASE_URL  separate restricted login for ad-hoc SQL
   BANK_DATA_DIR            default ~/.local/share/aqt-bank (blobs/, archive/, inbox/)
   BANK_URL                 talk to a remote 'bank serve' instead of Postgres
@@ -85,6 +89,7 @@ type cli struct {
 	Verify      verifyCmd      `cmd:"" help:"Check archive integrity, optionally repair."`
 	Retire      retireCmd      `cmd:"" help:"Delete messages by external id prefix, keeping tombstones."`
 	Healthcheck healthcheckCmd `cmd:"" help:"Check server and database health."`
+	Migrate     migrateCmd     `cmd:"" help:"Bring the database schema up to this build; serve also does on start."`
 	Serve       serveCmd       `cmd:"" help:"HTTP API; logs JSON to stderr at BANK_LOG_LEVEL (default info)."`
 	UI          uiCmd          `cmd:"" name:"ui" help:"Local archive browser (needs BANK_URL)."`
 	Token       tokenCmd       `cmd:"" help:"API tokens."`
@@ -184,31 +189,39 @@ func dataDir() string {
 	return filepath.Join(home, ".local", "share", "aqt-bank")
 }
 
-const defaultDatabaseURL = "postgres://bank:bank@localhost:5433/bank?sslmode=disable"
-
 func databaseURL() string {
-	if url := os.Getenv("DATABASE_URL"); url != "" {
-		return url
-	}
-	return defaultDatabaseURL
+	return cmp.Or(os.Getenv("DATABASE_URL"), db.DefaultURL)
 }
 
-func openStore(ctx context.Context) (*store.Store, error) {
-	st, err := store.Open(ctx, databaseURL())
+// localDB is the archive and the file catalogue on one pool, for commands
+// that talk to Postgres directly rather than to a `bank serve`.
+type localDB struct {
+	*store.Store
+	catalogue *attic.Catalogue
+	pool      *pgxpool.Pool
+}
+
+func (l *localDB) Close() {
+	l.CloseQuery()
+	l.pool.Close()
+}
+
+func openStore(ctx context.Context) (*localDB, error) {
+	pool, err := db.Open(ctx, databaseURL())
 	if err != nil {
 		return nil, err
 	}
+	l := &localDB{Store: store.New(pool), catalogue: attic.New(atticstore.New(pool)), pool: pool}
 	if queryURL := os.Getenv("BANK_QUERY_DATABASE_URL"); queryURL != "" {
-		if err := st.ConfigureQuery(ctx, queryURL); err != nil {
-			st.Close()
+		if err := l.ConfigureQuery(ctx, queryURL); err != nil {
+			l.Close()
 			return nil, err
 		}
 	}
-	return st, nil
+	return l, nil
 }
 
-// openLocal is for commands that talk to Postgres and the blob store directly
-// rather than to a `bank serve`.
+// openLocal is openStore plus the blob store and the raw archive.
 func openLocal(ctx context.Context) (*importer.Target, func(), error) {
 	st, err := openStore(ctx)
 	if err != nil {
@@ -219,7 +232,7 @@ func openLocal(ctx context.Context) (*importer.Target, func(), error) {
 		st.Close()
 		return nil, nil, err
 	}
-	return &importer.Target{Store: st, Blobs: blobs, ArchiveDir: filepath.Join(dataDir(), "archive")}, st.Close, nil
+	return &importer.Target{Store: st.Store, Blobs: blobs, ArchiveDir: filepath.Join(dataDir(), "archive")}, st.Close, nil
 }
 
 type authCmd struct {
@@ -343,16 +356,11 @@ func (c *searchCmd) Run(ctx context.Context) error {
 	}
 	findOptions := library.ListOptions{Query: query, Source: o.Source, Account: c.Account, Kind: c.Kind, Since: c.Since, Until: c.Until, Limit: o.Limit, Offset: o.Offset}
 	var result catalog.Result
-	if remote, ok := b.(*client.Client); ok {
-		result, err = remote.Find(ctx, query, o, findOptions)
-	} else {
-		// A database without the catalogue searches the archive alone.
-		var disks catalog.Disks
-		if catalogue, openErr := attic.Open(ctx, databaseURL()); openErr == nil {
-			defer catalogue.Close()
-			disks = catalogue
-		}
-		result, err = catalog.Find(ctx, b, disks, query, o, findOptions)
+	switch b := b.(type) {
+	case *client.Client:
+		result, err = b.Find(ctx, query, o, findOptions)
+	case *localDB:
+		result, err = catalog.Find(ctx, b, b.catalogue, query, o, findOptions)
 	}
 	if err != nil {
 		return err
@@ -874,6 +882,19 @@ func (c *verifyCmd) Run(ctx context.Context) error {
 	return nil
 }
 
+type migrateCmd struct{}
+
+func (migrateCmd) Run(ctx context.Context) error {
+	if client.FromEnv() != nil {
+		return fmt.Errorf("migrate changes the database directly; run it on the server, not through BANK_URL")
+	}
+	if err := db.Migrate(ctx, databaseURL()); err != nil {
+		return err
+	}
+	fmt.Println("database schema is up to date")
+	return nil
+}
+
 type serveCmd struct {
 	Listen string `default:"127.0.0.1:8480" help:"Address to listen on."`
 }
@@ -884,23 +905,25 @@ func (c *serveCmd) Run(ctx context.Context) error {
 		level = slog.LevelInfo
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
-	d, closeStore, err := openLocal(ctx)
+	if err := db.Migrate(ctx, databaseURL()); err != nil {
+		return err
+	}
+	st, err := openStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeStore()
+	defer st.Close()
+	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
+	if err != nil {
+		return err
+	}
 	if listed, err := server.Tokens(dataDir()).List(); err == nil && len(listed) == 0 {
 		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
-	srv := server.New(d.Store, d.Blobs, dataDir(), d.ArchiveDir)
-	catalogueCtx, stopCatalogue := context.WithCancel(ctx)
-	catalogue := attic.Start(catalogueCtx, databaseURL())
-	defer catalogue.Close()
-	defer stopCatalogue()
-	srv.Mount(atticBasePath, catalogue.Handler(atticapi.Host{
+	srv := server.New(st.Store, st.catalogue, blobs, dataDir(), filepath.Join(dataDir(), "archive"))
+	srv.Mount(atticBasePath, st.catalogue.Handler(atticapi.Host{
 		Tokens: server.Tokens(dataDir()), MintCommand: "bank token new <name>", BasePath: atticBasePath,
 	}))
-	srv.UseCatalogue(catalogue)
 	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
 	return srv.ListenAndServe(ctx, c.Listen)
 }

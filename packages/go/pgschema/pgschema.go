@@ -1,62 +1,23 @@
 // Package pgschema applies an app's embedded SQL migrations with tern, after
-// the ParadeDB upgrade step and after adopting the history of the runner the
-// apps used before tern.
+// the ParadeDB upgrade step.
 package pgschema
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/tern/v2/migrate"
 
 	"github.com/aquitano/aqt/packages/go/pgschema/paradedb"
 )
 
+const versionTable = "public.schema_version"
+
 // Migrate brings the database up to the last file in migrations. Callers
-// serialize on lockKey, which must stay the key the legacy runner took, so an
-// older binary cannot migrate while a database adopts its history.
+// serialize on lockKey.
 func Migrate(ctx context.Context, pool *pgxpool.Pool, lockKey int64, migrations fs.FS) error {
-	return run(ctx, pool, lockKey, func(conn *pgx.Conn) (*migrate.Migrator, error) {
-		return adoptLegacyHistory(ctx, conn, migrations)
-	})
-}
-
-// MigrateSchema is Migrate for an app that keeps its tables in a schema of its
-// own, so several apps can share one database. It creates the schema, records
-// the version in its schema_version table and runs every migration with the
-// schema first on the search path, so migration files stay unqualified.
-func MigrateSchema(ctx context.Context, pool *pgxpool.Pool, schema string, lockKey int64, migrations fs.FS) error {
-	return run(ctx, pool, lockKey, func(conn *pgx.Conn) (*migrate.Migrator, error) {
-		name := pgx.Identifier{schema}.Sanitize()
-		if _, err := conn.Exec(ctx, `create schema if not exists `+name); err != nil {
-			return nil, err
-		}
-		if _, err := conn.Exec(ctx, `select set_config('search_path', $1, false)`, SearchPath(schema)); err != nil {
-			return nil, err
-		}
-		m, err := migrate.NewMigrator(ctx, conn, versionTable(schema))
-		if err != nil {
-			return nil, err
-		}
-		return m, m.LoadMigrations(migrations)
-	})
-}
-
-// SearchPath is the search_path for sessions of an app that owns schema.
-// public stays on it for the extensions installed there.
-func SearchPath(schema string) string {
-	return pgx.Identifier{schema}.Sanitize() + ",public"
-}
-
-func versionTable(schema string) string {
-	return pgx.Identifier{schema, "schema_version"}.Sanitize()
-}
-
-func run(ctx context.Context, pool *pgxpool.Pool, lockKey int64, prepare func(*pgx.Conn) (*migrate.Migrator, error)) error {
 	pooled, err := pool.Acquire(ctx)
 	if err != nil {
 		return err
@@ -75,83 +36,30 @@ func run(ctx context.Context, pool *pgxpool.Pool, lockKey int64, prepare func(*p
 	if _, err := conn.Exec(ctx, paradedb.UpdatePgSearch); err != nil {
 		return err
 	}
-	m, err := prepare(conn)
+	m, err := migrate.NewMigrator(ctx, conn, versionTable)
 	if err != nil {
 		return err
 	}
-	return m.Migrate(ctx)
-}
-
-// adoptLegacyHistory creates tern's version table and, on a database the
-// legacy runner migrated, sets it to the number of files that runner applied.
-// Both commit together: a crash must never leave version zero beside an
-// already migrated schema.
-func adoptLegacyHistory(ctx context.Context, conn *pgx.Conn, migrations fs.FS) (*migrate.Migrator, error) {
-	tx, err := conn.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		_ = tx.Rollback(cleanup)
-	}()
-	var initialized, legacy bool
-	if err := tx.QueryRow(ctx, `select to_regclass('public.schema_version') is not null,
-		to_regclass('public.schema_migrations') is not null`).Scan(&initialized, &legacy); err != nil {
-		return nil, err
-	}
-	m, err := migrate.NewMigrator(ctx, conn, "public.schema_version")
-	if err != nil {
-		return nil, err
-	}
 	if err := m.LoadMigrations(migrations); err != nil {
-		return nil, err
+		return err
 	}
-	if !initialized && legacy {
-		rows, err := tx.Query(ctx, `select filename from public.schema_migrations order by filename`)
-		if err != nil {
-			return nil, err
-		}
-		applied, err := pgx.CollectRows(rows, pgx.RowTo[string])
-		if err != nil {
-			return nil, err
-		}
-		for i, name := range applied {
-			if i >= len(m.Migrations) || name != m.Migrations[i].Name {
-				return nil, fmt.Errorf("legacy migration history is not a contiguous known prefix at %q; restore a consistent schema before upgrading", name)
-			}
-		}
-		if err := m.SetVersion(ctx, int32(len(applied))); err != nil {
-			return nil, err
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return m, nil
+	return m.Migrate(ctx)
 }
 
 // Version reports the version Migrate recorded and the latest one migrations
 // define, without changing the database. A database Migrate never ran on
 // reports version zero.
 func Version(ctx context.Context, pool *pgxpool.Pool, migrations fs.FS) (current, latest int32, err error) {
-	return SchemaVersion(ctx, pool, "public", migrations)
-}
-
-// SchemaVersion is Version for an app MigrateSchema migrates.
-func SchemaVersion(ctx context.Context, pool *pgxpool.Pool, schema string, migrations fs.FS) (current, latest int32, err error) {
 	names, err := migrate.FindMigrations(migrations)
 	if err != nil {
 		return 0, 0, err
 	}
-	table := versionTable(schema)
 	var initialized bool
-	if err := pool.QueryRow(ctx, `select to_regclass($1) is not null`, table).Scan(&initialized); err != nil {
+	if err := pool.QueryRow(ctx, `select to_regclass($1) is not null`, versionTable).Scan(&initialized); err != nil {
 		return 0, 0, err
 	}
 	if initialized {
-		if err := pool.QueryRow(ctx, `select version from `+table).Scan(&current); err != nil {
+		if err := pool.QueryRow(ctx, `select version from `+versionTable).Scan(&current); err != nil {
 			return 0, 0, err
 		}
 	}

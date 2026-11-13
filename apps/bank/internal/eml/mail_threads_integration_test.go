@@ -12,6 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
@@ -328,11 +329,11 @@ func TestMailRebuildReadOnlyRecoveryAndNewContext(t *testing.T) {
 	original, _ := st.GetMessageDetail(ctx, id)
 	storetest.Exec(t, dsn, `truncate mailboxes,mailbox_messages,mail_details,mail_thread_edges,mail_thread_nodes,mail_thread_aliases,mail_thread_conflicts,mail_rebuild_progress`)
 	storetest.Exec(t, dsn, `update messages set thread_id=''`)
-	readOnly, err := store.OpenReadOnly(ctx, dsn)
+	readOnly, err := db.OpenReadOnly(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := RebuildMail(ctx, readOnly, archiveDir, "recover", false)
+	report, err := RebuildMail(ctx, store.New(readOnly), archiveDir, "recover", false)
 	readOnly.Close()
 	if err != nil || report.Messages != 1 || report.Apply {
 		t.Fatalf("dry run: %+v %v", report, err)
@@ -461,11 +462,11 @@ func TestMailRebuildPreviewIncludesEarlierProposals(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	readOnly, err := store.OpenReadOnly(ctx, dsn)
+	readOnly, err := db.OpenReadOnly(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
-	preview, err := RebuildMail(ctx, readOnly, root, "preview", false)
+	preview, err := RebuildMail(ctx, store.New(readOnly), root, "preview", false)
 	readOnly.Close()
 	if err != nil || preview.Conflicts != 1 {
 		t.Fatalf("dry preview missed conflict: %+v %v", preview, err)

@@ -46,11 +46,11 @@ func (cmd *scanCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, err := openStore(ctx)
+	st, closeStore, err := openStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 
 	log, logPath, closeLog := openScanLog(level)
 	defer closeLog()

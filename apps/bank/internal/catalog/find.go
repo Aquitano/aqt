@@ -30,7 +30,7 @@ type Result struct {
 	Disks       view.SearchResult   `json:"disks"`
 }
 
-// Find searches every kind of record. disks may be nil.
+// Find searches every kind of record.
 func Find(ctx context.Context, reader Reader, disks Disks, query string, messages store.SearchOpts, options library.ListOptions) (Result, error) {
 	result := Result{Messages: []store.Message{}, Attachments: []store.LibraryFile{}, SearchResult: library.SearchResult{
 		Items: []library.Item{}, Activity: []library.Activity{}, Collections: []library.CollectionSummary{},
@@ -83,13 +83,12 @@ func Find(ctx context.Context, reader Reader, disks Disks, query string, message
 		}
 	}
 	dated := options.Since != "" || options.Until != "" || !messages.Since.IsZero() || !messages.Until.IsZero()
-	if disks != nil && !mailOnly && !dated && options.Account == "" && messages.Source == "" && (options.Kind == "" || options.Kind == "file") {
-		// The archive answers without the catalogue, which may still be migrating.
-		if found, err := disks.SearchDisks(ctx, query, messages.Limit, messages.Offset); err != nil {
-			result.Coverage = append(result.Coverage, "Files on disks are missing from this search: "+err.Error()+".")
-		} else {
-			result.Disks = found
+	if !mailOnly && !dated && options.Account == "" && messages.Source == "" && (options.Kind == "" || options.Kind == "file") {
+		found, err := disks.SearchDisks(ctx, query, messages.Limit, messages.Offset)
+		if err != nil {
+			return result, err
 		}
+		result.Disks = found
 	}
 	if options.Account != "" {
 		result.Coverage = append(result.Coverage, "Account filters apply to the library. Correspondence is excluded because its account model differs.")

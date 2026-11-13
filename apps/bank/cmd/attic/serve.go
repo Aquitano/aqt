@@ -32,11 +32,11 @@ func (cmd *serveCmd) Run(ctx context.Context) error {
 	} else if len(listed) == 0 {
 		slog.Warn("no tokens yet; every /v1 request answers 401 until 'attic token new <name>'")
 	}
-	st, err := openReadOnlyStore(ctx)
+	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer closeStore()
 	srv := &http.Server{Addr: cmd.Listen, Handler: api.New(st, cfg, api.Standalone(tokens)), ReadHeaderTimeout: 10 * time.Second}
 	served := make(chan error, 1)
 	go func() { served <- srv.ListenAndServe() }()

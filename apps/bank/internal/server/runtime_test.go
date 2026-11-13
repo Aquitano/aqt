@@ -13,16 +13,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 func TestHealthChecksDatabase(t *testing.T) {
-	db := storetest.New(t)
-	server := New(db, nil, t.TempDir(), t.TempDir())
+	pool := storetest.Pool(t, storetest.Migrated(t))
+	server := New(store.New(pool), nil, nil, t.TempDir(), t.TempDir())
 	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
 		if status == http.StatusServiceUnavailable {
-			db.Close()
+			pool.Close()
 		}
 		response := httptest.NewRecorder()
 		server.Handler().ServeHTTP(response, httptest.NewRequest("GET", "/healthz", nil))

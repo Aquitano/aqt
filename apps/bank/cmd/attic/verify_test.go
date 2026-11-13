@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/storetest"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/verify"
+	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 func TestVerifyRequiresExplicitScope(t *testing.T) {
@@ -37,7 +37,7 @@ func TestVerifyRequiresExplicitScope(t *testing.T) {
 }
 
 func TestVerifyJSONReportsUnknownAndIncompleteSelections(t *testing.T) {
-	st, _ := storetest.New(t)
+	st, _ := storetest.NewCatalogue(t)
 	const volume = "00000000-0000-0000-0000-000000000001"
 	var out bytes.Buffer
 	if err := writeVerification(t.Context(), st, volume, "/unknown", disk.Volume{}, true, &out); err == nil {

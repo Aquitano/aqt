@@ -49,7 +49,6 @@ jobs:
           --health-retries 20
     env:
       BANK_TEST_DATABASE_URL: postgres://bank:bank@localhost:5433/bank?sslmode=disable
-      ATTIC_TEST_DATABASE_URL: postgres://bank:bank@localhost:5433/bank?sslmode=disable
     steps:
       - uses: actions/checkout@v7
       - uses: jdx/mise-action@v5
