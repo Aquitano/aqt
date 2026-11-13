@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic"
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
-	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 )
 
@@ -36,23 +33,12 @@ func (c *timelineCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var result catalog.Timeline
-	if remote := client.FromEnv(); remote != nil {
-		result, err = remote.Timeline(ctx, since, until, c.Group, c.Limit)
-	} else {
-		st, openErr := openStore(ctx)
-		if openErr != nil {
-			return openErr
-		}
-		defer st.Close()
-		// A database without the catalogue answers from the archive alone.
-		var files catalog.Files
-		if catalogue, openErr := attic.Open(ctx, databaseURL()); openErr == nil {
-			defer catalogue.Close()
-			files = catalogue
-		}
-		result, err = catalog.BuildTimeline(ctx, st, files, catalog.TimelineOptions{Since: since, Until: until, Groups: c.Group, Limit: c.Limit})
+	r, closeReads, err := openReads(ctx)
+	if err != nil {
+		return err
 	}
+	defer closeReads()
+	result, err := r.Timeline(ctx, since, until, c.Group, c.Limit)
 	if err != nil {
 		return err
 	}
@@ -84,24 +70,12 @@ type refCmd struct {
 }
 
 func (c *refCmd) Run(ctx context.Context) error {
-	var resolved catalog.Resolved
-	var err error
-	if remote := client.FromEnv(); remote != nil {
-		resolved, err = remote.Resolve(ctx, c.Ref)
-	} else {
-		st, openErr := openStore(ctx)
-		if openErr != nil {
-			return openErr
-		}
-		defer st.Close()
-		// A database without the catalogue resolves the archive's refs alone.
-		var contents catalog.Contents
-		if catalogue, openErr := attic.Open(ctx, databaseURL()); openErr == nil {
-			defer catalogue.Close()
-			contents = catalogue
-		}
-		resolved, err = catalog.Resolve(ctx, st, contents, c.Ref)
+	r, closeReads, err := openReads(ctx)
+	if err != nil {
+		return err
 	}
+	defer closeReads()
+	resolved, err := r.Resolve(ctx, c.Ref)
 	if err != nil {
 		return err
 	}

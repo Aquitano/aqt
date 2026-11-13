@@ -35,7 +35,6 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
@@ -78,6 +77,7 @@ type cli struct {
 	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness."`
 	Ref         refCmd         `cmd:"" help:"Say what any cited ref names (bank:…, attic:…, a library ID, a blob's SHA-256) and where the same bytes are elsewhere."`
 	Timeline    timelineCmd    `cmd:"" help:"What happened in a year, month or day: messages, activity and files on disks."`
+	MCP         mcpCmd         `cmd:"" name:"mcp" help:"Serve search, refs, the timeline, messages and threads as MCP tools over stdio."`
 	OpenAPI     openapiCmd     `cmd:"" name:"openapi" help:"Print the OpenAPI document of the typed routes." hidden:""`
 	Coverage    coverageCmd    `cmd:"" help:"Note what a source holds (empty text clears)."`
 	Query       queryCmd       `cmd:"" help:"Read-only ad-hoc SQL: READ ONLY tx, 15s timeout, row cap 100."`
@@ -319,15 +319,15 @@ func (c *searchCmd) Run(ctx context.Context) error {
 		}
 	}
 
-	b, closeBackend, err := openBackend(ctx)
-	if err != nil {
-		return err
-	}
-	defer closeBackend()
 	if query == "" {
 		if c.Kind != "" || c.Account != "" {
 			return fmt.Errorf("kind/account require a search query; use bank library list to browse library records")
 		}
+		b, closeBackend, err := openBackend(ctx)
+		if err != nil {
+			return err
+		}
+		defer closeBackend()
 		groups, err := b.BrowseThreads(ctx, store.BrowseOpts{Source: o.Source, MailboxID: o.MailboxID, Subject: o.Subject, HasAttachment: o.HasAttachment, From: o.From, To: o.To, Person: o.Person, Since: o.Since, Until: o.Until, Limit: o.Limit, Offset: o.Offset})
 		if err != nil {
 			return err
@@ -342,18 +342,12 @@ func (c *searchCmd) Run(ctx context.Context) error {
 		return nil
 	}
 	findOptions := library.ListOptions{Query: query, Source: o.Source, Account: c.Account, Kind: c.Kind, Since: c.Since, Until: c.Until, Limit: o.Limit, Offset: o.Offset}
-	var result catalog.Result
-	if remote, ok := b.(*client.Client); ok {
-		result, err = remote.Find(ctx, query, o, findOptions)
-	} else {
-		// A database without the catalogue searches the archive alone.
-		var disks catalog.Disks
-		if catalogue, openErr := attic.Open(ctx, databaseURL()); openErr == nil {
-			defer catalogue.Close()
-			disks = catalogue
-		}
-		result, err = catalog.Find(ctx, b, disks, query, o, findOptions)
+	r, closeReads, err := openReads(ctx)
+	if err != nil {
+		return err
 	}
+	defer closeReads()
+	result, err := r.Find(ctx, query, o, findOptions)
 	if err != nil {
 		return err
 	}

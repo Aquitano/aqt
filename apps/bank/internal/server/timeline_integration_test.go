@@ -9,6 +9,7 @@ import (
 
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -80,5 +81,28 @@ func TestTimelineMergesMessagesActivityAndFiles(t *testing.T) {
 	}
 	if only, err := c.Timeline(ctx, day, day.AddDate(0, 0, 8), []string{"message"}, 1); err != nil || len(only.Events) != 1 || len(only.Truncated) != 1 {
 		t.Fatalf("one group past its limit: %+v, %v", only, err)
+	}
+}
+
+func TestActivityWithAnOffsetFallsInTheWindowOfItsInstant(t *testing.T) {
+	ctx := context.Background()
+	_, s := libraryClient(t)
+	item := library.Item{Identity: library.Identity{Source: "youtube", Account: "thomas", ExternalID: "video:late"}, Kind: "video", Title: "late watch"}
+	item.ID = library.StableID("item", item.Identity)
+	activity := library.Activity{Identity: library.Identity{Source: "youtube", Account: "thomas", ExternalID: "watch:late"}, ItemID: item.ID, Kind: "watch",
+		Title: item.Title, Occurred: library.Date{Precision: "instant", Value: "2024-03-01T23:30:00-05:00"}}
+	activity.ID = library.StableID("activity", activity.Identity)
+	if _, err := s.db.ImportLibrary(ctx, library.ImportBatch{Version: 1, Items: []library.Item{item}, Activity: []library.Activity{activity}}); err != nil {
+		t.Fatal(err)
+	}
+	localDay := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+	instantDay := localDay.AddDate(0, 0, 1)
+
+	if got, err := s.db.ActivityBetween(ctx, localDay, instantDay, 10); err != nil || len(got) != 0 {
+		t.Fatalf("the day it was written in: %+v, %v", got, err)
+	}
+	got, err := s.db.ActivityBetween(ctx, instantDay, instantDay.AddDate(0, 0, 1), 10)
+	if err != nil || len(got) != 1 || got[0].Ref != activity.ID || !got[0].At.Equal(time.Date(2024, 3, 2, 4, 30, 0, 0, time.UTC)) {
+		t.Fatalf("the day of its instant: %+v, %v", got, err)
 	}
 }
