@@ -16,6 +16,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
@@ -42,18 +43,11 @@ func (f *fakeReader) Search(_ context.Context, _ string, o store.SearchOpts) ([]
 	return f.msgs, f.searchErr
 }
 
-func (f *fakeReader) GetMessage(context.Context, int64) (store.Message, []store.Attachment, error) {
+func (f *fakeReader) GetMessageByRef(_ context.Context, cited ref.Message) (store.Message, []store.Attachment, error) {
 	if f.messageErr != nil {
 		return store.Message{}, nil, f.messageErr
 	}
-	return store.Message{ID: 7}, nil, nil
-}
-
-func (f *fakeReader) GetMessageByRef(_ context.Context, ref string) (store.Message, []store.Attachment, error) {
-	if f.messageErr != nil {
-		return store.Message{}, nil, f.messageErr
-	}
-	return store.Message{ID: 7, Ref: ref}, nil, nil
+	return store.Message{ID: 7, Ref: cited.String()}, nil, nil
 }
 
 func (f *fakeReader) GetThreadPage(_ context.Context, _, _ string, _ store.ThreadOpts) (store.Thread, error) {
@@ -116,7 +110,7 @@ func testServer(t *testing.T) (*Server, string) {
 		t.Fatal(err)
 	}
 	return &Server{
-		read:       &fakeReader{msgs: []store.Message{{ID: 7, Source: "whatsapp", Body: "hi", SentAt: time.Unix(0, 0)}}},
+		read:       &fakeReader{msgs: []store.Message{{ID: 7, Ref: "msg:0123456789abcdef", Source: "whatsapp", Body: "hi", SentAt: time.Unix(0, 0)}}},
 		blobs:      blobs,
 		dataDir:    dir,
 		archiveDir: filepath.Join(dir, "archive"),
@@ -229,7 +223,7 @@ func TestSearchRequiresToken(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&msgs); err != nil {
 		t.Fatal(err)
 	}
-	if len(msgs) != 1 || msgs[0].ID != 7 {
+	if len(msgs) != 1 || msgs[0].Ref != "msg:0123456789abcdef" {
 		t.Fatalf("unexpected search payload %+v", msgs)
 	}
 	if o := s.read.(*fakeReader).opts; o.Fuzzy != 1 || o.Limit != 20 {
@@ -316,39 +310,36 @@ func TestMessageStatusDistinguishesMissingFromBroken(t *testing.T) {
 			s.read.(*fakeReader).messageErr = tc.err
 			srv := httptest.NewServer(s.Handler())
 			defer srv.Close()
-			if status, body := authedGet(t, srv, token, "/v1/messages/7"); status != tc.want {
+			if status, body := authedGet(t, srv, token, "/v1/messages/msg:0123456789abcdef"); status != tc.want {
 				t.Fatalf("status %d, want %d (%s)", status, tc.want, body)
 			}
 		})
 	}
-	t.Run("unparseable id", func(t *testing.T) {
-		s, token := testServer(t)
-		srv := httptest.NewServer(s.Handler())
-		defer srv.Close()
-		if status, body := authedGet(t, srv, token, "/v1/messages/abc"); status != http.StatusUnprocessableEntity {
-			t.Fatalf("status %d, want 422 (%s)", status, body)
-		}
-	})
-	// A ref is what citations carry, and an all-digit one must not be read as
-	// a row id.
-	for _, ref := range []string{"c5e63bfc3750", "123456789012"} {
-		t.Run("ref "+ref, func(t *testing.T) {
+	// Only a message ref names a message: a row number, a bare value or
+	// another kind of ref is refused before it reaches the store.
+	for _, cited := range []string{"7", "0123456789abcdef", "content:0123456789abcdef", "item:0123456789abcdef0123456789abcdef"} {
+		t.Run("rejects "+cited, func(t *testing.T) {
 			s, token := testServer(t)
 			srv := httptest.NewServer(s.Handler())
 			defer srv.Close()
-			status, body := authedGet(t, srv, token, "/v1/messages/"+ref)
-			if status != http.StatusOK {
-				t.Fatalf("status %d, want 200 (%s)", status, body)
-			}
-			var d store.MessageDetail
-			if err := json.Unmarshal([]byte(body), &d); err != nil {
-				t.Fatal(err)
-			}
-			if d.Ref != ref {
-				t.Fatalf("ref = %q, want %q — looked up as a row id", d.Ref, ref)
+			if status, body := authedGet(t, srv, token, "/v1/messages/"+cited); status != http.StatusUnprocessableEntity {
+				t.Fatalf("status %d, want 422 (%s)", status, body)
 			}
 		})
 	}
+	t.Run("message JSON has no row number", func(t *testing.T) {
+		s, token := testServer(t)
+		srv := httptest.NewServer(s.Handler())
+		defer srv.Close()
+		_, body := authedGet(t, srv, token, "/v1/messages/msg:0123456789abcdef")
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(body), &fields); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := fields["id"]; ok || fields["ref"] != "msg:0123456789abcdef" {
+			t.Fatalf("message JSON = %s", body)
+		}
+	})
 }
 
 func TestThreadStatusCodes(t *testing.T) {
@@ -525,7 +516,7 @@ func (f *fakeReader) ListMailboxes(context.Context, string) ([]store.Mailbox, er
 	return []store.Mailbox{}, nil
 }
 
-func (f *fakeReader) MailConflictMessages(context.Context, string, string, int64, int) (store.Thread, error) {
+func (f *fakeReader) MailConflictMessages(context.Context, string, string, ref.Message, int) (store.Thread, error) {
 	return store.Thread{}, nil
 }
 

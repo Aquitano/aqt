@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -152,7 +153,7 @@ func TestAttachmentLibraryMatchesEachFilesOwnText(t *testing.T) {
 func TestBranchMissingParentAndCycleAreBounded(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()
-	ids, err := st.InsertMessages(ctx, []store.Message{
+	_, err := st.InsertMessages(ctx, []store.Message{
 		{Source: "chatgpt", ExternalID: "a", ThreadID: "chat", ParentExternalID: "b", SentAt: time.Now()},
 		{Source: "chatgpt", ExternalID: "b", ThreadID: "chat", ParentExternalID: "a", SentAt: time.Now()},
 		{Source: "chatgpt", ExternalID: "c", ThreadID: "chat", ParentExternalID: "missing", SentAt: time.Now()},
@@ -160,8 +161,8 @@ func TestBranchMissingParentAndCycleAreBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, id := range ids {
-		branch, err := st.MessageBranch(ctx, id)
+	for i, externalID := range []string{"a", "b", "c"} {
+		branch, err := st.MessageBranch(ctx, ref.ForMessage("chatgpt", "", externalID))
 		if err != nil {
 			t.Fatal(err)
 		}

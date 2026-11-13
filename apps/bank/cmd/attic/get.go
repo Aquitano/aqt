@@ -16,7 +16,7 @@ type getCmd struct {
 }
 
 func (cmd *getCmd) Run(ctx context.Context) error {
-	id, ref, err := parseTarget(cmd.Target)
+	id, cited, err := parseTarget(cmd.Target)
 	if err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func (cmd *getCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeStore()
-	content, err := st.Retrieval(ctx, id, ref)
+	content, err := st.Retrieval(ctx, id, cited)
 	if err != nil {
 		return err
 	}

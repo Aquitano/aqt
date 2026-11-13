@@ -93,7 +93,7 @@ func (cmd *dedupePlanCmd) Run(ctx context.Context) error {
 		return nil
 	}
 	for _, g := range out {
-		fmt.Printf("attic:%s  %s\n", g.Ref, humanBytes(g.Size))
+		fmt.Printf("%s  %s\n", g.Ref, humanBytes(g.Size))
 		for _, p := range g.Kept {
 			fmt.Printf("  keep       %s%s\n", p.Display, offline(p))
 		}

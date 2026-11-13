@@ -330,8 +330,8 @@ func healMailBodies(ctx context.Context, source string, apply, asJSON bool) erro
 			heals = append(heals, h)
 			return
 		}
-		fmt.Printf("%s: id=%d ref=%s subject=%q stored=%d reparsed=%d\n",
-			verb, h.ID, h.Ref, h.Subject, h.Stored, h.Reparsed)
+		fmt.Printf("%s: %s raw=%s subject=%q stored=%d reparsed=%d\n",
+			verb, h.MessageRef, h.Ref, h.Subject, h.Stored, h.Reparsed)
 	})
 	if err != nil {
 		return err

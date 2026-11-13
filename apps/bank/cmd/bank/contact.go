@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -237,14 +238,14 @@ func knownSources(ctx context.Context, b backend) (map[string]bool, error) {
 }
 
 type contactMessagesCmd struct {
-	Name   string `arg:""`
-	Source string `help:"Only this source."`
-	Since  string `help:"YYYY-MM-DD."`
-	Until  string `help:"YYYY-MM-DD (exclusive)."`
-	Limit  int    `default:"50" help:"Page size."`
-	Before int64  `help:"Continue before this message id (without --offset)."`
-	Offset int    `help:"Skip this many messages."`
-	JSON   bool   `help:"JSON output."`
+	Name   string      `arg:""`
+	Source string      `help:"Only this source."`
+	Since  string      `help:"YYYY-MM-DD."`
+	Until  string      `help:"YYYY-MM-DD (exclusive)."`
+	Limit  int         `default:"50" help:"Page size."`
+	Before ref.Message `help:"Continue before this message, by ref (without --offset)."`
+	Offset int         `help:"Skip this many messages."`
+	JSON   bool        `help:"JSON output."`
 }
 
 func (c *contactMessagesCmd) Run(ctx context.Context) error {
@@ -277,11 +278,11 @@ func (c *contactMessagesCmd) Run(ctx context.Context) error {
 		if title == "" {
 			title = excerpt(m.Body, 100)
 		}
-		fmt.Printf("%6d  %s  %-8s  %-22s  %s\n",
-			m.ID, m.SentAt.Format("2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
+		fmt.Printf("%s  %s  %-8s  %-22s  %s\n",
+			m.Ref, m.SentAt.Format("2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
 	}
 	if len(msgs) == o.Limit {
-		fmt.Printf("Earlier messages: repeat with --before %d and without --offset\n", msgs[len(msgs)-1].ID)
+		fmt.Printf("Earlier messages: repeat with --before %s and without --offset\n", msgs[len(msgs)-1].Ref)
 	}
 	return nil
 }

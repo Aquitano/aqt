@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 type MailThreadConflictError struct {
@@ -51,9 +53,9 @@ func (s *Store) resolveMailThread(ctx context.Context, source, threadID string) 
 	return "", &MailThreadConflictError{Code: "mail_thread_conflict", Source: source, ConflictKey: conflict, Choices: choices, UnanchoredPath: "/v1/mail-conflicts/" + url.PathEscape(conflict) + "?source=" + url.QueryEscape(source)}
 }
 
-func (s *Store) MailConflictMessages(ctx context.Context, source, key string, before int64, limit int) (Thread, error) {
+func (s *Store) MailConflictMessages(ctx context.Context, source, key string, before ref.Message, limit int) (Thread, error) {
 	result := Thread{ThreadID: key, Source: source, Messages: []MessageDetail{}}
-	if source == "" || key == "" || before < 0 || limit < 0 || limit > MaxThreadMessages {
+	if source == "" || key == "" || limit < 0 || limit > MaxThreadMessages {
 		return result, fmt.Errorf("source, conflict key and valid page bounds are required")
 	}
 	if limit == 0 {
@@ -70,9 +72,9 @@ func (s *Store) MailConflictMessages(ctx context.Context, source, key string, be
 		join mail_thread_conflicts c on c.source=d.source and d.node_key=any(c.node_keys)
 		where c.source=$1 and c.conflict_key=$2 and m.thread_id=''`
 	args := []any{source, key, limit + 1}
-	if before != 0 {
+	if !before.IsZero() {
 		var anchor Message
-		if err := anchor.scanFull(s.pool.QueryRow(ctx, query+` and m.id=$3`, source, key, before)); err != nil {
+		if err := anchor.scanFull(s.pool.QueryRow(ctx, query+` and m.ref=$3`, source, key, before.String())); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return result, ErrNotFound
 			}

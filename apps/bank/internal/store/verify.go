@@ -11,6 +11,7 @@ import (
 // its raw input was filed and which attachment rows claim to exist.
 type ArchivedMessage struct {
 	ID          int64
+	Ref         string
 	Source      string
 	RawRef      string
 	Subject     string
@@ -22,7 +23,7 @@ type ArchivedMessage struct {
 // a single query instead of one per message.
 func (s *Store) EachArchivedMessage(ctx context.Context, source string, fn func(ArchivedMessage) error) error {
 	query := `
-		select m.id, m.source, m.raw_ref, m.subject,
+		select m.id, m.ref, m.source, m.raw_ref, m.subject,
 		       a.id, a.filename, a.mime_type, c.size_bytes, c.blake3
 		from messages m
 		left join attachments a on a.message_id = m.id
@@ -54,7 +55,7 @@ func (s *Store) EachArchivedMessage(ctx context.Context, source string, fn func(
 			filename, mimeType sql.NullString
 			digest             content.Digest
 		)
-		if err := rows.Scan(&m.ID, &m.Source, &m.RawRef, &m.Subject,
+		if err := rows.Scan(&m.ID, &m.Ref, &m.Source, &m.RawRef, &m.Subject,
 			&attID, &filename, &mimeType, &size, &digest); err != nil {
 			return err
 		}

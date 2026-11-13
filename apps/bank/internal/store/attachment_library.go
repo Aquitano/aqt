@@ -9,6 +9,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -132,11 +133,11 @@ func (s *Store) AttachmentMessages(ctx context.Context, d content.Digest, offset
 	return out, rows.Err()
 }
 
-func (s *Store) MessageParent(ctx context.Context, id int64) (Message, error) {
+func (s *Store) MessageParent(ctx context.Context, child ref.Message) (Message, error) {
 	var m Message
 	err := m.scanFull(s.pool.QueryRow(ctx, `select `+messageColumns+` from messages m join messages child
  on m.source=child.source and m.thread_id=child.thread_id and m.external_id=child.parent_external_id
- where child.id=$1`, id))
+ where child.ref=$1`, child.String()))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return m, ErrNotFound
 	}

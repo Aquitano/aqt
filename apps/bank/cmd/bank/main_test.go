@@ -104,18 +104,19 @@ func TestLibraryGetRoutesByIDKind(t *testing.T) {
 	defer remote.Close()
 	t.Setenv("BANK_URL", remote.URL)
 	t.Setenv("BANK_TOKEN", "test")
-	for id, want := range map[string]string{
-		"item_ab":       "/v1/library/items/item_ab",
-		"activity_ab":   "/v1/library/activity/activity_ab",
-		"collection_ab": "/v1/library/collections/collection_ab",
-		"file_ab":       "/v1/library/files/file_ab",
-		"page_ab":       "/v1/library/pages/page_ab",
+	const id = "0123456789abcdef0123456789abcdef"
+	for cited, want := range map[string]string{
+		"item:" + id:       "/v1/library/items/item:" + id,
+		"activity:" + id:   "/v1/library/activity/activity:" + id,
+		"collection:" + id: "/v1/library/collections/collection:" + id,
+		"file:" + id:       "/v1/library/files/file:" + id,
+		"page:" + id:       "/v1/library/pages/page:" + id,
 	} {
-		if err := execute(context.Background(), []string{"library", "get", id}); err != nil {
+		if err := execute(context.Background(), []string{"library", "get", cited}); err != nil {
 			t.Fatal(err)
 		}
 		if path != want {
-			t.Errorf("get %s requested %s, want %s", id, path, want)
+			t.Errorf("get %s requested %s, want %s", cited, path, want)
 		}
 	}
 }
@@ -124,12 +125,12 @@ func TestShowPrintsRetiredRefs(t *testing.T) {
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
-		fmt.Fprint(w, `{"_tag":"MessageRetired","message":"message 0123456789ab was retired","retired":{"ref":"0123456789ab","source":"youtube","external_id":"watch:1","replacement":"activity_ab"}}`)
+		fmt.Fprint(w, `{"_tag":"MessageRetired","message":"message msg:0123456789abcdef was retired","retired":{"ref":"msg:0123456789abcdef","source":"youtube","external_id":"watch:1","replacement":"activity:0123456789abcdef0123456789abcdef"}}`)
 	}))
 	defer remote.Close()
 	t.Setenv("BANK_URL", remote.URL)
 	t.Setenv("BANK_TOKEN", "test")
-	for _, args := range [][]string{{"show", "0123456789ab"}, {"show", "0123456789ab", "--json"}} {
+	for _, args := range [][]string{{"show", "msg:0123456789abcdef"}, {"show", "msg:0123456789abcdef", "--json"}} {
 		if err := execute(context.Background(), args); err != nil {
 			t.Errorf("%v: %v", args, err)
 		}

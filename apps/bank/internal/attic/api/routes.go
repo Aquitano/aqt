@@ -16,6 +16,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 type body[T any] = httpapi.Body[T]
@@ -200,23 +201,11 @@ func (s *Server) coverage(ctx context.Context, in *coverageInput) (*body[store.C
 }
 
 type refInput struct {
-	Ref string `path:"ref" doc:"Content ref: 16 to 64 hex characters, with or without the attic: prefix."`
-}
-
-func (in refInput) parse() (string, error) {
-	ref, ok := store.ParseRef(in.Ref)
-	if !ok {
-		return "", httpapi.Invalid.New(fmt.Sprintf("%q is not a ref; a ref is 16 to 64 hex characters, optionally after attic:", in.Ref))
-	}
-	return ref, nil
+	Ref ref.Content `path:"ref" doc:"Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest."`
 }
 
 func (s *Server) content(ctx context.Context, in *refInput) (*body[view.Content], error) {
-	ref, err := in.parse()
-	if err != nil {
-		return nil, err
-	}
-	c, err := s.store.Content(ctx, ref)
+	c, err := s.store.Content(ctx, in.Ref)
 	if err != nil {
 		return nil, fail(err)
 	}
@@ -228,35 +217,19 @@ func (s *Server) content(ctx context.Context, in *refInput) (*body[view.Content]
 }
 
 func (s *Server) text(ctx context.Context, in *refInput) (*body[store.TextDetail], error) {
-	ref, err := in.parse()
-	if err != nil {
-		return nil, err
-	}
-	return reply(s.store.Text(ctx, 0, ref))
+	return reply(s.store.Text(ctx, 0, in.Ref))
 }
 
 func (s *Server) metadata(ctx context.Context, in *refInput) (*body[store.MetadataDetail], error) {
-	ref, err := in.parse()
-	if err != nil {
-		return nil, err
-	}
-	return reply(s.store.Metadata(ctx, 0, ref))
+	return reply(s.store.Metadata(ctx, 0, in.Ref))
 }
 
 func (s *Server) analyses(ctx context.Context, in *refInput) (*body[[]store.Analysis], error) {
-	ref, err := in.parse()
-	if err != nil {
-		return nil, err
-	}
-	return reply(s.store.Analyses(ctx, 0, ref))
+	return reply(s.store.Analyses(ctx, 0, in.Ref))
 }
 
 func (s *Server) download(ctx context.Context, in *refInput) (*huma.StreamResponse, error) {
-	ref, err := in.parse()
-	if err != nil {
-		return nil, err
-	}
-	content, err := s.store.Retrieval(ctx, 0, ref)
+	content, err := s.store.Retrieval(ctx, 0, in.Ref)
 	if err != nil {
 		return nil, fail(err)
 	}

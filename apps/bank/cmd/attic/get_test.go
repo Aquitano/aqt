@@ -4,7 +4,7 @@ import "testing"
 
 func TestGetArguments(t *testing.T) {
 	var root cli
-	if _, err := parseCLI(&root, []string{"get", "attic:0123456789abcdef", "--to", "recovered.pdf", "--json"}); err != nil {
+	if _, err := parseCLI(&root, []string{"get", "content:0123456789abcdef", "--to", "recovered.pdf", "--json"}); err != nil {
 		t.Fatal(err)
 	}
 	if root.Get.To != "recovered.pdf" || !root.Get.JSON {

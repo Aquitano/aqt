@@ -10,6 +10,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
@@ -54,7 +55,11 @@ func TestCatalogueServesAndSearches(t *testing.T) {
 	if _, err := catalogue.ModifiedFiles(t.Context(), time.Unix(0, 0), time.Now(), 5); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := catalogue.Content(t.Context(), "attic:0000000000000000"); !errors.Is(err, attic.ErrNotFound) {
+	absent, err := ref.ParseContent("content:0000000000000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalogue.Content(t.Context(), absent); !errors.Is(err, attic.ErrNotFound) {
 		t.Fatalf("a ref no content has: %v", err)
 	}
 }

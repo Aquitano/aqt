@@ -22,6 +22,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
@@ -32,10 +33,9 @@ type reader interface {
 	ListMailboxes(context.Context, string) ([]store.Mailbox, error)
 	BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error)
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
-	GetMessage(ctx context.Context, id int64) (store.Message, []store.Attachment, error)
-	GetMessageByRef(ctx context.Context, ref string) (store.Message, []store.Attachment, error)
+	GetMessageByRef(ctx context.Context, cited ref.Message) (store.Message, []store.Attachment, error)
 	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
-	MailConflictMessages(context.Context, string, string, int64, int) (store.Thread, error)
+	MailConflictMessages(context.Context, string, string, ref.Message, int) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
 	ListContacts(ctx context.Context) ([]store.Contact, error)
 	GetContact(ctx context.Context, name string) (store.Contact, error)

@@ -20,6 +20,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/extract"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
@@ -512,7 +513,7 @@ func TestDocumentsAreReadForTheirWords(t *testing.T) {
 	if len(hits[0].Places) != 2 || !strings.Contains(hits[0].Snippet, "<zwanzig> Stunden & pro Woche") {
 		t.Errorf("hit %+v, want both copies and a snippet with the words", hits[0])
 	}
-	long, err := st.Text(ctx, find(t, st, "long").ID, "")
+	long, err := st.Text(ctx, find(t, st, "long").ID, ref.Content{})
 	if err != nil || long.Status != "truncated" || long.Chars > extract.MaxChars {
 		t.Errorf("long.md: %s with %d characters, %v; want truncated at the cap", long.Status, long.Chars, err)
 	}

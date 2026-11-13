@@ -438,7 +438,7 @@ func TestSetLongerMessageBodyOnlyGrows(t *testing.T) {
 			if healed != tc.want {
 				t.Errorf("healed = %v, want %v", healed, tc.want)
 			}
-			body, err := st.MessageBody(ctx, id)
+			_, body, err := st.MessageBody(ctx, id)
 			if err != nil {
 				t.Fatal(err)
 			}

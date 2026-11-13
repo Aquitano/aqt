@@ -1,6 +1,10 @@
 package store
 
-import "context"
+import (
+	"context"
+
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
+)
 
 type Branch struct {
 	Messages   []MessageDetail `json:"messages"`
@@ -9,15 +13,15 @@ type Branch struct {
 
 // MessageBranch reads only the ancestors of the selected answer, in reply order.
 // The path guard stops cycles; the depth limit bounds damaged or huge exports.
-func (s *Store) MessageBranch(ctx context.Context, id int64) (Branch, error) {
+func (s *Store) MessageBranch(ctx context.Context, cited ref.Message) (Branch, error) {
 	out := Branch{Messages: []MessageDetail{}}
 	rows, err := s.pool.Query(ctx, `with recursive chain as (
- select id,source,thread_id,parent_external_id,1 depth,array[id] path from messages where id=$1
+ select id,source,thread_id,parent_external_id,1 depth,array[id] path from messages where ref=$1
  union all
  select m.id,m.source,m.thread_id,m.parent_external_id,c.depth+1,c.path||m.id
  from chain c join messages m on m.source=c.source and m.thread_id=c.thread_id and m.external_id=c.parent_external_id
  where c.depth<1000 and not m.id=any(c.path)
- ) select `+messageColumns+` from messages m join chain c on c.id=m.id order by c.depth desc`, id)
+ ) select `+messageColumns+` from messages m join chain c on c.id=m.id order by c.depth desc`, cited.String())
 	if err != nil {
 		return out, err
 	}

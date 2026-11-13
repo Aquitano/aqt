@@ -7,6 +7,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 )
 
@@ -72,8 +73,8 @@ func (c *timelineCmd) Run(ctx context.Context) error {
 }
 
 type refCmd struct {
-	Ref  string `arg:"" help:"The ref as cited."`
-	JSON bool   `help:"JSON output."`
+	Ref  ref.Ref `arg:"" help:"The ref as cited, such as msg:<16 hex>, content:<16 to 64 hex> or item:<32 hex>."`
+	JSON bool    `help:"JSON output."`
 }
 
 func (c *refCmd) Run(ctx context.Context) error {

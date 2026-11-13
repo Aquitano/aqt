@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { Attachment, SearchParams } from "@/lib/api";
+import { messageRef, type Attachment, type SearchParams } from "@/lib/api";
 import type { LibraryFilters } from "@/lib/library-api";
 
 export const VIEWS = [
@@ -23,13 +23,13 @@ export type Selection =
       kind: "thread";
       source: string;
       threadId: string;
-      flashId?: number;
+      flashRef?: string;
       current?: boolean;
     }
   | { kind: "item"; id: string }
   | { kind: "collection"; id: string }
   | { kind: "page"; id: string }
-  | { kind: "message"; id: string }
+  | { kind: "message"; ref: string }
   | { kind: "contact"; name: string }
   | { kind: "mail-conflict"; source: string; key: string }
   | { kind: "file"; file: Attachment }
@@ -108,8 +108,7 @@ export function readSelection(params: URLSearchParams): Selection {
   const page = params.get("page");
   if (page) return { kind: "page", id: page };
   const message = params.get("message");
-  if (message && (/^[a-f0-9]{12}$/.test(message) || /^[1-9]\d*$/.test(message)))
-    return { kind: "message", id: message };
+  if (message && messageRef.test(message)) return { kind: "message", ref: message };
   const contact = params.get("contact");
   if (contact) return { kind: "contact", name: contact };
   const file = params.get("file");
@@ -127,12 +126,12 @@ export function readSelection(params: URLSearchParams): Selection {
   if (source && conflict) return { kind: "mail-conflict", source, key: conflict };
   const threadId = params.get("thread");
   if (source && threadId) {
-    const around = Number(params.get("around"));
+    const around = params.get("around");
     return {
       kind: "thread",
       source,
       threadId,
-      flashId: Number.isSafeInteger(around) && around > 0 ? around : undefined,
+      flashRef: around && messageRef.test(around) ? around : undefined,
       current: params.get("current") === "true" || undefined,
     };
   }
@@ -149,7 +148,7 @@ export function writeSelection(params: URLSearchParams, selection: Selection) {
       params.set(selection.kind, selection.id);
       break;
     case "message":
-      params.set("message", selection.id);
+      params.set("message", selection.ref);
       break;
     case "contact":
       params.set("contact", selection.name);
@@ -162,7 +161,7 @@ export function writeSelection(params: URLSearchParams, selection: Selection) {
     case "thread":
       params.set("thread", selection.threadId);
       params.set("threadSource", selection.source);
-      if (selection.flashId) params.set("around", String(selection.flashId));
+      if (selection.flashRef) params.set("around", selection.flashRef);
       if (selection.current) params.set("current", "true");
       break;
     case "mail-conflict":

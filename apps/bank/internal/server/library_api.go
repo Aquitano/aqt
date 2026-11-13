@@ -217,7 +217,7 @@ func (f LibraryFilters) options() (library.ListOptions, error) {
 }
 
 type libraryIDInput struct {
-	ID string `path:"id" doc:"The record's ID, such as item_… or file_…."`
+	ID string `path:"id" doc:"The record's ID, which is also its ref, such as item:<32 hex>."`
 }
 
 type findInput struct {

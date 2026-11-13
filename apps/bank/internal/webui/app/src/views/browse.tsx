@@ -36,7 +36,7 @@ function groupTitle(g: ThreadGroup) {
 
 function groupSelection(g: ThreadGroup): Selection {
   return !g.thread_id
-    ? { kind: "message", id: String(g.last_id) }
+    ? { kind: "message", ref: g.last_ref }
     : { kind: "thread", source: g.source, threadId: g.thread_id };
 }
 
@@ -186,12 +186,10 @@ export function BrowseView({
                   ? Boolean(g.thread_id) &&
                     selection.source === g.source &&
                     selection.threadId === g.thread_id
-                  : selection?.kind === "message" &&
-                    !g.thread_id &&
-                    selection.id === String(g.last_id);
+                  : selection?.kind === "message" && !g.thread_id && selection.ref === g.last_ref;
               return (
                 <GroupRow
-                  key={JSON.stringify([g.source, g.thread_id, g.thread_id ? null : g.last_id])}
+                  key={JSON.stringify([g.source, g.thread_id, g.thread_id ? null : g.last_ref])}
                   g={g}
                   selected={selected}
                   onClick={() => onSelect(sel)}

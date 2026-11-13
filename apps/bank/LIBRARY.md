@@ -29,7 +29,7 @@ bank import netflix NetflixViewingHistory.csv --account thomas
 bank import netflix NetflixViewingHistory.csv --account thomas --date-order dmy
 bank import youtube-media takeout.zip --account thomas
 bank library upload film.mp4 soundtrack.flac notes.pdf
-bank library upload cover.jpg subtitles.srt --item-id item_ID
+bank library upload cover.jpg subtitles.srt --item-id item:<32 hex>
 bank import library bundle.json
 ```
 
@@ -66,13 +66,13 @@ Bank searches the most recent successful publication. Changes in Brain are visib
 
 ## Query and edit
 
-`bank ref <ref>` says what any cited ref names: `bank:<ref>` or a bare message ref, a library ID, or bytes as `attic:<ref>` or a whole BLAKE3 digest. It prints the record's kind and title, the route that returns it in full, and where the same bytes are. A message or library file lists the places on disks that hold its bytes; bytes list the messages and library files that hold them and the places on disks.
+`bank ref <ref>` says what any cited ref names: `msg:<16 hex>` for a message, a library ID such as `item:<32 hex>`, or `content:<16 to 64 hex>` for bytes. A bare value without its kind is rejected. It prints the record's kind and title, the route that returns it in full, and where the same bytes are. A message or library file lists the places on disks that hold its bytes; bytes list the messages and library files that hold them and the places on disks.
 
 Message attachments, library files and files on disks share one `contents` row per BLAKE3 digest, so these links need no background pass and appear as soon as an import or a scan commits.
 
 `bank timeline 2019-03` lists what happened in a year, a month or a day, oldest first: messages by when they were sent, activity by when it happened, and files on disks by when they were last modified. `--group message`, `activity` or `file` narrows it. `--limit` caps each group on its own, so a day with thousands of files cannot push the messages out, and the output names the groups that reached it. Activity without a date and files that have gone missing are left out.
 
-`bank search` and the UI Search tab return separate groups for correspondence, media, activity, collections, files, message attachments, and published pages. `bank search` adds the files [attic](attic/README.md) catalogues on disks, cited as `attic:<ref>`: names and paths, archive members, document text, embedded tags and OCR. For that group every word has to match. It is left out when a sender, source, account, date or a kind other than `file` narrows the search, and when the catalogue cannot answer, which `coverage` then says. Each group has its own bounded page. Existing message citations still work with `bank show`.
+`bank search` and the UI Search tab return separate groups for correspondence, media, activity, collections, files, message attachments, and published pages. `bank search` adds the files [attic](attic/README.md) catalogues on disks, cited as `content:<hex>`: names and paths, archive members, document text, embedded tags and OCR. For that group every word has to match. It is left out when a sender, source, account, date or a kind other than `file` narrows the search, and when the catalogue cannot answer, which `coverage` then says. Each group has its own bounded page. A message hit carries its `msg:` ref for `bank show`.
 
 ```sh
 bank search "arrival" --json
@@ -81,12 +81,12 @@ bank search "invoice" --from alice --since 2025-01-01
 bank library list --kind track --source youtube
 bank library activity --source netflix --account thomas
 bank library collections --kind playlist
-bank library get item_ID
-bank library get activity_ID
-bank library snapshots collection_ID
+bank library get item:<32 hex>
+bank library get activity:<32 hex>
+bank library snapshots collection:<32 hex>
 ```
 
-`bank library get` takes any library ID and picks the record kind from its prefix: `item_`, `activity_`, `collection_`, `file_` or `page_`.
+A library record's ID is its ref. `bank library get` takes any of them and picks the record kind from it: `item:`, `activity:`, `collection:`, `file:` or `page:`.
 
 Correspondence-specific filters such as sender, recipient, mailbox, and contact restrict combined search to correspondence. Account filters restrict it to the library because mail has a different account model. Message fuzzy matching stays in ParadeDB; library text search uses Postgres full-text indexes. Scores from these indexes are not treated as comparable. Date filters apply to correspondence, dated activity, and message attachments. Items, collections, standalone files, and pages have no event date, so they remain unfiltered by those dates. Undated activity is excluded when a date filter is present. Bank rejects combinations of correspondence filters with a library kind or account.
 
@@ -109,20 +109,20 @@ CLI edits accept JSON from a file or standard input. State and collection edits 
 }
 ```
 
-Apply that document with `bank library state item_ID state.json`. State edits replace the complete personal state, so include fields you want to retain.
+Apply that document with `bank library state item:<32 hex> state.json`. State edits replace the complete personal state, so include fields you want to retain.
 
 ## Retire messages a library import replaces
 
-YouTube history that reached Bank as generic JSON lives in `messages` under external ids such as `watch:`, `playlist:` and `library-song:`. Once `bank import youtube-media` holds the same history as library records, `bank retire` deletes those message rows. Each deleted row leaves a tombstone in `message_tombstones` with its source, external ID, ref, date, subject, raw input, reason and optional replacement library ID.
+YouTube history that reached Bank as generic JSON lives in `messages` under external ids such as `watch:`, `playlist:` and `library-song:`. Once `bank import youtube-media` holds the same history as library records, `bank retire` deletes those message rows. Each deleted row leaves a tombstone in `message_tombstones` with its source, external ID, Message-ID, ref, date, subject, raw input, reason and optional replacement library ID.
 
-Every message import skips a tombstoned source and external ID, so a JSON re-upload, `bank reimport` or an inbox sweep cannot bring the row back; the JSON and `youtube` importers count it as retired, other importers as already known. `bank verify --heal` only repairs rows that exist. `bank show <ref>` for a retired ref prints the tombstone and its replacement instead of failing. Over HTTP, `GET /v1/messages/{ref}` answers `410 Gone` with the tombstone under `retired`.
+Every message import skips a tombstoned source and external ID, and for mail a tombstoned Message-ID, so a JSON re-upload, `bank reimport` or an inbox sweep cannot bring the row back; the JSON and `youtube` importers count it as retired, other importers as already known. `bank verify --heal` only repairs rows that exist. `bank show <ref>` for a retired ref prints the tombstone and its replacement instead of failing. Over HTTP, `GET /v1/messages/{ref}` answers `410 Gone` with the tombstone under `retired`.
 
 Run the cutover on the server. `retire` refuses to run through `BANK_URL`.
 
 1. Back up with `docker-backup bank` or the `pg_dump` block in [DEPLOY.md](DEPLOY.md) §7. The delete has no undo except that dump.
 2. Import every Takeout: `bank import youtube-media takeout.zip --account thomas`.
 3. Compare counts per kind: `bank query "select split_part(external_id, ':', 1), count(*) from messages where source = 'youtube' group by 1"` against `bank query "select kind, count(*) from library_activity where source = 'youtube' group by 1"` and the collection snapshots. Spot-check a few titles with `bank search`.
-4. Build the replacement map for every cited ref. `bank show <ref> --json` says what the message was; `bank search "<title>" --json` or `bank library activity "<title>" --source youtube` finds the library record. Write a CSV of `ref,replacement` rows, or a JSON object of ref to ID, into `BANK_DATA_DIR` so the container sees it under `/data`. Replacements must be existing item, activity or collection IDs.
+4. Build the replacement map for every cited ref. `bank show <ref> --json` says what the message was; `bank search "<title>" --json` or `bank library activity "<title>" --source youtube` finds the library record. Write a CSV of `ref,replacement` rows, or a JSON object of ref to ID, with refs in their `msg:` form, into `BANK_DATA_DIR` so the container sees it under `/data`. Replacements must be existing item, activity or collection IDs.
 5. Dry run: `bank retire --source youtube --external-prefix watch: --external-prefix playlist: --external-prefix library-song: --replacement-map /data/youtube-refs.csv --reason "replaced by youtube-media"`. It prints counts and samples per prefix, and every map ref that matches no retiring row. Such a ref is a typo or a citation of a row this run keeps, and `--apply` refuses to run until the map has none.
 6. Apply: repeat the command with `--apply`. One statement deletes the rows and writes their tombstones; attachment, mailbox and mail-thread rows follow through their cascades. Message imports wait until it commits, so none can bring a retired row back. Blobs and raw archive files stay.
 7. Verify: `bank stats`, `bank show <cited ref>` reports it retired with its replacement, and `bank library get <replacement>` resolves. Then re-point the wiki citations to the library IDs.

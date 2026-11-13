@@ -21,7 +21,7 @@ type Dated struct {
 // MessagesBetween lists messages sent in [since, until), oldest first.
 func (s *Store) MessagesBetween(ctx context.Context, since, until time.Time, limit int) ([]Dated, error) {
 	rows, err := s.pool.Query(ctx, `
-		select m.sent_at, false, 'message', m.source, `+refSQL("m")+`,
+		select m.sent_at, false, 'message', m.source, m.ref,
 			coalesce(nullif(m.subject, ''), left(m.body, 120))
 		from messages m where m.sent_at >= $1 and m.sent_at < $2
 		order by m.sent_at, m.id limit $3`, since, until, limit)

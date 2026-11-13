@@ -143,7 +143,7 @@ func copyCandidates(ctx context.Context, content store.Retrieval, destination st
 		if err := publish(copied, destination); err != nil {
 			return result, fmt.Errorf("destination: %w", err)
 		}
-		return Result{Ref: "attic:" + content.Ref, Blake3: hex.EncodeToString(content.Digest[:]), Destination: destination,
+		return Result{Ref: content.Ref, Blake3: hex.EncodeToString(content.Digest[:]), Destination: destination,
 			EntryID: p.ID, VolumeID: p.VolumeID, Source: p.Path, Size: content.Size}, nil
 	}
 	return result, errors.Join(&UnavailableError{Volumes: offline}, errors.Join(failures...))

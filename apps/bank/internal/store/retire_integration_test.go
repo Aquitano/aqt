@@ -7,6 +7,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
@@ -79,18 +80,19 @@ func TestRetireApplyDeletesMatchingRowsAndRecordsTombstones(t *testing.T) {
 	}
 	opts := store.RetireOptions{
 		Source: "youtube", ExternalPrefixes: []string{"watch:", "playlist:"}, Reason: "cutover", Apply: true,
-		Replacements: map[string]string{refs["youtube/watch:a"]: "item_missing"},
+		Replacements: map[string]string{refs["youtube/watch:a"]: "item:missing"},
 	}
 	if _, err := st.RetireMessages(ctx, opts); err == nil {
 		t.Fatal("a replacement outside the library was accepted")
 	}
 
-	opts.Replacements = map[string]string{refs["youtube/watch:a"]: item.ID, "000000000000": item.ID}
-	if _, err := st.RetireMessages(ctx, opts); err == nil || !strings.Contains(err.Error(), "000000000000") {
+	const unmatched = "msg:0000000000000000"
+	opts.Replacements = map[string]string{refs["youtube/watch:a"]: item.ID, unmatched: item.ID}
+	if _, err := st.RetireMessages(ctx, opts); err == nil || !strings.Contains(err.Error(), unmatched) {
 		t.Fatalf("a map ref matching no retiring message was applied: %v", err)
 	}
 
-	delete(opts.Replacements, "000000000000")
+	delete(opts.Replacements, unmatched)
 	res, err := st.RetireMessages(ctx, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -101,16 +103,40 @@ func TestRetireApplyDeletesMatchingRowsAndRecordsTombstones(t *testing.T) {
 	if m, a, ts := countRows(t, dsn); m != 2 || a != 0 || ts != 3 {
 		t.Fatalf("after apply: %d messages, %d attachments, %d tombstones", m, a, ts)
 	}
-	for _, key := range []string{"youtube/subscription:s", "json/watch:a"} {
-		if _, err := st.GetMessageDetailByRef(ctx, refs[key]); err != nil {
-			t.Fatalf("%s should survive: %v", key, err)
+	for _, kept := range []store.Message{msg("youtube", "subscription:s", store.Message{}), msg("json", "watch:a", store.Message{})} {
+		if _, err := st.GetMessageDetailByRef(ctx, ref.ForMessage(kept.Source, "", kept.ExternalID)); err != nil {
+			t.Fatalf("%s/%s should survive: %v", kept.Source, kept.ExternalID, err)
 		}
 	}
-	retired, err := st.RetiredByRef(ctx, refs["youtube/watch:a"])
+	retired, err := st.RetiredByRef(ctx, ref.ForMessage("youtube", "", "watch:a"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if retired.ExternalID != "watch:a" || retired.Reason != "cutover" || retired.Replacement != item.ID || retired.RetiredAt.IsZero() {
 		t.Fatalf("tombstone = %+v", retired)
+	}
+}
+
+// Mail is matched by its Message-ID before its external id, so a retired mail
+// that arrives again from another export carries a new external id. Only the
+// Message-ID on the tombstone keeps it out.
+func TestRetiredMailStaysRetiredUnderAnotherExternalID(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	synced := msg("gmail", "api:18c0ffee", store.Message{MessageID: "<retired@example.com>", Body: "old newsletter"})
+	if _, err := st.InsertMessage(ctx, synced); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.RetireMessages(ctx, store.RetireOptions{Source: "gmail", ExternalPrefixes: []string{"api:"}, Apply: true}); err != nil {
+		t.Fatal(err)
+	}
+	fromTakeout := synced
+	fromTakeout.ExternalID = synced.MessageID
+	id, err := st.InsertMessage(ctx, fromTakeout)
+	if err != nil || id != 0 {
+		t.Fatalf("the retired mail came back as message %d: %v", id, err)
+	}
+	if n, err := st.CountRetired(ctx, []store.Message{fromTakeout}); err != nil || n != 1 {
+		t.Fatalf("retired count = %d, %v; want 1", n, err)
 	}
 }

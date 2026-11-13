@@ -13,6 +13,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
@@ -249,7 +250,7 @@ func TestMailThreadArrivalOrdersAndConflicts(t *testing.T) {
 		if !errors.As(err, &conflict) || len(conflict.Choices) != 2 {
 			t.Fatalf("expected typed split: %v", err)
 		}
-		page, err := st.MailConflictMessages(ctx, source, conflict.ConflictKey, 0, 1)
+		page, err := st.MailConflictMessages(ctx, source, conflict.ConflictKey, ref.Message{}, 1)
 		if err != nil || len(page.Messages) != 1 || page.Messages[0].MessageID != "a@example.com" {
 			t.Fatalf("unanchored page: %+v, %v", page, err)
 		}

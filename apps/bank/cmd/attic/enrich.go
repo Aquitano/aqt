@@ -11,6 +11,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/enrich"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 type enrichCmd struct {
@@ -33,14 +34,14 @@ func (cmd *enrichCmd) Run(ctx context.Context) error {
 	}
 	selection := store.AISelection{Force: cmd.Force}
 	for _, arg := range cmd.Targets {
-		id, ref, err := parseTarget(arg)
+		id, cited, err := parseTarget(arg)
 		if err != nil {
 			return err
 		}
 		if id != 0 {
 			selection.Entries = append(selection.Entries, id)
 		} else {
-			selection.Refs = append(selection.Refs, ref)
+			selection.Refs = append(selection.Refs, cited)
 		}
 	}
 	cfg, _, err := loadConfig(cmd.Config)
@@ -96,7 +97,7 @@ func (cmd *enrichCmd) Run(ctx context.Context) error {
 	}
 	fmt.Fprintf(os.Stderr, "%s using %s / %s; at most %d contents\n", p.Key().Task, p.Key().Provider, p.Key().Model, cmd.Limit)
 	summary, runErr := enrich.Run(ctx, st, enrich.Options{Config: cfg, Provider: p, Selection: selection, Mounts: mounts, Limit: cmd.Limit, Progress: func(f store.ContentFile, status string) {
-		fmt.Fprintf(os.Stderr, "attic:%s  %s: %s\n", f.Ref, f.Path, status)
+		fmt.Fprintf(os.Stderr, "%s  %s: %s\n", f.Ref, f.Path, status)
 	}})
 	if cmd.JSON {
 		err = printJSON(summary)
@@ -109,15 +110,16 @@ func (cmd *enrichCmd) Run(ctx context.Context) error {
 	return errors.Join(runErr, err)
 }
 
-func parseTarget(arg string) (int64, string, error) {
-	if ref, ok := store.ParseRef(arg); ok {
-		return 0, ref, nil
+// parseTarget reads an entry ID, which is digits only, or a content ref.
+func parseTarget(arg string) (int64, ref.Content, error) {
+	if id, err := strconv.ParseInt(arg, 10, 64); err == nil && id > 0 {
+		return id, ref.Content{}, nil
 	}
-	id, err := strconv.ParseInt(arg, 10, 64)
-	if err != nil || id <= 0 {
-		return 0, "", fmt.Errorf("not an entry id or a ref: %q; a ref is 16 to 64 hex characters, optionally after attic:", arg)
+	cited, err := ref.ParseContent(arg)
+	if err != nil {
+		return 0, cited, fmt.Errorf("not an entry ID or a content ref: %w", err)
 	}
-	return id, "", nil
+	return 0, cited, nil
 }
 
 type analysisCmd struct {
@@ -126,7 +128,7 @@ type analysisCmd struct {
 }
 
 func (cmd *analysisCmd) Run(ctx context.Context) error {
-	id, ref, err := parseTarget(cmd.Target)
+	id, cited, err := parseTarget(cmd.Target)
 	if err != nil {
 		return err
 	}
@@ -135,7 +137,7 @@ func (cmd *analysisCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeStore()
-	results, err := st.Analyses(ctx, id, ref)
+	results, err := st.Analyses(ctx, id, cited)
 	if err != nil {
 		return err
 	}
@@ -146,7 +148,7 @@ func (cmd *analysisCmd) Run(ctx context.Context) error {
 		return errors.New("no enrichment results for that content")
 	}
 	for _, a := range results {
-		fmt.Printf("attic:%s  %s / %s / %s (%s, %d ms)\n  policy %s\n", a.Ref, a.Task, a.Provider, a.Model, a.Status, a.ElapsedMS, a.PromptVersion)
+		fmt.Printf("%s  %s / %s / %s (%s, %d ms)\n  policy %s\n", a.Ref, a.Task, a.Provider, a.Model, a.Status, a.ElapsedMS, a.PromptVersion)
 		if a.ReportedModel != "" {
 			fmt.Printf("  reported model %s\n", a.ReportedModel)
 		}

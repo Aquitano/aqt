@@ -40,7 +40,7 @@ const (
 type Finding struct {
 	LibraryID    string `json:"library_id,omitempty"`
 	LibraryKind  string `json:"library_kind,omitempty"`
-	MessageID    int64  `json:"message_id"`
+	MessageRef   string `json:"message_ref,omitempty"`
 	AttachmentID int64  `json:"attachment_id,omitempty"`
 	Kind         string `json:"kind"`
 	Detail       string `json:"detail"`
@@ -157,7 +157,7 @@ func (v *verifier) message(ctx context.Context, m store.ArchivedMessage) error {
 	if m.RawRef != "" {
 		if _, err := os.Stat(v.rawFile(m.RawRef)); err != nil {
 			rawOK = false
-			v.add(Finding{MessageID: m.ID, Kind: MissingRaw, Detail: m.RawRef}, false)
+			v.add(Finding{MessageRef: m.Ref, Kind: MissingRaw, Detail: m.RawRef}, false)
 		}
 	}
 
@@ -198,7 +198,7 @@ func (v *verifier) attachment(ctx context.Context, m store.ArchivedMessage, a st
 	}
 	// The bytes hash correctly, so the content's size is the wrong half. That
 	// is repairable without consulting the raw input at all.
-	f := Finding{MessageID: m.ID, AttachmentID: a.ID, Kind: WrongSize,
+	f := Finding{MessageRef: m.Ref, AttachmentID: a.ID, Kind: WrongSize,
 		Detail: fmt.Sprintf("size_bytes says %d, file is %d", a.SizeBytes, info.Size())}
 	if !v.opts.Heal {
 		v.add(f, false)
@@ -215,7 +215,7 @@ func (v *verifier) attachment(ctx context.Context, m store.ArchivedMessage, a st
 // that input still carries content with the same digest — the only case where
 // the repair is provably the original content and not a guess.
 func (v *verifier) repairBlob(ctx context.Context, m store.ArchivedMessage, a store.Attachment, rawOK bool, kind, detail string) error {
-	f := Finding{MessageID: m.ID, AttachmentID: a.ID, Kind: kind, Detail: detail}
+	f := Finding{MessageRef: m.Ref, AttachmentID: a.ID, Kind: kind, Detail: detail}
 	if !v.opts.Heal || !rawOK {
 		v.add(f, false)
 		return nil
@@ -332,9 +332,9 @@ func (v *verifier) missingAttachments(ctx context.Context, m store.ArchivedMessa
 		return nil
 	}
 	f := Finding{
-		MessageID: m.ID,
-		Kind:      MissingAttachments,
-		Detail:    fmt.Sprintf("%d attachment(s) in %s are not in the database", len(missing), m.RawRef),
+		MessageRef: m.Ref,
+		Kind:       MissingAttachments,
+		Detail:     fmt.Sprintf("%d attachment(s) in %s are not in the database", len(missing), m.RawRef),
 	}
 	if !v.opts.Heal {
 		v.add(f, false)

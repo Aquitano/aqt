@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -73,14 +74,15 @@ func TestChatGPTReimportHealsBranchesAndKeepsReports(t *testing.T) {
 	if m.ParentExternalID != "question" || m.AlternativeIndex != 2 || m.BranchID != "b" || m.Body != "Keep repaired body" {
 		t.Fatalf("message: %+v", m)
 	}
-	branch, err := st.MessageBranch(ctx, id)
+	cited := ref.ForMessage("chatgpt", "", "answer-b")
+	branch, err := st.MessageBranch(ctx, cited)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if branch.Incomplete || len(branch.Messages) != 2 || branch.Messages[0].ExternalID != "question" || branch.Messages[1].ExternalID != "answer-b" {
 		t.Fatalf("branch includes another answer: %+v", branch)
 	}
-	parent, err := st.MessageParent(ctx, id)
+	parent, err := st.MessageParent(ctx, cited)
 	if err != nil || parent.ExternalID != "question" {
 		t.Fatalf("parent: %+v %v", parent, err)
 	}

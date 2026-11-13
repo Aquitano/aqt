@@ -116,7 +116,7 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 		}
 		predicate = "paradedb.boolean(must => array[" + strings.Join(required, ",") + "], should => array[" + predicate + "])"
 	}
-	sql := fmt.Sprintf(`select m.id, `+refSQL("m")+`, m.source, m.thread_id, m.sender, m.subject, m.body, m.sent_at,
+	sql := fmt.Sprintf(`select m.id, m.ref, m.source, m.thread_id, m.sender, m.subject, m.body, m.sent_at,
 		paradedb.score(m.id), coalesce(paradedb.snippet(m.body, '', '', %d), ''),
 		coalesce(paradedb.snippet(m.attachment_text, '', '', %d), '')
 		from messages m where m.id @@@ `+predicate, snippetChars, snippetChars)

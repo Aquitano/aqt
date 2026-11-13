@@ -10,6 +10,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
@@ -53,7 +54,11 @@ func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
 		t.Fatalf("full conversation: %+v %v", thread, err)
 	}
 	for _, message := range thread.Messages {
-		detail, err := remote.GetMessageDetail(ctx, message.ID)
+		cited, err := ref.ParseMessage(message.Ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		detail, err := remote.GetMessageDetailByRef(ctx, cited)
 		if err != nil || detail.Mail == nil || message.Mail == nil || !detail.Mail.HasReplyLinks || !message.Mail.HasReplyLinks {
 			t.Fatalf("mail provenance missing over HTTP: %+v %v", detail, err)
 		}
@@ -78,7 +83,7 @@ func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
 			t.Fatalf("provider conflict provenance: %+v %v", page, err)
 		}
 	}
-	page, err := remote.MailConflictMessages(ctx, "mail", conflict.ConflictKey, 0, 10)
+	page, err := remote.MailConflictMessages(ctx, "mail", conflict.ConflictKey, ref.Message{}, 10)
 	if err != nil || len(page.Messages) != 0 {
 		t.Fatalf("unanchored route: %+v %v", page, err)
 	}

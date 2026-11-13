@@ -31,10 +31,12 @@ const mailProvenance = type({
   conflict_key: "string",
 });
 
+// A message ref, the only way a message is named outside the server.
+export const messageRef = /^msg:[0-9a-f]{16}$/;
+
 export const message = type({
-  id: "number",
+  ref: "string",
   source: "string",
-  "ref?": "string",
   "raw_ref?": "string",
   "message_id?": "string",
   "mail?": mailProvenance,
@@ -90,7 +92,7 @@ const threadGroup = type({
   thread_id: "string",
   n: "number",
   last_at: "string",
-  last_id: "number",
+  last_ref: "string",
   sender: "string",
   subject: "string",
   preview: "string",
@@ -202,14 +204,14 @@ export function search({
   return api(`/v1/search?${p}`, message.array());
 }
 
-export function getMessage(id: string) {
-  return api(`/v1/messages/${id}`, message);
+export function getMessage(ref: string) {
+  return api(`/v1/messages/${ref}`, message);
 }
 
 export interface ThreadPosition {
-  before?: number;
-  after?: number;
-  around?: number;
+  before?: string;
+  after?: string;
+  around?: string;
   latest?: boolean;
   current?: boolean;
 }
@@ -254,7 +256,7 @@ export function removeContactAlias(name: string, value: string, source = "") {
   );
 }
 
-export function getContactMessages(name: string, before?: number) {
+export function getContactMessages(name: string, before?: string) {
   return api(
     `/v1/contacts/${encodeURIComponent(name)}/messages?limit=100${before ? `&before=${before}` : ""}`,
     message.array(),
@@ -293,9 +295,9 @@ export const BROWSE_PAGE = 50;
 export const SEARCH_PAGE = 50;
 export const CONTEXT_PAGE = 100;
 
-export function getMailConflict(source: string, key: string, before?: number) {
+export function getMailConflict(source: string, key: string, before?: string) {
   const params = new URLSearchParams({ source, limit: String(CONTEXT_PAGE) });
-  if (before) params.set("before", String(before));
+  if (before) params.set("before", before);
   return api(`/v1/mail-conflicts/${encodeURIComponent(key)}?${params}`, thread);
 }
 
@@ -353,13 +355,13 @@ export function getImportReports(before = 0) {
   return api(`/v1/import-reports?before=${before}`, importReport.array());
 }
 
-export function getMessageParent(id: number) {
-  return api(`/v1/messages/${id}/parent`, message);
+export function getMessageParent(ref: string) {
+  return api(`/v1/messages/${ref}/parent`, message);
 }
 
-export function getMessageBranch(id: number) {
+export function getMessageBranch(ref: string) {
   return api(
-    `/v1/messages/${id}/branch`,
+    `/v1/messages/${ref}/branch`,
     type({ messages: message.array(), incomplete: "boolean" }),
   );
 }

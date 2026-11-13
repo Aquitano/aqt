@@ -66,8 +66,8 @@ func TestCLIParsesArguments(t *testing.T) {
 		{[]string{"scan", `E:\Files`, "--volume", "known", "--new-volume=false"}, func(c cli) bool {
 			return c.Scan.Volume == "known" && !c.Scan.NewVolume
 		}},
-		{[]string{"enrich", "123", "attic:0123456789abcdef", "--task", "ocr", "--force"}, func(c cli) bool {
-			return reflect.DeepEqual(c.Enrich.Targets, []string{"123", "attic:0123456789abcdef"}) && c.Enrich.Task == "ocr" && c.Enrich.Provider == "" && c.Enrich.Force && c.Enrich.Limit == 20
+		{[]string{"enrich", "123", "content:0123456789abcdef", "--task", "ocr", "--force"}, func(c cli) bool {
+			return reflect.DeepEqual(c.Enrich.Targets, []string{"123", "content:0123456789abcdef"}) && c.Enrich.Task == "ocr" && c.Enrich.Provider == "" && c.Enrich.Force && c.Enrich.Limit == 20
 		}},
 		{[]string{"metadata", "123", "--json"}, func(c cli) bool {
 			return c.Metadata.Target == "123" && c.Metadata.JSON

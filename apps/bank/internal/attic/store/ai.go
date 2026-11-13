@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/ai"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -18,7 +19,7 @@ type AISelection struct {
 	Volumes    []string
 	Under      string
 	Entries    []int64
-	Refs       []string
+	Refs       []ref.Content
 	Extensions []string
 	Key        ai.Key
 	Force      bool
@@ -30,8 +31,8 @@ type AISelection struct {
 // candidates does not query them again.
 func (s *Store) ResolveRefs(ctx context.Context, o AISelection) (AISelection, error) {
 	contents := slices.Clone(o.contents)
-	for _, ref := range o.Refs {
-		lookup, err := s.newContentLookup(ctx, 0, ref)
+	for _, cited := range o.Refs {
+		lookup, err := s.newContentLookup(ctx, 0, cited)
 		if err != nil {
 			return o, err
 		}
@@ -186,8 +187,8 @@ func (c *AIClaim) Save(ctx context.Context, result ai.Result, failure error, ela
 	return err
 }
 
-func (s *Store) Analyses(ctx context.Context, entryID int64, ref string) ([]Analysis, error) {
-	lookup, err := s.newContentLookup(ctx, entryID, ref)
+func (s *Store) Analyses(ctx context.Context, entryID int64, cited ref.Content) ([]Analysis, error) {
+	lookup, err := s.newContentLookup(ctx, entryID, cited)
 	if err != nil {
 		return nil, err
 	}

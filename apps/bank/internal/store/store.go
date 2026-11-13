@@ -6,12 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -24,13 +24,11 @@ type Store struct {
 type Message struct {
 	Mail      *MailProvenance `json:"mail,omitempty"`
 	Mailboxes []Mailbox       `json:"mailboxes,omitempty"`
-	ID        int64           `json:"id"`
-	// Ref is the stable citation id: 12 hex characters derived from the source
-	// and the message's own identifier. ID is a row serial and changes when the
-	// archive is rebuilt from its raw inputs, so a note citing "bank:<id>"
-	// silently comes to mean another message; Ref does not move. Computed in
-	// SQL (see refSQL), never stored.
-	Ref              string    `json:"ref,omitempty"`
+	// ID is the row number joins use. It changes when the archive is rebuilt
+	// from its raw inputs, so it never leaves the process; Ref is what
+	// callers see and cite.
+	ID               int64     `json:"-"`
+	Ref              string    `json:"ref"`
 	Source           string    `json:"source"`
 	ExternalID       string    `json:"external_id,omitempty"`
 	MessageID        string    `json:"message_id,omitempty"` // RFC 822 Message-ID for mail sources
@@ -73,21 +71,24 @@ type InsertMessagesOpts struct {
 // of thousands of records.
 const messageBatchSize = 1000
 
-// notRetired makes every import skip a key `bank retire` removed, so replaying
-// the raw input that first brought it in cannot resurrect it. The skipped row
-// returns id zero like a duplicate; CountRetired tells the two apart.
+// notRetired makes every import skip a message `bank retire` removed, so
+// replaying the raw input that first brought it in cannot resurrect it. Mail
+// can come back under another external id, so the Message-ID is checked too.
+// The skipped row returns id zero like a duplicate; CountRetired tells the two
+// apart.
 const notRetired = `
-	where not exists (select 1 from message_tombstones t where t.source = $1 and t.external_id = $2)`
+	where not exists (select 1 from message_tombstones t
+		where t.source = $1 and (t.external_id = $2 or ($3 <> '' and t.message_id = $3)))`
 
 const insertMessageSQL = `
-	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index)
-	select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13` + notRetired + `
+	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index, ref)
+	select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14` + notRetired + `
 	on conflict do nothing
 	returning id`
 
 const rethreadMessageSQL = `
-	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index)
-	select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13` + notRetired + `
+	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index, ref)
+	select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14` + notRetired + `
 	on conflict (source, external_id) do update
 		set thread_id = excluded.thread_id, subject = excluded.subject, sent_at = excluded.sent_at,
             parent_external_id = coalesce(nullif(excluded.parent_external_id, ''), messages.parent_external_id),
@@ -103,7 +104,7 @@ const rethreadMessageSQL = `
 
 type Attachment struct {
 	ID        int64          `json:"id"`
-	MessageID int64          `json:"message_id"`
+	MessageID int64          `json:"-"`
 	Filename  string         `json:"filename"`
 	MimeType  string         `json:"mime_type,omitempty"`
 	SizeBytes int64          `json:"size_bytes"`
@@ -116,7 +117,7 @@ type Attachment struct {
 }
 
 // MessageDetail is one message plus its attachments — the shape `bank show
-// --json` prints and GET /v1/messages/{id} returns, shared so both emit one format.
+// --json` prints and GET /v1/messages/{ref} returns, shared so both emit one format.
 type MessageDetail struct {
 	Message
 	Attachments []Attachment `json:"attachments,omitempty"`
@@ -125,31 +126,6 @@ type MessageDetail struct {
 // ErrNotFound is returned when a lookup found no row, so callers can tell an
 // absent message from a broken database.
 var ErrNotFound = errors.New("not found")
-
-// RefChars is how much of the digest a ref keeps. Twelve hex characters are
-// short enough to paste into a citation and, at archive scale, far past the
-// point where a collision is plausible.
-const RefChars = 12
-
-// refSQL is the ref expression for a messages row under the given alias. The
-// digest covers the source and the message's own identifier — the RFC 822
-// Message-ID where the source has one, that source's external id otherwise —
-// which is exactly the pair dedup already treats as the message's identity.
-// Nothing about insertion order enters it, so the same message re-imported
-// into a rebuilt archive keeps the same ref.
-func refSQL(alias string) string {
-	return `substr(encode(sha256(convert_to(` + alias + `.source,'UTF8') || '\x00'::bytea` +
-		` || convert_to(coalesce(nullif(` + alias + `.message_id,''), ` + alias + `.external_id),'UTF8')),'hex'),1,` +
-		strconv.Itoa(RefChars) + `)`
-}
-
-// ValidRef rejects anything that is not a ref before it reaches a query.
-func ValidRef(s string) error {
-	if len(s) != RefChars || strings.TrimLeft(s, "0123456789abcdef") != "" {
-		return fmt.Errorf("not a message ref: %q", s)
-	}
-	return nil
-}
 
 // New queries through pool, which stays its opener's to close.
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
@@ -192,6 +168,9 @@ func (s *Store) InsertMessages(ctx context.Context, messages []Message, o Insert
 	// already atomic and Gmail intentionally runs several of these concurrently.
 	if len(cleaned) == 1 {
 		id, err := s.insertMessageRow(ctx, cleaned[0], o)
+		if err == nil && id == 0 {
+			err = refCollisions(ctx, s.pool.Query, cleaned)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -233,6 +212,15 @@ func (s *Store) InsertMessages(ctx context.Context, messages []Message, o Insert
 			return nil, batchErr
 		}
 	}
+	var skipped []Message
+	for i, id := range ids {
+		if id == 0 {
+			skipped = append(skipped, cleaned[i])
+		}
+	}
+	if err := refCollisions(ctx, tx.Query, skipped); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -253,7 +241,38 @@ func (s *Store) insertMessageRow(ctx context.Context, m Message, o InsertMessage
 }
 
 func messageArgs(m Message) []any {
-	return []any{m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef, m.ParentExternalID, m.BranchID, m.AlternativeIndex}
+	return []any{m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef, m.ParentExternalID, m.BranchID, m.AlternativeIndex, m.Ref}
+}
+
+// refCollisions fails when a skipped message's ref already belongs to a
+// different message. The bare "on conflict do nothing" that skips duplicates
+// would otherwise skip the collision too, and a citation would name a message
+// that is not the one cited.
+func refCollisions(ctx context.Context, query func(context.Context, string, ...any) (pgx.Rows, error), skipped []Message) error {
+	if len(skipped) == 0 {
+		return nil
+	}
+	refs, sources, externalIDs, messageIDs := make([]string, len(skipped)), make([]string, len(skipped)), make([]string, len(skipped)), make([]string, len(skipped))
+	for i, m := range skipped {
+		refs[i], sources[i], externalIDs[i], messageIDs[i] = m.Ref, m.Source, m.ExternalID, m.MessageID
+	}
+	rows, err := query(ctx, `
+		select k.ref from unnest($1::text[], $2::text[], $3::text[], $4::text[]) as k(ref, source, external_id, message_id)
+		join messages m on m.ref = k.ref
+		where m.source <> k.source or m.message_id <> k.message_id
+		   or (k.message_id = '' and m.external_id <> k.external_id)`,
+		refs, sources, externalIDs, messageIDs)
+	if err != nil {
+		return err
+	}
+	collided, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return err
+	}
+	if len(collided) > 0 {
+		return fmt.Errorf("message ref collision: %s already names another message", strings.Join(collided, ", "))
+	}
+	return nil
 }
 
 func scanMessageInsert(row pgx.Row, o InsertMessagesOpts) (int64, error) {
@@ -318,6 +337,7 @@ func (m Message) clean() (Message, error) {
 	if m.Source == "" || m.ExternalID == "" {
 		return m, fmt.Errorf("message needs source (%q) and external_id (%q)", m.Source, m.ExternalID)
 	}
+	m.Ref = ref.ForMessage(m.Source, m.MessageID, m.ExternalID).String()
 	if m.Recipients == nil {
 		m.Recipients = []string{}
 	}
@@ -355,15 +375,14 @@ const bodyTrimChars = " \t\n\r\f\v"
 // decides from it agrees with the write it then asks for.
 func TrimmedBodyLen(s string) int { return len(strings.Trim(s, bodyTrimChars)) }
 
-// MessageBody reads one message's body without its attachments, for callers
-// that only need to compare it.
-func (s *Store) MessageBody(ctx context.Context, id int64) (string, error) {
-	var body string
-	err := s.pool.QueryRow(ctx, `select body from messages where id = $1`, id).Scan(&body)
+// MessageBody reads one message's ref and body without its attachments, for
+// callers that only need to compare the body.
+func (s *Store) MessageBody(ctx context.Context, id int64) (ref, body string, err error) {
+	err = s.pool.QueryRow(ctx, `select ref, body from messages where id = $1`, id).Scan(&ref, &body)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotFound
+		return "", "", ErrNotFound
 	}
-	return body, err
+	return ref, body, err
 }
 
 // SetLongerMessageBody replaces a message's body with one re-parsed from its
@@ -518,16 +537,15 @@ func (s *Store) GetMessageDetail(ctx context.Context, id int64) (MessageDetail, 
 	return MessageDetail{Message: m, Attachments: atts}, err
 }
 
-// GetMessageDetailByRef is GetMessageDetail addressed by the stable ref, the
-// form a citation carries.
-func (s *Store) GetMessageDetailByRef(ctx context.Context, ref string) (MessageDetail, error) {
-	m, atts, err := s.GetMessageByRef(ctx, ref)
+// GetMessageDetailByRef is GetMessageDetail addressed by the ref a citation
+// carries.
+func (s *Store) GetMessageDetailByRef(ctx context.Context, r ref.Message) (MessageDetail, error) {
+	m, atts, err := s.GetMessageByRef(ctx, r)
 	return MessageDetail{Message: m, Attachments: atts}, err
 }
 
-// messageColumns is the full row every single-message read returns, with the
-// ref computed alongside it.
-var messageColumns = `m.id, ` + refSQL("m") + `, m.source, m.external_id, m.message_id, m.thread_id,
+// messageColumns is the full row every single-message read returns.
+const messageColumns = `m.id, m.ref, m.source, m.external_id, m.message_id, m.thread_id,
 	m.sender, m.recipients, m.subject, m.body, m.sent_at, m.raw_ref, m.parent_external_id, m.branch_id, m.alternative_index`
 
 func (m *Message) scanFull(row pgx.Row) error {
@@ -550,20 +568,13 @@ func (s *Store) GetMessage(ctx context.Context, id int64) (Message, []Attachment
 	return details[0].Message, details[0].Attachments, err
 }
 
-// GetMessageByRef resolves a citation. There is no index on the ref: the
-// expression is derived, the archive is one person's mail, and a sequential
-// scan answers in a fraction of a second — cheaper than a stored column that
-// could disagree with the formula. A ref whose message was retired returns a
-// *RetiredError, which still matches ErrNotFound.
-func (s *Store) GetMessageByRef(ctx context.Context, ref string) (Message, []Attachment, error) {
+// GetMessageByRef resolves a citation. A ref whose message was retired
+// returns a *RetiredError, which still matches ErrNotFound.
+func (s *Store) GetMessageByRef(ctx context.Context, r ref.Message) (Message, []Attachment, error) {
 	var m Message
-	if err := ValidRef(ref); err != nil {
-		return m, nil, err
-	}
-	err := m.scanFull(s.pool.QueryRow(ctx,
-		`select `+messageColumns+` from messages m where `+refSQL("m")+` = $1 order by m.id limit 1`, ref))
+	err := m.scanFull(s.pool.QueryRow(ctx, `select `+messageColumns+` from messages m where m.ref = $1`, r.String()))
 	if errors.Is(err, pgx.ErrNoRows) {
-		retired, err := s.RetiredByRef(ctx, ref)
+		retired, err := s.RetiredByRef(ctx, r)
 		if err != nil {
 			return m, nil, err
 		}

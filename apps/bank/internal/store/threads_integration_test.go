@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -26,26 +27,27 @@ func TestThreadPagesAcrossEqualTimestamps(t *testing.T) {
 	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: ids[8], Filename: "anything.bin", BLAKE3: content.Sum([]byte("a"))}); err != nil {
 		t.Fatal(err)
 	}
-	around, err := st.GetThreadPage(ctx, "chat", "t", store.ThreadOpts{Around: ids[8], Limit: 3})
+	eighth := ref.ForMessage("chat", "", "m8")
+	around, err := st.GetThreadPage(ctx, "chat", "t", store.ThreadOpts{Around: eighth, Limit: 3})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(around.Messages) != 3 || around.Messages[1].ID != ids[8] || len(around.Messages[1].Attachments) != 1 || !around.HasBefore || !around.HasAfter {
+	if len(around.Messages) != 3 || around.Messages[1].Ref != eighth.String() || len(around.Messages[1].Attachments) != 1 || !around.HasBefore || !around.HasAfter {
 		t.Fatalf("context=%+v", around)
 	}
 	for _, backward := range []bool{false, true} {
 		o := store.ThreadOpts{Limit: 3, Latest: backward}
-		seen := map[int64]bool{}
+		seen := map[string]bool{}
 		for {
 			page, err := st.GetThreadPage(ctx, "chat", "t", o)
 			if err != nil {
 				t.Fatal(err)
 			}
 			for i, m := range page.Messages {
-				if seen[m.ID] {
-					t.Fatalf("repeated message %d", m.ID)
+				if seen[m.Ref] {
+					t.Fatalf("repeated message %s", m.Ref)
 				}
-				seen[m.ID] = true
+				seen[m.Ref] = true
 				if i > 0 && page.Messages[i-1].ID >= m.ID {
 					t.Fatal("page not chronological")
 				}
@@ -54,26 +56,26 @@ func TestThreadPagesAcrossEqualTimestamps(t *testing.T) {
 				if !page.HasBefore {
 					break
 				}
-				o = store.ThreadOpts{Limit: 3, Before: page.Messages[0].ID}
+				o = store.ThreadOpts{Limit: 3, Before: messageRef(t, page.Messages[0].Ref)}
 			} else {
 				if !page.HasAfter {
 					break
 				}
-				o = store.ThreadOpts{Limit: 3, After: page.Messages[len(page.Messages)-1].ID}
+				o = store.ThreadOpts{Limit: 3, After: messageRef(t, page.Messages[len(page.Messages)-1].Ref)}
 			}
 		}
 		if len(seen) != len(ids) {
 			t.Fatalf("visited %d, want %d", len(seen), len(ids))
 		}
 	}
-	other, err := st.InsertMessage(ctx, msg("chat", "other", store.Message{ThreadID: "other", Body: "private"}))
-	if err != nil {
+	if _, err := st.InsertMessage(ctx, msg("chat", "other", store.Message{ThreadID: "other", Body: "private"})); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.GetThreadPage(ctx, "chat", "t", store.ThreadOpts{Around: other}); !errors.Is(err, store.ErrNotFound) {
+	if _, err := st.GetThreadPage(ctx, "chat", "t", store.ThreadOpts{Around: ref.ForMessage("chat", "", "other")}); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("foreign cursor accepted: %v", err)
 	}
-	for _, o := range []store.ThreadOpts{{Before: ids[0], After: ids[1]}, {Around: -1}, {Limit: 2001}, {Latest: true, Around: ids[0]}} {
+	first, second := ref.ForMessage("chat", "", "m0"), ref.ForMessage("chat", "", "m1")
+	for _, o := range []store.ThreadOpts{{Before: first, After: second}, {Limit: 2001}, {Latest: true, Around: first}} {
 		if _, err := st.GetThreadPage(ctx, "chat", "t", o); err == nil {
 			t.Fatalf("accepted invalid opts %+v", o)
 		}
@@ -88,17 +90,17 @@ func TestBrowseKeepsUntitledMessagesSeparate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	seen := map[int64]bool{}
+	seen := map[string]bool{}
 	for offset := 0; offset < 4; offset += 2 {
 		groups, err := st.BrowseThreads(ctx, store.BrowseOpts{Limit: 2, Offset: offset})
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, g := range groups {
-			if seen[g.LastID] {
+			if seen[g.LastRef] {
 				t.Fatal("repeated browse group")
 			}
-			seen[g.LastID] = true
+			seen[g.LastRef] = true
 		}
 	}
 	if len(seen) != 4 {
@@ -125,7 +127,7 @@ func TestContactHistoryCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	seen := map[int64]bool{}
-	var before int64
+	var before ref.Message
 	for {
 		page, err := st.ContactMessages(ctx, "alice", store.ContactMessagesOpts{Limit: 2, Before: before})
 		if err != nil {
@@ -143,7 +145,7 @@ func TestContactHistoryCursor(t *testing.T) {
 			}
 			seen[m.ID] = true
 		}
-		before = page[len(page)-1].ID
+		before = messageRef(t, page[len(page)-1].Ref)
 	}
 	if len(seen) != 7 {
 		t.Fatalf("visited %d messages", len(seen))
@@ -165,4 +167,13 @@ func TestBrowseMembersExcludeOwner(t *testing.T) {
 	if len(groups) != 1 || groups[0].Members != "Alice, Bob" {
 		t.Fatalf("browse groups=%+v", groups)
 	}
+}
+
+func messageRef(t *testing.T, s string) ref.Message {
+	t.Helper()
+	cited, err := ref.ParseMessage(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cited
 }

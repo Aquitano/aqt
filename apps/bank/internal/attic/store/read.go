@@ -11,33 +11,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
 )
 
-// RefChars is how much of a BLAKE3 digest a ref keeps. At five million
-// contents twelve characters would give about a 4% chance of two sharing one;
-// sixteen make it negligible.
-const RefChars = 16
+// refHeadBytes is how much of a BLAKE3 digest a printed ref keeps: 16 hex
+// characters. At five million contents twelve characters would give about a
+// 4% chance of two sharing one; sixteen make it negligible.
+const refHeadBytes = 8
 
-const refSQL = `encode(substr(c.blake3, 1, 8), 'hex')`
-
-// ParseRef accepts a ref as typed or as cited ("attic:3f9a..."), in either
-// case, and rejects anything else before it reaches a query. Refs longer than
-// RefChars, up to the full digest, tell apart contents that share a ref.
-func ParseRef(s string) (string, bool) {
-	s = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(s), "attic:"))
-	if len(s) < RefChars || len(s) > 2*digestBytes {
-		return s, false
-	}
-	for _, r := range s {
-		if !strings.ContainsRune("0123456789abcdef", r) {
-			return s, false
-		}
-	}
-	return s, true
-}
-
-const digestBytes = 32
+const refSQL = `'` + string(ref.KindContent) + `:' || encode(substr(c.blake3, 1, 8), 'hex')`
 
 // RefCandidate is one content an ambiguous ref matches, with the shortest
 // ref that names it alone.
@@ -55,9 +38,9 @@ type AmbiguousRefError struct {
 
 func (e *AmbiguousRefError) Error() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "ref attic:%s is ambiguous: it matches %d contents; use a longer ref", e.Ref, len(e.Candidates))
+	fmt.Fprintf(&b, "ref %s is ambiguous: it matches %d contents; use a longer ref", e.Ref, len(e.Candidates))
 	for _, c := range e.Candidates {
-		fmt.Fprintf(&b, "\n  attic:%s  %d bytes", c.Ref, c.Size)
+		fmt.Fprintf(&b, "\n  %s  %d bytes", c.Ref, c.Size)
 		if c.Path != "" {
 			fmt.Fprintf(&b, "  %s:%s", c.Volume, c.Path)
 		}
@@ -68,8 +51,9 @@ func (e *AmbiguousRefError) Error() string {
 // resolveRef returns the one content a parsed ref names. The equality on the
 // first eight bytes keeps the lookup on contents_ref_idx; the longer prefix
 // only filters the few rows that share it.
-func (s *Store) resolveRef(ctx context.Context, ref string) (int64, error) {
-	head, _ := hex.DecodeString(ref[:RefChars])
+func (s *Store) resolveRef(ctx context.Context, cited ref.Content) (int64, error) {
+	prefix := cited.Hex()
+	head, _ := hex.DecodeString(prefix[:2*refHeadBytes])
 	rows, err := s.pool.Query(ctx, `select c.id, encode(c.blake3, 'hex'), c.size_bytes, coalesce(v.label, ''), coalesce(p.path, '')
 		from contents c
 		left join lateral (select e.volume_id, e.path from entry_versions ver join entries e on e.id = ver.entry_id
@@ -77,7 +61,7 @@ func (s *Store) resolveRef(ctx context.Context, ref string) (int64, error) {
 			order by ver.replaced_scan is not null, e.missing_scan is not null, e.id limit 1) p on true
 		left join volumes v on v.id = p.volume_id
 		where substr(c.blake3, 1, 8) = $1 and starts_with(encode(c.blake3, 'hex'), $2)
-		order by c.id`, head, ref)
+		order by c.id`, head, prefix)
 	if err != nil {
 		return 0, err
 	}
@@ -94,19 +78,19 @@ func (s *Store) resolveRef(ctx context.Context, ref string) (int64, error) {
 	case err != nil:
 		return 0, err
 	case len(found) == 0:
-		return 0, fmt.Errorf("ref %s: %w", ref, ErrNotFound)
+		return 0, fmt.Errorf("ref %s: %w", cited, ErrNotFound)
 	case len(found) == 1:
 		return found[0].id, nil
 	}
-	ambiguous := &AmbiguousRefError{Ref: ref}
+	ambiguous := &AmbiguousRefError{Ref: cited.String()}
 	for i, m := range found {
-		n := len(ref)
+		n := len(prefix)
 		for j, other := range found {
 			if i != j {
 				n = max(n, commonPrefix(m.Ref, other.Ref)+1)
 			}
 		}
-		m.Ref = m.Ref[:min(n, len(m.Ref))]
+		m.Ref = string(ref.KindContent) + ":" + m.Ref[:min(n, len(m.Ref))]
 		ambiguous.Candidates = append(ambiguous.Candidates, m.RefCandidate)
 	}
 	return 0, ambiguous
@@ -128,17 +112,13 @@ type contentLookup struct {
 const contentLookupWhere = `(($1::bigint <> 0 and c.id = (select content_id from entries where id = $1))
  or ($1::bigint = 0 and c.id = $2))`
 
-func (s *Store) newContentLookup(ctx context.Context, entryID int64, ref string) (contentLookup, error) {
+func (s *Store) newContentLookup(ctx context.Context, entryID int64, cited ref.Content) (contentLookup, error) {
 	lookup := contentLookup{entryID: entryID}
 	if entryID != 0 {
 		return lookup, nil
 	}
-	parsed, ok := ParseRef(ref)
-	if !ok {
-		return lookup, fmt.Errorf("not a ref: %q", ref)
-	}
 	var err error
-	lookup.contentID, err = s.resolveRef(ctx, parsed)
+	lookup.contentID, err = s.resolveRef(ctx, cited)
 	return lookup, err
 }
 
@@ -430,7 +410,7 @@ func (s *Store) Entry(ctx context.Context, id int64) (EntryDetail, error) {
 	if d.Text, err = s.textInfo(ctx, *contentID); err != nil {
 		return d, err
 	}
-	if m, err := s.Metadata(ctx, id, ""); err == nil {
+	if m, err := s.Metadata(ctx, id, ref.Content{}); err == nil {
 		d.Metadata = &m
 	} else if !errors.Is(err, ErrNotFound) {
 		return d, err
@@ -490,9 +470,9 @@ type ContentDetail struct {
 }
 
 // Content resolves a ref, the citation form.
-func (s *Store) Content(ctx context.Context, ref string) (ContentDetail, error) {
+func (s *Store) Content(ctx context.Context, cited ref.Content) (ContentDetail, error) {
 	var d ContentDetail
-	lookup, err := s.newContentLookup(ctx, 0, ref)
+	lookup, err := s.newContentLookup(ctx, 0, cited)
 	if err != nil {
 		return d, err
 	}

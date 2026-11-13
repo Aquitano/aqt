@@ -7,6 +7,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -17,9 +18,9 @@ type Retrieval struct {
 	Places []Hit
 }
 
-func (s *Store) Retrieval(ctx context.Context, entryID int64, ref string) (Retrieval, error) {
+func (s *Store) Retrieval(ctx context.Context, entryID int64, cited ref.Content) (Retrieval, error) {
 	var result Retrieval
-	lookup, err := s.newContentLookup(ctx, entryID, ref)
+	lookup, err := s.newContentLookup(ctx, entryID, cited)
 	if err != nil {
 		return result, err
 	}

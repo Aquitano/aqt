@@ -135,7 +135,7 @@ export function FileDetail({ file }: { file: Attachment }) {
       {messages.isError && <p role="alert">{messages.error.message}</p>}
       {messages.data?.pages.flat().map((message) => (
         <Button
-          key={message.id}
+          key={message.ref}
           variant="outline"
           className="h-auto justify-start whitespace-normal"
           onClick={() => select(selectMessage(message))}

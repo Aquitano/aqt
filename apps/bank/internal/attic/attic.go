@@ -12,6 +12,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 // Catalogue is the file catalogue as its host process sees it.
@@ -29,18 +30,13 @@ func (c *Catalogue) Handler(host api.Host) http.Handler {
 // ErrNotFound means no content matches a ref.
 var ErrNotFound = store.ErrNotFound
 
-// Content is one unique content and every place it lives or lived. ref is a
-// content ref, with or without attic:, or a whole BLAKE3 digest in hex.
-func (c *Catalogue) Content(ctx context.Context, ref string) (view.Content, error) {
-	ref, ok := store.ParseRef(ref)
-	if !ok {
-		return view.Content{}, ErrNotFound
-	}
+// Content is one unique content and every place it lives or lived.
+func (c *Catalogue) Content(ctx context.Context, cited ref.Content) (view.Content, error) {
 	vols, err := c.store.KnownVolumes(ctx)
 	if err != nil {
 		return view.Content{}, err
 	}
-	detail, err := c.store.Content(ctx, ref)
+	detail, err := c.store.Content(ctx, cited)
 	if err != nil {
 		return view.Content{}, err
 	}

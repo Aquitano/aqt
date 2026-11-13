@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/jackc/pgx/v5"
 )
@@ -124,10 +125,10 @@ func TestContentLookupsKeepResultSemantics(t *testing.T) {
 	}
 	for _, target := range []struct {
 		entryID  int64
-		ref      string
+		ref      ref.Content
 		text     string
 		analyses int
-	}{{3, "", "Tom & Jerry", 3}, {0, "attic:" + strings.Repeat("1", 16) + "3", "collision", 1}} {
+	}{{3, ref.Content{}, "Tom & Jerry", 3}, {0, contentRef(t, "content:"+strings.Repeat("1", 16)+"3"), "collision", 1}} {
 		text, err := st.Text(t.Context(), target.entryID, target.ref)
 		if err != nil || text.Text != target.text {
 			t.Errorf("text: %+v, %v", text, err)
@@ -141,7 +142,7 @@ func TestContentLookupsKeepResultSemantics(t *testing.T) {
 			t.Errorf("analyses: %+v, %v", analyses, err)
 		}
 	}
-	shared := strings.Repeat("11", 8)
+	shared := contentRef(t, "content:"+strings.Repeat("11", 8))
 	if _, err := st.Metadata(t.Context(), 0, shared); !errors.As(err, new(*store.AmbiguousRefError)) {
 		t.Errorf("metadata picked a content for a shared ref: %v", err)
 	}
@@ -152,26 +153,17 @@ func TestContentLookupsKeepResultSemantics(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, entryID := range []int64{3, 4, 999} {
-		if _, err := st.Text(t.Context(), entryID, ""); !errors.Is(err, store.ErrNotFound) || !strings.Contains(err.Error(), "no text read") {
+		if _, err := st.Text(t.Context(), entryID, ref.Content{}); !errors.Is(err, store.ErrNotFound) || !strings.Contains(err.Error(), "no text read") {
 			t.Errorf("text missing: %v", err)
 		}
-		if _, err := st.Metadata(t.Context(), entryID, ""); !errors.Is(err, store.ErrNotFound) || !strings.Contains(err.Error(), "no metadata read") {
+		if _, err := st.Metadata(t.Context(), entryID, ref.Content{}); !errors.Is(err, store.ErrNotFound) || !strings.Contains(err.Error(), "no metadata read") {
 			t.Errorf("metadata missing: %v", err)
 		}
 	}
 	for _, entryID := range []int64{4, 999} {
-		if got, err := st.Analyses(t.Context(), entryID, ""); err != nil || len(got) != 0 {
+		if got, err := st.Analyses(t.Context(), entryID, ref.Content{}); err != nil || len(got) != 0 {
 			t.Errorf("analyses missing: %+v, %v", got, err)
 		}
-	}
-	if _, err := st.Text(t.Context(), 0, "invalid"); err == nil {
-		t.Error("invalid text ref accepted")
-	}
-	if _, err := st.Metadata(t.Context(), 0, "invalid"); err == nil {
-		t.Error("invalid metadata ref accepted")
-	}
-	if _, err := st.Analyses(t.Context(), 0, "invalid"); err == nil {
-		t.Error("invalid AI ref accepted")
 	}
 }
 
@@ -246,7 +238,7 @@ func TestSearchFiltersAndAIProvenance(t *testing.T) {
 		t.Fatalf("AI: %+v, %v", analyses, err)
 	}
 	for _, h := range analyses {
-		if h.Provider != "test" || h.Ref != strings.Repeat("11", 8) || h.Snippet != "Tom & Jerry" || len(h.Places) != 1 || h.Places[0].ID != 3 {
+		if h.Provider != "test" || h.Ref != "content:"+strings.Repeat("11", 8) || h.Snippet != "Tom & Jerry" || len(h.Places) != 1 || h.Places[0].ID != 3 {
 			t.Errorf("AI provenance: %+v", h)
 		}
 		if (h.Task == "describe" && (h.Model != "one" || h.PromptVersion != "v1")) || (h.Task == "ocr" && (h.Model != "two" || h.PromptVersion != "v2")) {

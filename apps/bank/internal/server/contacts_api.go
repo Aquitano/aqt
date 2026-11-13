@@ -9,6 +9,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -51,7 +52,7 @@ func (s *Server) registerContactsAPI(api huma.API) {
 	}.For(api), s.contactDelete)
 	huma.Register(api, httpapi.Operation{ID: "listContactMessages", Method: http.MethodGet, Path: "/v1/contacts/{name}/messages", Tag: "contacts",
 		Summary: "List the messages a contact sent or received, across every source, newest first",
-		Description: "Page with before, the id of the last message of the previous page, or with offset, " +
+		Description: "Page with before, the ref of the last message of the previous page, or with offset, " +
 			"and not with both.",
 		Errors: []httpapi.Kind{httpapi.NotFound},
 	}.For(api), s.contactMessages)
@@ -101,13 +102,13 @@ func (s *Server) contactShow(ctx context.Context, in *contactInput) (*httpapi.Bo
 }
 
 type contactMessagesInput struct {
-	Name   string `path:"name" doc:"The contact's name."`
-	Source string `query:"source" doc:"Only this source, such as gmail or whatsapp."`
-	Since  string `query:"since" format:"date" doc:"Sent on or after this day, YYYY-MM-DD."`
-	Until  string `query:"until" format:"date" doc:"Sent before this day, YYYY-MM-DD."`
-	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"500"`
-	Offset int    `query:"offset" default:"0" minimum:"0" maximum:"10000" doc:"Past 10000, narrow with source or since instead."`
-	Before int64  `query:"before" minimum:"1" doc:"Only messages older than the message with this id, which must be one of the contact's."`
+	Name   string      `path:"name" doc:"The contact's name."`
+	Source string      `query:"source" doc:"Only this source, such as gmail or whatsapp."`
+	Since  string      `query:"since" format:"date" doc:"Sent on or after this day, YYYY-MM-DD."`
+	Until  string      `query:"until" format:"date" doc:"Sent before this day, YYYY-MM-DD."`
+	Limit  int         `query:"limit" default:"50" minimum:"1" maximum:"500"`
+	Offset int         `query:"offset" default:"0" minimum:"0" maximum:"10000" doc:"Past 10000, narrow with source or since instead."`
+	Before ref.Message `query:"before" doc:"Only messages older than the message with this ref, which must be one of the contact's."`
 }
 
 func (s *Server) contactMessages(ctx context.Context, in *contactMessagesInput) (*httpapi.Body[[]store.MessageDetail], error) {

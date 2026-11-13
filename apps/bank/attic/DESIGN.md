@@ -6,7 +6,7 @@ Usage and configuration live in [README.md](README.md). `attic help <command>` d
 
 ## A place and its content have different identities
 
-An entry identifies a filesystem object at a place on one volume. A content row identifies bytes by their full BLAKE3 digest. Multiple entries can point to one content row, and so can bank's message attachments and library files with the same bytes. Public content refs use the first eight digest bytes, so refs identify content rather than paths.
+An entry identifies a filesystem object at a place on one volume. A content row identifies bytes by their full BLAKE3 digest. Multiple entries can point to one content row, and so can bank's message attachments and library files with the same bytes. Public content refs are `content:` and the first eight digest bytes in hex, so refs identify content rather than paths.
 
 Volume fingerprints combine the filesystem and volume serial with available partition and hardware identifiers. A sector clone can share filesystem and partition identity. Automatic resolution requires enough hardware identity to avoid silently merging it into the original catalogue. Missing or conflicting device serials require `--volume` or `--new-volume`; enclosure changes can require the same decision.
 

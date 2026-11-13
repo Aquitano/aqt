@@ -9,6 +9,7 @@ import (
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -16,7 +17,7 @@ type modifiedFiles struct {
 	at time.Time
 }
 
-func (modifiedFiles) Content(context.Context, string) (view.Content, error) {
+func (modifiedFiles) Content(context.Context, ref.Content) (view.Content, error) {
 	return view.Content{}, atticstore.ErrNotFound
 }
 
@@ -30,7 +31,7 @@ func (modifiedFiles) SearchDisks(context.Context, string, int, int) (view.Search
 
 func (m modifiedFiles) ModifiedFiles(context.Context, time.Time, time.Time, int) ([]view.Place, error) {
 	place := view.Place{Display: `E:\Notes\plan.md`}
-	place.Volume, place.Ref, place.Modified = "Data", "abababababababab", &m.at
+	place.Volume, place.Ref, place.Modified = "Data", "content:abababababababab", &m.at
 	return []view.Place{place}, nil
 }
 
@@ -52,10 +53,10 @@ func TestTimelineMergesMessagesActivityAndFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Events) != 3 || got.Events[0].Title != "lunch?" || !strings.HasPrefix(got.Events[0].Ref, "bank:") || got.Events[2].Ref != activity.ID {
+	if len(got.Events) != 3 || got.Events[0].Title != "lunch?" || !strings.HasPrefix(got.Events[0].Ref, "msg:") || got.Events[2].Ref != activity.ID {
 		t.Fatalf("events = %+v", got.Events)
 	}
-	if got.Events[1].Ref != "attic:abababababababab" || got.Events[1].Source != "Data" {
+	if got.Events[1].Ref != "content:abababababababab" || got.Events[1].Source != "Data" {
 		t.Fatalf("the file is not between the message and the watch: %+v", got.Events)
 	}
 	if only, err := c.Timeline(ctx, day, day.AddDate(0, 0, 1), []string{"activity"}, 1); err != nil || len(only.Events) != 1 || len(only.Truncated) != 0 {

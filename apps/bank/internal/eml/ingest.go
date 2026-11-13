@@ -147,7 +147,7 @@ func Ingest(ctx context.Context, st *store.Store, blobs *blob.Store, raw []byte,
 		}
 	}
 	if id == 0 {
-		retired, err := st.CountRetired(ctx, []store.Message{{Source: o.Source, ExternalID: externalID}})
+		retired, err := st.CountRetired(ctx, []store.Message{{Source: o.Source, ExternalID: externalID, MessageID: m.MessageID}})
 		if err != nil {
 			return res, fail.Opf("look up retired message: %w", err)
 		}

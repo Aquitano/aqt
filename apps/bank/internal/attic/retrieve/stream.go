@@ -43,7 +43,7 @@ func Open(ctx context.Context, content store.Retrieval, known []store.Volume, mo
 			continue
 		}
 		return &Source{
-			Result: Result{Ref: "attic:" + content.Ref, Blake3: hex.EncodeToString(content.Digest[:]),
+			Result: Result{Ref: content.Ref, Blake3: hex.EncodeToString(content.Digest[:]),
 				EntryID: p.ID, VolumeID: p.VolumeID, Source: p.Path, Size: content.Size},
 			file: f, digest: content.Digest,
 		}, nil

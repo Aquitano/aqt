@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 type libraryBackend interface {
@@ -107,7 +109,7 @@ type libraryCmd struct {
 	Activity         libraryListCmd             `cmd:"" help:"Activity matching a query."`
 	Collections      libraryListCmd             `cmd:"" help:"Collections matching a query."`
 	Files            libraryListCmd             `cmd:"" help:"Files matching a query."`
-	Get              libraryGetCmd              `cmd:"" help:"Any record by id: item_, activity_, collection_, file_ or page_."`
+	Get              libraryGetCmd              `cmd:"" help:"Any record by id: item:, activity:, collection:, file: or page:."`
 	Collection       libraryGetCmd              `cmd:"" help:"One collection."`
 	File             libraryGetCmd              `cmd:"" help:"One file."`
 	Page             libraryGetCmd              `cmd:"" help:"One page."`
@@ -172,7 +174,13 @@ func (c *libraryGetCmd) Run(ctx context.Context, kctx *kong.Context, lib *librar
 	defer closeBackend()
 	kind := kctx.Selected().Name
 	if kind == "get" {
-		kind, _, _ = strings.Cut(c.ID, "_")
+		r, err := ref.Parse(c.ID)
+		if err != nil {
+			return err
+		}
+		if kind = string(r.Kind()); kind == string(ref.KindMessage) || kind == string(ref.KindContent) {
+			return fmt.Errorf("%s is not a library record; use bank ref", c.ID)
+		}
 	}
 	switch kind {
 	case "activity":
@@ -399,14 +407,6 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 	return printJSON(files)
 }
 
-// atticRef cites a file on a disk. Folders and unhashed files have no ref.
-func atticRef(ref string) string {
-	if ref == "" {
-		return "attic:-"
-	}
-	return "attic:" + ref
-}
-
 func printCatalog(result catalog.Result, limit, offset int) error {
 	count := 0
 	largest := 0
@@ -447,19 +447,19 @@ func printCatalog(result catalog.Result, limit, offset int) error {
 		report("attachment", v.BLAKE3.String(), v.Filename)
 	}
 	for _, v := range result.Disks.Entries {
-		report("on disk", atticRef(v.Ref), v.Display)
+		report("on disk", cmp.Or(v.Ref, "-"), v.Display)
 	}
 	for _, v := range result.Disks.Members {
-		report("in archive", atticRef(v.Shown.Ref), v.Display)
+		report("in archive", cmp.Or(v.Shown.Ref, "-"), v.Display)
 	}
 	for _, group := range [][]view.TextMatch{result.Disks.Texts, result.Disks.Metadata} {
 		for _, v := range group {
-			report("disk text", atticRef(v.Ref), v.Display)
+			report("disk text", cmp.Or(v.Ref, "-"), v.Display)
 			fmt.Printf("              %s\n", excerpt(v.Snippet, 160))
 		}
 	}
 	for _, v := range result.Disks.Analyses {
-		report("disk image", atticRef(v.Ref), v.Display)
+		report("disk image", cmp.Or(v.Ref, "-"), v.Display)
 		fmt.Printf("              %s\n", excerpt(v.Snippet, 160))
 	}
 	for _, n := range []int{len(result.Messages), len(result.Items), len(result.Activity), len(result.Collections), len(result.Files), len(result.Pages), len(result.Attachments),

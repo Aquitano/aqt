@@ -232,9 +232,11 @@ type SearchResult struct {
 	Coverage    []string            `json:"coverage"`
 }
 
+// StableID derives a record's id from its identity. For the record kinds the id
+// is also the record's ref, such as item:<32 hex>.
 func StableID(kind string, identity Identity) string {
 	sum := sha256.Sum256([]byte(kind + "\x00" + identity.Source + "\x00" + identity.Account + "\x00" + identity.ExternalID))
-	return kind + "_" + hex.EncodeToString(sum[:16])
+	return kind + ":" + hex.EncodeToString(sum[:16])
 }
 
 func (d Date) Validate() error {

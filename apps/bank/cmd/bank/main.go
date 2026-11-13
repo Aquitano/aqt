@@ -46,6 +46,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
@@ -82,7 +83,7 @@ type cli struct {
 	Contact     contactCmd     `cmd:"" help:"One person across their many identities."`
 	Show        showCmd        `cmd:"" help:"Print one message and its attachments."`
 	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness."`
-	Ref         refCmd         `cmd:"" help:"Say what any cited ref names (bank:…, attic:…, a library ID, a BLAKE3 digest) and where the same bytes are elsewhere."`
+	Ref         refCmd         `cmd:"" help:"Say what any cited ref names (msg:…, content:…, or a library ID such as item:…) and where the same bytes are elsewhere."`
 	Timeline    timelineCmd    `cmd:"" help:"What happened in a year, month or day: messages, activity and files on disks."`
 	OpenAPI     openapiCmd     `cmd:"" name:"openapi" help:"Print the OpenAPI document of the typed routes." hidden:""`
 	Coverage    coverageCmd    `cmd:"" help:"Note what a source holds (empty text clears)."`
@@ -351,7 +352,7 @@ func (c *searchCmd) Run(ctx context.Context) error {
 			return printJSON(groups)
 		}
 		for _, group := range groups {
-			fmt.Printf("%6d  %s  %-12s  %d matching messages  %s\n", group.LastID, group.LastAt.Format("2006-01-02"), group.Source, group.Count, group.Subject)
+			fmt.Printf("%s  %s  %-12s  %d matching messages  %s\n", group.LastRef, group.LastAt.Format("2006-01-02"), group.Source, group.Count, group.Subject)
 		}
 		printMorePages(len(groups), o.Limit, o.Offset)
 		return nil
@@ -389,15 +390,15 @@ func printMorePages(got, limit, offset int) {
 }
 
 type threadCmd struct {
-	ID      []string `arg:"" help:"Thread id; several words are joined with spaces."`
-	Source  string   `help:"Source the thread belongs to."`
-	Limit   int      `help:"Page size, 1-2000 (default 2000)."`
-	Before  int64    `help:"Page backward from this message."`
-	After   int64    `help:"Page forward from this message."`
-	Around  int64    `help:"Center context on this message's numeric id."`
-	Latest  bool     `help:"Start at the newest page."`
-	Current bool     `help:"Read a current subgroup instead of resolving its historical alias."`
-	JSON    bool     `help:"JSON output, including has_before, has_after and attachments."`
+	ID      []string    `arg:"" help:"Thread id; several words are joined with spaces."`
+	Source  string      `help:"Source the thread belongs to."`
+	Limit   int         `help:"Page size, 1-2000 (default 2000)."`
+	Before  ref.Message `help:"Page backward from this message, by ref."`
+	After   ref.Message `help:"Page forward from this message, by ref."`
+	Around  ref.Message `help:"Center context on this message, by ref."`
+	Latest  bool        `help:"Start at the newest page."`
+	Current bool        `help:"Read a current subgroup instead of resolving its historical alias."`
+	JSON    bool        `help:"JSON output, including has_before, has_after and attachments."`
 }
 
 func (c *threadCmd) Run(ctx context.Context) error {
@@ -437,7 +438,7 @@ func (c *threadCmd) Run(ctx context.Context) error {
 	}
 	fmt.Printf("source:  %s\nmessages: %d\n\n", thread.Source, len(thread.Messages))
 	for _, m := range thread.Messages {
-		fmt.Printf("[%d] %s  %s\n", m.ID, m.SentAt.Format("2006-01-02 15:04"), m.Sender)
+		fmt.Printf("[%s] %s  %s\n", m.Ref, m.SentAt.Format("2006-01-02 15:04"), m.Sender)
 		printReplyInfo(m.Message)
 		if m.Subject != "" && m.Subject != title {
 			fmt.Printf("    %s\n", m.Subject)
@@ -449,19 +450,19 @@ func (c *threadCmd) Run(ctx context.Context) error {
 	}
 	if len(thread.Messages) > 0 {
 		if thread.HasBefore {
-			fmt.Printf("Earlier messages: --before %d\n", thread.Messages[0].ID)
+			fmt.Printf("Earlier messages: --before %s\n", thread.Messages[0].Ref)
 		}
 		if thread.HasAfter {
-			fmt.Printf("Later messages: --after %d\n", thread.Messages[len(thread.Messages)-1].ID)
+			fmt.Printf("Later messages: --after %s\n", thread.Messages[len(thread.Messages)-1].Ref)
 		}
 	}
 	return nil
 }
 
 type showCmd struct {
-	Ref        string `arg:"" help:"Message id, or the 12-character ref a citation carries."`
-	JSON       bool   `help:"JSON output."`
-	Provenance bool   `help:"Show archive, folder, and mail grouping evidence."`
+	Ref        ref.Message `arg:"" help:"The message's ref, msg:<16 hex>."`
+	JSON       bool        `help:"JSON output."`
+	Provenance bool        `help:"Show archive, folder, and mail grouping evidence."`
 }
 
 func (c *showCmd) Run(ctx context.Context) error {
@@ -471,18 +472,7 @@ func (c *showCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeBackend()
-	// A ref is 12 hex characters and is tried first: one made only of digits
-	// would otherwise parse as a row id, and no archive reaches 12-digit ids.
-	var d store.MessageDetail
-	if store.ValidRef(c.Ref) == nil {
-		d, err = b.GetMessageDetailByRef(ctx, c.Ref)
-	} else {
-		id, parseErr := strconv.ParseInt(c.Ref, 10, 64)
-		if parseErr != nil {
-			return fmt.Errorf("invalid id or ref %q (a ref is %d hex characters)", c.Ref, store.RefChars)
-		}
-		d, err = b.GetMessageDetail(ctx, id)
-	}
+	d, err := b.GetMessageDetailByRef(ctx, c.Ref)
 	if retired, ok := errors.AsType[*store.RetiredError](err); ok {
 		return printRetired(retired.Retired, c.JSON)
 	}
@@ -498,8 +488,8 @@ func (c *showCmd) Run(ctx context.Context) error {
 
 	m := d.Message
 	printReplyInfo(m)
-	fmt.Printf("id:      %d\nref:     %s\nsource:  %s\nthread:  %s\nfrom:    %s\ndate:    %s\n",
-		m.ID, m.Ref, m.Source, m.ThreadID, m.Sender, m.SentAt.Format(time.RFC1123))
+	fmt.Printf("ref:     %s\nsource:  %s\nthread:  %s\nfrom:    %s\ndate:    %s\n",
+		m.Ref, m.Source, m.ThreadID, m.Sender, m.SentAt.Format(time.RFC1123))
 	if len(m.Recipients) > 0 {
 		fmt.Printf("to:      %s\n", strings.Join(m.Recipients, ", "))
 	}
@@ -579,14 +569,13 @@ func printProvenance(m store.Message) {
 type backend interface {
 	ListMailboxes(context.Context, string) ([]store.Mailbox, error)
 	BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error)
-	MailConflictMessages(context.Context, string, string, int64, int) (store.Thread, error)
+	MailConflictMessages(context.Context, string, string, ref.Message, int) (store.Thread, error)
 	ImportReports(context.Context, int64, int) ([]store.ImportReport, error)
 	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
 	AttachmentMessages(context.Context, content.Digest, int, int) ([]store.Message, error)
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
 	SearchLibrary(context.Context, library.ListOptions) (library.SearchResult, error)
-	GetMessageDetail(ctx context.Context, id int64) (store.MessageDetail, error)
-	GetMessageDetailByRef(ctx context.Context, ref string) (store.MessageDetail, error)
+	GetMessageDetailByRef(ctx context.Context, cited ref.Message) (store.MessageDetail, error)
 	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
 	SetCoverage(ctx context.Context, source, text string) error
@@ -863,7 +852,7 @@ func (c *verifyCmd) Run(ctx context.Context) error {
 		if f.LibraryID != "" {
 			fmt.Printf("%-9s %s %s %-20s %s\n", state, f.LibraryKind, f.LibraryID, f.Kind, f.Detail)
 		} else {
-			fmt.Printf("%-9s message %d %-20s %s\n", state, f.MessageID, f.Kind, f.Detail)
+			fmt.Printf("%-9s message %s %-20s %s\n", state, f.MessageRef, f.Kind, f.Detail)
 		}
 	}
 	checked := fmt.Sprintf("%d messages, %d attachments, %d library records, %d library files checked", rep.MessagesChecked, rep.AttachmentsChecked, rep.LibraryRecordsChecked, rep.LibraryFilesChecked)

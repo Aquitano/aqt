@@ -25,7 +25,7 @@ func TestLibraryClientUploadAndConflict(t *testing.T) {
 		}
 		switch r.URL.Path {
 		case "/v1/library/files":
-			if r.URL.Query().Get("item_id") != "item_test" {
+			if r.URL.Query().Get("item_id") != "item:test" {
 				t.Error("missing item association")
 			}
 			reader, err := r.MultipartReader()
@@ -54,7 +54,7 @@ func TestLibraryClientUploadAndConflict(t *testing.T) {
 				names = append(names, part.FileName())
 			}
 			json.NewEncoder(w).Encode([]library.File{{Filename: "one.txt"}, {Filename: "two.txt"}})
-		case "/v1/library/items/item_test/state":
+		case "/v1/library/items/item:test/state":
 			w.WriteHeader(http.StatusConflict)
 			io.WriteString(w, `{"code":"library_revision_conflict","error":"Reload"}`)
 		case "/v1/find":
@@ -79,14 +79,14 @@ func TestLibraryClientUploadAndConflict(t *testing.T) {
 		}
 		paths = append(paths, path)
 	}
-	files, err := c.UploadLibraryFiles(ctx, paths, "files", "owner", "item_test")
+	files, err := c.UploadLibraryFiles(ctx, paths, "files", "owner", "item:test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 2 || !reflect.DeepEqual(names, []string{"one.txt", "two.txt"}) {
 		t.Fatalf("upload lost files: %+v %v", files, names)
 	}
-	if _, err = c.SetLibraryState(ctx, "item_test", library.StateEdit{}); !errors.Is(err, library.ErrConflict) {
+	if _, err = c.SetLibraryState(ctx, "item:test", library.StateEdit{}); !errors.Is(err, library.ErrConflict) {
 		t.Fatalf("lost revision conflict: %v", err)
 	}
 	result, err := c.Find(ctx, "Movie", store.SearchOpts{Match: "phrase", From: "alice"}, library.ListOptions{Kind: "movie", Limit: 10})

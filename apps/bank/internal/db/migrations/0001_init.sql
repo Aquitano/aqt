@@ -46,8 +46,12 @@ create index texts_bm25_idx on texts using bm25 (
 
 -- Messages and mail
 
+-- id is a row number for joins and changes when the archive is rebuilt; ref is
+-- what a citation carries. ref.ForMessage derives it from the source and the
+-- identifier that keys the message, and InsertMessages writes it.
 create table messages (
     id                 bigint generated always as identity primary key,
+    ref                text not null unique check (ref ~ '^msg:[0-9a-f]{16}$'),
     source             text not null,
     external_id        text not null,
     thread_id          text not null default '',
@@ -105,12 +109,13 @@ create index attachments_message_id_idx on attachments (message_id);
 create index attachments_content_idx on attachments (content_id);
 
 -- A retired message keeps its identity here after its row is deleted: imports
--- skip a tombstoned (source, external_id), and its ref still resolves to what
--- it was and to the record that replaced it.
+-- skip a tombstoned (source, external_id) or (source, message_id), and its ref
+-- still resolves to what it was and to the record that replaced it.
 create table message_tombstones (
     source      text not null,
     external_id text not null,
-    ref         text not null,
+    message_id  text not null default '',
+    ref         text not null unique check (ref ~ '^msg:[0-9a-f]{16}$'),
     sent_at     timestamptz not null,
     subject     text not null default '',
     raw_ref     text not null default '',
@@ -119,7 +124,8 @@ create table message_tombstones (
     retired_at  timestamptz not null default now(),
     primary key (source, external_id)
 );
-create index message_tombstones_ref on message_tombstones (ref);
+create index message_tombstones_message_id on message_tombstones (source, message_id)
+    where message_id <> '';
 
 create table sync_state (
     source     text primary key,

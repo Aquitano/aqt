@@ -12,6 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
@@ -65,11 +66,15 @@ func TestMetadataScanDeduplicatesAndSearches(t *testing.T) {
 		t.Fatalf("unchanged content reread: %+v", second.Counts)
 	}
 	hit := find(t, st, "foto über.png")
-	d, err := st.Metadata(context.Background(), hit.ID, "")
+	d, err := st.Metadata(context.Background(), hit.ID, ref.Content{})
 	if err != nil || d.Status != "ok" || d.Tags["PNG:ImageWidth"] != float64(23) {
 		t.Fatalf("metadata: %+v, %v", d, err)
 	}
-	if _, err := st.Metadata(context.Background(), 0, hit.Ref); err != nil {
+	cited, err := ref.ParseContent(hit.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Metadata(context.Background(), 0, cited); err != nil {
 		t.Fatal(err)
 	}
 	detail, err := st.Entry(context.Background(), hit.ID)

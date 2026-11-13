@@ -29,8 +29,8 @@ import { CollectionDetail } from "@/views/collections";
 export type { Selection } from "@/lib/navigation";
 
 interface Position {
-  before?: number;
-  after?: number;
+  before?: string;
+  after?: string;
 }
 interface Page {
   messages: Message[];
@@ -46,7 +46,8 @@ export function DetailPane({ selection }: { selection: Selection }) {
   if (selection?.kind === "page") return <PageDetail key={selection.id} id={selection.id} />;
   if (selection?.kind === "file")
     return <FileDetail key={selection.file.blake3} file={selection.file} />;
-  if (selection?.kind === "message") return <LinkedMessage key={selection.id} id={selection.id} />;
+  if (selection?.kind === "message")
+    return <LinkedMessage key={selection.ref} messageRef={selection.ref} />;
   if (selection?.kind === "contact")
     return (
       <div key={selection.name} className="flex h-full min-h-0 flex-col">
@@ -59,8 +60,11 @@ export function DetailPane({ selection }: { selection: Selection }) {
   return <SelectedDetail key={JSON.stringify(selection)} selection={selection} />;
 }
 
-function LinkedMessage({ id }: { id: string }) {
-  const message = useQuery({ queryKey: ["message", id], queryFn: () => getMessage(id) });
+function LinkedMessage({ messageRef }: { messageRef: string }) {
+  const message = useQuery({
+    queryKey: ["message", messageRef],
+    queryFn: () => getMessage(messageRef),
+  });
   if (message.isPending)
     return (
       <div className="flex h-full items-center justify-center">
@@ -82,10 +86,10 @@ function LinkedMessage({ id }: { id: string }) {
               kind: "thread",
               source: m.source,
               threadId: m.thread_id,
-              flashId: m.id,
+              flashRef: m.ref,
               current: true,
             }
-          : { kind: "message", id }
+          : { kind: "message", ref: messageRef }
       }
       message={m}
     />
@@ -135,13 +139,13 @@ function SelectedDetail({
             current: selection.current,
             ...(pageParam.before || pageParam.after
               ? pageParam
-              : selection.flashId
-                ? { around: selection.flashId }
+              : selection.flashRef
+                ? { around: selection.flashRef }
                 : { latest: true }),
           });
         case "message":
           return {
-            messages: [message ?? (await getMessage(selection.id))],
+            messages: [message ?? (await getMessage(selection.ref))],
             has_before: false,
             has_after: false,
           };
@@ -160,11 +164,11 @@ function SelectedDetail({
     },
     getPreviousPageParam: (first): Position | undefined => {
       const oldest = first.messages.at(0);
-      return first.has_before && oldest ? { before: oldest.id } : undefined;
+      return first.has_before && oldest ? { before: oldest.ref } : undefined;
     },
     getNextPageParam: (last): Position | undefined => {
       const newest = last.messages.at(-1);
-      return last.has_after && newest ? { after: newest.id } : undefined;
+      return last.has_after && newest ? { after: newest.ref } : undefined;
     },
   });
 
@@ -271,7 +275,7 @@ function SelectedDetail({
           title={title}
           meta={`${messages.length} messages${q.hasPreviousPage || q.hasNextPage ? " loaded" : ""}`}
           messages={messages}
-          flashId={selection.kind === "thread" ? selection.flashId : undefined}
+          flashRef={selection.kind === "thread" ? selection.flashRef : undefined}
           navigation={
             <>
               {conversationChoices}

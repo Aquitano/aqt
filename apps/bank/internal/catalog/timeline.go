@@ -36,7 +36,7 @@ type Event struct {
 	Group     string    `json:"group" enum:"message,activity,file" doc:"Which records the event comes from."`
 	Kind      string    `json:"kind" doc:"message, the activity kind such as watch or listen, or file."`
 	Source    string    `json:"source" doc:"The message or activity source, such as gmail or netflix, or the disk's label."`
-	Ref       string    `json:"ref" doc:"What to cite and resolve: bank:<ref> for a message, an activity ID, or attic:<ref> for a hashed file."`
+	Ref       string    `json:"ref" doc:"What to cite and resolve: msg:<hex> for a message, an activity ID, or content:<hex> for a hashed file."`
 	Title     string    `json:"title" doc:"Subject or opening words, the activity's title, or the file's path."`
 }
 
@@ -82,9 +82,6 @@ func BuildTimeline(ctx context.Context, dated Dated, files Files, o TimelineOpti
 			if r.Day {
 				e.Precision = "day"
 			}
-			if group == "message" {
-				e.Ref = "bank:" + r.Ref
-			}
 			out.Events = append(out.Events, e)
 		}
 	}
@@ -112,10 +109,7 @@ func BuildTimeline(ctx context.Context, dated Dated, files Files, o TimelineOpti
 			out.Truncated, places = append(out.Truncated, "file"), places[:o.Limit]
 		}
 		for _, p := range places {
-			e := Event{At: *p.Modified, Precision: "instant", Group: "file", Kind: "file", Source: p.Volume, Title: p.Display}
-			if p.Ref != "" {
-				e.Ref = "attic:" + p.Ref
-			}
+			e := Event{At: *p.Modified, Precision: "instant", Group: "file", Kind: "file", Source: p.Volume, Ref: p.Ref, Title: p.Display}
 			out.Events = append(out.Events, e)
 		}
 		out.Coverage = append(out.Coverage, "A file appears at its last modification, as its disk recorded it; earlier edits and files that have since gone missing are left out.")

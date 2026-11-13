@@ -84,15 +84,12 @@ const completeDate = (input: HTMLInputElement) =>
   !input.validity.badInput && (input.value === "" || fullDate.test(input.value));
 
 export function selectMessage(m: Message): Selection {
-  if (m.ref) return { kind: "message", id: m.ref };
-  return m.thread_id
-    ? { kind: "thread", source: m.source, threadId: m.thread_id, flashId: m.id }
-    : { kind: "message", id: String(m.id) };
+  return { kind: "message", ref: m.ref };
 }
 
 function isSelected(m: Message, selection: Selection) {
-  if (selection?.kind === "thread") return selection.flashId === m.id;
-  return selection?.kind === "message" && (selection.id === m.ref || selection.id === String(m.id));
+  if (selection?.kind === "thread") return selection.flashRef === m.ref;
+  return selection?.kind === "message" && selection.ref === m.ref;
 }
 
 export function HitRow({
@@ -202,7 +199,7 @@ export function SearchView({
       return {
         ...empty,
         messages: groups.map((group) => ({
-          id: group.last_id,
+          ref: group.last_ref,
           source: group.source,
           thread_id: group.thread_id,
           sender: group.sender,
@@ -397,7 +394,7 @@ export function SearchView({
             )}
             {hits.map((m) => (
               <HitRow
-                key={m.id}
+                key={m.ref}
                 m={m}
                 query={params?.q}
                 selected={isSelected(m, selection)}

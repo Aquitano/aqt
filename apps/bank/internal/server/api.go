@@ -15,6 +15,7 @@ import (
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 const apiDescription = `bank is one person's archive: messages (mail, chats, AI conversations), a media
@@ -22,8 +23,9 @@ library with what was watched, listened to and read, files, and published notes.
 file catalogue of disks that come and go is served below /attic, with a document of
 its own at /attic/openapi.json.
 
-Cite a message as bank:<ref>, a library record by its ID, and a file on a disk as
-attic:<ref>.
+Every record is cited by one ref, kind:value: msg:<16 hex> for a message,
+content:<16 to 64 hex> for bytes, and the ID for a library record, such as
+item:<32 hex>. GET /v1/refs/{ref} says what any of them names.
 
 Uploads, imports and byte downloads are not in this document yet.`
 
@@ -45,8 +47,8 @@ func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 	}.For(api), s.timeline)
 	huma.Register(api, httpapi.Operation{ID: "resolveRef", Method: http.MethodGet, Path: "/v1/refs/{ref}", Tag: "refs",
 		Summary: "Say what a cited ref names, whichever store holds it",
-		Description: "Takes bank:<ref> or a bare message ref, a library ID such as item_… or file_…, or bytes as " +
-			"attic:<ref> or a whole BLAKE3 digest. The answer names the record, the route that returns it in full, " +
+		Description: "Takes msg:<16 hex> for a message, a library ID such as item:<32 hex> or file:<32 hex>, or " +
+			"content:<16 to 64 hex> for bytes. The answer names the record, the route that returns it in full, " +
 			"and where the same bytes are: a message attachment's or library file's copies on disks, and for " +
 			"bytes, the messages and library files that hold them as well as the places on disks.",
 		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef},
@@ -85,7 +87,7 @@ func Spec() ([]byte, error) {
 }
 
 type resolveInput struct {
-	Ref string `path:"ref" doc:"The ref as cited."`
+	Ref ref.Ref `path:"ref" doc:"The ref as cited, such as msg:<16 hex>."`
 }
 
 func (s *Server) resolve(ctx context.Context, in *resolveInput) (*httpapi.Body[catalog.Resolved], error) {

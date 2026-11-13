@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 // Contact is the owner's own name for one person, plus the source-specific
@@ -358,7 +360,7 @@ func (s *Store) ContactSourceCounts(ctx context.Context, contactID int64) ([]Con
 
 // ContactMessagesOpts narrows a contact's history the same way search does.
 type ContactMessagesOpts struct {
-	Before int64
+	Before ref.Message
 	Source string
 	Since  time.Time
 	Until  time.Time
@@ -390,8 +392,8 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 	if o.Offset > MaxSearchOffset {
 		return nil, fmt.Errorf("offset must be at most %d; narrow with --source or --since instead", MaxSearchOffset)
 	}
-	if o.Before < 0 || (o.Before > 0 && o.Offset > 0) {
-		return nil, fmt.Errorf("use a positive before cursor without offset")
+	if !o.Before.IsZero() && o.Offset > 0 {
+		return nil, fmt.Errorf("use a before cursor without offset")
 	}
 	sql := `select ` + messageColumns + ` from messages m where` + aliasMatch("$1")
 	args := []any{c.ID}
@@ -408,16 +410,17 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 	if !o.Until.IsZero() {
 		sql += " and m.sent_at < " + next(o.Until)
 	}
-	if o.Before > 0 {
+	if !o.Before.IsZero() {
 		var at time.Time
-		err := s.pool.QueryRow(ctx, `select m.sent_at from messages m where m.id=$2 and`+aliasMatch("$1"), c.ID, o.Before).Scan(&at)
+		var id int64
+		err := s.pool.QueryRow(ctx, `select m.sent_at, m.id from messages m where m.ref=$2 and`+aliasMatch("$1"), c.ID, o.Before.String()).Scan(&at, &id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("before cursor is not a message for this contact")
 		}
 		if err != nil {
 			return nil, err
 		}
-		sql += " and (m.sent_at,m.id)<(" + next(at) + "," + next(o.Before) + ")"
+		sql += " and (m.sent_at,m.id)<(" + next(at) + "," + next(id) + ")"
 	}
 	sql += " order by m.sent_at desc, m.id desc limit " + next(o.Limit)
 	if o.Offset > 0 {

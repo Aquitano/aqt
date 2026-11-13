@@ -23,7 +23,7 @@ import (
 
 const description = `attic catalogues files on disks that come and go. For every file it records
 where it is (an entry: a path on a volume), what it is (a content, identified by its
-BLAKE3 digest and cited as attic:<ref>), and the text, tags, OCR and image descriptions
+BLAKE3 digest and cited as content:<hex>), and the text, tags, OCR and image descriptions
 read from it. It keeps no file bytes: a file can be downloaded only while a disk that
 holds a copy is attached to the machine serving this API.
 

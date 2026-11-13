@@ -14,9 +14,9 @@ import (
 // BodyHeal is one archived mail whose raw bytes parse into a longer body than
 // the database holds.
 type BodyHeal struct {
-	ID      int64  `json:"id"`
-	Ref     string `json:"ref"` // the archived raw the text came back from
-	Subject string `json:"subject,omitempty"`
+	MessageRef string `json:"message_ref"`
+	Ref        string `json:"ref"` // the archived raw the text came back from
+	Subject    string `json:"subject,omitempty"`
 	// Stored and Reparsed are trimmed byte lengths, the quantity the heal rule
 	// compares.
 	Stored   int `json:"stored"`
@@ -122,16 +122,16 @@ func healMessage(ctx context.Context, st *store.Store, source, ref string, raw [
 		return nil
 	}
 	res.Matched++
-	stored, err := st.MessageBody(ctx, id)
+	messageRef, stored, err := st.MessageBody(ctx, id)
 	if err != nil {
 		return fail.Opf("read body of message %d: %w", id, err)
 	}
 	h := BodyHeal{
-		ID:       id,
-		Ref:      ref,
-		Subject:  m.Subject,
-		Stored:   store.TrimmedBodyLen(stored),
-		Reparsed: store.TrimmedBodyLen(m.Body),
+		MessageRef: messageRef,
+		Ref:        ref,
+		Subject:    m.Subject,
+		Stored:     store.TrimmedBodyLen(stored),
+		Reparsed:   store.TrimmedBodyLen(m.Body),
 	}
 	if h.Reparsed <= h.Stored {
 		return nil

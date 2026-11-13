@@ -42,7 +42,7 @@ func bodyOf(t *testing.T, st *store.Store, source, messageID string) string {
 	if err != nil || id == 0 {
 		t.Fatalf("message %s not found: %d %v", messageID, id, err)
 	}
-	body, err := st.MessageBody(ctx, id)
+	_, body, err := st.MessageBody(ctx, id)
 	if err != nil {
 		t.Fatal(err)
 	}

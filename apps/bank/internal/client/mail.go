@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -13,8 +14,12 @@ func (c *Client) ListMailboxes(ctx context.Context, source string) ([]store.Mail
 	return getJSON[[]store.Mailbox](ctx, c, "/v1/mailboxes", url.Values{"source": {source}})
 }
 
-func (c *Client) MailConflictMessages(ctx context.Context, source, key string, before int64, limit int) (store.Thread, error) {
-	return getJSON[store.Thread](ctx, c, "/v1/mail-conflicts/"+url.PathEscape(key), url.Values{"source": {source}, "before": {strconv.FormatInt(before, 10)}, "limit": {strconv.Itoa(limit)}})
+func (c *Client) MailConflictMessages(ctx context.Context, source, key string, before ref.Message, limit int) (store.Thread, error) {
+	q := url.Values{"source": {source}, "limit": {strconv.Itoa(limit)}}
+	if !before.IsZero() {
+		q.Set("before", before.String())
+	}
+	return getJSON[store.Thread](ctx, c, "/v1/mail-conflicts/"+url.PathEscape(key), q)
 }
 
 func (c *Client) BrowseThreads(ctx context.Context, options store.BrowseOpts) ([]store.ThreadGroup, error) {

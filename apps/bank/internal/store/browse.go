@@ -37,7 +37,7 @@ type ThreadGroup struct {
 	ThreadID string    `json:"thread_id"`
 	Count    int64     `json:"n"`
 	LastAt   time.Time `json:"last_at"`
-	LastID   int64     `json:"last_id"`
+	LastRef  string    `json:"last_ref"`
 	Sender   string    `json:"sender"`
 	Subject  string    `json:"subject"`
 	Preview  string    `json:"preview"`
@@ -83,7 +83,7 @@ func (s *Store) BrowseThreads(ctx context.Context, o BrowseOpts) ([]ThreadGroup,
 	// Empty thread ids remain individual messages. Order ties include source
 	// and identity so pagination cannot shuffle equal-time conversations.
 	rows, err := s.pool.Query(ctx, `select source, thread_id, count(*), max(sent_at),
-		(array_agg(id order by sent_at desc,id desc))[1],
+		(array_agg(ref order by sent_at desc,id desc))[1],
 		(array_agg(sender order by sent_at desc,id desc))[1],
 		coalesce((array_agg(nullif(subject,'') order by sent_at desc,id desc)
 			filter(where subject<>''))[1],''),
@@ -102,7 +102,7 @@ func (s *Store) BrowseThreads(ctx context.Context, o BrowseOpts) ([]ThreadGroup,
 	for rows.Next() {
 		var g ThreadGroup
 		var members *string
-		if err := rows.Scan(&g.Source, &g.ThreadID, &g.Count, &g.LastAt, &g.LastID, &g.Sender, &g.Subject, &g.Preview, &members); err != nil {
+		if err := rows.Scan(&g.Source, &g.ThreadID, &g.Count, &g.LastAt, &g.LastRef, &g.Sender, &g.Subject, &g.Preview, &members); err != nil {
 			return nil, err
 		}
 		if members != nil {

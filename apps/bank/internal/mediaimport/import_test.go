@@ -666,9 +666,9 @@ func TestInboxRejectsInvalidLibraryRecordsAndContinues(t *testing.T) {
 	}
 	missing := event
 	missing.ExternalID = "missing"
-	missing.ItemID = "item_missing"
+	missing.ItemID = "item:missing"
 	mismatch := item
-	mismatch.ID = "item_wrong"
+	mismatch.ID = "item:wrong"
 	conflict := event
 	conflict.Occurred.Value = "2026-10-02"
 	good := item

@@ -199,7 +199,7 @@ func TestChangedHardLinkOwnerRenameRefreshesBothLinks(t *testing.T) {
 					where id=$1 returning id`, owner.ID, []byte("linked-renamed.bin"))
 			}
 			digest := blake3.Sum256([]byte("modified"))
-			wantRef := fmt.Sprintf("%x", digest[:8])
+			wantRef := fmt.Sprintf("content:%x", digest[:8])
 			for i, wantHashes := range []int64{1, 0} {
 				result := scanAt(t, st, root, testVolume)
 				if result.Pending != 0 || result.Counts.Hashed != wantHashes || result.Counts.HashedBytes != wantHashes*int64(len("modified")) {

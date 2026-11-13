@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -26,7 +27,7 @@ func TestRetiredRefResolvesToItsTombstone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = c.GetMessageDetailByRef(ctx, m.Ref)
+	_, err = c.GetMessageDetailByRef(ctx, ref.ForMessage("youtube", "", "watch:1"))
 	retired, ok := errors.AsType[*store.RetiredError](err)
 	if !ok {
 		t.Fatalf("err = %v, want a retired result", err)

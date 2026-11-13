@@ -121,8 +121,8 @@ function ReplyContext({ m }: { m: BankMessage }) {
   const [open, setOpen] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
   const parent = useQuery({
-    queryKey: ["parent", m.id],
-    queryFn: () => getMessageParent(m.id),
+    queryKey: ["parent", m.ref],
+    queryFn: () => getMessageParent(m.ref),
     enabled: open,
     retry: false,
   });
@@ -153,7 +153,7 @@ function ReplyContext({ m }: { m: BankMessage }) {
           Read branch to here
         </button>
       )}
-      {branchOpen && <BranchReader id={m.id} />}
+      {branchOpen && <BranchReader messageRef={m.ref} />}
       {open && (
         <div className="mt-2 border-l-2 pl-2 whitespace-pre-wrap">
           {parent.isPending ? (
@@ -172,8 +172,11 @@ function ReplyContext({ m }: { m: BankMessage }) {
   );
 }
 
-function BranchReader({ id }: { id: number }) {
-  const q = useQuery({ queryKey: ["branch", id], queryFn: () => getMessageBranch(id) });
+function BranchReader({ messageRef }: { messageRef: string }) {
+  const q = useQuery({
+    queryKey: ["branch", messageRef],
+    queryFn: () => getMessageBranch(messageRef),
+  });
   if (q.isPending) return <p>Loading branch…</p>;
   if (q.isError) return <p role="alert">{q.error.message}</p>;
   return (
@@ -186,7 +189,7 @@ function BranchReader({ id }: { id: number }) {
       )}
       <ol className="space-y-4">
         {q.data.messages.map((message) => (
-          <li key={message.id}>
+          <li key={message.ref}>
             <p className="mb-1 font-medium text-muted-foreground">{message.sender}</p>
             <Body m={message} />
             <Attachments m={message} />
@@ -262,16 +265,16 @@ function DaySeparator({ day }: { day: string }) {
 // Timestamps appear exactly once per run — merged into the sender header for
 // group-chat runs, as a small footer on the last bubble otherwise. Every
 // bubble still reveals its precise time on hover via the native tooltip.
-function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; solo: boolean }) {
+function RunBlock({ run, flashRef, solo }: { run: Run; flashRef?: string; solo: boolean }) {
   const bubbles = run.messages.map((m, i) => {
     const lastOfRun = i === run.messages.length - 1;
     const showHeader = i === 0 && !run.me && !solo;
     const showFooter = lastOfRun && (run.me || solo);
     return (
       <Message
-        key={m.id}
+        key={m.ref}
         align={run.me ? "end" : "start"}
-        data-mid={m.id}
+        data-mid={m.ref}
         data-external-id={m.external_id}
       >
         {!run.me && (
@@ -292,7 +295,7 @@ function RunBlock({ run, flashId, solo }: { run: Run; flashId?: number | null; s
             className={cn(
               run.me &&
                 "*:data-[slot=bubble-content]:bg-(--bubble-me)! *:data-[slot=bubble-content]:text-(--bubble-me-foreground)!",
-              m.id === flashId && "rounded-3xl ring-2 ring-amber-400/70",
+              m.ref === flashRef && "rounded-3xl ring-2 ring-amber-400/70",
             )}
           >
             <BubbleContent>
@@ -374,13 +377,13 @@ export function Conversation({
   title,
   meta,
   messages,
-  flashId,
+  flashRef,
   navigation,
 }: {
   title: ReactNode;
   meta: string;
   messages: BankMessage[];
-  flashId?: number | null;
+  flashRef?: string;
   navigation?: ReactNode;
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -409,22 +412,22 @@ export function Conversation({
     scrollAnchor.current = null;
   }, [messages]);
 
-  const lastFlashed = useRef<number | null>(null);
+  const lastFlashed = useRef<string | null>(null);
 
   // The scroller starts pinned to the bottom; a flashed search hit overrides
   // that and centers the hit instead.
   useEffect(() => {
-    if (!flashId || lastFlashed.current === flashId || !messages.some((m) => m.id === flashId))
+    if (!flashRef || lastFlashed.current === flashRef || !messages.some((m) => m.ref === flashRef))
       return;
-    const target = viewportRef.current?.querySelector(`[data-mid="${flashId}"]`);
+    const target = viewportRef.current?.querySelector(`[data-mid="${flashRef}"]`);
     if (target) {
       target.scrollIntoView({ block: "center" });
-      lastFlashed.current = flashId;
+      lastFlashed.current = flashRef;
     }
-  }, [messages, flashId]);
+  }, [messages, flashRef]);
 
   const [first] = messages;
-  if (first && messages.length === 1 && !flashId)
+  if (first && messages.length === 1 && !flashRef)
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex shrink-0 items-center gap-2 px-6">{navigation}</div>
@@ -453,10 +456,10 @@ export function Conversation({
               {runs.map((run, i) => {
                 const sep = runs[i - 1]?.day !== run.day;
                 return (
-                  <div key={run.messages[0].id} className="contents">
+                  <div key={run.messages[0].ref} className="contents">
                     {sep && <DaySeparator day={run.day} />}
                     <div className={cn(!sep && i > 0 && "mt-3.5")}>
-                      <RunBlock run={run} flashId={flashId} solo={solo} />
+                      <RunBlock run={run} flashRef={flashRef} solo={solo} />
                     </div>
                   </div>
                 );

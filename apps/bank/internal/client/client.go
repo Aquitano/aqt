@@ -25,6 +25,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -148,17 +149,8 @@ func (c *Client) Search(ctx context.Context, query string, o store.SearchOpts) (
 	return getJSON[[]store.Message](ctx, c, "/v1/search", q)
 }
 
-func (c *Client) GetMessageDetail(ctx context.Context, id int64) (store.MessageDetail, error) {
-	return getJSON[store.MessageDetail](ctx, c, "/v1/messages/"+strconv.FormatInt(id, 10), nil)
-}
-
-// GetMessageDetailByRef fetches a message by its stable ref; the same endpoint
-// takes either form.
-func (c *Client) GetMessageDetailByRef(ctx context.Context, ref string) (store.MessageDetail, error) {
-	if err := store.ValidRef(ref); err != nil {
-		return store.MessageDetail{}, err
-	}
-	return getJSON[store.MessageDetail](ctx, c, "/v1/messages/"+ref, nil)
+func (c *Client) GetMessageDetailByRef(ctx context.Context, cited ref.Message) (store.MessageDetail, error) {
+	return getJSON[store.MessageDetail](ctx, c, "/v1/messages/"+cited.String(), nil)
 }
 
 func (c *Client) Stats(ctx context.Context) ([]store.SourceStats, error) {
@@ -166,8 +158,8 @@ func (c *Client) Stats(ctx context.Context) ([]store.SourceStats, error) {
 }
 
 // Resolve asks the server what a cited ref names.
-func (c *Client) Resolve(ctx context.Context, ref string) (catalog.Resolved, error) {
-	return getJSON[catalog.Resolved](ctx, c, "/v1/refs/"+url.PathEscape(ref), nil)
+func (c *Client) Resolve(ctx context.Context, cited ref.Ref) (catalog.Resolved, error) {
+	return getJSON[catalog.Resolved](ctx, c, "/v1/refs/"+cited.String(), nil)
 }
 
 // Timeline asks the server for what happened in [since, until).
@@ -204,9 +196,9 @@ func (c *Client) GetThreadPage(ctx context.Context, source, threadID string, o s
 		return store.Thread{}, err
 	}
 	q.Set("limit", strconv.Itoa(o.Limit))
-	for name, id := range map[string]int64{"before": o.Before, "after": o.After, "around": o.Around} {
-		if id > 0 {
-			q.Set(name, strconv.FormatInt(id, 10))
+	for name, cursor := range map[string]ref.Message{"before": o.Before, "after": o.After, "around": o.Around} {
+		if !cursor.IsZero() {
+			q.Set(name, cursor.String())
 		}
 	}
 	if o.Current {
@@ -243,8 +235,8 @@ func (c *Client) ContactMessages(ctx context.Context, name string, o store.Conta
 	if o.Offset > 0 {
 		q.Set("offset", strconv.Itoa(o.Offset))
 	}
-	if o.Before > 0 {
-		q.Set("before", strconv.FormatInt(o.Before, 10))
+	if !o.Before.IsZero() {
+		q.Set("before", o.Before.String())
 	}
 	return getJSON[[]store.MessageDetail](ctx, c, "/v1/contacts/"+url.PathEscape(name)+"/messages", q)
 }

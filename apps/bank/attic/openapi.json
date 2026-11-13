@@ -1645,7 +1645,7 @@
     }
   },
   "info": {
-    "description": "attic catalogues files on disks that come and go. For every file it records\nwhere it is (an entry: a path on a volume), what it is (a content, identified by its\nBLAKE3 digest and cited as attic:\u003cref\u003e), and the text, tags, OCR and image descriptions\nread from it. It keeps no file bytes: a file can be downloaded only while a disk that\nholds a copy is attached to the machine serving this API.\n\nPlaces carry three flags. online: the disk is attached now. missing: the last scan of\nits folder no longer found the file. version \"previous\": the entry held this content\nbefore its bytes changed, so earlier versions of a file stay findable.\n\nCite a file by its content ref; entry IDs name a location in this catalogue only.",
+    "description": "attic catalogues files on disks that come and go. For every file it records\nwhere it is (an entry: a path on a volume), what it is (a content, identified by its\nBLAKE3 digest and cited as content:\u003chex\u003e), and the text, tags, OCR and image descriptions\nread from it. It keeps no file bytes: a file can be downloaded only while a disk that\nholds a copy is attached to the machine serving this API.\n\nPlaces carry three flags. online: the disk is attached now. missing: the last scan of\nits folder no longer found the file. version \"previous\": the entry held this content\nbefore its bytes changed, so earlier versions of a file stay findable.\n\nCite a file by its content ref; entry IDs name a location in this catalogue only.",
     "title": "attic",
     "version": "1"
   },
@@ -1657,12 +1657,12 @@
         "operationId": "getContent",
         "parameters": [
           {
-            "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+            "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
             "in": "path",
             "name": "ref",
             "required": true,
             "schema": {
-              "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+              "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
               "type": "string"
             }
           }
@@ -1750,12 +1750,12 @@
         "operationId": "listContentAnalyses",
         "parameters": [
           {
-            "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+            "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
             "in": "path",
             "name": "ref",
             "required": true,
             "schema": {
-              "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+              "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
               "type": "string"
             }
           }
@@ -1850,12 +1850,12 @@
         "operationId": "downloadContent",
         "parameters": [
           {
-            "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+            "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
             "in": "path",
             "name": "ref",
             "required": true,
             "schema": {
-              "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+              "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
               "type": "string"
             }
           }
@@ -1952,12 +1952,12 @@
         "operationId": "getContentMetadata",
         "parameters": [
           {
-            "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+            "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
             "in": "path",
             "name": "ref",
             "required": true,
             "schema": {
-              "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+              "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
               "type": "string"
             }
           }
@@ -2046,12 +2046,12 @@
         "operationId": "getContentText",
         "parameters": [
           {
-            "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+            "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
             "in": "path",
             "name": "ref",
             "required": true,
             "schema": {
-              "description": "Content ref: 16 to 64 hex characters, with or without the attic: prefix.",
+              "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
               "type": "string"
             }
           }

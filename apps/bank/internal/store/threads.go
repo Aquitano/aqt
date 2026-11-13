@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 const MaxThreadMessages = 2000
@@ -25,9 +28,9 @@ type Thread struct {
 // with equal timestamps are neither repeated nor skipped.
 type ThreadOpts struct {
 	Limit   int
-	Before  int64
-	After   int64
-	Around  int64
+	Before  ref.Message
+	After   ref.Message
+	Around  ref.Message
 	Latest  bool
 	Current bool
 }
@@ -37,11 +40,8 @@ func (o ThreadOpts) Validate() error {
 		return fmt.Errorf("limit must be 0-%d", MaxThreadMessages)
 	}
 	positions := 0
-	for _, id := range []int64{o.Before, o.After, o.Around} {
-		if id < 0 {
-			return fmt.Errorf("message cursors must be positive")
-		}
-		if id > 0 {
+	for _, cursor := range []ref.Message{o.Before, o.After, o.Around} {
+		if !cursor.IsZero() {
 			positions++
 		}
 	}
@@ -110,9 +110,9 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 		out.ThreadID = resolved
 	}
 	var anchor Message
-	id := max(o.Before, o.After, o.Around)
-	if id > 0 {
-		err := anchor.scanFull(s.pool.QueryRow(ctx, `select `+messageColumns+` from messages m where m.id = $1 and m.source = $2 and m.thread_id = $3`, id, out.Source, out.ThreadID))
+	cursor := cmp.Or(o.Before, o.After, o.Around)
+	if !cursor.IsZero() {
+		err := anchor.scanFull(s.pool.QueryRow(ctx, `select `+messageColumns+` from messages m where m.ref = $1 and m.source = $2 and m.thread_id = $3`, cursor.String(), out.Source, out.ThreadID))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return out, ErrNotFound
 		}
@@ -122,7 +122,7 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 	}
 	var err error
 	switch {
-	case o.Around > 0:
+	case !o.Around.IsZero():
 		older, e := s.threadRows(ctx, out, anchor, "<", true, o.Limit/2)
 		if e != nil {
 			return out, e
@@ -133,9 +133,9 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 		}
 		out.Messages = append(out.Messages, older...)
 		out.Messages = append(out.Messages, newer...)
-	case o.Before > 0:
+	case !o.Before.IsZero():
 		out.Messages, err = s.threadRows(ctx, out, anchor, "<", true, o.Limit)
-	case o.After > 0:
+	case !o.After.IsZero():
 		out.Messages, err = s.threadRows(ctx, out, anchor, ">", false, o.Limit)
 	default:
 		out.Messages, err = s.threadRows(ctx, out, anchor, "", o.Latest, o.Limit)
@@ -144,10 +144,10 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 		return out, err
 	}
 	if len(out.Messages) == 0 {
-		if id == 0 {
+		if cursor.IsZero() {
 			return out, ErrNotFound
 		}
-		out.HasBefore, out.HasAfter = o.After > 0, o.Before > 0
+		out.HasBefore, out.HasAfter = !o.After.IsZero(), !o.Before.IsZero()
 	} else {
 		first, last := out.Messages[0], out.Messages[len(out.Messages)-1]
 		err = s.pool.QueryRow(ctx, `select

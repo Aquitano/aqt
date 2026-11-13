@@ -12,6 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/metadata"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -107,9 +108,9 @@ func cleanJSON(v any) any {
 	}
 }
 
-func (s *Store) Metadata(ctx context.Context, entryID int64, ref string) (MetadataDetail, error) {
+func (s *Store) Metadata(ctx context.Context, entryID int64, cited ref.Content) (MetadataDetail, error) {
 	var d MetadataDetail
-	lookup, err := s.newContentLookup(ctx, entryID, ref)
+	lookup, err := s.newContentLookup(ctx, entryID, cited)
 	if err != nil {
 		return d, err
 	}

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
@@ -129,7 +130,7 @@ func TestMetadataToolReadsVerifiedCopyAfterSourceReplacement(t *testing.T) {
 	if res.Counts.Metadata != 1 {
 		t.Fatalf("metadata: %+v", res.Counts)
 	}
-	result, err := st.Metadata(t.Context(), find(t, st, "image.png").ID, "")
+	result, err := st.Metadata(t.Context(), find(t, st, "image.png").ID, ref.Content{})
 	if err != nil || result.Tags["Test:Bytes"] != "original" {
 		t.Fatalf("tool read a replacement object: %+v, %v", result, err)
 	}
@@ -158,7 +159,7 @@ func TestPDFFallbackReadsVerifiedCopyAfterSourceReplacement(t *testing.T) {
 	if res.Counts.Texts != 1 {
 		t.Fatalf("texts: %+v", res.Counts)
 	}
-	result, err := st.Text(t.Context(), find(t, st, "document.pdf").ID, "")
+	result, err := st.Text(t.Context(), find(t, st, "document.pdf").ID, ref.Content{})
 	if err != nil || result.Text != "original" {
 		t.Fatalf("PDF tool read a replacement object: %+v, %v", result, err)
 	}

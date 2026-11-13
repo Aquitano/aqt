@@ -17,6 +17,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/enrich"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
@@ -112,7 +113,11 @@ func TestEnrichDedupRetriesVersionsAndSearch(t *testing.T) {
 			t.Fatalf("copies: %+v", h)
 		}
 	}
-	results, err := st.Analyses(t.Context(), 0, "attic:"+strings.ToUpper(hits[0].Ref))
+	cited, err := ref.ParseContent(hits[0].Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	results, err := st.Analyses(t.Context(), 0, cited)
 	if err != nil || len(results) != 2 {
 		t.Fatalf("analyses %+v %v", results, err)
 	}
@@ -176,15 +181,19 @@ func TestEnrichSelectionRulesChangedFilesLimitAndCancel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	first, err := ref.ParseContent(files[0].Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name    string
 		entries []int64
-		refs    []string
+		refs    []ref.Content
 		want    int
 	}{
 		{"entry", []int64{files[0].ID}, nil, 1},
-		{"ref", nil, []string{files[0].Ref}, 1},
-		{"mixed", []int64{files[1].ID}, []string{files[0].Ref}, 2},
+		{"ref", nil, []ref.Content{first}, 1},
+		{"mixed", []int64{files[1].ID}, []ref.Content{first}, 2},
 	} {
 		selection := store.AISelection{Volumes: []string{vols[0].ID}, Extensions: []string{"png"}, Key: p.key, Force: true, Entries: tc.entries, Refs: tc.refs}
 		selected, err := st.NextAI(t.Context(), selection, 0, 20)
@@ -196,7 +205,7 @@ func TestEnrichSelectionRulesChangedFilesLimitAndCancel(t *testing.T) {
 			t.Fatalf("%s volumes: %v %v", tc.name, selectedVolumes, err)
 		}
 	}
-	o.Selection.Refs = []string{"attic:" + strings.ToUpper(files[0].Ref)}
+	o.Selection.Refs = []ref.Content{first}
 	o.Config.NameOnly = nil
 	p.key.Model = "two"
 	s, err = enrich.Run(t.Context(), st, o)

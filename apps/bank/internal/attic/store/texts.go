@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 // PendingText is a hashed document below the scan root whose content has no
@@ -179,9 +181,9 @@ type TextDetail struct {
 }
 
 // Text returns the text read from an entry's content, or from a ref's.
-func (s *Store) Text(ctx context.Context, entryID int64, ref string) (TextDetail, error) {
+func (s *Store) Text(ctx context.Context, entryID int64, cited ref.Content) (TextDetail, error) {
 	var d TextDetail
-	lookup, err := s.newContentLookup(ctx, entryID, ref)
+	lookup, err := s.newContentLookup(ctx, entryID, cited)
 	if err != nil {
 		return d, err
 	}

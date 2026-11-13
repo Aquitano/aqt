@@ -239,10 +239,6 @@
             "format": "int64",
             "type": "integer"
           },
-          "message_id": {
-            "format": "int64",
-            "type": "integer"
-          },
           "mime_type": {
             "type": "string"
           },
@@ -260,7 +256,6 @@
         },
         "required": [
           "id",
-          "message_id",
           "filename",
           "size_bytes",
           "blake3"
@@ -770,7 +765,7 @@
             "type": "string"
           },
           "ref": {
-            "description": "What to cite and resolve: bank:\u003cref\u003e for a message, an activity ID, or attic:\u003cref\u003e for a hashed file.",
+            "description": "What to cite and resolve: msg:\u003chex\u003e for a message, an activity ID, or content:\u003chex\u003e for a hashed file.",
             "type": "string"
           },
           "source": {
@@ -1373,7 +1368,7 @@
             "type": "string"
           },
           "relation": {
-            "description": "attachment: a file attached to this message, by its BLAKE3 digest. on_disk: a place on a disk holding the same bytes. in_archive: a message attachment or library file holding the same bytes. replaced_by: what a retired message became.",
+            "description": "attachment: a file attached to this message, by its whole BLAKE3 digest. on_disk: a place on a disk holding the same bytes. in_archive: a message attachment or library file holding the same bytes. replaced_by: what a retired message became.",
             "enum": [
               "attachment",
               "on_disk",
@@ -1617,10 +1612,6 @@
           "external_id": {
             "type": "string"
           },
-          "id": {
-            "format": "int64",
-            "type": "integer"
-          },
           "mail": {
             "$ref": "#/components/schemas/MailProvenance"
           },
@@ -1679,7 +1670,7 @@
           }
         },
         "required": [
-          "id",
+          "ref",
           "source",
           "sender",
           "body",
@@ -1715,10 +1706,6 @@
           "external_id": {
             "type": "string"
           },
-          "id": {
-            "format": "int64",
-            "type": "integer"
-          },
           "mail": {
             "$ref": "#/components/schemas/MailProvenance"
           },
@@ -1777,7 +1764,7 @@
           }
         },
         "required": [
-          "id",
+          "ref",
           "source",
           "sender",
           "body",
@@ -2137,7 +2124,7 @@
             ]
           },
           "ref": {
-            "description": "The form to cite: bank:\u003cref\u003e for a message, a library ID, or attic:\u003cref\u003e for bytes.",
+            "description": "The form to cite: msg:\u003chex\u003e for a message, the record's ID for the library, or content:\u003chex\u003e for bytes.",
             "type": "string"
           },
           "title": {
@@ -2619,9 +2606,8 @@
             "format": "date-time",
             "type": "string"
           },
-          "last_id": {
-            "format": "int64",
-            "type": "integer"
+          "last_ref": {
+            "type": "string"
           },
           "members": {
             "type": "string"
@@ -2651,7 +2637,7 @@
           "thread_id",
           "n",
           "last_at",
-          "last_id",
+          "last_ref",
           "sender",
           "subject",
           "preview",
@@ -2746,7 +2732,7 @@
     }
   },
   "info": {
-    "description": "bank is one person's archive: messages (mail, chats, AI conversations), a media\nlibrary with what was watched, listened to and read, files, and published notes. The\nfile catalogue of disks that come and go is served below /attic, with a document of\nits own at /attic/openapi.json.\n\nCite a message as bank:\u003cref\u003e, a library record by its ID, and a file on a disk as\nattic:\u003cref\u003e.\n\nUploads, imports and byte downloads are not in this document yet.",
+    "description": "bank is one person's archive: messages (mail, chats, AI conversations), a media\nlibrary with what was watched, listened to and read, files, and published notes. The\nfile catalogue of disks that come and go is served below /attic, with a document of\nits own at /attic/openapi.json.\n\nEvery record is cited by one ref, kind:value: msg:\u003c16 hex\u003e for a message,\ncontent:\u003c16 to 64 hex\u003e for bytes, and the ID for a library record, such as\nitem:\u003c32 hex\u003e. GET /v1/refs/{ref} says what any of them names.\n\nUploads, imports and byte downloads are not in this document yet.",
     "title": "bank",
     "version": "1"
   },
@@ -4136,7 +4122,7 @@
     },
     "/v1/contacts/{name}/messages": {
       "get": {
-        "description": "Page with before, the id of the last message of the previous page, or with offset, and not with both.",
+        "description": "Page with before, the ref of the last message of the previous page, or with offset, and not with both.",
         "operationId": "listContactMessages",
         "parameters": [
           {
@@ -4208,15 +4194,13 @@
             }
           },
           {
-            "description": "Only messages older than the message with this id, which must be one of the contact's.",
+            "description": "Only messages older than the message with this ref, which must be one of the contact's.",
             "explode": false,
             "in": "query",
             "name": "before",
             "schema": {
-              "description": "Only messages older than the message with this id, which must be one of the contact's.",
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "description": "Only messages older than the message with this ref, which must be one of the contact's.",
+              "type": "string"
             }
           }
         ],
@@ -4884,12 +4868,12 @@
         "operationId": "getLibraryActivity",
         "parameters": [
           {
-            "description": "The record's ID, such as item_… or file_….",
+            "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The record's ID, such as item_… or file_….",
+              "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
               "type": "string"
             }
           }
@@ -5307,12 +5291,12 @@
         "operationId": "getLibraryCollection",
         "parameters": [
           {
-            "description": "The record's ID, such as item_… or file_….",
+            "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The record's ID, such as item_… or file_….",
+              "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
               "type": "string"
             }
           }
@@ -5961,12 +5945,12 @@
         "operationId": "getLibraryFile",
         "parameters": [
           {
-            "description": "The record's ID, such as item_… or file_….",
+            "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The record's ID, such as item_… or file_….",
+              "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
               "type": "string"
             }
           }
@@ -6500,12 +6484,12 @@
         "operationId": "getLibraryItem",
         "parameters": [
           {
-            "description": "The record's ID, such as item_… or file_….",
+            "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The record's ID, such as item_… or file_….",
+              "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
               "type": "string"
             }
           }
@@ -6723,12 +6707,12 @@
         "operationId": "listLibraryItemStateHistory",
         "parameters": [
           {
-            "description": "The record's ID, such as item_… or file_….",
+            "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The record's ID, such as item_… or file_….",
+              "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
               "type": "string"
             }
           }
@@ -6812,12 +6796,12 @@
         "operationId": "getLibraryPage",
         "parameters": [
           {
-            "description": "The record's ID, such as item_… or file_….",
+            "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
-              "description": "The record's ID, such as item_… or file_….",
+              "description": "The record's ID, which is also its ref, such as item:\u003c32 hex\u003e.",
               "type": "string"
             }
           }
@@ -7120,16 +7104,13 @@
             }
           },
           {
-            "description": "Only messages older than this message ID. 0 starts at the newest.",
+            "description": "Only messages older than this message, by ref. Without it, the page starts at the newest.",
             "explode": false,
             "in": "query",
             "name": "before",
             "schema": {
-              "default": 0,
-              "description": "Only messages older than this message ID. 0 starts at the newest.",
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
+              "description": "Only messages older than this message, by ref. Without it, the page starts at the newest.",
+              "type": "string"
             }
           },
           {
@@ -7292,17 +7273,17 @@
         ]
       }
     },
-    "/v1/messages/{id}": {
+    "/v1/messages/{ref}": {
       "get": {
         "operationId": "getMessage",
         "parameters": [
           {
-            "description": "The message's ref, 12 hex characters as cited in bank:\u003cref\u003e, or its numeric row ID.",
+            "description": "The message's ref, msg:\u003c16 hex\u003e.",
             "in": "path",
-            "name": "id",
+            "name": "ref",
             "required": true,
             "schema": {
-              "description": "The message's ref, 12 hex characters as cited in bank:\u003cref\u003e, or its numeric row ID.",
+              "description": "The message's ref, msg:\u003c16 hex\u003e.",
               "type": "string"
             }
           }
@@ -7385,21 +7366,19 @@
         ]
       }
     },
-    "/v1/messages/{id}/branch": {
+    "/v1/messages/{ref}/branch": {
       "get": {
         "description": "For conversations that fork, such as AI chats with edited prompts: only the ancestors of this message, in reply order. incomplete is set when the oldest one answers a message that is not in the archive.",
         "operationId": "getMessageBranch",
         "parameters": [
           {
-            "description": "The message's numeric row ID.",
+            "description": "The message's ref, msg:\u003c16 hex\u003e.",
             "in": "path",
-            "name": "id",
+            "name": "ref",
             "required": true,
             "schema": {
-              "description": "The message's numeric row ID.",
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "description": "The message's ref, msg:\u003c16 hex\u003e.",
+              "type": "string"
             }
           }
         ],
@@ -7471,20 +7450,18 @@
         ]
       }
     },
-    "/v1/messages/{id}/parent": {
+    "/v1/messages/{ref}/parent": {
       "get": {
         "operationId": "getMessageParent",
         "parameters": [
           {
-            "description": "The message's numeric row ID.",
+            "description": "The message's ref, msg:\u003c16 hex\u003e.",
             "in": "path",
-            "name": "id",
+            "name": "ref",
             "required": true,
             "schema": {
-              "description": "The message's numeric row ID.",
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "description": "The message's ref, msg:\u003c16 hex\u003e.",
+              "type": "string"
             }
           }
         ],
@@ -7630,16 +7607,16 @@
     },
     "/v1/refs/{ref}": {
       "get": {
-        "description": "Takes bank:\u003cref\u003e or a bare message ref, a library ID such as item_… or file_…, or bytes as attic:\u003cref\u003e or a whole BLAKE3 digest. The answer names the record, the route that returns it in full, and where the same bytes are: a message attachment's or library file's copies on disks, and for bytes, the messages and library files that hold them as well as the places on disks.",
+        "description": "Takes msg:\u003c16 hex\u003e for a message, a library ID such as item:\u003c32 hex\u003e or file:\u003c32 hex\u003e, or content:\u003c16 to 64 hex\u003e for bytes. The answer names the record, the route that returns it in full, and where the same bytes are: a message attachment's or library file's copies on disks, and for bytes, the messages and library files that hold them as well as the places on disks.",
         "operationId": "resolveRef",
         "parameters": [
           {
-            "description": "The ref as cited.",
+            "description": "The ref as cited, such as msg:\u003c16 hex\u003e.",
             "in": "path",
             "name": "ref",
             "required": true,
             "schema": {
-              "description": "The ref as cited.",
+              "description": "The ref as cited, such as msg:\u003c16 hex\u003e.",
               "type": "string"
             }
           }
@@ -8356,39 +8333,33 @@
             }
           },
           {
-            "description": "The page that ends just before this message ID.",
+            "description": "The page that ends just before this message, by ref.",
             "explode": false,
             "in": "query",
             "name": "before",
             "schema": {
-              "description": "The page that ends just before this message ID.",
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "description": "The page that ends just before this message, by ref.",
+              "type": "string"
             }
           },
           {
-            "description": "The page that starts just after this message ID.",
+            "description": "The page that starts just after this message, by ref.",
             "explode": false,
             "in": "query",
             "name": "after",
             "schema": {
-              "description": "The page that starts just after this message ID.",
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "description": "The page that starts just after this message, by ref.",
+              "type": "string"
             }
           },
           {
-            "description": "The page with this message ID in its middle.",
+            "description": "The page with this message, by ref, in its middle.",
             "explode": false,
             "in": "query",
             "name": "around",
             "schema": {
-              "description": "The page with this message ID in its middle.",
-              "format": "int64",
-              "minimum": 1,
-              "type": "integer"
+              "description": "The page with this message, by ref, in its middle.",
+              "type": "string"
             }
           },
           {

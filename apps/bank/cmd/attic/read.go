@@ -219,7 +219,7 @@ type showCmd struct {
 }
 
 func (cmd *showCmd) Run(ctx context.Context) error {
-	id, ref, err := parseTarget(cmd.Target)
+	id, cited, err := parseTarget(cmd.Target)
 	if err != nil {
 		return err
 	}
@@ -234,8 +234,8 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 	}
 	roots := view.OnlineRoots(vols)
 
-	if ref != "" {
-		c, err := st.Content(ctx, ref)
+	if !cited.IsZero() {
+		c, err := st.Content(ctx, cited)
 		if err != nil {
 			return err
 		}
@@ -244,7 +244,7 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 			return printJSON(content)
 		}
 		places := content.Occurrences
-		fmt.Printf("attic:%s  %s, first seen %s\n  blake3  %s\n", c.Ref, humanBytes(c.Size), c.FirstSeen.Local().Format("2006-01-02"), c.BLAKE3)
+		fmt.Printf("%s  %s, first seen %s\n  blake3  %s\n", c.Ref, humanBytes(c.Size), c.FirstSeen.Local().Format("2006-01-02"), c.BLAKE3)
 		previous := slices.IndexFunc(places, func(h view.Place) bool { return h.Version == store.VersionPrevious })
 		if previous < 0 {
 			return printHits(places)
@@ -280,7 +280,7 @@ func (cmd *showCmd) Run(ctx context.Context) error {
 	}
 	fmt.Fprintf(tw, "  modified\t%s\n  created\t%s\n  accessed\t%s\n", stamp(d.Modified), stamp(d.Created), stamp(d.Accessed))
 	if d.Ref != "" {
-		fmt.Fprintf(tw, "  ref\tattic:%s\n", d.Ref)
+		fmt.Fprintf(tw, "  ref\t%s\n", d.Ref)
 	} else if d.Kind == "file" {
 		fmt.Fprintf(tw, "  hash\t%s\n", d.HashState)
 	}
@@ -344,7 +344,7 @@ func printVersions(versions []store.EntryVersion) error {
 		if v.ReplacedScan != nil {
 			seen += " to scan " + strconv.FormatInt(*v.ReplacedScan, 10) + " (" + shortDate(v.Replaced) + ")"
 		}
-		fmt.Fprintf(tw, "    %s\tattic:%s\t%s\t%s\t%s\n", v.Version, v.Ref, humanBytes(v.Size), shortDate(v.Modified), seen)
+		fmt.Fprintf(tw, "    %s\t%s\t%s\t%s\t%s\n", v.Version, v.Ref, humanBytes(v.Size), shortDate(v.Modified), seen)
 	}
 	return tw.Flush()
 }
@@ -419,7 +419,7 @@ func (cmd *dupesCmd) Run(ctx context.Context) error {
 	}
 	fmt.Printf("copies beyond the first take %s in total; the largest:\n", humanBytes(wasted))
 	for _, d := range report.Dupes {
-		fmt.Printf("\n%s x %d, attic:%s\n", humanBytes(d.Size), d.Copies, d.Ref)
+		fmt.Printf("\n%s x %d, %s\n", humanBytes(d.Size), d.Copies, d.Ref)
 		if err := printHits(d.Places); err != nil {
 			return err
 		}
@@ -539,7 +539,7 @@ type textCmd struct {
 }
 
 func (cmd *textCmd) Run(ctx context.Context) error {
-	id, ref, err := parseTarget(cmd.Target)
+	id, cited, err := parseTarget(cmd.Target)
 	if err != nil {
 		return err
 	}
@@ -548,7 +548,7 @@ func (cmd *textCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeStore()
-	d, err := st.Text(ctx, id, ref)
+	d, err := st.Text(ctx, id, cited)
 	if err != nil {
 		return err
 	}
@@ -556,7 +556,7 @@ func (cmd *textCmd) Run(ctx context.Context) error {
 		return printJSON(d)
 	}
 	if d.Text == "" {
-		return fmt.Errorf("attic:%s has no text: %s %s", d.Ref, d.Status, d.Detail)
+		return fmt.Errorf("%s has no text: %s %s", d.Ref, d.Status, d.Detail)
 	}
 	fmt.Println(d.Text)
 	return nil
@@ -680,7 +680,7 @@ type metadataCmd struct {
 }
 
 func (cmd *metadataCmd) Run(ctx context.Context) error {
-	id, ref, err := parseTarget(cmd.Target)
+	id, cited, err := parseTarget(cmd.Target)
 	if err != nil {
 		return err
 	}
@@ -689,14 +689,14 @@ func (cmd *metadataCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeStore()
-	d, err := st.Metadata(ctx, id, ref)
+	d, err := st.Metadata(ctx, id, cited)
 	if err != nil {
 		return err
 	}
 	if cmd.JSON {
 		return printJSON(d)
 	}
-	fmt.Printf("attic:%s: %s\n", d.Ref, d.Status)
+	fmt.Printf("%s: %s\n", d.Ref, d.Status)
 	if d.Detail != "" {
 		fmt.Println(d.Detail)
 	}

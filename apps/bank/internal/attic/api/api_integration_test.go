@@ -83,14 +83,16 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
 	}{
 		{"/v1/stats", "", http.StatusUnauthorized, "Unauthorized"},
 		{"/v1/stats", "attic_wrong", http.StatusUnauthorized, "Unauthorized"},
-		{"/v1/contents/attic:ffffffffffffffff", token, http.StatusNotFound, "NotFound"},
-		{"/v1/contents/1111111111111111", token, http.StatusConflict, "AmbiguousRef"},
+		{"/v1/contents/content:ffffffffffffffff", token, http.StatusNotFound, "NotFound"},
+		{"/v1/contents/content:1111111111111111", token, http.StatusConflict, "AmbiguousRef"},
 		{"/v1/contents/xyz", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/contents/1111111111111111", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/contents/msg:1111111111111111", token, http.StatusUnprocessableEntity, "InvalidRequest"},
 		{"/v1/search?q=minecraft&limit=0", token, http.StatusUnprocessableEntity, "InvalidRequest"},
 		{"/v1/search?q=minecraft&under=/x", token, http.StatusUnprocessableEntity, "InvalidRequest"},
 		{"/v1/search", token, http.StatusUnprocessableEntity, "InvalidRequest"},
 		{"/v1/search?q=%20", token, http.StatusUnprocessableEntity, "InvalidRequest"},
-		{"/v1/contents/abababababababab/file", token, http.StatusConflict, "Unavailable"},
+		{"/v1/contents/content:abababababababab/file", token, http.StatusConflict, "Unavailable"},
 	} {
 		var failure struct {
 			Tag        string            `json:"_tag"`
@@ -129,7 +131,7 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
 		t.Fatalf("search: %d %+v", status, found)
 	}
 	hit := found.Entries[0]
-	if hit.Path != "/minecraft-server.zip" || hit.Ref != "abababababababab" || hit.Online || hit.Display != "Archive:"+string(filepath.Separator)+"minecraft-server.zip" {
+	if hit.Path != "/minecraft-server.zip" || hit.Ref != "content:abababababababab" || hit.Online || hit.Display != "Archive:"+string(filepath.Separator)+"minecraft-server.zip" {
 		t.Errorf("search hit = %+v", hit)
 	}
 	var content struct {
@@ -137,7 +139,7 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
 			ID int64 `json:"id"`
 		} `json:"occurrences"`
 	}
-	if status := get(t, "/v1/contents/attic:"+hit.Ref, token, &content); status != http.StatusOK || len(content.Occurrences) != 1 || content.Occurrences[0].ID != 2 {
+	if status := get(t, "/v1/contents/"+hit.Ref, token, &content); status != http.StatusOK || len(content.Occurrences) != 1 || content.Occurrences[0].ID != 2 {
 		t.Errorf("content: %d %+v", status, content)
 	}
 }

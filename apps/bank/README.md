@@ -62,12 +62,12 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank search "that invoice" --person alice     # every identity she uses
 ./bank search "typo-tolerannt query" --json     # agents consume this
 ./bank search "invoice" --limit 50 --offset 50  # the next page
-./bank show 42
-./bank show c5e63bfc3750                        # the stable ref a citation carries
-./bank show c5e63bfc3750 --provenance           # archived input and mail grouping evidence
-./bank thread "Alice" --source whatsapp --around 42 --limit 100
+./bank show msg:9454d9440ade1088                # the ref a citation carries
+./bank show msg:9454d9440ade1088 --provenance   # archived input and mail grouping evidence
+./bank ref content:3f9a1c2b4d5e6f70             # what any ref names, and where its bytes are
+./bank thread "Alice" --source whatsapp --around msg:9454d9440ade1088 --limit 100
                                                 # context centered on a search hit
-./bank thread "Alice" --source whatsapp --before 42 --limit 100
+./bank thread "Alice" --source whatsapp --before msg:9454d9440ade1088 --limit 100
                                                 # earlier messages, without a history cap
 ./bank stats                                    # counts, freshness, coverage notes
 ./bank coverage whatsapp "only the chats exported in 2025-08"
@@ -140,9 +140,21 @@ work without this setting.
 
 ## Retrieve conversation history
 
-`bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <message-id>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with a page's first and last message IDs. These positions are mutually exclusive. Each page contains up to 2,000 messages and includes attachment metadata.
+`bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <ref>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with the refs of a page's first and last messages. These positions are mutually exclusive. Each page contains up to 2,000 messages and includes attachment metadata.
 
-The browser opens search results around the matching message and provides **Load earlier** and **Load later** controls. Browse opens the newest page. Contact history also has **Load earlier**; CLI callers can use `bank contact messages <name> --before <message-id>` to continue beyond the offset limit.
+The browser opens search results around the matching message and provides **Load earlier** and **Load later** controls. Browse opens the newest page. Contact history also has **Load earlier**; CLI callers can use `bank contact messages <name> --before <ref>` to continue beyond the offset limit.
+
+## Refs
+
+Every record that can be cited has one written form, `kind:value` in lowercase hex:
+
+| Ref                       | Names                                                                                                  |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `msg:<16 hex>`            | A message. Its ref is stored with it and survives rebuilding the archive from the same sources.        |
+| `content:<16 to 64 hex>`  | Bytes, by a prefix of their BLAKE3 digest. All 64 characters name exactly one content.                 |
+| `item:<32 hex>` and so on | A library record: `item:`, `activity:`, `collection:`, `file:` or `page:`. The ref is the record's ID. |
+
+`bank show`, `bank thread`, `bank ref`, `bank library get`, attic's commands and every route that takes a ref accept only this form. A bare value, an uppercase one or a message row number is rejected. Messages have no public row number; JSON names them by `ref` alone.
 
 LinkedIn conversations use the export's conversation ID. Run `bank reimport linkedin` on the server after upgrading to repair previously title-keyed conversations. It preserves message IDs and bodies.
 

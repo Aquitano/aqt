@@ -12,6 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 	"lukechampine.com/blake3"
@@ -51,7 +52,7 @@ func TestDerivedContentUsesHashedBytes(t *testing.T) {
 			}
 			for range 2 {
 				if ext == "txt" {
-					got, err := st.Text(t.Context(), find(t, st, "b.txt").ID, "")
+					got, err := st.Text(t.Context(), find(t, st, "b.txt").ID, ref.Content{})
 					if err != nil || got.Text != "original" {
 						t.Fatalf("unchanged copy text: %+v, %v", got, err)
 					}
@@ -107,7 +108,7 @@ func TestRebuildContentIsScopedAndPreservesOtherCaches(t *testing.T) {
 	if result.Counts.Hashed != 0 || result.Counts.Texts != 1 || result.Counts.Archives != 1 || result.Volume.ID != first.Volume.ID {
 		t.Fatalf("rebuild counts: %+v", result)
 	}
-	text, err := st.Text(t.Context(), find(t, st, "copy.txt").ID, "")
+	text, err := st.Text(t.Context(), find(t, st, "copy.txt").ID, ref.Content{})
 	if err != nil || text.Text != "original words" {
 		t.Fatalf("shared copy did not receive rebuilt text: %+v, %v", text, err)
 	}
@@ -290,7 +291,7 @@ func TestRewriteThenRenameRehashesBeforeDerivedContent(t *testing.T) {
 			res := scanAt(t, st, root, fp, func(o *Options) { o.Config = cfg })
 			after := find(t, st, "moving")
 			digest := blake3.Sum256([]byte(replacement))
-			if res.Counts.Hashed != 1 || after.ID != old.ID || after.Ref != fmt.Sprintf("%x", digest[:8]) || after.Ref == old.Ref {
+			if res.Counts.Hashed != 1 || after.ID != old.ID || after.Ref != fmt.Sprintf("content:%x", digest[:8]) || after.Ref == old.Ref {
 				t.Fatalf("replacement kept old digest: before %+v, after %+v, counts %+v", old, after, res.Counts)
 			}
 			if n := pgschematest.QueryInt(t, dsn, `select
@@ -370,7 +371,7 @@ func TestLegacyHashProvenanceBeforeDirectExtraction(t *testing.T) {
 						t.Fatalf("promoted %d legacy hashes", n)
 					}
 					if ext == "txt" && !stale {
-						got, err := st.Text(t.Context(), old.ID, "")
+						got, err := st.Text(t.Context(), old.ID, ref.Content{})
 						if err != nil || got.Text != original {
 							t.Fatalf("legacy text: %+v, %v", got, err)
 						}

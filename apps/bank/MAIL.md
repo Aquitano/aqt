@@ -47,7 +47,7 @@ When contradictory headers connect multiple provider threads, Bank preserves eac
 ```sh
 bank thread '<current-thread-id>' --current --source gmail
 bank mail conflict '<conflict-key>' --source gmail --limit 100
-bank mail conflict '<conflict-key>' --source gmail --before 123 --limit 100
+bank mail conflict '<conflict-key>' --source gmail --before msg:<16 hex> --limit 100
 ```
 
 ## Inspect message provenance

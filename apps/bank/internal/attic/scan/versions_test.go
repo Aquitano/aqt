@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
@@ -70,7 +71,11 @@ func TestShowListsAnEntrysVersions(t *testing.T) {
 		before.ReplacedScan == nil || *before.ReplacedScan != second.ScanID || before.Size == now.Size {
 		t.Errorf("earlier version %+v, want ref %s from scan %d replaced in scan %d", before, entry.Ref, first.ScanID, second.ScanID)
 	}
-	c, err := st.Content(ctx, entry.Ref)
+	earlier, err := ref.ParseContent(entry.Ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := st.Content(ctx, earlier)
 	if err != nil || len(c.Occurrences) != 1 || c.Occurrences[0].ID != entry.ID || c.Occurrences[0].Version != store.VersionPrevious {
 		t.Errorf("show of the earlier ref: %+v, %v; want the entry as a previous holder", c.Occurrences, err)
 	}
