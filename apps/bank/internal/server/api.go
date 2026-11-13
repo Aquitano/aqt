@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -25,14 +26,18 @@ its own at /attic/openapi.json.
 Cite a message as bank:<ref>, a library record by its ID, and a file on a disk as
 attic:<ref>.
 
-This document describes the operations defined from typed Go handlers. The older /v1
-routes that the bank CLI uses are not in it yet.`
+Uploads, imports and byte downloads are not in this document yet.`
 
 // registerAPI adds the operations that are described in /openapi.json. New
 // routes belong here: their document is generated from the Go types, and
 // their failures carry a _tag.
 func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 	api := humago.New(mux, httpapi.Config("bank", apiDescription, "bank token new <name>", ""))
+	s.registerArchiveAPI(api)
+	s.registerMessagesAPI(api)
+	s.registerContactsAPI(api)
+	s.registerAttachmentsAPI(api)
+	s.registerLibraryAPI(api)
 	huma.Register(api, httpapi.Operation{ID: "getTimeline", Method: http.MethodGet, Path: "/v1/timeline", Tag: "timeline",
 		Summary: "List what happened between two days, across messages, activity and files",
 		Description: "Messages by when they were sent, activity (watching, listening, reading) by when it happened, " +
@@ -50,6 +55,30 @@ func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 	}.For(api), s.resolve)
 	httpapi.Finish(api)
 	return api
+}
+
+// internal answers for a failure inside the server. The caller learns only
+// that it happened; the log has the reason.
+func internal(err error) error {
+	slog.Error("HTTP request failed", "error", err)
+	return httpapi.Internal.New(http.StatusText(http.StatusInternalServerError))
+}
+
+func invalid(err error) error { return httpapi.Invalid.New(err.Error()) }
+
+func reply[T any](v T, err error) (*httpapi.Body[T], error) {
+	if err != nil {
+		return nil, internal(err)
+	}
+	return &httpapi.Body[T]{Body: v}, nil
+}
+
+// list is reply for a list: nothing found is [], where a nil slice would be null.
+func list[T any](v []T, err error) (*httpapi.Body[[]T], error) {
+	if v == nil {
+		v = []T{}
+	}
+	return reply(v, err)
 }
 
 // Spec is the OpenAPI document bank serve answers with, built without a database.
@@ -77,7 +106,7 @@ func (s *Server) resolve(ctx context.Context, in *resolveInput) (*httpapi.Body[c
 	case errors.Is(err, attic.ErrNotReady):
 		return nil, atticapi.NotReadyError()
 	case err != nil:
-		return nil, httpapi.Internal.New(err.Error())
+		return nil, internal(err)
 	}
 	return &httpapi.Body[catalog.Resolved]{Body: resolved}, nil
 }
@@ -107,7 +136,7 @@ func (s *Server) timeline(ctx context.Context, in *timelineInput) (*httpapi.Body
 	}
 	result, err := catalog.BuildTimeline(ctx, s.db, files, catalog.TimelineOptions{Since: since, Until: until, Groups: in.Group, Limit: in.Limit})
 	if err != nil {
-		return nil, httpapi.Internal.New(err.Error())
+		return nil, internal(err)
 	}
 	return &httpapi.Body[catalog.Timeline]{Body: result}, nil
 }

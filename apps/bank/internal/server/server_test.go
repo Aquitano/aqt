@@ -144,8 +144,8 @@ func TestQueryHandler(t *testing.T) {
 	}
 
 	resp := post(`{"limit": 5}`)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("missing sql: status %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("missing sql: status %d, want 422", resp.StatusCode)
 	}
 	resp.Body.Close()
 
@@ -168,8 +168,8 @@ func TestQueryHandler(t *testing.T) {
 
 	fake.queryErr = &store.BadQueryError{Err: fmt.Errorf(`relation "nope" does not exist`)}
 	resp = post(`{"sql": "select * from nope"}`)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("bad SQL: status %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("bad SQL: status %d, want 422", resp.StatusCode)
 	}
 	resp.Body.Close()
 
@@ -324,8 +324,8 @@ func TestMessageStatusDistinguishesMissingFromBroken(t *testing.T) {
 		s, token := testServer(t)
 		srv := httptest.NewServer(s.Handler())
 		defer srv.Close()
-		if status, body := authedGet(t, srv, token, "/v1/messages/abc"); status != http.StatusBadRequest {
-			t.Fatalf("status %d, want 400 (%s)", status, body)
+		if status, body := authedGet(t, srv, token, "/v1/messages/abc"); status != http.StatusUnprocessableEntity {
+			t.Fatalf("status %d, want 422 (%s)", status, body)
 		}
 	})
 	// A ref is what citations carry, and an all-digit one must not be read as
@@ -383,8 +383,8 @@ func TestThreadStatusCodes(t *testing.T) {
 		srv := httptest.NewServer(s.Handler())
 		defer srv.Close()
 		status, body := authedGet(t, srv, token, "/v1/threads/x")
-		if status != http.StatusBadRequest {
-			t.Fatalf("status %d, want 400 (%s)", status, body)
+		if status != http.StatusUnprocessableEntity {
+			t.Fatalf("status %d, want 422 (%s)", status, body)
 		}
 		if !strings.Contains(body, "discord") || !strings.Contains(body, "whatsapp") {
 			t.Errorf("the error should name the candidate sources: %s", body)
@@ -412,8 +412,8 @@ func TestSearchValidatesBounds(t *testing.T) {
 		"/v1/search?q=hi&fuzzy=5",
 		"/v1/search?q=hi&fuzzy=-1",
 	} {
-		if status, body := authedGet(t, srv, token, path); status != http.StatusBadRequest {
-			t.Errorf("%s: status %d, want 400 (%s)", path, status, body)
+		if status, body := authedGet(t, srv, token, path); status != http.StatusUnprocessableEntity {
+			t.Errorf("%s: status %d, want 422 (%s)", path, status, body)
 		}
 	}
 	if status, _ := authedGet(t, srv, token, "/v1/search?q=hi&limit=500&fuzzy=2"); status != http.StatusOK {

@@ -29,10 +29,10 @@ func (c *Client) BrowseThreads(ctx context.Context, options store.BrowseOpts) ([
 		query.Set("has_attachment", strconv.FormatBool(*options.HasAttachment))
 	}
 	if !options.Since.IsZero() {
-		query.Set("since", options.Since.Format(time.RFC3339))
+		query.Set("since", options.Since.Format(time.DateOnly))
 	}
 	if !options.Until.IsZero() {
-		query.Set("until", options.Until.Format(time.RFC3339))
+		query.Set("until", options.Until.Format(time.DateOnly))
 	}
 	return getJSON[[]store.ThreadGroup](ctx, c, "/v1/threads", query)
 }

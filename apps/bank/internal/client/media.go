@@ -123,10 +123,10 @@ func (c *Client) Find(ctx context.Context, query string, messages store.SearchOp
 		q.Set("has_attachment", strconv.FormatBool(*messages.HasAttachment))
 	}
 	if !messages.Since.IsZero() {
-		q.Set("since", messages.Since.Format(time.RFC3339Nano))
+		q.Set("since", messages.Since.Format(time.DateOnly))
 	}
 	if !messages.Until.IsZero() {
-		q.Set("until", messages.Until.Format(time.RFC3339Nano))
+		q.Set("until", messages.Until.Format(time.DateOnly))
 	}
 	return getJSON[catalog.Result](ctx, c, "/v1/find", q)
 }

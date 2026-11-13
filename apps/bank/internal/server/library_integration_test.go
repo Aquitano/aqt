@@ -48,10 +48,17 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 			t.Fatalf("text=%s: %+v", query, files)
 		}
 	}
-	for _, path := range []string{"/v1/attachment-library?since=invalid", "/v1/attachment-library?offset=-1", "/v1/attachment-library?person=absent", "/v1/import-reports?before=-1", "/v1/attachments/invalid/messages"} {
-		if w := request(path); w.Code != 400 {
+	for _, path := range []string{"/v1/attachment-library?since=invalid", "/v1/attachment-library?offset=-1", "/v1/attachment-library?person=absent", "/v1/attachments/invalid/messages"} {
+		if w := request(path); w.Code != 422 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
+	}
+	if w := request("/v1/import-reports?before=-1"); w.Code != 422 {
+		t.Fatalf("import reports: %d %s", w.Code, w.Body)
+	}
+	// The web UI sends every filter, set or not.
+	if w := request("/v1/attachment-library?q=&text=&type=&person=&since=&until=&match=&offset=0"); w.Code != 200 {
+		t.Fatalf("empty filters: %d %s", w.Code, w.Body)
 	}
 	id, err := st.FindMessageID(context.Background(), "proton", "m1")
 	if err != nil {
@@ -90,7 +97,7 @@ func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
 	for _, test := range []struct {
 		notes string
 		code  int
-	}{{"bad\x00notes", 400}, {"valid notes", 200}} {
+	}{{"bad\x00notes", 422}, {"valid notes", 200}} {
 		body, err := json.Marshal(library.StateEdit{Notes: test.notes})
 		if err != nil {
 			t.Fatal(err)

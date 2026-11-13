@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 func TestCollectionBrowsingUsesPagedSummariesAndScopedDetails(t *testing.T) {
@@ -73,8 +75,7 @@ func TestCollectionBrowsingUsesPagedSummariesAndScopedDetails(t *testing.T) {
 	if err != nil || len(history) != 3 || len(history[2].Entries) != 2 {
 		t.Fatalf("full history interface lost snapshots: %+v %v", history, err)
 	}
-	response := httptest.NewRecorder()
-	s.handleMediaCollections(response, httptest.NewRequest(http.MethodGet, "/v1/library/collections?q=Summary", nil))
+	response := authed(t, s, http.MethodGet, "/v1/library/collections?q=Summary", "")
 	var raw []struct {
 		Snapshot map[string]json.RawMessage `json:"snapshot"`
 	}
@@ -110,10 +111,22 @@ func TestLibraryItemSummaryBatchIsBoundedAndOrdered(t *testing.T) {
 		`{"ids":[` + strings.TrimSuffix(strings.Repeat(`"id",`, 51), ",") + `]}`,
 		`{"ids":[],"unknown":true}`,
 	} {
-		response := httptest.NewRecorder()
-		s.handleMediaItemSummaries(response, httptest.NewRequest(http.MethodPost, "/v1/library/items/summaries", strings.NewReader(body)))
-		if response.Code != http.StatusBadRequest {
+		response := authed(t, s, http.MethodPost, "/v1/library/items/summaries", body)
+		if response.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("invalid summary request accepted: %s %d", body, response.Code)
 		}
 	}
+}
+
+func authed(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	token, err := Tokens(s.dataDir).New("raw-"+rand.Text(), tokens.Scope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	r.Header.Set("Authorization", "Bearer "+token)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	return w
 }

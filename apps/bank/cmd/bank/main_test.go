@@ -122,7 +122,7 @@ func TestShowPrintsRetiredRefs(t *testing.T) {
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusGone)
-		fmt.Fprint(w, `{"error":"message 0123456789ab was retired","retired":{"ref":"0123456789ab","source":"youtube","external_id":"watch:1","replacement":"activity_ab"}}`)
+		fmt.Fprint(w, `{"_tag":"MessageRetired","message":"message 0123456789ab was retired","retired":{"ref":"0123456789ab","source":"youtube","external_id":"watch:1","replacement":"activity_ab"}}`)
 	}))
 	defer remote.Close()
 	t.Setenv("BANK_URL", remote.URL)

@@ -81,8 +81,8 @@ func TestSearchByUnknownPersonIsABadRequest(t *testing.T) {
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 	status, body := authedGet(t, srv, token, "/v1/search?q=hi&person=nobody")
-	if status != http.StatusBadRequest {
-		t.Fatalf("status %d, want 400 (%s)", status, body)
+	if status != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422 (%s)", status, body)
 	}
 	if !strings.Contains(body, "nobody") {
 		t.Errorf("the error should name the contact: %s", body)

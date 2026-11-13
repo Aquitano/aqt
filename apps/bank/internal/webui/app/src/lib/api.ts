@@ -98,8 +98,9 @@ const threadGroup = type({
 });
 export type ThreadGroup = typeof threadGroup.infer;
 
-// Failed /v1 requests answer with `{"error": "..."}` in place of the payload.
-const errorBody = type({ error: "string" });
+// Failed /v1 requests answer with `{"message": "..."}`; the upload and
+// download routes answer with `{"error": "..."}`.
+const errorBody = type({ "error?": "string", "message?": "string" });
 export class RequestError extends Error {
   readonly status: number;
   constructor(status: number, description: string) {
@@ -133,7 +134,9 @@ async function send(path: string, init?: RequestInit) {
   const failure = errorBody(body);
   throw new RequestError(
     r.status,
-    failure instanceof type.errors ? r.statusText : failure.error || r.statusText,
+    failure instanceof type.errors
+      ? r.statusText
+      : failure.message || failure.error || r.statusText,
   );
 }
 

@@ -15,10 +15,10 @@ func (c *Client) ImportReports(ctx context.Context, before int64, limit int) ([]
 func (c *Client) AttachmentLibrary(ctx context.Context, o store.AttachmentFilter) ([]store.LibraryFile, error) {
 	q := url.Values{"query": {o.Query}, "source": {o.Source}, "match": {o.Match}, "q": {o.Filename}, "text": {o.Text}, "type": {o.FileType}, "person": {o.Person}, "offset": {strconv.Itoa(o.Offset)}, "limit": {strconv.Itoa(o.Limit)}}
 	if !o.Since.IsZero() {
-		q.Set("since", o.Since.Format(time.RFC3339))
+		q.Set("since", o.Since.Format(time.DateOnly))
 	}
 	if !o.Until.IsZero() {
-		q.Set("until", o.Until.Format(time.RFC3339))
+		q.Set("until", o.Until.Format(time.DateOnly))
 	}
 	return getJSON[[]store.LibraryFile](ctx, c, "/v1/attachment-library", q)
 }

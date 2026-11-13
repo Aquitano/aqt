@@ -65,12 +65,8 @@ func do(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRe
 // handlerFor is Handler without the token middleware, which has its own tests.
 func handlerFor(s *Server) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /v1/attachments", s.handleAttachmentList)
-	mux.HandleFunc("GET /v1/attachments/stats", s.handleAttachmentStats)
-	mux.HandleFunc("POST /v1/attachments/refresh", s.handleAttachmentRefresh)
-	mux.HandleFunc("GET /v1/attachments/{sha256}/text", s.handleAttachmentTextGet)
 	mux.HandleFunc("PUT /v1/attachments/{sha256}/text", s.handleAttachmentTextPut)
-	mux.HandleFunc("DELETE /v1/attachments/{sha256}/text", s.handleAttachmentTextDelete)
+	s.registerAPI(mux)
 	return mux
 }
 
@@ -180,8 +176,8 @@ func TestAttachmentTextRejectsUnknownDigest(t *testing.T) {
 	if w := do(t, s, http.MethodPut, "/v1/attachments/not-a-digest/text", "x"); w.Code != http.StatusBadRequest {
 		t.Fatalf("put bad digest: %d, want 400", w.Code)
 	}
-	if w := do(t, s, http.MethodGet, "/v1/attachments/not-a-digest/text", ""); w.Code != http.StatusBadRequest {
-		t.Fatalf("get bad digest: %d, want 400", w.Code)
+	if w := do(t, s, http.MethodGet, "/v1/attachments/not-a-digest/text", ""); w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("get bad digest: %d, want 422", w.Code)
 	}
 }
 

@@ -83,7 +83,7 @@ func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
 		t.Fatalf("unanchored route: %+v %v", page, err)
 	}
 	status, _ := authedGet(t, httpServer, token, "/v1/threads?person=missing&limit=10")
-	if status != 400 {
+	if status != 422 {
 		t.Fatalf("unknown filter contact returned %d", status)
 	}
 }

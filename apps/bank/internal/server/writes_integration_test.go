@@ -84,6 +84,40 @@ func TestContactImportAndCoverageRoutes(t *testing.T) {
 		}
 	})
 
+	t.Run("contact aliases", func(t *testing.T) {
+		if status, body := send(http.MethodPost, "/v1/contacts", `{"name":"dave"}`); status != http.StatusOK {
+			t.Fatalf("create: status %d (%s)", status, body)
+		}
+		status, body := send(http.MethodPost, "/v1/contacts/dave/aliases", `{"source":"","value":"alice@example.com"}`)
+		if status != http.StatusConflict || !strings.Contains(body, `"_tag":"AliasTaken"`) || !strings.Contains(body, `\"alice\"`) {
+			t.Fatalf("an alias alice has: status %d (%s), want 409 naming her", status, body)
+		}
+		if status, body := send(http.MethodPost, "/v1/contacts/dave/aliases", `{"source":"","value":"dave@example.com"}`); status != http.StatusOK {
+			t.Fatalf("add: status %d (%s)", status, body)
+		}
+		status, body = send(http.MethodDelete, "/v1/contacts/dave/aliases?source=&value=dave%40example.com", "")
+		if status != http.StatusOK || strings.TrimSpace(body) != `{"removed":true}` {
+			t.Fatalf("remove: status %d (%s)", status, body)
+		}
+		status, body = send(http.MethodDelete, "/v1/contacts/dave", "")
+		if status != http.StatusOK || strings.TrimSpace(body) != `{"deleted":true}` {
+			t.Fatalf("delete: status %d (%s)", status, body)
+		}
+		if status, body := send(http.MethodDelete, "/v1/contacts/dave", ""); status != http.StatusNotFound {
+			t.Fatalf("delete again: status %d, want 404 (%s)", status, body)
+		}
+	})
+
+	t.Run("contact messages", func(t *testing.T) {
+		status, body := authedGet(t, srv, token, "/v1/contacts/alice/messages?limit=100")
+		if status != http.StatusOK || !strings.Contains(body, `"external_id":"g1"`) {
+			t.Fatalf("status %d (%s), want alice's message", status, body)
+		}
+		if status, body := authedGet(t, srv, token, "/v1/contacts/alice/messages?before=999999"); status != http.StatusUnprocessableEntity {
+			t.Fatalf("a cursor that is not her message: status %d, want 422 (%s)", status, body)
+		}
+	})
+
 	t.Run("coverage", func(t *testing.T) {
 		if status, body := send(http.MethodPut, "/v1/sources/gmail/coverage",
 			`{"text":"everything from 2011 on"}`); status != http.StatusOK {

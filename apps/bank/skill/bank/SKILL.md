@@ -25,6 +25,8 @@ bank stats
 - `bank: GET /v1/stats: invalid or missing bearer token` — HTTP 401. `BANK_TOKEN` is unset, wrong or revoked. The owner has to run `bank token new <machine-name>` on the server and re-export the printed value; it is shown once.
 - `dial tcp ...: connect: connection refused`, or a hang ending in an i/o timeout — the server is down or Tailscale is disconnected. Report; retrying will not help.
 
+Calling the HTTP API directly instead of the CLI: `GET /openapi.json` describes the routes, a failure is JSON with `_tag` and `message`, and a route that takes a JSON body needs `Content-Type: application/json` or no Content-Type at all; anything else is refused.
+
 On the VPS itself there is no `BANK_URL`; `DATABASE_URL` points at Postgres and the same commands work locally.
 
 ## Reading
@@ -116,7 +118,7 @@ server-side programs or reading server files. Queries work locally and over `BAN
   correspondence (the same quote-the-minimum rule applies to query results).
 - `truncated: true` means the row cap cut the result — aggregate harder or raise
   `--limit`, don't silently treat the page as complete.
-- A SQL error comes back verbatim (400); fix the query rather than retrying it unchanged.
+- A SQL error comes back verbatim (422, `_tag: InvalidRequest`); fix the query rather than retrying it unchanged.
 - Pass the statement as one shell-quoted argument, or `-` to read it from stdin
   (the sane way for anything multi-line).
 
