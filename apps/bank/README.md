@@ -5,7 +5,7 @@ Personal archive and library: messages, media, viewing activity, playlists, file
 Bank imports personal ChatGPT and Claude.ai exports. Turnstash owns coding-session
 ingestion. Removing an importer does not delete previously archived records.
 
-The same Go module holds [attic](attic/README.md), the catalogue of files on disks that come and go. Its tables are in this database beside the archive's, `cmd/attic` scans, and `bank serve` answers its read API below `/attic` with bank's tokens, and `bank search` returns its files beside messages and media.
+The same Go module holds [attic](attic/README.md), the catalogue of files on disks that come and go. Its tables are in this database beside the archive's, and both name bytes by one BLAKE3 `contents` row and share the text read from them. `cmd/attic` scans, and `bank serve` answers its read API below `/attic` with bank's tokens, and `bank search` returns its files beside messages and media.
 
 Routes are typed Go handlers in `internal/server/*_api.go`, on the operation and error types in `internal/httpapi` that attic's API also uses: parameters and bodies are declared on structs, so their parsing and bounds checks are generated. `GET /openapi.json` describes them, and a failure is JSON with a `_tag`, a `message` and, where the caller can act, a `recovery`. A rejected parameter answers 422. `openapi.json` is the committed copy: regenerate it with `go run ./cmd/bank openapi > openapi.json`, because a test fails while it is stale. Six routes that stream bytes or take uploads are still plain handlers that answer errors as `{"error": "..."}` and are not in the document: blob and preview downloads, imports, library file and page uploads, and replacing an attachment's text.
 
@@ -92,7 +92,7 @@ export BANK_URL=http://vps.tailnet.ts.net:8480
 export BANK_TOKEN=$(ssh vps 'cd /opt/aqt/apps/bank && docker compose run --rm -T bank token new laptop')
 
 ./bank import whatsapp "WhatsApp Chat with Alice.zip"   # uploaded to the VPS
-./bank fetch 9f86d081... -o photo.jpg                   # attachment bytes back
+./bank fetch 3f9a1c2b... -o photo.jpg                   # attachment bytes back, by BLAKE3 digest
 ```
 
 `bank ui` opens a local archive browser (search, thread-grouped browse, contacts, stats) at `127.0.0.1:8481`. It needs `BANK_URL`/`BANK_TOKEN` and attaches the token server-side, so it never reaches the browser. The page is a Vite + React app on the shared `@aqt/ui` components in `internal/webui/app`; its built `dist/` is committed and embedded, so `go build` needs no JS toolchain — after changing the app, rebuild with `bun run build` there.
@@ -115,9 +115,9 @@ Gmail retries reconcile attachments even when the message row already exists. To
 
 ChatGPT imports preserve referenced assets included in the full export ZIP or directory. Importing only `conversations.json` imports text without the asset files. Missing files appear in the import's missing-media count. Reimporting a fuller export fills missing attachments even when a message already has some files, without duplicating those files.
 
-Attachment storage and text extraction have different coverage. Audio, video, archives, and other binary files can be stored and downloaded without searchable contents. Supported document attachments are searchable inside. Importing reads text out of PDFs, Office and OpenDocument files, HTML and plain text, keyed on the blob digest so a document attached to forty messages is read once.
+Attachment storage and text extraction have different coverage. Audio, video, archives, and other binary files can be stored and downloaded without searchable contents. Supported document attachments are searchable inside. Importing reads text out of PDFs, Office and OpenDocument files, HTML and plain text, keyed on the content so a document attached to forty messages, or already read by an attic scan, is read once.
 
-Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at. `bank extract --ocr` reads them wherever tesseract is installed: on the deployed box that is a worker draining the queue on a timer, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <sha256> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no later pass overwrites it. `BANK_EXTRACT=off` or `bank import --no-extract` leaves attachment text alone entirely.
+Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at. `bank extract --ocr` reads them wherever tesseract is installed: on the deployed box that is a worker draining the queue on a timer, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <blake3> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no later pass overwrites it. `BANK_EXTRACT=off` or `bank import --no-extract` leaves attachment text alone entirely.
 
 Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, raw archives, inbox; default `~/.local/share/aqt-bank`), `BANK_EXTRACT`.
 
@@ -167,7 +167,7 @@ bank reports --json
 bank reports --before 42 --limit 50
 bank attachment find --filename invoice --type pdf --person alice --since 2025-01-01
 bank attachment find --text "payment due" --type pdf
-bank attachment messages <sha256> --offset 0 --limit 50
+bank attachment messages <blake3> --offset 0 --limit 50
 ```
 
 Submitted search filters and selections live in the browser URL. Refreshing,

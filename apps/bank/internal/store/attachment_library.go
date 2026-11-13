@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/aquitano/aqt/apps/bank/internal/library"
-	"github.com/jackc/pgx/v5"
 	"strings"
 	"time"
+
+	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/jackc/pgx/v5"
 )
 
 type AttachmentFilter struct {
@@ -18,13 +20,13 @@ type AttachmentFilter struct {
 }
 
 type LibraryFile struct {
-	SHA256    string    `json:"sha256"`
-	Filename  string    `json:"filename"`
-	MimeType  string    `json:"mime_type"`
-	SizeBytes int64     `json:"size_bytes"`
-	Messages  int       `json:"messages"`
-	LastAt    time.Time `json:"last_at"`
-	Snippet   string    `json:"snippet,omitempty"`
+	BLAKE3    content.Digest `json:"blake3"`
+	Filename  string         `json:"filename"`
+	MimeType  string         `json:"mime_type"`
+	SizeBytes int64          `json:"size_bytes"`
+	Messages  int            `json:"messages"`
+	LastAt    time.Time      `json:"last_at"`
+	Snippet   string         `json:"snippet,omitempty"`
 }
 
 func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]LibraryFile, error) {
@@ -39,14 +41,10 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	}
 	where := "true"
 	ctes := ""
-	queryParameter := ""
 	args := []any{}
 	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
 	if o.Source != "" {
 		where += " and m.source=" + arg(o.Source)
-	}
-	if o.Query != "" {
-		queryParameter = arg(o.Query)
 	}
 	if o.Filename != "" {
 		where += " and strpos(lower(a.filename), lower(" + arg(o.Filename) + "))>0"
@@ -54,8 +52,8 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	snippet := "''"
 	if o.Text != "" {
 		p := arg(o.Text)
-		where += " and exists (select 1 from blob_text b where b.sha256=a.sha256 and b.status in ('ok','manual') and strpos(lower(b.text),lower(" + p + "))>0)"
-		snippet = "(select substring(b.text from greatest(1,strpos(lower(b.text),lower(" + p + "))-80) for 240) from blob_text b where b.sha256=matched.sha256)"
+		where += " and exists (select 1 from texts b where b.content_id=a.content_id and b.status in ('ok','truncated','manual') and strpos(lower(b.text),lower(" + p + "))>0)"
+		snippet = "(select substring(b.text from greatest(1,strpos(lower(b.text),lower(" + p + "))-80) for 240) from texts b where b.content_id=matched.content_id)"
 	}
 	if o.FileType != "" {
 		typ := strings.ToLower(strings.TrimPrefix(o.FileType, "."))
@@ -78,22 +76,22 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	if !o.Until.IsZero() {
 		where += " and m.sent_at<" + arg(o.Until)
 	}
-	if queryParameter != "" {
-		metadataVector := "to_tsvector('simple',n.filename || ' ' || regexp_replace(n.filename,'[._-]+',' ','g'))"
+	if o.Query != "" {
+		nameVector := "to_tsvector('simple',n.filename || ' ' || regexp_replace(n.filename,'[._-]+',' ','g'))"
+		textCTEs, matches := fileTextMatch(o.Match, o.Query, arg, "select content_id from attachment_names", nameVector, "n.content_id")
 		ctes = `attachment_names as materialized (
- select distinct a.sha256,a.filename from attachments a join messages m on m.id=a.message_id where ` + where + `
- ), ` + libraryTextMatches(queryParameter, "select distinct sha256 from attachment_names") + `, matching_names as materialized (
- select n.sha256,n.filename from attachment_names n left join text_matches b on b.sha256=n.sha256
- where (` + metadataVector + ` || coalesce(b.search_vector,''::tsvector)) @@ ` + libraryTextQuery(o.Match, queryParameter) + `
+ select distinct a.content_id,a.filename from attachments a join messages m on m.id=a.message_id where ` + where + `
+ ), ` + textCTEs + `, matching_names as materialized (
+ select n.content_id,n.filename from attachment_names n where ` + matches + `
  ), `
-		where += " and exists(select 1 from matching_names n where n.sha256=a.sha256 and n.filename=a.filename)"
+		where += " and exists(select 1 from matching_names n where n.content_id=a.content_id and n.filename=a.filename)"
 	}
 	rows, err := s.pool.Query(ctx, `with `+ctes+`matched as (
- select a.sha256,min(a.filename) filename,min(a.mime_type) mime_type,max(a.size_bytes) size_bytes,max(m.sent_at) last_at
- from attachments a join messages m on m.id=a.message_id where `+where+` group by a.sha256
- ) select sha256,filename,mime_type,size_bytes,
- (select count(distinct message_id) from attachments a where a.sha256=matched.sha256),last_at,`+snippet+`
- from matched order by last_at desc,sha256 limit `+arg(o.Limit)+` offset `+arg(o.Offset), args...)
+ select a.content_id,min(a.filename) filename,min(a.mime_type) mime_type,max(m.sent_at) last_at
+ from attachments a join messages m on m.id=a.message_id where `+where+` group by a.content_id
+ ) select c.blake3,matched.filename,matched.mime_type,c.size_bytes,
+ (select count(distinct message_id) from attachments a where a.content_id=matched.content_id),last_at,`+snippet+`
+ from matched join contents c on c.id=matched.content_id order by last_at desc,c.blake3 limit `+arg(o.Limit)+` offset `+arg(o.Offset), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +99,7 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	out := []LibraryFile{}
 	for rows.Next() {
 		var a LibraryFile
-		if err := rows.Scan(&a.SHA256, &a.Filename, &a.MimeType, &a.SizeBytes, &a.Messages, &a.LastAt, &a.Snippet); err != nil {
+		if err := rows.Scan(&a.BLAKE3, &a.Filename, &a.MimeType, &a.SizeBytes, &a.Messages, &a.LastAt, &a.Snippet); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -109,7 +107,7 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	return out, rows.Err()
 }
 
-func (s *Store) AttachmentMessages(ctx context.Context, sum string, offset, limit int) ([]Message, error) {
+func (s *Store) AttachmentMessages(ctx context.Context, d content.Digest, offset, limit int) ([]Message, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
@@ -117,8 +115,8 @@ func (s *Store) AttachmentMessages(ctx context.Context, sum string, offset, limi
 		return nil, fmt.Errorf("invalid offset")
 	}
 	rows, err := s.pool.Query(ctx, `select `+messageColumns+` from messages m where exists
- (select 1 from attachments a where a.message_id=m.id and a.sha256=$1)
- order by m.sent_at desc,m.id desc limit $2 offset $3`, sum, limit, offset)
+ (select 1 from attachments a join contents c on c.id=a.content_id where a.message_id=m.id and c.blake3=$1)
+ order by m.sent_at desc,m.id desc limit $2 offset $3`, d, limit, offset)
 	if err != nil {
 		return nil, err
 	}

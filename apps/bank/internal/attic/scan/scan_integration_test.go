@@ -494,7 +494,7 @@ func TestDocumentsAreReadForTheirWords(t *testing.T) {
 	write(t, root, "Verträge/Werkstudent.txt", "Arbeitszeit <zwanzig> Stunden & pro Woche")
 	write(t, root, "Backup/Werkstudent copy.txt", "Arbeitszeit <zwanzig> Stunden & pro Woche")
 	write(t, root, "project/settings.json", `{"note": "Stunden pro Woche"}`)
-	write(t, root, "long.md", strings.Repeat("lang ", 300_000))
+	write(t, root, "long.md", strings.Repeat("lang ", extract.MaxChars/4))
 	// Too short for the PDF reader: a broken file, not a disk error.
 	write(t, root, "stub.pdf", "%PDF-1.4")
 
@@ -513,7 +513,7 @@ func TestDocumentsAreReadForTheirWords(t *testing.T) {
 		t.Errorf("hit %+v, want both copies and a snippet with the words", hits[0])
 	}
 	long, err := st.Text(ctx, find(t, st, "long").ID, "")
-	if err != nil || long.Status != "truncated" || long.Chars > 1<<20 {
+	if err != nil || long.Status != "truncated" || long.Chars > extract.MaxChars {
 		t.Errorf("long.md: %s with %d characters, %v; want truncated at the cap", long.Status, long.Chars, err)
 	}
 }

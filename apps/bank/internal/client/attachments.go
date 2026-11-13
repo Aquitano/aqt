@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -37,8 +38,8 @@ func (c *Client) ExtractionStats(ctx context.Context) ([]store.ExtractionStat, e
 	return getJSON[[]store.ExtractionStat](ctx, c, "/v1/attachments/stats", nil)
 }
 
-func (c *Client) BlobText(ctx context.Context, sha256 string) (store.BlobText, error) {
-	return getJSON[store.BlobText](ctx, c, "/v1/attachments/"+sha256+"/text", nil)
+func (c *Client) BlobText(ctx context.Context, d content.Digest) (store.BlobText, error) {
+	return getJSON[store.BlobText](ctx, c, "/v1/attachments/"+d.String()+"/text", nil)
 }
 
 func (c *Client) PutBlobText(ctx context.Context, bt store.BlobText) error {
@@ -46,7 +47,7 @@ func (c *Client) PutBlobText(ctx context.Context, bt store.BlobText) error {
 	if bt.Extractor != "" {
 		q.Set("extractor", bt.Extractor)
 	}
-	resp, err := c.request(ctx, http.MethodPut, "/v1/attachments/"+bt.SHA256+"/text", q,
+	resp, err := c.request(ctx, http.MethodPut, "/v1/attachments/"+bt.BLAKE3.String()+"/text", q,
 		strings.NewReader(bt.Text))
 	if err != nil {
 		return err
@@ -60,8 +61,8 @@ func (c *Client) SetText(ctx context.Context, bt store.BlobText) error {
 	return c.PutBlobText(ctx, bt)
 }
 
-func (c *Client) DeleteBlobText(ctx context.Context, sha256 string) error {
-	resp, err := c.request(ctx, http.MethodDelete, "/v1/attachments/"+sha256+"/text", nil, nil)
+func (c *Client) DeleteBlobText(ctx context.Context, d content.Digest) error {
+	resp, err := c.request(ctx, http.MethodDelete, "/v1/attachments/"+d.String()+"/text", nil, nil)
 	if err != nil {
 		return err
 	}
@@ -87,8 +88,8 @@ func (c *Client) RefreshAttachmentText(ctx context.Context, since time.Time) (in
 // OpenBlob downloads the bytes to a temp file, because the extractors seek and
 // the OCR tools are subprocesses that take a path. The caller's cleanup
 // removes it.
-func (c *Client) OpenBlob(ctx context.Context, sha256 string) (string, func(), error) {
-	body, err := c.Blob(ctx, sha256)
+func (c *Client) OpenBlob(ctx context.Context, d content.Digest) (string, func(), error) {
+	body, err := c.Blob(ctx, d)
 	if err != nil {
 		return "", func() {}, err
 	}

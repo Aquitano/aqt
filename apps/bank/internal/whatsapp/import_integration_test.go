@@ -152,7 +152,7 @@ func TestImportZipExportStaysInsideTheArchive(t *testing.T) {
 	if len(atts) != 1 {
 		t.Fatalf("attachments = %+v", atts)
 	}
-	stored, err := os.ReadFile(blobs.Path(atts[0].SHA256))
+	stored, err := os.ReadFile(blobs.Path(atts[0].BLAKE3))
 	if err != nil {
 		t.Fatal(err)
 	}

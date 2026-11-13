@@ -38,7 +38,7 @@ bank contact list|show <name> [--json]               # who the owner has named, 
 bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--before id|--offset n] [--json]
 bank show <id|ref> [--json]      # full body, recipients, raw_ref, attachment list
 bank stats [--json]              # sources, counts, date ranges, freshness, coverage notes
-bank fetch <sha256> -o <path>    # write attachment bytes to a file
+bank fetch <blake3> -o <path>    # write attachment bytes to a file
 bank attachment stats [--json]   # how much of the archive is searchable inside its attachments
 bank query <sql|-> [--limit n] [--json]   # read-only ad-hoc SQL — the analytics escape hatch
 bank query --schema              # list tables and columns before writing the first query
@@ -90,8 +90,8 @@ bank search "lease" --person alice --limit 50 --json
 bank contact messages alice --since 2024-01-01 --json
 
 # grab the screenshot attached to a message
-bank show 4 --json          # -> attachments[].sha256
-bank fetch 407b467e378d279e4d2ed7d8418f12d6937e00f4d8b7d0310c12470883b0431d -o /tmp/screenshot.jpg
+bank show 4 --json          # -> attachments[].blake3
+bank fetch 3f9a1c2b4d5e6f70a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718 -o /tmp/screenshot.jpg
 
 # what is even in here, and how far back
 bank stats --json

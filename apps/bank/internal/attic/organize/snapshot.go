@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 // Item is one file or folder of a moved object. Path is relative to the
@@ -19,13 +20,13 @@ import (
 // owner and permissions the file had, and an unchanged change time shows that
 // none of them was rewritten.
 type Item struct {
-	Path     string       `json:"path"`
-	Dir      bool         `json:"dir,omitempty"`
-	Size     int64        `json:"size,omitempty"`
-	Modified time.Time    `json:"modified,omitzero"`
-	Changed  time.Time    `json:"changed,omitzero"`
-	FileID   uint64       `json:"file_id,omitempty"`
-	Digest   *disk.Digest `json:"blake3,omitempty"`
+	Path     string          `json:"path"`
+	Dir      bool            `json:"dir,omitempty"`
+	Size     int64           `json:"size,omitempty"`
+	Modified time.Time       `json:"modified,omitzero"`
+	Changed  time.Time       `json:"changed,omitzero"`
+	FileID   uint64          `json:"file_id,omitempty"`
+	Digest   *content.Digest `json:"blake3,omitempty"`
 }
 
 // snapshot lists the object at rel below root and everything inside it

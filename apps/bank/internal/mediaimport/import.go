@@ -15,6 +15,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -126,7 +127,7 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir,
 	if err != nil {
 		return result, err
 	}
-	if err := verifyBundleFiles(blobs, parsed.Batch.Files); err != nil {
+	if err := verifyBundleFiles(ctx, blobs, parsed.Batch.Files); err != nil {
 		return result, err
 	}
 	for _, message := range parsed.Diagnostics {
@@ -222,23 +223,19 @@ func parseBundle(inputPath string, opts Options) (Parsed, error) {
 	return p, nil
 }
 
-func verifyBundleFiles(blobs *blob.Store, files []library.File) error {
+func verifyBundleFiles(ctx context.Context, blobs *blob.Store, files []library.File) error {
 	for _, file := range files {
 		if blobs == nil {
 			return fail.Opf("file %s requires the archive blob store", file.Filename)
 		}
-		if err := blob.ValidDigest(file.SHA256); err != nil {
-			return err
-		}
-		input, err := os.Open(blobs.Path(file.SHA256))
+		input, err := os.Open(blobs.Path(file.BLAKE3))
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				return fmt.Errorf("file %s has no preserved bytes: %w", file.Filename, err)
 			}
 			return fail.Opf("read preserved file %s: %w", file.Filename, err)
 		}
-		h := sha256.New()
-		size, err := io.Copy(h, input)
+		sum, size, err := content.Hash(ctx, input)
 		closeErr := input.Close()
 		if err != nil {
 			return fail.Op(err)
@@ -246,7 +243,7 @@ func verifyBundleFiles(blobs *blob.Store, files []library.File) error {
 		if closeErr != nil {
 			return fail.Op(closeErr)
 		}
-		if hex.EncodeToString(h.Sum(nil)) != file.SHA256 {
+		if sum != file.BLAKE3 {
 			return fail.Opf("preserved file %s has corrupted bytes", file.Filename)
 		}
 		if size != file.SizeBytes {

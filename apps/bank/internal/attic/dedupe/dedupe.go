@@ -15,6 +15,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 // Quarantine is the folder at each volume's root that holds set-aside
@@ -210,7 +211,7 @@ func (k *keptCopy) intact() bool {
 
 // verifiedCopy is the first kept copy on an attached disk whose bytes still
 // hash to the content's digest.
-func verifiedCopy(ctx context.Context, kept []store.Hit, digest disk.Digest, mounts map[string]disk.Volume) (*keptCopy, string) {
+func verifiedCopy(ctx context.Context, kept []store.Hit, digest content.Digest, mounts map[string]disk.Volume) (*keptCopy, string) {
 	reason := "no kept copy is on an attached disk"
 	for _, h := range kept {
 		m, online := mounts[h.VolumeID]
@@ -234,7 +235,7 @@ func verifiedCopy(ctx context.Context, kept []store.Hit, digest disk.Digest, mou
 // holds the hashed bytes, unwritten since. With stable IDs it must be the
 // same file. FAT and exFAT give a moved file a new ID, so there another file
 // is hashed again and must stay unwritten through that read.
-func stillHashed(ctx context.Context, root, rel string, hashed fs.FileInfo, digest disk.Digest, stableIDs bool) bool {
+func stillHashed(ctx context.Context, root, rel string, hashed fs.FileInfo, digest content.Digest, stableIDs bool) bool {
 	now, err := statOrdinary(root, rel)
 	if err != nil || !unwritten(hashed, now) {
 		return false

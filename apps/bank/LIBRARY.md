@@ -4,17 +4,17 @@ Bank stores media, activity, collections, personal tracking state, and files alo
 
 ## Storage and ownership
 
-| Content                                                                     | Canonical storage                                               | Search and editing                                                           |
-| --------------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Email, chats, personal AI conversations                                     | Existing Postgres message tables and archived exports           | Existing message, thread, contact, attachment, and mail APIs                 |
-| Movies, series, episodes, videos, tracks, albums, podcasts, books, articles | `library_items`                                                 | Typed identity and metadata, with a separate personal state                  |
-| Watching, listening, reading, playing, viewing, purchases                   | `library_activity`                                              | Source observations with a day, instant, or unknown date                     |
-| Imported playlists and music libraries                                      | `library_collections`, `library_snapshots`, `library_entries`   | Immutable snapshots preserve order, duplicate entries, and completeness      |
-| Personal playlists and watchlists                                           | The collection tables and revision history                      | Editable membership and order with conflict detection                        |
-| Status, progress, rating, favorites, notes, tags                            | `library_state`, `library_state_edits`                          | Imports cannot overwrite these fields                                        |
-| Standalone files and media files                                            | `library_files` metadata; `BANK_DATA_DIR/blobs` for bytes       | Multiple files can belong to an item; identical bytes share one SHA-256 blob |
-| Selected Brain pages                                                        | Original Markdown in Brain; published copies in `library_pages` | Searchable title, body, answers, aliases, and tags; no write-back to Brain   |
-| Source exports                                                              | `BANK_DATA_DIR/archive`                                         | Immutable inputs referenced by imported records                              |
+| Content                                                                     | Canonical storage                                               | Search and editing                                                          |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Email, chats, personal AI conversations                                     | Existing Postgres message tables and archived exports           | Existing message, thread, contact, attachment, and mail APIs                |
+| Movies, series, episodes, videos, tracks, albums, podcasts, books, articles | `library_items`                                                 | Typed identity and metadata, with a separate personal state                 |
+| Watching, listening, reading, playing, viewing, purchases                   | `library_activity`                                              | Source observations with a day, instant, or unknown date                    |
+| Imported playlists and music libraries                                      | `library_collections`, `library_snapshots`, `library_entries`   | Immutable snapshots preserve order, duplicate entries, and completeness     |
+| Personal playlists and watchlists                                           | The collection tables and revision history                      | Editable membership and order with conflict detection                       |
+| Status, progress, rating, favorites, notes, tags                            | `library_state`, `library_state_edits`                          | Imports cannot overwrite these fields                                       |
+| Standalone files and media files                                            | `library_files` metadata; `BANK_DATA_DIR/blobs` for bytes       | Multiple files can belong to an item; identical bytes share one BLAKE3 blob |
+| Selected Brain pages                                                        | Original Markdown in Brain; published copies in `library_pages` | Searchable title, body, answers, aliases, and tags; no write-back to Brain  |
+| Source exports                                                              | `BANK_DATA_DIR/archive`                                         | Immutable inputs referenced by imported records                             |
 
 The SVG diagrams and web UI are views. They do not hold the archive. Back up the database and the complete Bank data directory together. A database export alone omits file bytes. Raw exports alone omit your ratings and personal collections.
 
@@ -66,9 +66,9 @@ Bank searches the most recent successful publication. Changes in Brain are visib
 
 ## Query and edit
 
-`bank ref <ref>` says what any cited ref names: `bank:<ref>` or a bare message ref, a library ID, a blob's SHA-256, or `attic:<ref>`. It prints the record's kind and title, the route that returns it in full, and where the same bytes are in the other store. A message lists its attachments and the places on disks that hold them; a file on a disk lists the messages and library files that hold its bytes.
+`bank ref <ref>` says what any cited ref names: `bank:<ref>` or a bare message ref, a library ID, or bytes as `attic:<ref>` or a whole BLAKE3 digest. It prints the record's kind and title, the route that returns it in full, and where the same bytes are. A message or library file lists the places on disks that hold its bytes; bytes list the messages and library files that hold them and the places on disks.
 
-That match uses BLAKE3, the digest attic identifies a file by. Bank keeps storing blobs under SHA-256 and records each blob's BLAKE3 in `blob_digests`. The server fills that table when it starts and after each import, so the first start after this upgrade reads every stored blob once, and a link can be missing for a moment after an import.
+Message attachments, library files and files on disks share one `contents` row per BLAKE3 digest, so these links need no background pass and appear as soon as an import or a scan commits.
 
 `bank timeline 2019-03` lists what happened in a year, a month or a day, oldest first: messages by when they were sent, activity by when it happened, and files on disks by when they were last modified. `--group message`, `activity` or `file` narrows it. `--limit` caps each group on its own, so a day with thousands of files cannot push the messages out, and the output names the groups that reached it. Activity without a date and files that have gone missing are left out.
 
@@ -129,7 +129,7 @@ Run the cutover on the server. `retire` refuses to run through `BANK_URL`.
 
 ## Extend and move Bank
 
-The version 1 JSON library import format uses `internal/library.ImportBatch` with arrays of items, activity, collections, and files. The `pages` array must be empty. Publish Markdown with `bank library index` so Bank can verify original bytes and sensitivity before replacing its search projection. Importers parse provider exports into typed batches, which the store validates and commits atomically. Files referenced by a bundle must already exist in Bank's blob store with matching hash and size. Remote imports never dereference arbitrary server file paths.
+The version 1 JSON library import format uses `internal/library.ImportBatch` with arrays of items, activity, collections, and files. The `pages` array must be empty. Publish Markdown with `bank library index` so Bank can verify original bytes and sensitivity before replacing its search projection. Importers parse provider exports into typed batches, which the store validates and commits atomically. Each file names its bytes by `blake3`, 64 lowercase hex characters, and must already exist in Bank's blob store with matching digest and size. Remote imports never dereference arbitrary server file paths.
 
 A new provider normally needs an importer and fixtures. A new media kind or queryable field needs a typed model change, a SQL migration, and the relevant UI fields. Keep provider-only detail in the archived source until a real feature needs it. There is no plugin registry or unrestricted custom-field store to maintain.
 

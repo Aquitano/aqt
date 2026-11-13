@@ -8,10 +8,12 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/packages/go/extract"
 	"github.com/jackc/pgx/v5"
 )
 
-// StatusPending is the virtual status of a blob no extraction has touched
+// StatusPending is the virtual status of a content no extraction has touched
 // yet. It is not stored — the absence of a row is what it means — but naming
 // it lets one filter cover "never tried" and "tried, retry it".
 const StatusPending = "pending"
@@ -26,24 +28,24 @@ const StatusPending = "pending"
 // the difference is not worth a second constant.
 const MaxAttachmentTextChars = 4 << 20
 
-// BlobText is the extracted text of one blob, keyed by its digest.
+// BlobText is the text read from one content, keyed by its digest.
 type BlobText struct {
-	SHA256      string    `json:"sha256"`
-	Text        string    `json:"text"`
-	Extractor   string    `json:"extractor,omitempty"`
-	Status      string    `json:"status"`
-	Chars       int       `json:"chars"`
-	ExtractedAt time.Time `json:"extracted_at"`
+	BLAKE3      content.Digest `json:"blake3"`
+	Text        string         `json:"text"`
+	Extractor   string         `json:"extractor,omitempty"`
+	Status      string         `json:"status"`
+	Chars       int            `json:"chars"`
+	ExtractedAt time.Time      `json:"extracted_at"`
 }
 
 // BlobRef is one distinct piece of attachment content and what is known about
 // its text. Filename and MimeType come from an arbitrary message carrying it —
 // enough to choose an extractor, since the bytes are identical either way.
 type BlobRef struct {
-	SHA256    string `json:"sha256"`
-	Filename  string `json:"filename"`
-	MimeType  string `json:"mime_type,omitempty"`
-	SizeBytes int64  `json:"size_bytes"`
+	BLAKE3    content.Digest `json:"blake3"`
+	Filename  string         `json:"filename"`
+	MimeType  string         `json:"mime_type,omitempty"`
+	SizeBytes int64          `json:"size_bytes"`
 	// Messages counts how many messages carry this content.
 	Messages int64 `json:"messages"`
 	// Status is StatusPending when nothing has been extracted yet.
@@ -54,8 +56,9 @@ type BlobRef struct {
 
 // ListBlobsOpts selects attachment content to work on or report.
 type ListBlobsOpts struct {
-	// Statuses filters by extraction status; StatusPending selects blobs with
-	// no row yet. Empty means every blob.
+	// Statuses filters by extraction status; StatusPending selects content
+	// with no text row yet, read by neither a disk scan nor bank. Empty means
+	// all of it.
 	Statuses []string
 	// Source restricts to files or message attachments of one source.
 	Source string
@@ -99,37 +102,37 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 		where = " where " + strings.Join(conditions, " and ")
 	}
 	sql := `
-		select b.sha256, b.filename, b.mime_type, b.size_bytes, b.messages,
+		select c.blake3, b.filename, b.mime_type, c.size_bytes, b.messages,
 		       coalesce(t.status, '` + StatusPending + `'), coalesce(t.extractor, ''),
-		       coalesce(length(t.text), 0)
+		       coalesce(t.chars, 0)
 		from (
-			select a.sha256,
+			select a.content_id,
 			       min(a.filename) as filename,
 			       min(a.mime_type) as mime_type,
-			       max(a.size_bytes) as size_bytes,
 			       count(distinct a.message_id) as messages,
 			       max(a.newest) as newest,
 			       max(a.attachment_id) as attachment_id
 			from (
-                select a.sha256,a.filename,a.mime_type,a.size_bytes,a.message_id,
+                select a.content_id,a.filename,a.mime_type,a.message_id,
                        coalesce(a.ingested_at,m.ingested_at) as newest,a.id as attachment_id,m.source
                 from attachments a join messages m on m.id=a.message_id
                 union all
-                select f.sha256,f.filename,f.mime_type,f.size_bytes,null::bigint,
+                select f.content_id,f.filename,f.mime_type,null::bigint,
                        f.ingested_at,0::bigint,f.source
                 from library_files f
             ) a` + where + `
-			group by a.sha256
+			group by a.content_id
 		) b
-		left join blob_text t on t.sha256 = b.sha256`
+		join contents c on c.id = b.content_id
+		left join texts t on t.content_id = b.content_id`
 	if len(o.Statuses) > 0 {
 		sql += " where coalesce(t.status, '" + StatusPending + "') = any(" + next(o.Statuses) + ")"
 	}
-	order := "b.size_bytes desc"
+	order := "c.size_bytes desc"
 	if o.NewestFirst {
 		order = "b.newest desc, b.attachment_id desc"
 	}
-	sql += " order by " + order + ", b.sha256 limit " + next(o.Limit)
+	sql += " order by " + order + ", c.blake3 limit " + next(o.Limit)
 
 	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {
@@ -139,7 +142,7 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 	out := []BlobRef{}
 	for rows.Next() {
 		var b BlobRef
-		if err := rows.Scan(&b.SHA256, &b.Filename, &b.MimeType, &b.SizeBytes, &b.Messages,
+		if err := rows.Scan(&b.BLAKE3, &b.Filename, &b.MimeType, &b.SizeBytes, &b.Messages,
 			&b.Status, &b.Extractor, &b.Chars); err != nil {
 			return nil, err
 		}
@@ -148,20 +151,28 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 	return out, rows.Err()
 }
 
-// PutBlobText records one extraction outcome.
+// PutBlobText records one extraction outcome for a content the archive or a
+// disk scan already knows. Text over extract.MaxChars is cut, and ok text
+// becomes truncated. Only manual text replaces manual text.
 func (s *Store) PutBlobText(ctx context.Context, bt BlobText) error {
-	if bt.SHA256 == "" || bt.Status == "" {
-		return fmt.Errorf("blob text needs a sha256 and a status")
+	if bt.BLAKE3.IsZero() || bt.Status == "" {
+		return fmt.Errorf("text needs a digest and a status")
 	}
-	text := truncateRunes(cleanText(bt.Text), MaxAttachmentTextChars)
+	text, status := cleanText(bt.Text), bt.Status
+	if len(text) > extract.MaxChars {
+		text = truncateRunes(text, extract.MaxChars)
+		if status == string(extract.StatusOK) {
+			status = string(extract.StatusTruncated)
+		}
+	}
 	_, err := s.pool.Exec(ctx, `
-		insert into blob_text (sha256, text, extractor, status, extracted_at)
-		values ($1, $2, $3, $4, now())
-		on conflict (sha256) do update
-		set text = excluded.text, extractor = excluded.extractor,
-		    status = excluded.status, extracted_at = now()
-		where blob_text.status <> 'manual' or excluded.status = 'manual'`,
-		bt.SHA256, text, cleanText(bt.Extractor), bt.Status)
+		insert into texts (content_id, text, extractor, status, extracted_at)
+		select c.id, $2, $3, $4, now() from contents c where c.blake3 = $1
+		on conflict (content_id) do update
+		set text = excluded.text, extractor = excluded.extractor, status = excluded.status,
+		    detail = '', extracted_at = now()
+		where texts.status <> 'manual' or excluded.status = 'manual'`,
+		bt.BLAKE3, text, cleanText(bt.Extractor), status)
 	return err
 }
 
@@ -181,22 +192,22 @@ func truncateRunes(s string, max int) string {
 	return s[:max]
 }
 
-func (s *Store) GetBlobText(ctx context.Context, sha256 string) (BlobText, error) {
+func (s *Store) GetBlobText(ctx context.Context, d content.Digest) (BlobText, error) {
 	var bt BlobText
 	err := s.pool.QueryRow(ctx, `
-		select sha256, text, extractor, status, length(text), extracted_at
-		from blob_text where sha256 = $1`, sha256,
-	).Scan(&bt.SHA256, &bt.Text, &bt.Extractor, &bt.Status, &bt.Chars, &bt.ExtractedAt)
+		select c.blake3, t.text, t.extractor, t.status, t.chars, t.extracted_at
+		from texts t join contents c on c.id = t.content_id where c.blake3 = $1`, d,
+	).Scan(&bt.BLAKE3, &bt.Text, &bt.Extractor, &bt.Status, &bt.Chars, &bt.ExtractedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return bt, ErrNotFound
 	}
 	return bt, err
 }
 
-// DeleteBlobText drops an extraction result, putting the blob back in the
+// DeleteBlobText drops an extraction result, putting the content back in the
 // pending queue. This is how a bad manual transcription is undone.
-func (s *Store) DeleteBlobText(ctx context.Context, sha256 string) error {
-	tag, err := s.pool.Exec(ctx, `delete from blob_text where sha256 = $1`, sha256)
+func (s *Store) DeleteBlobText(ctx context.Context, d content.Digest) error {
+	tag, err := s.pool.Exec(ctx, `delete from texts t using contents c where c.id = t.content_id and c.blake3 = $1`, d)
 	if err != nil {
 		return err
 	}
@@ -208,10 +219,11 @@ func (s *Store) DeleteBlobText(ctx context.Context, sha256 string) error {
 
 // KnownAttachment reports whether the archive holds this content, so a
 // caller cannot store text for a digest the archive has never seen.
-func (s *Store) KnownAttachment(ctx context.Context, sha256 string) (bool, error) {
+func (s *Store) KnownAttachment(ctx context.Context, d content.Digest) (bool, error) {
 	var exists bool
-	err := s.pool.QueryRow(ctx,
-		`select exists (select 1 from attachments where sha256 = $1) or exists(select 1 from library_files where sha256=$1)`, sha256).Scan(&exists)
+	err := s.pool.QueryRow(ctx, `select exists (select 1 from contents c where c.blake3 = $1 and (
+		exists (select 1 from attachments a where a.content_id = c.id) or
+		exists (select 1 from library_files f where f.content_id = c.id)))`, d).Scan(&exists)
 	return exists, err
 }
 
@@ -235,7 +247,7 @@ func (s *Store) RefreshAttachmentText(ctx context.Context, since time.Time) (int
 		scope = `where a.message_id in (
 				select s.message_id from attachments s
 				join messages sm on sm.id = s.message_id
-				left join blob_text st on st.sha256 = s.sha256
+				left join texts st on st.content_id = s.content_id
 				where coalesce(s.ingested_at, sm.ingested_at) >= $2 or st.extracted_at >= $2)`
 	}
 	tag, err := s.pool.Exec(ctx, `
@@ -245,7 +257,7 @@ func (s *Store) RefreshAttachmentText(ctx context.Context, since time.Time) (int
 			select a.message_id,
 			       left(coalesce(string_agg(t.text, ' ' order by a.id), ''), $1) as txt
 			from attachments a
-			left join blob_text t on t.sha256 = a.sha256 and t.text <> ''
+			left join texts t on t.content_id = a.content_id and t.text <> ''
 			`+scope+`
 			group by a.message_id
 		) c
@@ -271,12 +283,10 @@ type ExtractionStat struct {
 func (s *Store) ExtractionStats(ctx context.Context) ([]ExtractionStat, error) {
 	rows, err := s.pool.Query(ctx, `
 		select coalesce(t.status, '`+StatusPending+`') as status,
-		       count(*), coalesce(sum(b.size_bytes), 0), coalesce(sum(length(t.text)), 0)
-		from (
-			select sha256, max(size_bytes) as size_bytes
-			from (select sha256,size_bytes from attachments union all select sha256,size_bytes from library_files) files group by sha256
-		) b
-		left join blob_text t on t.sha256 = b.sha256
+		       count(*), coalesce(sum(c.size_bytes), 0), coalesce(sum(t.chars), 0)
+		from (select content_id from attachments union select content_id from library_files) b
+		join contents c on c.id = b.content_id
+		left join texts t on t.content_id = b.content_id
 		group by 1 order by 1`)
 	if err != nil {
 		return nil, err
@@ -291,16 +301,4 @@ func (s *Store) ExtractionStats(ctx context.Context) ([]ExtractionStat, error) {
 		out = append(out, st)
 	}
 	return out, rows.Err()
-}
-
-// ValidSHA256 rejects anything that is not a digest before it reaches a query
-// or a file path.
-func ValidSHA256(s string) error {
-	if len(s) != 64 {
-		return fmt.Errorf("not a sha256 digest: %q", s)
-	}
-	if strings.TrimLeft(strings.ToLower(s), "0123456789abcdef") != "" {
-		return fmt.Errorf("not a sha256 digest: %q", s)
-	}
-	return nil
 }

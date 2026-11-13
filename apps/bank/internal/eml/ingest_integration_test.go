@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
@@ -113,9 +114,12 @@ func TestIngestHealsAttachmentsOnReimport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var lost string
+	var lost content.Digest
 	for key := range keys {
-		lost, _, _ = strings.Cut(key, "\x00")
+		hexDigest, _, _ := strings.Cut(key, "\x00")
+		if lost, err = content.Parse(hexDigest); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := os.Remove(blobs.Path(lost)); err != nil {
 		t.Fatal(err)

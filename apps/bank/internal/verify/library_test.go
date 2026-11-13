@@ -2,6 +2,8 @@ package verify
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,11 +26,11 @@ func TestLibraryFileIntegrityWithoutInventedHealing(t *testing.T) {
 	batch := library.ImportBatch{Version: 1}
 	expected := map[string]string{}
 	for _, scenario := range []string{"healthy", MissingBlob, CorruptBlob, WrongSize} {
-		sum, size, err := blobs.Put(strings.NewReader("library file: " + scenario))
+		sum, size, err := blobs.Put(ctx, strings.NewReader("library file: "+scenario))
 		if err != nil {
 			t.Fatal(err)
 		}
-		file := library.File{Identity: library.Identity{Source: "library-test", Account: "owner", ExternalID: scenario}, SHA256: sum, SizeBytes: size, Filename: scenario + ".txt", MimeType: "text/plain"}
+		file := library.File{Identity: library.Identity{Source: "library-test", Account: "owner", ExternalID: scenario}, BLAKE3: sum, SizeBytes: size, Filename: scenario + ".txt", MimeType: "text/plain"}
 		switch scenario {
 		case MissingBlob:
 			if err := os.Remove(blobs.Path(sum)); err != nil {
@@ -79,7 +81,7 @@ func TestLibraryProvenanceIncludesOlderSnapshots(t *testing.T) {
 	}
 	archiveDir := filepath.Join(root, "archive")
 	raw := []byte("source export")
-	ref, err := archive.Write(archiveDir, "library-test", hashBytes(raw)+"-export.json", raw)
+	ref, err := archive.Write(archiveDir, "library-test", rawName(raw)+"-export.json", raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,4 +178,9 @@ func TestLibraryVerificationChecksSecondaryActivityEvidence(t *testing.T) {
 	if report.LibraryRecordsChecked != 1 || report.Damaged != 1 || report.Findings[0].LibraryID != library.StableID("activity", activity.Identity) || report.Findings[0].Kind != MissingRaw || report.Findings[0].Detail != latest {
 		t.Fatalf("secondary activity evidence not verified: %+v", report)
 	}
+}
+
+func rawName(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }

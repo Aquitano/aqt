@@ -23,6 +23,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -82,7 +83,7 @@ func Run(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir str
 		err = v.mailContexts(ctx)
 	}
 	if err == nil {
-		err = st.EachArchivedLibraryRecord(ctx, o.Source, v.libraryRecord)
+		err = st.EachArchivedLibraryRecord(ctx, o.Source, func(r store.ArchivedLibraryRecord) error { return v.libraryRecord(ctx, r) })
 	}
 	return rep, err
 }
@@ -180,30 +181,30 @@ func (v *verifier) rawFile(ref string) string {
 }
 
 func (v *verifier) attachment(ctx context.Context, m store.ArchivedMessage, a store.Attachment, rawOK bool) error {
-	path := v.blobs.Path(a.SHA256)
+	path := v.blobs.Path(a.BLAKE3)
 	info, err := os.Stat(path)
 	if err != nil {
 		return v.repairBlob(ctx, m, a, rawOK, MissingBlob, "no bytes in the blob store")
 	}
-	sum, err := hashFile(path)
+	sum, err := hashBlob(ctx, path)
 	if err != nil {
 		return err
 	}
-	if sum != a.SHA256 {
-		return v.repairBlob(ctx, m, a, rawOK, CorruptBlob, "content hashes to "+sum)
+	if sum != a.BLAKE3 {
+		return v.repairBlob(ctx, m, a, rawOK, CorruptBlob, "content hashes to "+sum.String())
 	}
 	if info.Size() == a.SizeBytes {
 		return nil
 	}
-	// The bytes hash correctly, so the row's size is the wrong half. That is
-	// repairable without consulting the raw input at all.
+	// The bytes hash correctly, so the content's size is the wrong half. That
+	// is repairable without consulting the raw input at all.
 	f := Finding{MessageID: m.ID, AttachmentID: a.ID, Kind: WrongSize,
 		Detail: fmt.Sprintf("size_bytes says %d, file is %d", a.SizeBytes, info.Size())}
 	if !v.opts.Heal {
 		v.add(f, false)
 		return nil
 	}
-	if err := v.st.SetAttachmentSize(ctx, a.ID, info.Size()); err != nil {
+	if err := v.st.SetContentSize(ctx, a.BLAKE3, info.Size()); err != nil {
 		return err
 	}
 	v.add(f, true)
@@ -219,15 +220,15 @@ func (v *verifier) repairBlob(ctx context.Context, m store.ArchivedMessage, a st
 		v.add(f, false)
 		return nil
 	}
-	data := v.recoverPart(m, a.SHA256)
+	data := v.recoverPart(m, a.BLAKE3)
 	if data == nil {
 		v.add(f, false)
 		return nil
 	}
-	if _, size, err := v.blobs.Replace(bytes.NewReader(data)); err != nil {
+	if _, size, err := v.blobs.Replace(ctx, bytes.NewReader(data)); err != nil {
 		return err
 	} else if size != a.SizeBytes {
-		if err := v.st.SetAttachmentSize(ctx, a.ID, size); err != nil {
+		if err := v.st.SetContentSize(ctx, a.BLAKE3, size); err != nil {
 			return err
 		}
 		f.Detail += fmt.Sprintf("; size corrected to %d", size)
@@ -239,11 +240,11 @@ func (v *verifier) repairBlob(ctx context.Context, m store.ArchivedMessage, a st
 // errFoundPart stops an mbox walk once the wanted digest turned up.
 var errFoundPart = fmt.Errorf("found")
 
-// recoverPart returns the bytes inside the archived raw input whose sha256
-// matches digest, or nil. The digest match is the safety: whatever the
+// recoverPart returns the bytes inside the archived raw input whose BLAKE3
+// digest matches digest, or nil. The digest match is the safety: whatever the
 // container — a single mail, a WhatsApp export zip, an mbox — matching
 // content is the original by definition.
-func (v *verifier) recoverPart(m store.ArchivedMessage, digest string) []byte {
+func (v *verifier) recoverPart(m store.ArchivedMessage, digest content.Digest) []byte {
 	switch strings.ToLower(filepath.Ext(m.RawRef)) {
 	case ".eml":
 		mail, err := v.parsedRaw(m)
@@ -251,7 +252,7 @@ func (v *verifier) recoverPart(m store.ArchivedMessage, digest string) []byte {
 			return nil
 		}
 		for _, part := range mail.Attachments {
-			if hashBytes(part.Data) == digest {
+			if content.Sum(part.Data) == digest {
 				return part.Data
 			}
 		}
@@ -271,7 +272,7 @@ func (v *verifier) recoverPart(m store.ArchivedMessage, digest string) []byte {
 			}
 			data, err := io.ReadAll(rc)
 			rc.Close()
-			if err == nil && hashBytes(data) == digest {
+			if err == nil && content.Sum(data) == digest {
 				return data
 			}
 		}
@@ -288,7 +289,7 @@ func (v *verifier) recoverPart(m store.ArchivedMessage, digest string) []byte {
 				return nil // one unparseable message must not end the search
 			}
 			for _, part := range mail.Attachments {
-				if hashBytes(part.Data) == digest {
+				if content.Sum(part.Data) == digest {
 					found = part.Data
 					return errFoundPart
 				}
@@ -300,11 +301,6 @@ func (v *verifier) recoverPart(m store.ArchivedMessage, digest string) []byte {
 		}
 	}
 	return nil
-}
-
-func hashBytes(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
 }
 
 // missingAttachments compares the archived mail against the attachment rows.
@@ -321,12 +317,11 @@ func (v *verifier) missingAttachments(ctx context.Context, m store.ArchivedMessa
 	}
 	have := map[string]int{}
 	for _, a := range m.Attachments {
-		have[store.AttachmentKey(a.SHA256, a.Filename)]++
+		have[store.AttachmentKey(a.BLAKE3, a.Filename)]++
 	}
 	var missing []eml.Attachment
 	for _, part := range mail.Attachments {
-		sum := sha256.Sum256(part.Data)
-		key := store.AttachmentKey(hex.EncodeToString(sum[:]), part.Filename)
+		key := store.AttachmentKey(content.Sum(part.Data), part.Filename)
 		if have[key] > 0 {
 			have[key]--
 			continue
@@ -346,7 +341,7 @@ func (v *verifier) missingAttachments(ctx context.Context, m store.ArchivedMessa
 		return nil
 	}
 	for _, part := range missing {
-		sum, size, err := v.blobs.Put(bytes.NewReader(part.Data))
+		sum, size, err := v.blobs.Put(ctx, bytes.NewReader(part.Data))
 		if err != nil {
 			return err
 		}
@@ -355,7 +350,7 @@ func (v *verifier) missingAttachments(ctx context.Context, m store.ArchivedMessa
 			Filename:  part.Filename,
 			MimeType:  part.MimeType,
 			SizeBytes: size,
-			SHA256:    sum,
+			BLAKE3:    sum,
 		})
 		if err != nil {
 			return err
@@ -398,7 +393,18 @@ func (v *verifier) add(f Finding, repaired bool) {
 	}
 }
 
-func hashFile(path string) (string, error) {
+func hashBlob(ctx context.Context, path string) (content.Digest, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return content.Digest{}, err
+	}
+	defer f.Close()
+	sum, _, err := content.Hash(ctx, f)
+	return sum, err
+}
+
+// hashRaw is the SHA-256 an archived raw input is named by.
+func hashRaw(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err

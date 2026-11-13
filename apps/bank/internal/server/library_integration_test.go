@@ -30,12 +30,12 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	for _, path := range []string{"/v1/attachment-library?type=pdf", "/v1/attachments/" + testDigest + "/messages", "/v1/import-reports"} {
+	for _, path := range []string{"/v1/attachment-library?type=pdf", "/v1/attachments/" + testDigest.String() + "/messages", "/v1/import-reports"} {
 		if w := request(path); w.Code != 200 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}
-	if err := st.PutBlobText(context.Background(), store.BlobText{SHA256: testDigest, Text: "Payment due tomorrow", Status: "ok"}); err != nil {
+	if err := st.PutBlobText(context.Background(), store.BlobText{BLAKE3: testDigest, Text: "Payment due tomorrow", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, query := range []string{"payment", "missing"} {
@@ -65,14 +65,14 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, content := range []string{"<html><script>alert(1)</script></html>", "%PDF-1.4\npreview"} {
-		sum, size, err := s.blobs.Put(strings.NewReader(content))
+		sum, size, err := s.blobs.Put(context.Background(), strings.NewReader(content))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: "untrusted.pdf", MimeType: "application/pdf", SHA256: sum, SizeBytes: size}); err != nil {
+		if err := st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: "untrusted.pdf", MimeType: "application/pdf", BLAKE3: sum, SizeBytes: size}); err != nil {
 			t.Fatal(err)
 		}
-		w := request("/v1/attachments/" + sum + "/preview")
+		w := request("/v1/attachments/" + sum.String() + "/preview")
 		if strings.HasPrefix(content, "<html>") {
 			if w.Code != 415 {
 				t.Fatalf("active content preview: %d", w.Code)
@@ -131,14 +131,14 @@ func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sum, size, err := s.blobs.Put(bytes.NewReader(raw))
+		sum, size, err := s.blobs.Put(context.Background(), bytes.NewReader(raw))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: test.filename, MimeType: "application/octet-stream", SHA256: sum, SizeBytes: size}); err != nil {
+		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: test.filename, MimeType: "application/octet-stream", BLAKE3: sum, SizeBytes: size}); err != nil {
 			t.Fatal(err)
 		}
-		r := httptest.NewRequest("GET", "/v1/attachments/"+sum+"/preview", nil)
+		r := httptest.NewRequest("GET", "/v1/attachments/"+sum.String()+"/preview", nil)
 		r.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)

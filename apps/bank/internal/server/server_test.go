@@ -242,10 +242,11 @@ func TestBlobHandlerValidatesDigest(t *testing.T) {
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 
-	sum, _, err := s.blobs.Put(strings.NewReader("payload"))
+	digest, _, err := s.blobs.Put(t.Context(), strings.NewReader("payload"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	sum := digest.String()
 
 	cases := []struct {
 		name, path string
@@ -274,7 +275,7 @@ func TestBlobHandlerValidatesDigest(t *testing.T) {
 				t.Fatalf("status %d, want %d", resp.StatusCode, tc.want)
 			}
 			if tc.want == http.StatusOK {
-				body, _ := os.ReadFile(s.blobs.Path(sum))
+				body, _ := os.ReadFile(s.blobs.Path(digest))
 				if string(body) != "payload" {
 					t.Fatalf("blob content = %q", body)
 				}

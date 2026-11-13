@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 func lockContentCache(ctx context.Context, tx pgx.Tx, shared bool) error {
@@ -21,7 +22,8 @@ func lockContentCache(ctx context.Context, tx pgx.Tx, shared bool) error {
 }
 
 // RebuildContent invalidates shared archive and text facts for present hashed
-// contents in this subtree. Copies elsewhere share the rebuilt results.
+// contents in this subtree. Copies elsewhere share the rebuilt results. Text
+// written by hand is no extraction result, so it stays.
 func (sc *Scan) RebuildContent(ctx context.Context) error {
 	tx, err := sc.store.pool.Begin(ctx)
 	if err != nil {
@@ -38,7 +40,7 @@ func (sc *Scan) RebuildContent(ctx context.Context) error {
 	for _, query := range []string{
 		`delete from members where archive_id in (` + selected + `)`,
 		`delete from archives where content_id in (` + selected + `)`,
-		`delete from texts where content_id in (` + selected + `)`,
+		`delete from texts where status <> 'manual' and content_id in (` + selected + `)`,
 	} {
 		if _, err := tx.Exec(ctx, query, sc.Volume.ID, lower, upper); err != nil {
 			return err
@@ -54,7 +56,7 @@ type Stamp struct {
 	Modified *time.Time
 	Changed  *time.Time
 	FileID   *int64
-	Digest   disk.Digest
+	Digest   content.Digest
 	Trusted  bool
 }
 
@@ -64,7 +66,7 @@ func (s *Stamp) fields() []any {
 	return []any{&s.Size, &s.Modified, &s.Changed, &s.FileID, (*digestColumn)(&s.Digest), &s.Trusted}
 }
 
-type digestColumn disk.Digest
+type digestColumn content.Digest
 
 func (d *digestColumn) Scan(src any) error {
 	b, ok := src.([]byte)

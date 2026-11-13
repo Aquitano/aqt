@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -22,6 +23,6 @@ func (c *Client) AttachmentLibrary(ctx context.Context, o store.AttachmentFilter
 	}
 	return getJSON[[]store.LibraryFile](ctx, c, "/v1/attachment-library", q)
 }
-func (c *Client) AttachmentMessages(ctx context.Context, sum string, offset, limit int) ([]store.Message, error) {
-	return getJSON[[]store.Message](ctx, c, "/v1/attachments/"+sum+"/messages", url.Values{"offset": {strconv.Itoa(offset)}, "limit": {strconv.Itoa(limit)}})
+func (c *Client) AttachmentMessages(ctx context.Context, d content.Digest, offset, limit int) ([]store.Message, error) {
+	return getJSON[[]store.Message](ctx, c, "/v1/attachments/"+d.String()+"/messages", url.Values{"offset": {strconv.Itoa(offset)}, "limit": {strconv.Itoa(limit)}})
 }

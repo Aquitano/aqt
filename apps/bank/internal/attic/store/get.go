@@ -6,12 +6,13 @@ import (
 	"fmt"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/jackc/pgx/v5"
 )
 
 type Retrieval struct {
 	Ref    string
-	Digest disk.Digest
+	Digest content.Digest
 	Size   int64
 	Places []Hit
 }

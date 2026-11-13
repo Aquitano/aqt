@@ -45,11 +45,10 @@ func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 	}.For(api), s.timeline)
 	huma.Register(api, httpapi.Operation{ID: "resolveRef", Method: http.MethodGet, Path: "/v1/refs/{ref}", Tag: "refs",
 		Summary: "Say what a cited ref names, whichever store holds it",
-		Description: "Takes bank:<ref> or a bare message ref, a library ID such as item_… or file_…, a blob's SHA-256, " +
-			"or attic:<ref>. The answer names the record, the route that returns it in full, and where the same " +
-			"bytes are in the other store: a message attachment's copies on disks, or the messages and library " +
-			"files that hold a disk file's bytes. Those links appear once the server has read the blob's BLAKE3 " +
-			"digest, shortly after an import.",
+		Description: "Takes bank:<ref> or a bare message ref, a library ID such as item_… or file_…, or bytes as " +
+			"attic:<ref> or a whole BLAKE3 digest. The answer names the record, the route that returns it in full, " +
+			"and where the same bytes are: a message attachment's or library file's copies on disks, and for " +
+			"bytes, the messages and library files that hold them as well as the places on disks.",
 		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef},
 	}.For(api), s.resolve)
 	httpapi.Finish(api)

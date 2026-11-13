@@ -17,12 +17,13 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // Extraction is a pass of its own, not a step inside importing. The text is
-// derived data keyed on the blob digest, so it is rebuildable at any time, and
+// derived data keyed on the content, so it is rebuildable at any time, and
 // keeping it separate is what lets the expensive half run somewhere other than
 // the box serving the archive: `bank extract --ocr` against a remote BANK_URL
 // runs the tools on this machine and stores only the text.
@@ -144,9 +145,9 @@ func watchExtract(ctx context.Context, a blobtext.Archive, sel blobtext.Selectio
 // command below has to know which it is talking to.
 type attachmentBackend interface {
 	blobtext.Archive
-	BlobText(ctx context.Context, sha256 string) (store.BlobText, error)
+	BlobText(ctx context.Context, d content.Digest) (store.BlobText, error)
 	SetText(ctx context.Context, bt store.BlobText) error
-	DeleteBlobText(ctx context.Context, sha256 string) error
+	DeleteBlobText(ctx context.Context, d content.Digest) error
 	ExtractionStats(ctx context.Context) ([]store.ExtractionStat, error)
 }
 
@@ -327,27 +328,24 @@ func (c *attachmentListCmd) Run(ctx context.Context) error {
 		return nil
 	}
 	for _, b := range blobs {
-		fmt.Printf("%s  %-12s %8s  %s\n", b.SHA256[:12], b.Status, humanBytes(b.SizeBytes), excerpt(b.Filename, 50))
+		fmt.Printf("%s  %-12s %8s  %s\n", b.BLAKE3.String()[:12], b.Status, humanBytes(b.SizeBytes), excerpt(b.Filename, 50))
 	}
 	return nil
 }
 
-// attachmentTextCmd reads, replaces or clears one blob's text. Replacing is
+// attachmentTextCmd reads, replaces or clears one content's text. Replacing is
 // how text from a model running here — better than tesseract, or reading a
 // language it does not — gets into the archive; it lands as "manual", which
 // no automatic pass overwrites.
 type attachmentTextCmd struct {
-	SHA256 string `arg:"" name:"sha256"`
-	Set    string `help:"Replace the text with this file's contents; - reads stdin."`
-	Clear  bool   `help:"Drop the stored text."`
-	JSON   bool   `help:"JSON output."`
+	BLAKE3 content.Digest `arg:"" name:"blake3" help:"The content's BLAKE3 digest, 64 lowercase hex characters."`
+	Set    string         `help:"Replace the text with this file's contents; - reads stdin."`
+	Clear  bool           `help:"Drop the stored text."`
+	JSON   bool           `help:"JSON output."`
 }
 
 func (c *attachmentTextCmd) Run(ctx context.Context) error {
-	sum := strings.ToLower(c.SHA256)
-	if err := store.ValidSHA256(sum); err != nil {
-		return err
-	}
+	sum := c.BLAKE3
 	if c.Set != "" && c.Clear {
 		return fmt.Errorf("--set and --clear do the opposite of each other")
 	}
@@ -375,12 +373,12 @@ func (c *attachmentTextCmd) Run(ctx context.Context) error {
 		}
 		// Refused rather than stored and silently cut in half: a transcription
 		// is the one kind of text nothing here can produce again.
-		if len(text) > store.MaxAttachmentTextChars {
+		if len(text) > extract.MaxChars {
 			return fmt.Errorf("%s holds %d bytes of text, over the %d a row keeps",
-				c.Set, len(text), store.MaxAttachmentTextChars)
+				c.Set, len(text), extract.MaxChars)
 		}
 		if err := b.SetText(ctx, store.BlobText{
-			SHA256: sum, Text: text, Extractor: "manual", Status: string(extract.StatusManual),
+			BLAKE3: sum, Text: text, Extractor: "manual", Status: string(extract.StatusManual),
 		}); err != nil {
 			return err
 		}
@@ -397,8 +395,8 @@ func (c *attachmentTextCmd) Run(ctx context.Context) error {
 	if c.JSON {
 		return printJSON(bt)
 	}
-	fmt.Printf("sha256:    %s\nstatus:    %s\nextractor: %s\nchars:     %d\nextracted: %s\n\n",
-		bt.SHA256, bt.Status, bt.Extractor, bt.Chars, bt.ExtractedAt.Format(time.RFC1123))
+	fmt.Printf("blake3:    %s\nstatus:    %s\nextractor: %s\nchars:     %d\nextracted: %s\n\n",
+		bt.BLAKE3, bt.Status, bt.Extractor, bt.Chars, bt.ExtractedAt.Format(time.RFC1123))
 	fmt.Println(bt.Text)
 	return nil
 }

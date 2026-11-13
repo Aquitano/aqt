@@ -12,6 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 type Result struct {
@@ -90,7 +91,7 @@ func readOne(ctx context.Context, mount disk.Volume, f store.VerifyFile) Result 
 	switch {
 	case f.Kind != "file":
 		r.Status, r.Detail = "unavailable", "catalogue entry is not an ordinary file"
-	case f.HashState != "done" || len(f.Digest) != len(disk.Digest{}):
+	case f.HashState != "done" || len(f.Digest) != len(content.Digest{}):
 		r.Status, r.Detail = "unknown", "no full stored digest; hash state: "+f.HashState
 	case mount.Root == "":
 		r.Status, r.Detail = "unavailable", "selected volume is offline"

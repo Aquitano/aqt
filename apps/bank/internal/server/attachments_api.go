@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -21,13 +22,14 @@ func (s *Server) registerAttachmentsAPI(api huma.API) {
 			"the text read from the file. q and text are plain substring filters, and text adds a snippet around " +
 			"the match.",
 	}.For(api), s.searchAttachments)
-	huma.Register(api, httpapi.Operation{ID: "listAttachmentMessages", Method: http.MethodGet, Path: "/v1/attachments/{sha256}/messages", Tag: "attachments",
+	huma.Register(api, httpapi.Operation{ID: "listAttachmentMessages", Method: http.MethodGet, Path: "/v1/attachments/{blake3}/messages", Tag: "attachments",
 		Summary: "List the messages that carry a file, newest first",
 	}.For(api), s.attachmentMessages)
 	huma.Register(api, httpapi.Operation{ID: "listAttachments", Method: http.MethodGet, Path: "/v1/attachments", Tag: "attachments",
 		Summary: "List distinct attachment content with the state of its text, largest first",
 		Description: "This is the work list for reading text out of files somewhere other than the server: fetch the " +
-			"bytes from /v1/blobs/{sha256}, then store the result with PUT /v1/attachments/{sha256}/text.",
+			"bytes from /v1/blobs/{blake3}, then store the result with PUT /v1/attachments/{blake3}/text. Content a " +
+			"disk scan already read is not pending.",
 	}.For(api), s.attachments)
 	huma.Register(api, httpapi.Operation{ID: "getAttachmentStats", Method: http.MethodGet, Path: "/v1/attachments/stats", Tag: "attachments",
 		Summary: "Count attachment content, bytes and text characters per text status",
@@ -37,11 +39,11 @@ func (s *Server) registerAttachmentsAPI(api huma.API) {
 		Description: "Call it once after storing or deleting text, not after every file: without since it sweeps " +
 			"every message.",
 	}.For(api), s.refreshAttachmentText)
-	huma.Register(api, httpapi.Operation{ID: "getAttachmentText", Method: http.MethodGet, Path: "/v1/attachments/{sha256}/text", Tag: "attachments",
+	huma.Register(api, httpapi.Operation{ID: "getAttachmentText", Method: http.MethodGet, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
 		Summary: "Return the text read from a file",
 		Errors:  []httpapi.Kind{httpapi.NotFound},
 	}.For(api), s.attachmentText)
-	huma.Register(api, httpapi.Operation{ID: "deleteAttachmentText", Method: http.MethodDelete, Path: "/v1/attachments/{sha256}/text", Tag: "attachments",
+	huma.Register(api, httpapi.Operation{ID: "deleteAttachmentText", Method: http.MethodDelete, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
 		Summary:     "Drop the text stored for a file, which makes the file pending again",
 		Description: "Messages keep the old text in search until the next refresh.",
 		Errors:      []httpapi.Kind{httpapi.NotFound},
@@ -49,7 +51,7 @@ func (s *Server) registerAttachmentsAPI(api huma.API) {
 }
 
 type digestInput struct {
-	SHA256 string `path:"sha256" pattern:"^[0-9a-f]{64}$" doc:"The content's SHA-256, as 64 lowercase hex characters."`
+	BLAKE3 content.Digest `path:"blake3" pattern:"^[0-9a-f]{64}$" doc:"The content's BLAKE3 digest, as 64 lowercase hex characters."`
 }
 
 type searchAttachmentsInput struct {
@@ -90,17 +92,17 @@ func (s *Server) searchAttachments(ctx context.Context, in *searchAttachmentsInp
 }
 
 type attachmentMessagesInput struct {
-	SHA256 string `path:"sha256" pattern:"^[0-9a-f]{64}$" doc:"The content's SHA-256, as 64 lowercase hex characters."`
-	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"100"`
-	Offset int    `query:"offset" default:"0" minimum:"0" maximum:"10000"`
+	BLAKE3 content.Digest `path:"blake3" pattern:"^[0-9a-f]{64}$" doc:"The content's BLAKE3 digest, as 64 lowercase hex characters."`
+	Limit  int            `query:"limit" default:"50" minimum:"1" maximum:"100"`
+	Offset int            `query:"offset" default:"0" minimum:"0" maximum:"10000"`
 }
 
 func (s *Server) attachmentMessages(ctx context.Context, in *attachmentMessagesInput) (*httpapi.Body[[]store.Message], error) {
-	return list(s.db.AttachmentMessages(ctx, in.SHA256, in.Offset, in.Limit))
+	return list(s.db.AttachmentMessages(ctx, in.BLAKE3, in.Offset, in.Limit))
 }
 
 type attachmentsInput struct {
-	Status []string `query:"status" doc:"Only these text statuses, separated by commas: pending (never tried), ok, empty, needs_ocr, unsupported, too_big, failed or manual. Default: all."`
+	Status []string `query:"status" doc:"Only these text statuses, separated by commas: pending (never tried), ok, truncated, empty, needs_ocr, unsupported, too_big, failed or manual. Default: all."`
 	Source string   `query:"source" doc:"Only content from this source."`
 	Limit  int      `query:"limit" doc:"Maximum entries. 5000 is both the default and the most one request returns."`
 }
@@ -134,22 +136,22 @@ func (s *Server) refreshAttachmentText(ctx context.Context, in *refreshAttachmen
 }
 
 func (s *Server) attachmentText(ctx context.Context, in *digestInput) (*httpapi.Body[store.BlobText], error) {
-	text, err := s.db.GetBlobText(ctx, in.SHA256)
+	text, err := s.db.GetBlobText(ctx, in.BLAKE3)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, httpapi.NotFound.New("no extracted text for " + in.SHA256)
+		return nil, httpapi.NotFound.New("no extracted text for " + in.BLAKE3.String())
 	}
 	return reply(text, err)
 }
 
 type attachmentTextDeleted struct {
-	SHA256 string `json:"sha256"`
-	Status string `json:"status" enum:"deleted"`
+	BLAKE3 content.Digest `json:"blake3"`
+	Status string         `json:"status" enum:"deleted"`
 }
 
 func (s *Server) deleteAttachmentText(ctx context.Context, in *digestInput) (*httpapi.Body[attachmentTextDeleted], error) {
-	err := s.db.DeleteBlobText(ctx, in.SHA256)
+	err := s.db.DeleteBlobText(ctx, in.BLAKE3)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, httpapi.NotFound.New("no extracted text for " + in.SHA256)
+		return nil, httpapi.NotFound.New("no extracted text for " + in.BLAKE3.String())
 	}
-	return reply(attachmentTextDeleted{SHA256: in.SHA256, Status: "deleted"}, err)
+	return reply(attachmentTextDeleted{BLAKE3: in.BLAKE3, Status: "deleted"}, err)
 }

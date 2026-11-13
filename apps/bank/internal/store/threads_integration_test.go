@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -22,7 +23,7 @@ func TestThreadPagesAcrossEqualTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: ids[8], Filename: "anything.bin", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}); err != nil {
+	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: ids[8], Filename: "anything.bin", BLAKE3: content.Sum([]byte("a"))}); err != nil {
 		t.Fatal(err)
 	}
 	around, err := st.GetThreadPage(ctx, "chat", "t", store.ThreadOpts{Around: ids[8], Limit: 3})
@@ -120,7 +121,7 @@ func TestContactHistoryCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	attachmentID := first[0].ID
-	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: attachmentID, Filename: "recording.wav", SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}); err != nil {
+	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: attachmentID, Filename: "recording.wav", BLAKE3: content.Sum([]byte("a"))}); err != nil {
 		t.Fatal(err)
 	}
 	seen := map[int64]bool{}

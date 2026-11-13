@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/metadata"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -21,7 +21,7 @@ type ContentFile struct {
 	Path      string
 	ContentID int64
 	Size      int64
-	Digest    disk.Digest
+	Digest    content.Digest
 	VolumeID  string
 	Ref       string
 	// Stamp is set by NextMetadata, whose readers check the file in place.

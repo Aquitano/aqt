@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
@@ -33,7 +34,7 @@ func seedRetirement(t *testing.T) (*store.Store, string, map[string]string) {
 		}
 		refs[m.Source+"/"+m.ExternalID] = row.Ref
 		if m.Source == "youtube" && m.ExternalID == "watch:a" {
-			if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "thumb.jpg", SizeBytes: 1, SHA256: strings.Repeat("a", 64)}); err != nil {
+			if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "thumb.jpg", SizeBytes: 1, BLAKE3: content.Sum([]byte("a"))}); err != nil {
 				t.Fatal(err)
 			}
 		}

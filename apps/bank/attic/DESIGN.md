@@ -6,7 +6,7 @@ Usage and configuration live in [README.md](README.md). `attic help <command>` d
 
 ## A place and its content have different identities
 
-An entry identifies a filesystem object at a place on one volume. A content row identifies bytes by their full BLAKE3 digest. Multiple entries can point to one content row. Public content refs use the first eight digest bytes, so refs identify content rather than paths.
+An entry identifies a filesystem object at a place on one volume. A content row identifies bytes by their full BLAKE3 digest. Multiple entries can point to one content row, and so can bank's message attachments and library files with the same bytes. Public content refs use the first eight digest bytes, so refs identify content rather than paths.
 
 Volume fingerprints combine the filesystem and volume serial with available partition and hardware identifiers. A sector clone can share filesystem and partition identity. Automatic resolution requires enough hardware identity to avoid silently merging it into the original catalogue. Missing or conflicting device serials require `--volume` or `--new-volume`; enclosure changes can require the same decision.
 
@@ -38,7 +38,7 @@ During a maintenance run, Windows rechecks the mounted fingerprint before each f
 
 ## Derived results describe the hashed bytes
 
-Archive listings, document text and metadata belong to content. Once a result exists, copies on other disks reuse it. This makes attaching a result to the wrong digest a persistent catalogue error.
+Archive listings, document text and metadata belong to content. Once a result exists, copies on other disks reuse it. Document text is the one table bank's extraction writes too, so a document read by either is not read again by the other. This makes attaching a result to the wrong digest a persistent catalogue error.
 
 The scanner reads archives and documents through a held source object. It opens the file sharing it for reading only, so Windows refuses any writer until the read ends. It extracts only when the file's size, modified time, change time and file ID still match the catalogue entry. New hashing reads through a held object matching the listed stamp, and the catalogue update requires that same stamp. The entry's `hash_trusted` flag records this provenance. Listings preserve the flag only while they retain the stamp and digest. Hard-link reuse requires a trusted sibling with the same object ID and stamp. Ordinary NTFS and ReFS writes update change time. Scans trust these timestamps and do not detect software that explicitly restores them. FAT and exFAT have no change time, so a same-size replacement with a preserved modified time would pass the check there; on those file systems the scanner hashes the held file again and compares the digest before extracting. The verified outer archive handle stays open for the listing lifetime. Parser reopens use independent read offsets on that handle, so FAT and exFAT do not repeat verification for each open.
 
@@ -50,7 +50,7 @@ External readers, ExifTool and pdftotext, receive digest-verified temporary copi
 
 ExifTool runs in `-stay_open` mode for the whole metadata phase and receives one verified copy per request. Each source stays locked only until its copy is verified, and each copy is removed after its request. A timeout, a broken answer or a crashed process ends that ExifTool, and the next file starts a fresh one. Changed files, files open for writing elsewhere, failed reads and size limits leave work eligible for a later scan. A repeatable parser failure can be stored as a result of the content.
 
-`scan --rebuild-content` discards archive listings and document text selected through present files below the scan root. It repairs results produced before scans checked the bytes they read. The reset affects all copies sharing that content, and keeps metadata and enrichment results. Current folder policies determine which results are regenerated. Depth-zero copies do not regenerate archive listings.
+`scan --rebuild-content` discards archive listings and document text selected through present files below the scan root. It repairs results produced before scans checked the bytes they read. The reset affects all copies sharing that content, and keeps metadata, enrichment results and text written by hand. Current folder policies determine which results are regenerated. Depth-zero copies do not regenerate archive listings.
 
 Nested archives and verified tool copies use private `aqt-attic/scan-*` workspaces under the configured `temp` directory. Windows checks that scratch is off the source volume. File locks distinguish abandoned workspaces from active readers. Cleanup failures leave files available for a later cleanup attempt.
 
@@ -60,7 +60,7 @@ Folder policies retain filesystem directory spelling. The archive queue resolves
 
 An incomplete depth upgrade keeps the successful listing and its depth. Completed, verified upgrade attempts that encounter encryption, parser failures or unpack limits record the content, exact requested depth and effective unpack limit. Changing the depth or unpack limit can enable another upgrade attempt. Source I/O, changed digests and multipart probes remain retryable. Initial listings remain cached at their recorded depth. Retrying an initial listing at the same depth requires rebuilding selected content, even if the unpack limit changes. Rebuilding deletes remembered failures with the selected archive cache.
 
-Document extraction keeps at most 1 MB of text per content. PDFs without a text layer become `needs_ocr`. Source code, configuration and logs keep their names without text extraction. ExifTool handles embedded metadata separately from document text.
+Document extraction keeps at most 4 MB of text per content, the same cap bank uses; longer text is stored as `truncated`. PDFs without a text layer become `needs_ocr`. Source code, configuration and logs keep their names without text extraction. ExifTool handles embedded metadata separately from document text.
 
 ## Scans and enrichment have separate lifecycles
 

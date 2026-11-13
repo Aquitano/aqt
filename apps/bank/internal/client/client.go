@@ -21,6 +21,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
@@ -311,8 +312,8 @@ func postJSON[T any](ctx context.Context, c *Client, path string, q url.Values, 
 }
 
 // Blob streams an attachment; the caller closes the returned reader.
-func (c *Client) Blob(ctx context.Context, sha256 string) (io.ReadCloser, error) {
-	resp, err := c.request(ctx, http.MethodGet, "/v1/blobs/"+sha256, nil, nil)
+func (c *Client) Blob(ctx context.Context, d content.Digest) (io.ReadCloser, error) {
+	resp, err := c.request(ctx, http.MethodGet, "/v1/blobs/"+d.String(), nil, nil)
 	if err != nil {
 		return nil, err
 	}

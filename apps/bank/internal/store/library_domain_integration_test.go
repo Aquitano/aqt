@@ -3,10 +3,10 @@ package store_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
@@ -257,11 +257,11 @@ func TestLibraryPublishedPagesAndStandaloneFilesAreSearchable(t *testing.T) {
 	if len(found.Pages) != 0 {
 		t.Fatal("deleted publication remains searchable")
 	}
-	file := library.File{Identity: library.Identity{Source: "manual", Account: "owner", ExternalID: "document"}, SHA256: strings.Repeat("a", 64), Filename: "paper.txt", MimeType: "text/plain", SizeBytes: 12}
+	file := library.File{Identity: library.Identity{Source: "manual", Account: "owner", ExternalID: "document"}, BLAKE3: content.Sum([]byte("a")), Filename: "paper.txt", MimeType: "text/plain", SizeBytes: 12}
 	if _, err = st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: []library.File{file}}); err != nil {
 		t.Fatal(err)
 	}
-	known, err := st.KnownAttachment(ctx, file.SHA256)
+	known, err := st.KnownAttachment(ctx, file.BLAKE3)
 	if err != nil || !known {
 		t.Fatalf("standalone digest not fetchable: %v %v", known, err)
 	}
@@ -269,10 +269,10 @@ func TestLibraryPublishedPagesAndStandaloneFilesAreSearchable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blobs) != 1 || blobs[0].SHA256 != file.SHA256 || blobs[0].Messages != 0 {
+	if len(blobs) != 1 || blobs[0].BLAKE3 != file.BLAKE3 || blobs[0].Messages != 0 {
 		t.Fatalf("standalone extraction queue: %+v", blobs)
 	}
-	if err = st.PutBlobText(ctx, store.BlobText{SHA256: file.SHA256, Text: "Quasar evidence", Status: "ok", Extractor: "text"}); err != nil {
+	if err = st.PutBlobText(ctx, store.BlobText{BLAKE3: file.BLAKE3, Text: "Quasar evidence", Status: "ok", Extractor: "text"}); err != nil {
 		t.Fatal(err)
 	}
 	found, err = st.SearchLibrary(ctx, library.ListOptions{Query: "paper quasar", Match: "all"})
@@ -291,11 +291,11 @@ func TestLibraryAttachmentQueryMatchesAcrossFilenameAndText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sum := strings.Repeat("b", 64)
-	if err = st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "red-bird.txt", MimeType: "text/plain", SizeBytes: 20, SHA256: sum}); err != nil {
+	sum := content.Sum([]byte("b"))
+	if err = st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "red-bird.txt", MimeType: "text/plain", SizeBytes: 20, BLAKE3: sum}); err != nil {
 		t.Fatal(err)
 	}
-	if err = st.PutBlobText(ctx, store.BlobText{SHA256: sum, Text: "Blue meadow", Status: "ok"}); err != nil {
+	if err = st.PutBlobText(ctx, store.BlobText{BLAKE3: sum, Text: "Blue meadow", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/inbox"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
@@ -468,20 +469,20 @@ func TestBundleRequiresOneObjectAndPreservedFileBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sum, size, err := blobs.Put(bytes.NewBufferString("file bytes"))
+	sum, size, err := blobs.Put(t.Context(), bytes.NewBufferString("file bytes"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	files := []library.File{{SHA256: sum, SizeBytes: size, Filename: "sample.txt"}}
-	if err := verifyBundleFiles(blobs, files); err != nil {
+	files := []library.File{{BLAKE3: sum, SizeBytes: size, Filename: "sample.txt"}}
+	if err := verifyBundleFiles(t.Context(), blobs, files); err != nil {
 		t.Fatal(err)
 	}
 	files[0].SizeBytes++
-	if err := verifyBundleFiles(blobs, files); err == nil {
+	if err := verifyBundleFiles(t.Context(), blobs, files); err == nil {
 		t.Fatal("accepted mismatched file bytes")
 	}
-	files[0].SHA256 = strings.Repeat("0", 64)
-	if err := verifyBundleFiles(blobs, files); err == nil {
+	files[0].BLAKE3 = content.Digest{1}
+	if err := verifyBundleFiles(t.Context(), blobs, files); err == nil {
 		t.Fatal("accepted missing blob")
 	}
 }

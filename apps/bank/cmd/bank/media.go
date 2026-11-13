@@ -369,7 +369,7 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 		if err != nil {
 			return err
 		}
-		digest, size, err := local.Blobs.Put(file)
+		digest, size, err := local.Blobs.Put(ctx, file)
 		closeErr := file.Close()
 		if err != nil {
 			return err
@@ -377,7 +377,7 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 		if closeErr != nil {
 			return closeErr
 		}
-		value := library.File{Identity: library.Identity{Source: o.Source, Account: o.Account, ExternalID: digest + ":" + filepath.Base(path)}, SHA256: digest, Filename: filepath.Base(path), SizeBytes: size, MimeType: mime.TypeByExtension(filepath.Ext(path)), ItemIDs: []string{}}
+		value := library.File{Identity: library.Identity{Source: o.Source, Account: o.Account, ExternalID: digest.String() + ":" + filepath.Base(path)}, BLAKE3: digest, Filename: filepath.Base(path), SizeBytes: size, MimeType: mime.TypeByExtension(filepath.Ext(path)), ItemIDs: []string{}}
 		value.ID = library.StableID("file", value.Identity)
 		if o.ItemID != "" {
 			value.ItemIDs = []string{o.ItemID}
@@ -444,7 +444,7 @@ func printCatalog(result catalog.Result, limit, offset int) error {
 		report("page", v.ID, v.Title)
 	}
 	for _, v := range result.Attachments {
-		report("attachment", v.SHA256, v.Filename)
+		report("attachment", v.BLAKE3.String(), v.Filename)
 	}
 	for _, v := range result.Disks.Entries {
 		report("on disk", atticRef(v.Ref), v.Display)

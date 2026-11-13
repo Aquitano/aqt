@@ -11,6 +11,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 // Catalogue is the file catalogue as its host process sees it.
@@ -44,6 +45,25 @@ func (c *Catalogue) Content(ctx context.Context, ref string) (view.Content, erro
 		return view.Content{}, err
 	}
 	return view.NewContent(detail, view.OnlineRoots(vols)), nil
+}
+
+// Places lists where each content sits on disks now: the entries that hold
+// it, present ones first.
+func (c *Catalogue) Places(ctx context.Context, digests []content.Digest) (map[content.Digest][]view.Place, error) {
+	vols, err := c.store.KnownVolumes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	hits, err := c.store.CurrentPlaces(ctx, digests)
+	if err != nil {
+		return nil, err
+	}
+	roots := view.OnlineRoots(vols)
+	places := make(map[content.Digest][]view.Place, len(hits))
+	for digest, h := range hits {
+		places[digest] = view.Places(h, roots)
+	}
+	return places, nil
 }
 
 // ModifiedFiles lists files on disks last modified in [since, until), oldest first.

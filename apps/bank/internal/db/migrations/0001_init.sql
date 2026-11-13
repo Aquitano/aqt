@@ -1,6 +1,48 @@
--- The whole archive: correspondence, contacts, attachment text, the library,
--- and the catalogue of files on disks. DESIGN.md and attic/DESIGN.md explain
--- the identities each part relies on.
+-- The whole archive: correspondence, contacts, the library, the catalogue of
+-- files on disks, and the contents and text they share. DESIGN.md and
+-- attic/DESIGN.md explain the identities each part relies on.
+
+-- Contents and text
+--
+-- Bytes have one identity, their BLAKE3 digest. A message attachment, a
+-- library file and a file on a disk with the same bytes share one contents
+-- row, and so share what was read from them.
+
+create table contents (
+    id         bigint generated always as identity primary key,
+    blake3     bytea not null unique check (octet_length(blake3) = 32),
+    size_bytes bigint not null check (size_bytes >= 0),
+    first_seen timestamptz not null default now()
+);
+
+-- A ref is the first eight bytes of the digest, printed as 16 hex characters.
+create index contents_ref_idx on contents (substr(blake3, 1, 8));
+
+-- Text read from documents by a disk scan or by `bank extract`, or written
+-- by hand. It belongs to the content, so a PDF attached to forty messages and
+-- copied to three disks is read once and found in every place. Each reader
+-- skips a content that already has a row.
+create table texts (
+    content_id   bigint primary key references contents,
+    -- Truncated text is the first characters of a document longer than the
+    -- cap, searchable like ok. No extractor overwrites manual text.
+    status       text not null check (status in ('ok', 'truncated', 'empty', 'needs_ocr',
+                                                 'unsupported', 'too_big', 'failed', 'manual')),
+    extractor    text not null default '',
+    detail       text not null default '',
+    text         text not null default '',
+    extracted_at timestamptz not null default now(),
+    -- Sizes are reported from here: length(text) decompresses every stored
+    -- text.
+    chars        integer generated always as (char_length(text)) stored
+);
+
+-- Its own index: document words and file names score on different scales, so
+-- search ranks text hits apart. ascii_folding lets "fur" find "für".
+create index texts_bm25_idx on texts using bm25 (
+    content_id,
+    (text::pdb.unicode_words('ascii_folding=true'))
+) with (key_field = 'content_id', mutable_segment_rows = 0);
 
 -- Messages and mail
 
@@ -55,13 +97,12 @@ create table attachments (
     message_id  bigint not null references messages (id) on delete cascade,
     filename    text not null,
     mime_type   text not null default '',
-    size_bytes  bigint not null,
-    sha256      text not null,
+    content_id  bigint not null references contents,
     ingested_at timestamptz default clock_timestamp()
 );
 
 create index attachments_message_id_idx on attachments (message_id);
-create index attachments_sha256_idx on attachments (sha256);
+create index attachments_content_idx on attachments (content_id);
 
 -- A retired message keeps its identity here after its row is deleted: imports
 -- skip a tombstoned (source, external_id), and its ref still resolves to what
@@ -242,9 +283,9 @@ create table contact_aliases (
 create index contact_aliases_contact_idx on contact_aliases (contact_id);
 create index contact_aliases_norm_idx on contact_aliases (value_norm);
 
--- Blobs and text
+-- Library
 
--- Valid extracted text can exceed PostgreSQL's 1 MiB vector limit.
+-- Valid page and note text can exceed PostgreSQL's 1 MiB vector limit.
 create function blob_text_search_vector(document text) returns tsvector
 language plpgsql immutable parallel safe as $$
 begin
@@ -277,41 +318,6 @@ language sql stable parallel safe as $$
     )
     select coalesce(string_agg(value,' '),'')::tsvector from vectors
 $$;
-
--- Extraction is keyed on the blob digest, not on the attachment row: content
--- is addressed by sha256, so the same PDF attached to forty messages is read
--- once and every one of those messages gains its text.
-create table blob_text (
-    sha256        text primary key,
-    text          text not null default '',
-    extractor     text not null default '',
-    -- ok | empty | needs_ocr | unsupported | too_big | failed | manual.
-    -- Kept as text rather than an enum so adding an extractor does not need a
-    -- migration, and so a status a newer binary wrote does not break an older
-    -- one reading the row.
-    status        text not null,
-    extracted_at  timestamptz not null default now(),
-    search_vector tsvector generated always as (blob_text_search_vector(text)) stored
-);
-
--- The work queue for `bank extract` is "everything with this status", so the
--- status is the index.
-create index blob_text_status_idx on blob_text (status);
-create index blob_text_search on blob_text using gin (search_vector)
-    where status in ('ok', 'manual');
-create index blob_text_oversized_search on blob_text (sha256)
-    where search_vector is null and status in ('ok', 'manual');
-
--- attic identifies a file's bytes by BLAKE3. Recording that digest for the
--- blobs bank stores under SHA-256 matches a message attachment or a library
--- file to its copies on disks.
-create table blob_digests (
-    sha256 text primary key,
-    blake3 bytea not null check (octet_length(blake3) = 32)
-);
-create index blob_digests_blake3 on blob_digests (blake3);
-
--- Library
 
 create table library_items (
     id               text primary key,
@@ -455,17 +461,16 @@ create table library_files (
     source      text not null check (source <> ''),
     account     text not null,
     external_id text not null check (external_id <> ''),
-    sha256      text not null check (sha256 ~ '^[0-9a-f]{64}$'),
+    content_id  bigint not null references contents,
     filename    text not null check (filename <> ''),
     mime_type   text not null,
-    size_bytes  bigint not null check (size_bytes >= 0),
     provenance  jsonb not null default '{}',
     search_text text not null,
     ingested_at timestamptz not null default now(),
     unique (source, account, external_id)
 );
 create index library_files_search on library_files using gin (to_tsvector('simple', search_text));
-create index library_files_digest on library_files (sha256);
+create index library_files_content on library_files (content_id);
 
 create table library_item_files (
     item_id text not null references library_items (id),
@@ -498,8 +503,8 @@ create index library_pages_oversized_search on library_pages (id) where search_v
 -- Disks
 --
 -- The catalogue of files on disks that come and go. attic/DESIGN.md explains
--- its three identities: volumes by fingerprint, contents by BLAKE3, entries by
--- NTFS file id or by path.
+-- its three identities: volumes by fingerprint, contents by BLAKE3 (defined
+-- above, shared with the archive), entries by NTFS file id or by path.
 --
 -- Every BM25 index here sets mutable_segment_rows = 0, so new rows go straight
 -- into immutable segments: mutable segments buffer writes at the cost of
@@ -521,16 +526,6 @@ create table volumes (
 );
 
 create index volumes_serial_idx on volumes (fs_type, serial);
-
-create table contents (
-    id         bigint generated always as identity primary key,
-    blake3     bytea not null unique,
-    size_bytes bigint not null,
-    first_seen timestamptz not null default now()
-);
-
--- A ref is the first eight bytes of the digest, printed as 16 hex characters.
-create index contents_ref_idx on contents (substr(blake3, 1, 8));
 
 create table scans (
     id           bigint generated always as identity primary key,
@@ -712,30 +707,6 @@ create table archive_depth_failures (
     unpack_max_bytes bigint not null check (unpack_max_bytes >= 0),
     primary key (content_id, depth, unpack_max_bytes)
 );
-
--- Text read from documents. Like an archive listing it belongs to the
--- content, so a PDF on three disks is read once and found in all three places.
-create table texts (
-    content_id   bigint primary key references contents,
-    -- ok | truncated | empty | needs_ocr | too_big | failed. Truncated text is
-    -- the first characters of a document longer than the cap, searchable
-    -- like ok.
-    status       text not null,
-    extractor    text not null default '',
-    detail       text not null default '',
-    text         text not null default '',
-    extracted_at timestamptz not null default now(),
-    -- stats sums document lengths; counting them on every call would
-    -- decompress every stored text.
-    chars        integer generated always as (char_length(text)) stored
-);
-
--- Its own index: document words and file names score on different scales, so
--- search ranks text hits apart. ascii_folding lets "fur" find "für".
-create index texts_bm25_idx on texts using bm25 (
-    content_id,
-    (text::pdb.unicode_words('ascii_folding=true'))
-) with (key_field = 'content_id', mutable_segment_rows = 0);
 
 create table metadata (
     content_id   bigint primary key references contents,

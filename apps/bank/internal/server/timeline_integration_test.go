@@ -8,19 +8,20 @@ import (
 
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 type modifiedFiles struct {
-	at      time.Time
-	content view.Content
+	at time.Time
 }
 
-func (m modifiedFiles) Content(_ context.Context, ref string) (view.Content, error) {
-	if ref = strings.TrimPrefix(ref, "attic:"); ref != m.content.Ref && ref != m.content.BLAKE3 {
-		return view.Content{}, atticstore.ErrNotFound
-	}
-	return m.content, nil
+func (modifiedFiles) Content(context.Context, string) (view.Content, error) {
+	return view.Content{}, atticstore.ErrNotFound
+}
+
+func (modifiedFiles) Places(context.Context, []content.Digest) (map[content.Digest][]view.Place, error) {
+	return nil, nil
 }
 
 func (modifiedFiles) SearchDisks(context.Context, string, int, int) (view.SearchResult, error) {

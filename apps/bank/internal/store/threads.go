@@ -209,9 +209,9 @@ func (s *Store) loadAttachments(ctx context.Context, messages []MessageDetail) e
 	for i, m := range messages {
 		ids[i], byID[m.ID] = m.ID, i
 	}
-	rows, err := s.pool.Query(ctx, `select a.id, a.message_id, a.filename, a.mime_type, a.size_bytes, a.sha256,
-		coalesce(t.status, 'pending'), coalesce(length(t.text),0)
-		from attachments a left join blob_text t on t.sha256=a.sha256
+	rows, err := s.pool.Query(ctx, `select a.id, a.message_id, a.filename, a.mime_type, c.size_bytes, c.blake3,
+		coalesce(t.status, 'pending'), coalesce(t.chars, 0)
+		from attachments a join contents c on c.id = a.content_id left join texts t on t.content_id = a.content_id
 		where a.message_id=any($1) order by a.id`, ids)
 	if err != nil {
 		return err
@@ -219,7 +219,7 @@ func (s *Store) loadAttachments(ctx context.Context, messages []MessageDetail) e
 	defer rows.Close()
 	for rows.Next() {
 		var a Attachment
-		if err := rows.Scan(&a.ID, &a.MessageID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.SHA256, &a.TextStatus, &a.TextChars); err != nil {
+		if err := rows.Scan(&a.ID, &a.MessageID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.BLAKE3, &a.TextStatus, &a.TextChars); err != nil {
 			return err
 		}
 		i := byID[a.MessageID]

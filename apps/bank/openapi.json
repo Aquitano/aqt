@@ -229,6 +229,9 @@
       "Attachment": {
         "additionalProperties": false,
         "properties": {
+          "blake3": {
+            "type": "string"
+          },
           "filename": {
             "type": "string"
           },
@@ -241,9 +244,6 @@
             "type": "integer"
           },
           "mime_type": {
-            "type": "string"
-          },
-          "sha256": {
             "type": "string"
           },
           "size_bytes": {
@@ -263,14 +263,14 @@
           "message_id",
           "filename",
           "size_bytes",
-          "sha256"
+          "blake3"
         ],
         "type": "object"
       },
       "AttachmentTextDeleted": {
         "additionalProperties": false,
         "properties": {
-          "sha256": {
+          "blake3": {
             "type": "string"
           },
           "status": {
@@ -281,7 +281,7 @@
           }
         },
         "required": [
-          "sha256",
+          "blake3",
           "status"
         ],
         "type": "object"
@@ -303,6 +303,9 @@
       "BlobRef": {
         "additionalProperties": false,
         "properties": {
+          "blake3": {
+            "type": "string"
+          },
           "chars": {
             "format": "int64",
             "type": "integer"
@@ -320,9 +323,6 @@
           "mime_type": {
             "type": "string"
           },
-          "sha256": {
-            "type": "string"
-          },
           "size_bytes": {
             "format": "int64",
             "type": "integer"
@@ -332,7 +332,7 @@
           }
         },
         "required": [
-          "sha256",
+          "blake3",
           "filename",
           "size_bytes",
           "messages",
@@ -344,6 +344,9 @@
       "BlobText": {
         "additionalProperties": false,
         "properties": {
+          "blake3": {
+            "type": "string"
+          },
           "chars": {
             "format": "int64",
             "type": "integer"
@@ -355,9 +358,6 @@
           "extractor": {
             "type": "string"
           },
-          "sha256": {
-            "type": "string"
-          },
           "status": {
             "type": "string"
           },
@@ -366,7 +366,7 @@
           }
         },
         "required": [
-          "sha256",
+          "blake3",
           "text",
           "status",
           "chars",
@@ -826,6 +826,9 @@
           "account": {
             "type": "string"
           },
+          "blake3": {
+            "type": "string"
+          },
           "external_id": {
             "type": "string"
           },
@@ -850,9 +853,6 @@
           "provenance": {
             "$ref": "#/components/schemas/Provenance"
           },
-          "sha256": {
-            "type": "string"
-          },
           "size_bytes": {
             "format": "int64",
             "type": "integer"
@@ -866,7 +866,7 @@
         },
         "required": [
           "id",
-          "sha256",
+          "blake3",
           "filename",
           "mime_type",
           "size_bytes",
@@ -1220,6 +1220,9 @@
       "LibraryFile": {
         "additionalProperties": false,
         "properties": {
+          "blake3": {
+            "type": "string"
+          },
           "filename": {
             "type": "string"
           },
@@ -1234,9 +1237,6 @@
           "mime_type": {
             "type": "string"
           },
-          "sha256": {
-            "type": "string"
-          },
           "size_bytes": {
             "format": "int64",
             "type": "integer"
@@ -1246,7 +1246,7 @@
           }
         },
         "required": [
-          "sha256",
+          "blake3",
           "filename",
           "mime_type",
           "size_bytes",
@@ -1373,7 +1373,7 @@
             "type": "string"
           },
           "relation": {
-            "description": "attachment: a blob attached to this message. on_disk: a place on a disk holding the same bytes. in_archive: a blob in the archive holding the same bytes. replaced_by: what a retired message became.",
+            "description": "attachment: a file attached to this message, by its BLAKE3 digest. on_disk: a place on a disk holding the same bytes. in_archive: a message attachment or library file holding the same bytes. replaced_by: what a retired message became.",
             "enum": [
               "attachment",
               "on_disk",
@@ -2113,7 +2113,7 @@
             "type": "string"
           },
           "kind": {
-            "description": "blob is bytes the archive stores; content is bytes the catalogue saw on a disk.",
+            "description": "content is bytes, wherever the archive or a disk holds them.",
             "enum": [
               "message",
               "retired_message",
@@ -2122,7 +2122,6 @@
               "collection",
               "file",
               "page",
-              "blob",
               "content"
             ],
             "type": "string"
@@ -2138,7 +2137,7 @@
             ]
           },
           "ref": {
-            "description": "The form to cite: bank:\u003cref\u003e for a message, a library ID, a blob's SHA-256, or attic:\u003cref\u003e for a file's bytes on disks.",
+            "description": "The form to cite: bank:\u003cref\u003e for a message, a library ID, or attic:\u003cref\u003e for bytes.",
             "type": "string"
           },
           "title": {
@@ -2946,16 +2945,16 @@
     },
     "/v1/attachments": {
       "get": {
-        "description": "This is the work list for reading text out of files somewhere other than the server: fetch the bytes from /v1/blobs/{sha256}, then store the result with PUT /v1/attachments/{sha256}/text.",
+        "description": "This is the work list for reading text out of files somewhere other than the server: fetch the bytes from /v1/blobs/{blake3}, then store the result with PUT /v1/attachments/{blake3}/text. Content a disk scan already read is not pending.",
         "operationId": "listAttachments",
         "parameters": [
           {
-            "description": "Only these text statuses, separated by commas: pending (never tried), ok, empty, needs_ocr, unsupported, too_big, failed or manual. Default: all.",
+            "description": "Only these text statuses, separated by commas: pending (never tried), ok, truncated, empty, needs_ocr, unsupported, too_big, failed or manual. Default: all.",
             "explode": false,
             "in": "query",
             "name": "status",
             "schema": {
-              "description": "Only these text statuses, separated by commas: pending (never tried), ok, empty, needs_ocr, unsupported, too_big, failed or manual. Default: all.",
+              "description": "Only these text statuses, separated by commas: pending (never tried), ok, truncated, empty, needs_ocr, unsupported, too_big, failed or manual. Default: all.",
               "items": {
                 "type": "string"
               },
@@ -3193,17 +3192,17 @@
         ]
       }
     },
-    "/v1/attachments/{sha256}/messages": {
+    "/v1/attachments/{blake3}/messages": {
       "get": {
         "operationId": "listAttachmentMessages",
         "parameters": [
           {
-            "description": "The content's SHA-256, as 64 lowercase hex characters.",
+            "description": "The content's BLAKE3 digest, as 64 lowercase hex characters.",
             "in": "path",
-            "name": "sha256",
+            "name": "blake3",
             "required": true,
             "schema": {
-              "description": "The content's SHA-256, as 64 lowercase hex characters.",
+              "description": "The content's BLAKE3 digest, as 64 lowercase hex characters.",
               "pattern": "^[0-9a-f]{64}$",
               "type": "string"
             }
@@ -3297,18 +3296,18 @@
         ]
       }
     },
-    "/v1/attachments/{sha256}/text": {
+    "/v1/attachments/{blake3}/text": {
       "delete": {
         "description": "Messages keep the old text in search until the next refresh.",
         "operationId": "deleteAttachmentText",
         "parameters": [
           {
-            "description": "The content's SHA-256, as 64 lowercase hex characters.",
+            "description": "The content's BLAKE3 digest, as 64 lowercase hex characters.",
             "in": "path",
-            "name": "sha256",
+            "name": "blake3",
             "required": true,
             "schema": {
-              "description": "The content's SHA-256, as 64 lowercase hex characters.",
+              "description": "The content's BLAKE3 digest, as 64 lowercase hex characters.",
               "pattern": "^[0-9a-f]{64}$",
               "type": "string"
             }
@@ -3385,12 +3384,12 @@
         "operationId": "getAttachmentText",
         "parameters": [
           {
-            "description": "The content's SHA-256, as 64 lowercase hex characters.",
+            "description": "The content's BLAKE3 digest, as 64 lowercase hex characters.",
             "in": "path",
-            "name": "sha256",
+            "name": "blake3",
             "required": true,
             "schema": {
-              "description": "The content's SHA-256, as 64 lowercase hex characters.",
+              "description": "The content's BLAKE3 digest, as 64 lowercase hex characters.",
               "pattern": "^[0-9a-f]{64}$",
               "type": "string"
             }
@@ -6034,7 +6033,7 @@
             "description": "Internal: the server failed; message says how."
           }
         },
-        "summary": "Return one library file's record. Its bytes are at /v1/blobs/{sha256}",
+        "summary": "Return one library file's record. Its bytes are at /v1/blobs/{blake3}",
         "tags": [
           "library"
         ]
@@ -7631,7 +7630,7 @@
     },
     "/v1/refs/{ref}": {
       "get": {
-        "description": "Takes bank:\u003cref\u003e or a bare message ref, a library ID such as item_… or file_…, a blob's SHA-256, or attic:\u003cref\u003e. The answer names the record, the route that returns it in full, and where the same bytes are in the other store: a message attachment's copies on disks, or the messages and library files that hold a disk file's bytes. Those links appear once the server has read the blob's BLAKE3 digest, shortly after an import.",
+        "description": "Takes bank:\u003cref\u003e or a bare message ref, a library ID such as item_… or file_…, or bytes as attic:\u003cref\u003e or a whole BLAKE3 digest. The answer names the record, the route that returns it in full, and where the same bytes are: a message attachment's or library file's copies on disks, and for bytes, the messages and library files that hold them as well as the places on disks.",
         "operationId": "resolveRef",
         "parameters": [
           {

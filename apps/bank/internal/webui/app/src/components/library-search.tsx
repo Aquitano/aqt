@@ -117,7 +117,7 @@ export function LibrarySearchGroups({
         {files.map((file) => (
           <ResultRow
             key={file.id}
-            selected={selection?.kind === "file" && selection.file.sha256 === file.sha256}
+            selected={selection?.kind === "file" && selection.file.blake3 === file.blake3}
             title={file.filename}
             description={file.mime_type}
             source={file.source}
@@ -128,8 +128,8 @@ export function LibrarySearchGroups({
       <Group title="Message attachments" count={attachments.length}>
         {attachments.map((file) => (
           <ResultRow
-            key={file.sha256}
-            selected={selection?.kind === "file" && selection.file.sha256 === file.sha256}
+            key={file.blake3}
+            selected={selection?.kind === "file" && selection.file.blake3 === file.blake3}
             title={file.filename}
             description={file.snippet || file.mime_type}
             onClick={() => select({ kind: "file", file })}

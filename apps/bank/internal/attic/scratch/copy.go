@@ -9,16 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
-	"lukechampine.com/blake3"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 var (
-	ErrTooBig   = errors.New("file exceeds the copy limit")
-	ErrChanged  = errors.New("file changed since hashing; scan it again")
-	copyBuffers = sync.Pool{New: func() any { return new([1 << 20]byte) }}
+	ErrTooBig  = errors.New("file exceeds the copy limit")
+	ErrChanged = errors.New("file changed since hashing; scan it again")
 )
 
 // CheckVolume prevents subprocess scratch files from landing on the source disk.
@@ -42,7 +40,7 @@ func CheckVolume(source disk.Fingerprint, base string) error {
 
 // Copy reads through disk.Open and checks the bytes against the catalogue hash.
 // External programs receive this copy, never the original's path or handle.
-func (w *Workspace) Copy(ctx context.Context, source string, digest disk.Digest, maxBytes int64) (path string, err error) {
+func (w *Workspace) Copy(ctx context.Context, source string, digest content.Digest, maxBytes int64) (path string, err error) {
 	f, err := disk.Open(source)
 	if err != nil {
 		return "", err
@@ -52,7 +50,7 @@ func (w *Workspace) Copy(ctx context.Context, source string, digest disk.Digest,
 }
 
 // CopyOpen verifies an already-open source. The caller retains its handle.
-func (w *Workspace) CopyOpen(ctx context.Context, f *os.File, digest disk.Digest, maxBytes int64) (path string, err error) {
+func (w *Workspace) CopyOpen(ctx context.Context, f *os.File, digest content.Digest, maxBytes int64) (path string, err error) {
 	info, err := f.Stat()
 	if err != nil {
 		return "", err
@@ -74,38 +72,21 @@ func (w *Workspace) CopyOpen(ctx context.Context, f *os.File, digest disk.Digest
 			path = ""
 		}
 	}()
-	h := blake3.New(32, nil)
-	var reader io.Reader = cancelReader{ctx, f}
+	var reader io.Reader = f
 	if maxBytes > 0 && maxBytes < math.MaxInt64 {
 		reader = io.LimitReader(reader, maxBytes+1)
 	}
-	buffer := copyBuffers.Get().(*[1 << 20]byte)
-	defer copyBuffers.Put(buffer)
-	n, err := io.CopyBuffer(io.MultiWriter(copyWriter{out}, h), reader, buffer[:])
+	got, n, err := content.Hash(ctx, io.TeeReader(reader, copyWriter{out}))
 	if err != nil {
 		return path, err
 	}
 	if maxBytes > 0 && n > maxBytes {
 		return path, ErrTooBig
 	}
-	var got disk.Digest
-	h.Sum(got[:0])
 	if got != digest {
 		return path, ErrChanged
 	}
 	return path, nil
-}
-
-type cancelReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (r cancelReader) Read(p []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return r.r.Read(p)
 }
 
 // WriteError identifies a failure on the scratch disk, not on the source.

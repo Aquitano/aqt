@@ -54,7 +54,7 @@ func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 	if err != nil || len(files) != 2 {
 		t.Fatalf("upload: %+v %v", files, err)
 	}
-	if files[0].SHA256 != files[1].SHA256 || files[0].ID == files[1].ID {
+	if files[0].BLAKE3 != files[1].BLAKE3 || files[0].ID == files[1].ID {
 		t.Fatalf("file occurrences versus shared bytes: %+v", files)
 	}
 	if _, err = c.UploadLibraryFiles(ctx, paths, "files", "owner", item.ID); err != nil {
@@ -64,7 +64,7 @@ func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 	if err != nil || len(item.FileIDs) != 2 {
 		t.Fatalf("associations: %+v %v", item, err)
 	}
-	if _, err = os.Stat(s.blobs.Path(files[0].SHA256)); err != nil {
+	if _, err = os.Stat(s.blobs.Path(files[0].BLAKE3)); err != nil {
 		t.Fatal(err)
 	}
 	collection, err := c.CreateLibraryCollection(ctx, library.Collection{Kind: "watchlist", Title: "Invoice reading", Snapshot: &library.Snapshot{Entries: []library.Entry{{ItemID: item.ID, Position: 0}, {ItemID: item.ID, Position: 1}}}})

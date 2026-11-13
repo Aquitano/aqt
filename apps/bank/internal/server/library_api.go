@@ -114,7 +114,7 @@ func (s *Server) registerLibraryAPI(api huma.API) {
 		Description: "q also searches the text read from the files. kind does not apply to files.",
 	}.For(api), s.libraryFiles)
 	huma.Register(api, httpapi.Operation{ID: "getLibraryFile", Method: http.MethodGet, Path: "/v1/library/files/{id}", Tag: "library",
-		Summary: "Return one library file's record. Its bytes are at /v1/blobs/{sha256}",
+		Summary: "Return one library file's record. Its bytes are at /v1/blobs/{blake3}",
 		Errors:  notFound,
 	}.For(api), s.libraryFile)
 	huma.Register(api, httpapi.Operation{ID: "getLibraryPage", Method: http.MethodGet, Path: "/v1/library/pages/{id}", Tag: "library",

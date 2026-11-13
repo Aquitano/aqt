@@ -17,6 +17,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 func printHits(hits []view.Place) error {
@@ -614,9 +615,9 @@ func (cmd *configCmd) Run(ctx context.Context) error {
 		fmt.Printf("archives  %d levels deep; nested archives %s\n", rules.ArchiveDepth, limit)
 	}
 	if t := cfg.Text; t.MaxBytes > 0 {
-		fmt.Printf("text      documents up to %s, the first 1 MB of text each\n", humanBytes(t.MaxBytes))
+		fmt.Printf("text      documents up to %s, the first %s of text each\n", humanBytes(t.MaxBytes), humanBytes(extract.MaxChars))
 	} else {
-		fmt.Println("text      documents of any size, the first 1 MB of text each")
+		fmt.Printf("text      documents of any size, the first %s of text each\n", humanBytes(extract.MaxChars))
 	}
 	fmt.Printf("metadata  enabled=%t, exiftool=%s, max_bytes=%d\n", cfg.Metadata.Enabled, cfg.Metadata.ExifTool, cfg.Metadata.MaxBytes)
 	fmt.Printf("enrich    explicit command only; provider=%s, model=%s, endpoint=%s, api_key_env=%s, max_bytes=%d, timeout=%ds\n", cfg.AI.Provider, cfg.AI.Model, cfg.AI.Endpoint, cfg.AI.APIKeyEnv, cfg.AI.MaxBytes, cfg.AI.TimeoutSeconds)

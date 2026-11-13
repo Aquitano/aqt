@@ -5,9 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/jackc/pgx/v5"
-
-	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 )
 
 // KeptFolder is a folder whose copies dedupe keeps, such as the organised
@@ -20,12 +19,12 @@ type KeptFolder struct {
 // DedupeGroup is one content with at least one present copy inside the kept
 // folders and at least one outside them.
 type DedupeGroup struct {
-	ContentID int64       `json:"-"`
-	Digest    disk.Digest `json:"-"`
-	Ref       string      `json:"ref"`
-	Size      int64       `json:"size"`
-	Kept      []Hit       `json:"kept"`
-	Extra     []Hit       `json:"extra"`
+	ContentID int64          `json:"-"`
+	Digest    content.Digest `json:"-"`
+	Ref       string         `json:"ref"`
+	Size      int64          `json:"size"`
+	Kept      []Hit          `json:"kept"`
+	Extra     []Hit          `json:"extra"`
 }
 
 // DedupePlan finds hashed contents stored both inside and outside the kept
@@ -74,7 +73,7 @@ func (s *Store) DedupePlan(ctx context.Context, kept []KeptFolder, minSize int64
 			return struct{}{}, err
 		}
 		if len(groups) == 0 || groups[len(groups)-1].ContentID != contentID {
-			if len(digest) != len(disk.Digest{}) {
+			if len(digest) != len(content.Digest{}) {
 				return struct{}{}, errors.New("invalid stored BLAKE3 digest")
 			}
 			g := DedupeGroup{ContentID: contentID, Ref: h.Ref, Size: h.Size}

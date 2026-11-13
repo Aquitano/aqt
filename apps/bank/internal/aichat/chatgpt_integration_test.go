@@ -170,7 +170,7 @@ func TestImportChatGPTAttachments(t *testing.T) {
 	if len(atts) != 1 || atts[0].Filename != "shot.png" || atts[0].MimeType != "image/png" {
 		t.Fatalf("msg-1 attachments = %+v", atts)
 	}
-	stored, err := os.ReadFile(blobs.Path(atts[0].SHA256))
+	stored, err := os.ReadFile(blobs.Path(atts[0].BLAKE3))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -158,7 +158,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	if r.o.list == nil {
 		r.o.list = disk.List
 	}
-	r.text = extract.Options{MaxBytes: textMax, MaxChars: 1 << 20, PDFToText: o.Config.Text.PDFToText}
+	r.text = extract.Options{MaxBytes: textMax, PDFToText: o.Config.Text.PDFToText}
 	log.Info("scan started", "volume", vol.Label, "volume_id", vol.ID, "fs", vol.FS, "mounted", mounted.Root,
 		"root", cmp.Or(root, "/"), "no_hash", o.NoHash, "archive_depth", a.Depth, "unpack_max_bytes", a.UnpackMaxBytes,
 		"text_max_bytes", o.Config.Text.MaxBytes, "hash_max_bytes", o.Config.HashMaxBytes)
@@ -821,10 +821,7 @@ func (r *run) readText(ctx context.Context, p store.PendingText) error {
 		r.sc.Skip(p.Path, "too_big", "", "over text.max_bytes")
 		return nil
 	}
-	t := store.DocumentText{Status: string(res.Status), Extractor: res.Extractor, Text: res.Text}
-	if res.Truncated {
-		t.Status = "truncated"
-	}
+	t := store.DocumentText{Status: string(res.Stored()), Extractor: res.Extractor, Text: res.Text}
 	noteSlow(&r.slowDocs, p.Path, took)
 	attrs := []any{"path", p.Path, "extractor", t.Extractor, "status", t.Status, "chars", utf8.RuneCountInString(t.Text),
 		"took_ms", took.Milliseconds()}

@@ -15,6 +15,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -199,15 +200,14 @@ func syncAttachments(ctx context.Context, st *store.Store, blobs *blob.Store, me
 	}
 	attachments := make([]store.Attachment, 0, len(atts))
 	for _, a := range atts {
-		sum := sha256.Sum256(a.Data)
-		digest := hex.EncodeToString(sum[:])
+		digest := content.Sum(a.Data)
 		key := store.AttachmentKey(digest, a.Filename)
 		recorded := have[key] > 0
 		if recorded {
 			have[key]--
 		}
 		if _, statErr := os.Stat(blobs.Path(digest)); !recorded || statErr != nil {
-			if _, _, err := blobs.Put(bytes.NewReader(a.Data)); err != nil {
+			if _, _, err := blobs.Put(ctx, bytes.NewReader(a.Data)); err != nil {
 				return fail.Opf("store attachment %q: %w", a.Filename, err)
 			}
 		}
@@ -216,7 +216,7 @@ func syncAttachments(ctx context.Context, st *store.Store, blobs *blob.Store, me
 			Filename:  a.Filename,
 			MimeType:  a.MimeType,
 			SizeBytes: int64(len(a.Data)),
-			SHA256:    digest,
+			BLAKE3:    digest,
 		})
 	}
 	inserted, err := st.ReconcileMailAttachments(ctx, messageID, attachments)

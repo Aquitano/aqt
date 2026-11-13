@@ -53,7 +53,6 @@ type Server struct {
 	dataDir         string
 	jsonReadTimeout time.Duration
 	extraction      extraction
-	digests         digestPass
 	mounts          map[string]http.Handler
 	catalogue       catalog.Catalogue
 }
@@ -91,9 +90,9 @@ const maxUpload = 16 << 30
 func (s *Server) Handler() http.Handler {
 	v1 := http.NewServeMux()
 	s.registerLibraryRoutes(v1)
-	v1.HandleFunc("GET /v1/blobs/{sha256}", s.handleBlob)
-	v1.HandleFunc("GET /v1/attachments/{sha256}/preview", s.handleAttachmentPreview)
-	v1.HandleFunc("PUT /v1/attachments/{sha256}/text", s.handleAttachmentTextPut)
+	v1.HandleFunc("GET /v1/blobs/{blake3}", s.handleBlob)
+	v1.HandleFunc("GET /v1/attachments/{blake3}/preview", s.handleAttachmentPreview)
+	v1.HandleFunc("PUT /v1/attachments/{blake3}/text", s.handleAttachmentTextPut)
 	v1.HandleFunc("POST /v1/import/{kind}", s.handleImport)
 
 	mux := http.NewServeMux()
@@ -122,7 +121,6 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	workCtx, cancelWork := context.WithCancel(context.Background())
 	s.extraction.ctx = workCtx
-	s.extraction.done.Go(func() { s.digestBlobs(workCtx) })
 	defer func() {
 		s.extraction.mu.Lock()
 		s.extraction.stopping = true
@@ -166,10 +164,8 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
-	sum := r.PathValue("sha256")
-	// Validated before it ever reaches a filepath.Join, so no traversal is possible.
-	if blob.ValidDigest(sum) != nil {
-		writeErr(w, http.StatusBadRequest, "sha256 must be 64 lowercase hex characters")
+	sum, ok := pathDigest(w, r)
+	if !ok {
 		return
 	}
 	f, err := os.Open(s.blobs.Path(sum))

@@ -117,7 +117,7 @@ export function readSelection(params: URLSearchParams): Selection {
     return {
       kind: "file",
       file: {
-        sha256: file,
+        blake3: file,
         filename: params.get("filename") || file,
         mime_type: params.get("mime") || "",
       },
@@ -155,7 +155,7 @@ export function writeSelection(params: URLSearchParams, selection: Selection) {
       params.set("contact", selection.name);
       break;
     case "file":
-      params.set("file", selection.file.sha256);
+      params.set("file", selection.file.blake3);
       params.set("filename", selection.file.filename);
       if (selection.file.mime_type) params.set("mime", selection.file.mime_type);
       break;

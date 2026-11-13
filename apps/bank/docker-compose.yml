@@ -88,7 +88,7 @@ services:
       start_period: 30s
     stop_grace_period: 35s
 
-  # The OCR worker. It drains blob_text's needs_ocr queue on a timer and
+  # The OCR worker. It drains the needs_ocr queue in texts on a timer and
   # writes the text back — nothing calls it and it calls nothing, so the
   # server needs no docker socket, no sidecar API and no knowledge that it
   # exists. It cannot be on the import path: a forty-page scan is minutes, and

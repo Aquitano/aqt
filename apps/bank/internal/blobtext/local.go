@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -27,12 +28,12 @@ func (l Local) RefreshAttachmentText(ctx context.Context, since time.Time) (int6
 	return l.Store.RefreshAttachmentText(ctx, since)
 }
 
-func (l Local) BlobText(ctx context.Context, sha256 string) (store.BlobText, error) {
-	return l.Store.GetBlobText(ctx, sha256)
+func (l Local) BlobText(ctx context.Context, d content.Digest) (store.BlobText, error) {
+	return l.Store.GetBlobText(ctx, d)
 }
 
-func (l Local) DeleteBlobText(ctx context.Context, sha256 string) error {
-	return l.Store.DeleteBlobText(ctx, sha256)
+func (l Local) DeleteBlobText(ctx context.Context, d content.Digest) error {
+	return l.Store.DeleteBlobText(ctx, d)
 }
 
 func (l Local) ExtractionStats(ctx context.Context) ([]store.ExtractionStat, error) {
@@ -44,18 +45,18 @@ func (l Local) ExtractionStats(ctx context.Context) ([]store.ExtractionStat, err
 // nobody else to check, and text no message points at would be reachable by
 // nothing and swept up by no refresh.
 func (l Local) SetText(ctx context.Context, bt store.BlobText) error {
-	known, err := l.Store.KnownAttachment(ctx, bt.SHA256)
+	known, err := l.Store.KnownAttachment(ctx, bt.BLAKE3)
 	if err != nil {
 		return err
 	}
 	if !known {
-		return fmt.Errorf("no attachment with sha256 %s", bt.SHA256)
+		return fmt.Errorf("no attachment with blake3 %s", bt.BLAKE3)
 	}
 	return l.Store.PutBlobText(ctx, bt)
 }
 
 // OpenBlob hands back the store path itself: the bytes are already a local
 // file, and copying archive-sized attachments to read them would be waste.
-func (l Local) OpenBlob(_ context.Context, sha256 string) (string, func(), error) {
-	return l.Blobs.Path(sha256), func() {}, nil
+func (l Local) OpenBlob(_ context.Context, d content.Digest) (string, func(), error) {
+	return l.Blobs.Path(d), func() {}, nil
 }

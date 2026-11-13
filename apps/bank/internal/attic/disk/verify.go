@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 var ErrNotOrdinary = errors.New("not an ordinary local file or directory")
@@ -20,35 +22,35 @@ func OpenOrdinary(root, rel string) (*os.File, error) {
 	return openOrdinary(root, filepath.Clean(rel))
 }
 
-func HashOrdinary(ctx context.Context, root, rel string) (Digest, int64, error) {
+func HashOrdinary(ctx context.Context, root, rel string) (content.Digest, int64, error) {
 	if err := ctx.Err(); err != nil {
-		return Digest{}, 0, err
+		return content.Digest{}, 0, err
 	}
 	f, err := OpenOrdinary(root, rel)
 	if err != nil {
-		return Digest{}, 0, err
+		return content.Digest{}, 0, err
 	}
 	defer f.Close()
-	return hashReader(ctx, f)
+	return content.Hash(ctx, f)
 }
 
 // HashOrdinaryInfo is HashOrdinary that also returns the file as it was opened
 // before hashing, so a caller can recognize the same file, unwritten since,
 // at another path.
-func HashOrdinaryInfo(ctx context.Context, root, rel string) (Digest, fs.FileInfo, error) {
+func HashOrdinaryInfo(ctx context.Context, root, rel string) (content.Digest, fs.FileInfo, error) {
 	if err := ctx.Err(); err != nil {
-		return Digest{}, nil, err
+		return content.Digest{}, nil, err
 	}
 	f, err := OpenOrdinary(root, rel)
 	if err != nil {
-		return Digest{}, nil, err
+		return content.Digest{}, nil, err
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return Digest{}, nil, err
+		return content.Digest{}, nil, err
 	}
-	d, _, err := hashReader(ctx, f)
+	d, _, err := content.Hash(ctx, f)
 	return d, info, err
 }
 

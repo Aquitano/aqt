@@ -191,11 +191,11 @@ Transcriptions can also come from elsewhere — a model on the laptop, or a pers
 ```sh
 export BANK_URL=... BANK_TOKEN=...
 bank attachment list --status needs_ocr --json     # the work queue
-bank fetch <sha256> -o page.png                    # the bytes
-bank attachment text <sha256> --set transcript.txt # store it, marked "manual"
+bank fetch <blake3> -o page.png                    # the bytes
+bank attachment text <blake3> --set transcript.txt # store it, marked "manual"
 ```
 
-Text stored that way is never overwritten by a later automatic pass. `bank extract --ocr` also works straight from the laptop against `BANK_URL`, which is the option worth knowing if you have better tools there than tesseract: it downloads each pending blob, runs whatever is installed locally, and stores only the text.
+Text stored that way is never overwritten by a later automatic pass. `bank extract --ocr` also works straight from the laptop against `BANK_URL`, which is the option worth knowing if you have better tools there than tesseract: it downloads each pending file, runs whatever is installed locally, and stores only the text.
 
 ### Healing mail bodies
 
@@ -274,7 +274,7 @@ export BANK_TOKEN=bank_...
 bank import whatsapp "WhatsApp Chat with Alice.zip"   # uploads, VPS stores rows + blobs
 bank search "that invoice"
 bank contact list
-bank fetch <sha256> -o invoice.pdf
+bank fetch <blake3> -o invoice.pdf
 ```
 
 `sync`, `token`, `verify`, `reimport`, `import inbox` and `mail rebuild` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
@@ -344,7 +344,7 @@ the stack itself. Everything below runs on the VPS in `/opt/aqt/apps/bank`.
 docker compose stop bank                       # no writes while wiping; db stays up
 
 docker compose exec -T db psql -U bank -d bank -c \
-  "truncate messages, blob_text, contacts, sync_state,
+  "truncate messages, contacts, sync_state,
    import_reports, mailboxes, mail_thread_nodes, mail_thread_conflicts,
    mail_thread_aliases, mail_rebuild_progress, library_items,
    library_collections, library_files, library_pages restart identity cascade;"
@@ -363,6 +363,7 @@ This includes `library_activity_aliases` and `library_activity_evidence`.
 Library ratings, statuses, notes, tags and collection edits exist only in Postgres,
 not in the raw archive, so a re-import does not bring them back.
 `message_tombstones` is not in the list, so messages retired with `bank retire` stay out of a re-import; add it to forget them.
+`contents` and `texts` are not in the list either: the catalogue of files on disks shares them, and a re-import finds the text already read for the same bytes.
 `schema_version` stays, so no migration re-runs; `restart identity` resets
 generated row IDs. If a backup cron from §7 is
 live, take one last snapshot first — the wipe is exactly the kind of action the

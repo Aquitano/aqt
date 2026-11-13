@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/jackc/pgx/v5"
 )
@@ -54,9 +55,9 @@ func (s *Store) ImportLibrary(ctx context.Context, batch library.ImportBatch) (l
 }
 
 func countLibraryImported(ctx context.Context, r library.ImportResult, files []library.File) {
-	countImported(ctx, r.Items+r.Activity+r.Collections+r.Pages, "")
+	countImported(ctx, r.Items+r.Activity+r.Collections+r.Pages, content.Digest{})
 	for _, f := range files {
-		countImported(ctx, 0, f.SHA256)
+		countImported(ctx, 0, f.BLAKE3)
 	}
 }
 
@@ -188,9 +189,13 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 		if err != nil {
 			return r, err
 		}
+		contentID, err := upsertContent(ctx, tx, v.BLAKE3, v.SizeBytes)
+		if err != nil {
+			return r, err
+		}
 		var inserted bool
-		err = tx.QueryRow(ctx, `insert into library_files(id,source,account,external_id,sha256,filename,mime_type,size_bytes,provenance,search_text) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-   on conflict(id) do update set filename=excluded.filename,mime_type=excluded.mime_type,provenance=excluded.provenance,search_text=excluded.search_text where library_files.sha256=excluded.sha256 and library_files.size_bytes=excluded.size_bytes returning xmax=0`, id, v.Source, v.Account, v.ExternalID, v.SHA256, v.Filename, v.MimeType, v.SizeBytes, v.Provenance, v.Filename+" "+v.MimeType).Scan(&inserted)
+		err = tx.QueryRow(ctx, `insert into library_files(id,source,account,external_id,content_id,filename,mime_type,provenance,search_text) values($1,$2,$3,$4,$5,$6,$7,$8,$9)
+   on conflict(id) do update set filename=excluded.filename,mime_type=excluded.mime_type,provenance=excluded.provenance,search_text=excluded.search_text where library_files.content_id=excluded.content_id returning xmax=0`, id, v.Source, v.Account, v.ExternalID, contentID, v.Filename, v.MimeType, v.Provenance, v.Filename+" "+v.MimeType).Scan(&inserted)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return r, fmt.Errorf("file identity already refers to different bytes: %w", library.ErrConflict)
 		}

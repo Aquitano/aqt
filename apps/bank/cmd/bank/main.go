@@ -25,6 +25,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 	"time"
+
 	// Embedded so a container without tzdata still resolves the local zone.
 	// Dates typed as YYYY-MM-DD and WhatsApp export timestamps are read in
 	// local time, so an image that silently fell back to UTC would shift them.
@@ -40,6 +41,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
@@ -80,7 +82,7 @@ type cli struct {
 	Contact     contactCmd     `cmd:"" help:"One person across their many identities."`
 	Show        showCmd        `cmd:"" help:"Print one message and its attachments."`
 	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness."`
-	Ref         refCmd         `cmd:"" help:"Say what any cited ref names (bank:…, attic:…, a library ID, a blob's SHA-256) and where the same bytes are elsewhere."`
+	Ref         refCmd         `cmd:"" help:"Say what any cited ref names (bank:…, attic:…, a library ID, a BLAKE3 digest) and where the same bytes are elsewhere."`
 	Timeline    timelineCmd    `cmd:"" help:"What happened in a year, month or day: messages, activity and files on disks."`
 	OpenAPI     openapiCmd     `cmd:"" name:"openapi" help:"Print the OpenAPI document of the typed routes." hidden:""`
 	Coverage    coverageCmd    `cmd:"" help:"Note what a source holds (empty text clears)."`
@@ -515,9 +517,9 @@ func (c *showCmd) Run(ctx context.Context) error {
 			blobs, _ = blob.New(filepath.Join(dataDir(), "blobs"))
 		}
 		for _, a := range d.Attachments {
-			where := fmt.Sprintf("bank fetch %s", a.SHA256)
+			where := fmt.Sprintf("bank fetch %s", a.BLAKE3)
 			if blobs != nil {
-				where = blobs.Path(a.SHA256)
+				where = blobs.Path(a.BLAKE3)
 			}
 			fmt.Printf("attachment: %s (%d bytes)  %s\n", a.Filename, a.SizeBytes, where)
 			if a.TextStatus != "" {
@@ -580,7 +582,7 @@ type backend interface {
 	MailConflictMessages(context.Context, string, string, int64, int) (store.Thread, error)
 	ImportReports(context.Context, int64, int) ([]store.ImportReport, error)
 	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
-	AttachmentMessages(context.Context, string, int, int) ([]store.Message, error)
+	AttachmentMessages(context.Context, content.Digest, int, int) ([]store.Message, error)
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
 	SearchLibrary(context.Context, library.ListOptions) (library.SearchResult, error)
 	GetMessageDetail(ctx context.Context, id int64) (store.MessageDetail, error)
@@ -790,31 +792,28 @@ func queryCell(v any) string {
 }
 
 type fetchCmd struct {
-	SHA256 string `arg:"" name:"sha256"`
-	Output string `short:"o" help:"Destination path (default: the digest)."`
+	BLAKE3 content.Digest `arg:"" name:"blake3" help:"The content's BLAKE3 digest, 64 lowercase hex characters."`
+	Output string         `short:"o" help:"Destination path (default: the digest)."`
 }
 
 func (c *fetchCmd) Run(ctx context.Context) error {
-	if err := blob.ValidDigest(c.SHA256); err != nil {
-		return err
-	}
 	dest := c.Output
 	if dest == "" {
-		dest = c.SHA256
+		dest = c.BLAKE3.String()
 	}
 
 	var src io.ReadCloser
 	var err error
 	if remote := client.FromEnv(); remote != nil {
-		src, err = remote.Blob(ctx, c.SHA256)
+		src, err = remote.Blob(ctx, c.BLAKE3)
 	} else {
 		var blobs *blob.Store
 		if blobs, err = blob.New(filepath.Join(dataDir(), "blobs")); err == nil {
-			src, err = os.Open(blobs.Path(c.SHA256))
+			src, err = os.Open(blobs.Path(c.BLAKE3))
 		}
 	}
 	if err != nil {
-		return fmt.Errorf("%s: %w", c.SHA256, err)
+		return fmt.Errorf("%s: %w", c.BLAKE3, err)
 	}
 	defer src.Close()
 

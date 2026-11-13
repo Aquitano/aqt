@@ -199,7 +199,6 @@ func (s *Server) extractUntilCurrent() {
 		s.extraction.mu.Unlock()
 		started := time.Now()
 		backlog := s.extractPending(ctx, since, refreshSince)
-		s.digestBlobs(ctx)
 		refreshSince = started
 		s.extraction.mu.Lock()
 		again := !s.extraction.stopping && (backlog || s.extraction.again)

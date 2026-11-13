@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
@@ -17,7 +18,8 @@ import (
 // fakeArchive stands in for Postgres plus the blob store, so the pass itself
 // can be tested without either.
 type fakeArchive struct {
-	blobs     map[string]string // sha256 -> file path
+	blobs     map[content.Digest]string // file path
+	names     map[content.Digest]string
 	refs      []store.BlobRef
 	stored    map[string]store.BlobText
 	refreshed int
@@ -51,7 +53,7 @@ func (f *fakeArchive) PutBlobText(_ context.Context, bt store.BlobText) error {
 	if f.stored == nil {
 		f.stored = map[string]store.BlobText{}
 	}
-	f.stored[bt.SHA256] = bt
+	f.stored[f.names[bt.BLAKE3]] = bt
 	return nil
 }
 
@@ -60,26 +62,26 @@ func (f *fakeArchive) RefreshAttachmentText(context.Context, time.Time) (int64, 
 	return int64(len(f.stored)), nil
 }
 
-func (f *fakeArchive) OpenBlob(_ context.Context, sha256 string) (string, func(), error) {
+func (f *fakeArchive) OpenBlob(_ context.Context, d content.Digest) (string, func(), error) {
 	if f.openErr != nil {
 		return "", func() {}, f.openErr
 	}
-	return f.blobs[sha256], func() {}, nil
+	return f.blobs[d], func() {}, nil
 }
 
 func archiveWith(t *testing.T, files map[string]string) *fakeArchive {
 	t.Helper()
 	dir := t.TempDir()
-	a := &fakeArchive{blobs: map[string]string{}}
-	for name, content := range files {
+	a := &fakeArchive{blobs: map[content.Digest]string{}, names: map[content.Digest]string{}}
+	for name, data := range files {
 		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		sum := name // the digest is opaque to the pass; the name is enough
-		a.blobs[sum] = path
+		sum := content.Sum([]byte(data))
+		a.blobs[sum], a.names[sum] = path, name
 		a.refs = append(a.refs, store.BlobRef{
-			SHA256: sum, Filename: name, SizeBytes: int64(len(content)), Status: store.StatusPending,
+			BLAKE3: sum, Filename: name, SizeBytes: int64(len(data)), Status: store.StatusPending,
 		})
 	}
 	return a
@@ -164,7 +166,7 @@ func TestRunSelectsByStatus(t *testing.T) {
 func TestRunNeverTouchesManualText(t *testing.T) {
 	a := archiveWith(t, map[string]string{"notes.txt": "the parsed text", "scan.png": "pixels"})
 	for i := range a.refs {
-		if a.refs[i].SHA256 == "notes.txt" {
+		if a.refs[i].Filename == "notes.txt" {
 			a.refs[i].Status = string(extract.StatusManual)
 		}
 	}

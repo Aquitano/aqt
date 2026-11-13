@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -83,21 +83,18 @@ func (c *attachmentFindCmd) Run(ctx context.Context) error {
 		return printJSON(files)
 	}
 	for _, f := range files {
-		fmt.Printf("%s  %s  %s  %d messages\n", f.SHA256, f.Filename, humanBytes(f.SizeBytes), f.Messages)
+		fmt.Printf("%s  %s  %s  %d messages\n", f.BLAKE3, f.Filename, humanBytes(f.SizeBytes), f.Messages)
 	}
 	return nil
 }
 
 type attachmentMessagesCmd struct {
-	SHA256 string `arg:"" name:"sha256"`
-	Offset int    `help:"Skip this many messages."`
-	Limit  int    `default:"50" help:"Page size, 1-100."`
+	BLAKE3 content.Digest `arg:"" name:"blake3" help:"The content's BLAKE3 digest, 64 lowercase hex characters."`
+	Offset int            `help:"Skip this many messages."`
+	Limit  int            `default:"50" help:"Page size, 1-100."`
 }
 
 func (c *attachmentMessagesCmd) Run(ctx context.Context) error {
-	if err := blob.ValidDigest(c.SHA256); err != nil {
-		return err
-	}
 	if c.Offset < 0 || c.Offset > store.MaxSearchOffset || c.Limit < 1 || c.Limit > 100 {
 		return fmt.Errorf("invalid pagination")
 	}
@@ -106,7 +103,7 @@ func (c *attachmentMessagesCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeBackend()
-	messages, err := b.AttachmentMessages(ctx, c.SHA256, c.Offset, c.Limit)
+	messages, err := b.AttachmentMessages(ctx, c.BLAKE3, c.Offset, c.Limit)
 	if err != nil {
 		return err
 	}

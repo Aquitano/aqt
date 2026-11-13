@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -101,12 +102,12 @@ const rethreadMessageSQL = `
 	returning id, xmax = 0`
 
 type Attachment struct {
-	ID        int64  `json:"id"`
-	MessageID int64  `json:"message_id"`
-	Filename  string `json:"filename"`
-	MimeType  string `json:"mime_type,omitempty"`
-	SizeBytes int64  `json:"size_bytes"`
-	SHA256    string `json:"sha256"`
+	ID        int64          `json:"id"`
+	MessageID int64          `json:"message_id"`
+	Filename  string         `json:"filename"`
+	MimeType  string         `json:"mime_type,omitempty"`
+	SizeBytes int64          `json:"size_bytes"`
+	BLAKE3    content.Digest `json:"blake3"`
 	// TextStatus is the extraction outcome for this content (StatusPending
 	// when nothing has run), and TextChars how much text it yielded. Shown by
 	// `bank show` so it is obvious whether a document is searchable inside.
@@ -196,7 +197,7 @@ func (s *Store) InsertMessages(ctx context.Context, messages []Message, o Insert
 		}
 		ids[0] = id
 		if id != 0 {
-			countImported(ctx, 1, "")
+			countImported(ctx, 1, content.Digest{})
 		}
 		return ids, nil
 	}
@@ -237,7 +238,7 @@ func (s *Store) InsertMessages(ctx context.Context, messages []Message, o Insert
 	}
 	for _, id := range ids {
 		if id != 0 {
-			countImported(ctx, 1, "")
+			countImported(ctx, 1, content.Digest{})
 		}
 	}
 	return ids, nil
@@ -430,14 +431,15 @@ func (s *Store) MessageHasAttachments(ctx context.Context, messageID int64) (boo
 // time uses this to add only what is missing.
 func (s *Store) AttachmentKeys(ctx context.Context, messageID int64) (map[string]int, error) {
 	rows, err := s.pool.Query(ctx,
-		`select sha256, filename from attachments where message_id = $1`, messageID)
+		`select c.blake3, a.filename from attachments a join contents c on c.id = a.content_id where a.message_id = $1`, messageID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := map[string]int{}
 	for rows.Next() {
-		var sum, filename string
+		var sum content.Digest
+		var filename string
 		if err := rows.Scan(&sum, &filename); err != nil {
 			return nil, err
 		}
@@ -448,17 +450,14 @@ func (s *Store) AttachmentKeys(ctx context.Context, messageID int64) (map[string
 
 // AttachmentKey identifies one attachment by content and name, the pair that
 // makes re-import healing idempotent.
-func AttachmentKey(sha256, filename string) string {
-	return sha256 + "\x00" + cleanText(filename)
+func AttachmentKey(d content.Digest, filename string) string {
+	return d.String() + "\x00" + cleanText(filename)
 }
 
 func (s *Store) InsertAttachment(ctx context.Context, a Attachment) error {
-	_, err := s.pool.Exec(ctx, `
-		insert into attachments (message_id, filename, mime_type, size_bytes, sha256)
-		values ($1, $2, $3, $4, $5)`,
-		a.MessageID, cleanText(a.Filename), cleanText(a.MimeType), a.SizeBytes, a.SHA256)
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error { return insertAttachment(ctx, tx, a) })
 	if err == nil {
-		countImported(ctx, 0, a.SHA256)
+		countImported(ctx, 0, a.BLAKE3)
 	}
 	return err
 }

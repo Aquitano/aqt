@@ -124,7 +124,7 @@ func TestHealthyArchiveHasNoFindings(t *testing.T) {
 func TestMissingBlobIsFoundAndHealed(t *testing.T) {
 	f := newFixture(t)
 	gone := f.attachments(t)[0]
-	if err := os.Remove(f.blobs.Path(gone.SHA256)); err != nil {
+	if err := os.Remove(f.blobs.Path(gone.BLAKE3)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -132,7 +132,7 @@ func TestMissingBlobIsFoundAndHealed(t *testing.T) {
 	if kinds(rep)[MissingBlob] != 1 || rep.Repaired != 0 {
 		t.Fatalf("read-only pass = %+v", rep)
 	}
-	if _, err := os.Stat(f.blobs.Path(gone.SHA256)); err == nil {
+	if _, err := os.Stat(f.blobs.Path(gone.BLAKE3)); err == nil {
 		t.Fatal("the read-only pass wrote to the blob store")
 	}
 
@@ -140,7 +140,7 @@ func TestMissingBlobIsFoundAndHealed(t *testing.T) {
 	if rep.Repaired != 1 || rep.Unrecoverable != 0 {
 		t.Fatalf("heal = %+v", rep)
 	}
-	if _, err := os.Stat(f.blobs.Path(gone.SHA256)); err != nil {
+	if _, err := os.Stat(f.blobs.Path(gone.BLAKE3)); err != nil {
 		t.Fatalf("the blob was not restored: %v", err)
 	}
 	if rep := f.run(t, true); rep.Damaged != 0 {
@@ -151,7 +151,7 @@ func TestMissingBlobIsFoundAndHealed(t *testing.T) {
 func TestCorruptBlobIsFoundAndHealed(t *testing.T) {
 	f := newFixture(t)
 	a := f.attachments(t)[1]
-	if err := os.WriteFile(f.blobs.Path(a.SHA256), []byte("TAMPERED"), 0o600); err != nil {
+	if err := os.WriteFile(f.blobs.Path(a.BLAKE3), []byte("TAMPERED"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if k := kinds(f.run(t, false)); k[CorruptBlob] != 1 {
@@ -160,7 +160,7 @@ func TestCorruptBlobIsFoundAndHealed(t *testing.T) {
 	if rep := f.run(t, true); rep.Repaired != 1 {
 		t.Fatalf("heal = %+v", rep)
 	}
-	content, err := os.ReadFile(f.blobs.Path(a.SHA256))
+	content, err := os.ReadFile(f.blobs.Path(a.BLAKE3))
 	if err != nil || string(content) != "SECOND" {
 		t.Fatalf("content = %q, %v", content, err)
 	}
@@ -169,7 +169,7 @@ func TestCorruptBlobIsFoundAndHealed(t *testing.T) {
 func TestWrongSizeIsHealedWithoutTheRawInput(t *testing.T) {
 	f := newFixture(t)
 	a := f.attachments(t)[0]
-	storetest.Exec(t, f.dsn, `update attachments set size_bytes = 99999 where id = $1`, a.ID)
+	storetest.Exec(t, f.dsn, `update contents set size_bytes = 99999 where id = (select content_id from attachments where id = $1)`, a.ID)
 
 	if k := kinds(f.run(t, false)); k[WrongSize] != 1 {
 		t.Fatalf("a lying size_bytes was not detected: %v", k)
@@ -246,7 +246,7 @@ func TestWhatsAppZipMediaIsHealed(t *testing.T) {
 	if err != nil || len(atts) != 1 {
 		t.Fatalf("attachments = %v, %v", atts, err)
 	}
-	if err := os.Remove(blobs.Path(atts[0].SHA256)); err != nil {
+	if err := os.Remove(blobs.Path(atts[0].BLAKE3)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -257,7 +257,7 @@ func TestWhatsAppZipMediaIsHealed(t *testing.T) {
 	if rep.Repaired != 1 || rep.Unrecoverable != 0 {
 		t.Fatalf("heal = %+v", rep)
 	}
-	if _, err := os.Stat(blobs.Path(atts[0].SHA256)); err != nil {
+	if _, err := os.Stat(blobs.Path(atts[0].BLAKE3)); err != nil {
 		t.Fatalf("media not restored from the export zip: %v", err)
 	}
 }
@@ -289,7 +289,7 @@ func TestMboxAttachmentIsHealed(t *testing.T) {
 	if err != nil || len(atts) == 0 {
 		t.Fatalf("attachments = %v, %v", atts, err)
 	}
-	if err := os.Remove(blobs.Path(atts[0].SHA256)); err != nil {
+	if err := os.Remove(blobs.Path(atts[0].BLAKE3)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -300,7 +300,7 @@ func TestMboxAttachmentIsHealed(t *testing.T) {
 	if rep.Repaired != 1 || rep.Unrecoverable != 0 {
 		t.Fatalf("heal = %+v", rep)
 	}
-	if _, err := os.Stat(blobs.Path(atts[0].SHA256)); err != nil {
+	if _, err := os.Stat(blobs.Path(atts[0].BLAKE3)); err != nil {
 		t.Fatalf("attachment not restored from the mbox: %v", err)
 	}
 }
@@ -311,7 +311,7 @@ func TestMissingRawInputIsUnrecoverable(t *testing.T) {
 	if err := os.RemoveAll(f.archiveDir); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(f.blobs.Path(a.SHA256)); err != nil {
+	if err := os.Remove(f.blobs.Path(a.BLAKE3)); err != nil {
 		t.Fatal(err)
 	}
 

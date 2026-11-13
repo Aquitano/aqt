@@ -12,7 +12,7 @@ Bank stores correspondence, a personal media library, activity, collections, fil
 | Sync model    | Pull-based: `bank sync` via cron; `bank imap` polls configured IMAP folders; manual sources land in an inbox dir swept by `bank import` | Gmail sync runs on the archive host. The optional IMAP daemon runs beside Proton Bridge or another IMAP endpoint, keeps local SQLite checkpoints, and uploads through the existing import API. The optional OCR worker drains attachment work on a timer.                           |
 | Interface     | CLI, `--json` on every read command                                                                                                     | Humans get text, agents get JSON; MCP wrapper can come later                                                                                                                                                                                                                        |
 | Remote access | `bank serve` in the same binary, CLI switches to HTTP when `BANK_URL` is set, bearer tokens hashed in `$BANK_DATA_DIR/tokens`, no TLS   | A laptop CLI against a remote `DATABASE_URL` writes blobs and archives locally while rows go to the VPS — split-brain. One binary means no second artifact to build or deploy; Tailscale is the transport security, so the server only needs authentication                         |
-| Scope         | Full history, all attachments                                                                                                           | Attachments are content-addressed (sha256) so duplicates are free                                                                                                                                                                                                                   |
+| Scope         | Full history, all attachments                                                                                                           | Attachments are content-addressed (BLAKE3) so duplicates are free                                                                                                                                                                                                                   |
 
 ## Source acquisition
 
@@ -39,8 +39,9 @@ Correspondence normalizes to `messages`; source-specific richness stays in the r
   - Sources without stable IDs derive one: WhatsApp from `sha256(thread|sent_at|sender|body)`, YouTube from `sha256(video|second watched)`, falling back to the title for a record whose export names no video — overlapping Takeout exports of the same watch collapse, a second watch of the same video does not. Which URL forms yield a video id therefore decides identity, not just parsing.
   - Citations use a derived `ref`, not `id`: `substr(sha256(source || '\x00' || coalesce(nullif(message_id,''), external_id)), 1, 12)`, computed in the select list of every read and accepted by `bank show`. `id` is a row serial, so rebuilding the archive repoints every `bank:<id>` a note ever recorded; the ref depends only on the pair that already defines a message's identity, and survives. Deliberately not stored and not indexed — a stored copy could disagree with the formula, and a sequential scan answers a ref lookup in a fraction of a second at this scale.
   - `thread_id` is the source's own conversation id wherever there is one — ChatGPT `conversation_id`, Claude.ai `uuid`, a Discord channel id — and the human title lives in `subject`. Titles repeat ("New chat", a #general on every server) and get renamed, so keying threads on them merged unrelated conversations and split renamed ones.
-- `attachments(id, message_id, filename, mime_type, size_bytes, sha256)` — bytes live in the blob store, not the DB.
-- `blob_text(sha256, text, extractor, status)` + a denormalized `messages.attachment_text` — text read out of attachments, keyed on content so a document attached to forty messages is extracted once. The column is what the BM25 index sees; `store.RefreshAttachmentText` recomputes it in one idempotent statement, so there is no trigger and no bookkeeping to drift. `bank extract` and text edits recompute every message; the passes after an upload pass a cutoff and recompute only messages whose attachments were stored or extracted since the previous pass began. One index means one score and working snippets; two indexes would mean inventing a fusion rule.
+- `contents(id, blake3, size_bytes)` — the one identity bytes have, shared with the catalogue of files on disks. A message attachment, a library file and a file on a disk with the same bytes point at one row.
+- `attachments(id, message_id, filename, mime_type, content_id)` — bytes live in the blob store, not the DB.
+- `texts(content_id, status, extractor, detail, text, chars)` + a denormalized `messages.attachment_text` — text read out of attachments and disk files, keyed on content so a document attached to forty messages, or already read by a disk scan, is extracted once. Text longer than the cap is cut and stored as `truncated`; `manual` text is never overwritten by an extractor. The column is what the BM25 index sees; `store.RefreshAttachmentText` recomputes it in one idempotent statement, so there is no trigger and no bookkeeping to drift. `bank extract` and text edits recompute every message; the passes after an upload pass a cutoff and recompute only messages whose attachments were stored or extracted since the previous pass began. One index means one score and working snippets; two indexes would mean inventing a fusion rule.
 - `contacts(id, name, note)` + `contact_aliases(contact_id, source, value, value_norm)` — one person, many source-specific identities. Aliases are attached by hand and match everywhere unless scoped to a source; nothing merges automatically, so a wrong attachment is undone by detaching it and the identity each source recorded is never rewritten.
 - `message_tombstones(source, external_id, ref, …, replacement, retired_at)` — rows `bank retire` deleted. Imports skip a tombstoned `(source, external_id)`, and `bank show` resolves a tombstoned ref to it. The ref is stored here because no row is left to compute it from.
 - BM25 index over `subject, body, sender, recipients, attachment_text` via `pg_search`; results are ordered by score, then `sent_at`, then `id` — the id is what makes it a total order, so a page means the same thing twice. Paging is `--offset`, capped at 10000: every offset re-ranks the whole match set, and past that narrowing the query beats paging through it. Search defaults to any-word matching; `--match all` requires each whitespace-separated term across the searchable fields, and `--match phrase` requires adjacent tokens in order within one field. Exact matches receive additional weight and subject matches receive three times the field weight. Fuzzy matching uses `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
@@ -54,7 +55,7 @@ Provider thread IDs remain authoritative. Generic mail uses deterministic derive
 ## Filesystem layout (`$BANK_DATA_DIR`, default `~/.local/share/aqt-bank`)
 
 ```
-blobs/ab/abcdef…        content-addressed attachments (sha256, two-char fan-out)
+blobs/ab/abcdef…        content-addressed attachments (BLAKE3, two-char fan-out)
 archive/<source>/.mail-contexts/<sha256>.json  immutable mail provenance, included in backups
 archive/<source>/…      raw correspondence inputs (mbox, zips, CSV, EML)
 archive/library/<source>/…  raw library imports and Markdown publications
@@ -87,7 +88,7 @@ bank thread <id> --source s --after <message-id>    # the following page
 bank show <id|ref> [--json]             # full message + attachment refs
 bank stats [--json]                     # counts, date ranges, last import, last sync, coverage
 bank coverage <source> <text>           # note what a source holds (empty text clears)
-bank fetch <sha256> [-o path]           # write an attachment to a file
+bank fetch <blake3> [-o path]           # write an attachment to a file
 bank verify [--heal] [--source s]       # archive integrity; --heal rebuilds from archived raw inputs
 bank retire --source s --external-prefix p… [--replacement-map f] [--reason r] [--apply]
                                         # delete messages by prefix, leaving tombstones (dry run by default)
@@ -115,7 +116,7 @@ Migrations are embedded in the binary. `bank migrate` and `bank serve` apply the
 
 ## Attachment text
 
-Extraction is a pass of its own, not a step inside an importer. The text is derived data — rebuildable from the blobs forever — and keying it on the sha256 means content, not attachment rows, is the unit of work.
+Extraction is a pass of its own, not a step inside an importer. The text is derived data — rebuildable from the blobs forever — and keying it on the content means content, not attachment rows, is the unit of work. A content a disk scan already read is not read again.
 
 | Content                              | Extractor                                     | Where it runs                        |
 | ------------------------------------ | --------------------------------------------- | ------------------------------------ |
@@ -132,4 +133,4 @@ Two decisions are worth the words:
 
 **`needs_ocr` is a number, and the number is the argument.** Invoices, statements, tickets and contracts generated by software all carry text layers; if the archive is mostly those, OCR buys close to nothing. `bank attachment stats` counts exactly what it would add before anyone spends a week on it.
 
-Text can also be written from outside: `bank attachment text <sha256> --set` (and `PUT /v1/attachments/{sha256}/text`) store a transcription from any model, marked `manual`, which no automatic pass overwrites. The list, the bytes and the write are all in the HTTP API, so the machine that runs the model does not have to be the machine that holds the archive.
+Text can also be written from outside: `bank attachment text <blake3> --set` (and `PUT /v1/attachments/{blake3}/text`) store a transcription from any model, marked `manual`, which no automatic pass overwrites. The list, the bytes and the write are all in the HTTP API, so the machine that runs the model does not have to be the machine that holds the archive.

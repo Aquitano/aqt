@@ -60,7 +60,7 @@ func (s *Server) register(api huma.API) {
 
 	huma.Register(api, op(operation{ID: "getContentText", Method: http.MethodGet, Path: "/v1/contents/{ref}/text", Tag: "contents",
 		Summary:     "Read a document's extracted text",
-		Description: "Text is extracted once per content, up to the first 1 MB; status says whether it was cut.",
+		Description: "Text is extracted once per content, by a scan or by bank, up to the first 4 MB; status says whether it was cut.",
 		Errors:      []httpapi.Kind{errNotFound, AmbiguousRef}}), s.text)
 
 	huma.Register(api, op(operation{ID: "getContentMetadata", Method: http.MethodGet, Path: "/v1/contents/{ref}/metadata", Tag: "contents",

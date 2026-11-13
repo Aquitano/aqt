@@ -14,6 +14,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/scratch"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 // Source is an open copy of a content, ready to stream to a reader that
@@ -21,7 +22,7 @@ import (
 type Source struct {
 	Result
 	file   *os.File
-	digest disk.Digest
+	digest content.Digest
 }
 
 // Open opens the first present copy on an attached disk that the current
@@ -75,7 +76,7 @@ func (s *Source) Copy(w io.Writer) error {
 		return fmt.Errorf("%s: %w", s.Source, err)
 	}
 	_, _ = h.Write(tail[:min(n, held)])
-	var got disk.Digest
+	var got content.Digest
 	h.Sum(got[:0])
 	if n != held || got != s.digest {
 		return fmt.Errorf("%s: %w", s.Source, scratch.ErrChanged)

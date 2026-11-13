@@ -12,11 +12,12 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
-const testDigest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+var testDigest = content.Sum([]byte("scan.pdf"))
 
 // attachmentServer seeds one message with one attachment and returns a server
 // wired to a real database — these routes read and write rows the fake reader
@@ -39,7 +40,7 @@ func attachmentServer(t *testing.T) (*Server, *store.Store) {
 	}
 	if err := st.InsertAttachment(ctx, store.Attachment{
 		MessageID: id, Filename: "scan.pdf", MimeType: "application/pdf",
-		SizeBytes: 2048, SHA256: testDigest,
+		SizeBytes: 2048, BLAKE3: testDigest,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +67,7 @@ func do(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRe
 // handlerFor is Handler without the token middleware, which has its own tests.
 func handlerFor(s *Server) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("PUT /v1/attachments/{sha256}/text", s.handleAttachmentTextPut)
+	mux.HandleFunc("PUT /v1/attachments/{blake3}/text", s.handleAttachmentTextPut)
 	s.registerAPI(mux)
 	return mux
 }
@@ -84,11 +85,11 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != 1 || listed[0].SHA256 != testDigest || listed[0].Status != store.StatusPending {
+	if len(listed) != 1 || listed[0].BLAKE3 != testDigest || listed[0].Status != store.StatusPending {
 		t.Fatalf("listed = %+v", listed)
 	}
 
-	if w = do(t, s, http.MethodPut, "/v1/attachments/"+testDigest+"/text", "chatsworth deed of sale"); w.Code != http.StatusOK {
+	if w = do(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text", "chatsworth deed of sale"); w.Code != http.StatusOK {
 		t.Fatalf("put: %d %s", w.Code, w.Body)
 	}
 	if w = do(t, s, http.MethodPost, "/v1/attachments/refresh", ""); w.Code != http.StatusOK {
@@ -103,7 +104,7 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 		t.Fatalf("found %d messages by text posted over HTTP, want 1", len(msgs))
 	}
 
-	w = do(t, s, http.MethodGet, "/v1/attachments/"+testDigest+"/text", "")
+	w = do(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", "")
 	var bt store.BlobText
 	if err := json.Unmarshal(w.Body.Bytes(), &bt); err != nil {
 		t.Fatal(err)
@@ -114,10 +115,10 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 		t.Fatalf("status = %q, want manual", bt.Status)
 	}
 
-	if w = do(t, s, http.MethodDelete, "/v1/attachments/"+testDigest+"/text", ""); w.Code != http.StatusOK {
+	if w = do(t, s, http.MethodDelete, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", w.Code, w.Body)
 	}
-	if w = do(t, s, http.MethodGet, "/v1/attachments/"+testDigest+"/text", ""); w.Code != http.StatusNotFound {
+	if w = do(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusNotFound {
 		t.Fatalf("get after delete: %d, want 404", w.Code)
 	}
 }
@@ -126,10 +127,10 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 // from a laptop stays needs_ocr rather than becoming a manual transcription.
 func TestAttachmentTextKeepsAStatedStatus(t *testing.T) {
 	s, _ := attachmentServer(t)
-	if w := do(t, s, http.MethodPut, "/v1/attachments/"+testDigest+"/text?status=needs_ocr&extractor=pdf", ""); w.Code != http.StatusOK {
+	if w := do(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text?status=needs_ocr&extractor=pdf", ""); w.Code != http.StatusOK {
 		t.Fatalf("put: %d %s", w.Code, w.Body)
 	}
-	w := do(t, s, http.MethodGet, "/v1/attachments/"+testDigest+"/text", "")
+	w := do(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", "")
 	var bt store.BlobText
 	if err := json.Unmarshal(w.Body.Bytes(), &bt); err != nil {
 		t.Fatal(err)
@@ -146,12 +147,12 @@ func TestAttachmentTextRejectsAnInvalidStatus(t *testing.T) {
 	// "pending" spells the same mistake correctly: it means the absence of a
 	// row, so a row saying it is a contradiction.
 	for _, status := range []string{"needsocr", "done", "pending"} {
-		w := do(t, s, http.MethodPut, "/v1/attachments/"+testDigest+"/text?status="+status, "text")
+		w := do(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text?status="+status, "text")
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("put ?status=%s: %d, want 400", status, w.Code)
 		}
 	}
-	if w := do(t, s, http.MethodGet, "/v1/attachments/"+testDigest+"/text", ""); w.Code != http.StatusNotFound {
+	if w := do(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusNotFound {
 		t.Fatalf("a rejected status stored a row anyway: %d", w.Code)
 	}
 }
@@ -161,7 +162,7 @@ func TestAttachmentTextRejectsAnInvalidStatus(t *testing.T) {
 func TestAttachmentTextRejectsOversizedBody(t *testing.T) {
 	s, _ := attachmentServer(t)
 	body := strings.Repeat("a", store.MaxAttachmentTextChars+1)
-	if w := do(t, s, http.MethodPut, "/v1/attachments/"+testDigest+"/text", body); w.Code != http.StatusBadRequest {
+	if w := do(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text", body); w.Code != http.StatusBadRequest {
 		t.Fatalf("put oversized text: %d, want 400", w.Code)
 	}
 }

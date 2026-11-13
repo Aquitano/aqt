@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -481,11 +482,11 @@ func (s *Store) versions(ctx context.Context, entryID int64) ([]EntryVersion, er
 
 // ContentDetail is one unique content and every place it lives.
 type ContentDetail struct {
-	Ref         string    `json:"ref"`
-	BLAKE3      string    `json:"blake3"`
-	Size        int64     `json:"size"`
-	FirstSeen   time.Time `json:"first_seen"`
-	Occurrences []Hit     `json:"occurrences"`
+	Ref         string         `json:"ref"`
+	BLAKE3      content.Digest `json:"blake3"`
+	Size        int64          `json:"size"`
+	FirstSeen   time.Time      `json:"first_seen"`
+	Occurrences []Hit          `json:"occurrences"`
 }
 
 // Content resolves a ref, the citation form.
@@ -495,14 +496,12 @@ func (s *Store) Content(ctx context.Context, ref string) (ContentDetail, error) 
 	if err != nil {
 		return d, err
 	}
-	var digest []byte
 	err = s.pool.QueryRow(ctx, `select c.blake3, c.size_bytes, c.first_seen, `+refSQL+`
 		from contents c where c.id = $1`, lookup.contentID).
-		Scan(&digest, &d.Size, &d.FirstSeen, &d.Ref)
+		Scan(&d.BLAKE3, &d.Size, &d.FirstSeen, &d.Ref)
 	if err != nil {
 		return d, err
 	}
-	d.BLAKE3 = hex.EncodeToString(digest)
 	d.Occurrences, err = s.occurrences(ctx, lookup.contentID, 0, false, copies{previous: true})
 	return d, err
 }
@@ -578,6 +577,36 @@ func (s *Store) occurrencesMany(ctx context.Context, ids []int64, except int64, 
 		}
 		h.Version = versionOf(previous)
 		places[id] = append(places[id], h)
+	}
+	return places, rows.Err()
+}
+
+// CurrentPlaces lists the entries that hold each content now, present ones
+// first, for many contents in one query.
+func (s *Store) CurrentPlaces(ctx context.Context, digests []content.Digest) (map[content.Digest][]Hit, error) {
+	keys := make([][]byte, len(digests))
+	for i := range digests {
+		keys[i] = digests[i][:]
+	}
+	rows, err := s.pool.Query(ctx, `select places.*, c.blake3 from contents c
+		cross join lateral (select `+hitColumns+` from entries e join volumes v on v.id = e.volume_id
+			where e.content_id = c.id
+			order by e.missing_scan is not null, v.label, e.path collate "C", e.id limit 100) places
+		where c.blake3 = any($1::bytea[])
+		order by c.blake3, places.missing, places.label, places.path collate "C", places.id`, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	places := make(map[content.Digest][]Hit)
+	for rows.Next() {
+		var digest content.Digest
+		h, err := scanHit(rows, &digest)
+		if err != nil {
+			return nil, err
+		}
+		h.Version = VersionCurrent
+		places[digest] = append(places[digest], h)
 	}
 	return places, rows.Err()
 }

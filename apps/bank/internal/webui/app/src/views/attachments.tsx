@@ -104,8 +104,8 @@ function AttachmentList({
         {q.data?.pages.flat().map((file) => (
           <button
             type="button"
-            aria-pressed={selection?.kind === "file" && selection.file.sha256 === file.sha256}
-            key={file.sha256}
+            aria-pressed={selection?.kind === "file" && selection.file.blake3 === file.blake3}
+            key={file.blake3}
             className="block w-full rounded border p-3 text-left text-sm hover:bg-accent aria-pressed:bg-accent"
             onClick={() => onSelect({ kind: "file", file })}
           >

@@ -29,7 +29,9 @@ func TestCLIParsesDocumentedForms(t *testing.T) {
 		{[]string{"extract", "--status", "failed", "--status", "empty"}, func(c cli) bool {
 			return reflect.DeepEqual(c.Extract.Status, []string{"failed", "empty"}) && c.Extract.Interval == 30*time.Minute && c.Extract.Lang == "eng"
 		}},
-		{[]string{"fetch", "abc", "-o", "out.jpg"}, func(c cli) bool { return c.Fetch.SHA256 == "abc" && c.Fetch.Output == "out.jpg" }},
+		{[]string{"fetch", strings.Repeat("ab", 32), "-o", "out.jpg"}, func(c cli) bool {
+			return c.Fetch.BLAKE3.String() == strings.Repeat("ab", 32) && c.Fetch.Output == "out.jpg"
+		}},
 		{[]string{"import", "json", "--source", "notes", "-"}, func(c cli) bool {
 			return reflect.DeepEqual(c.Import.JSON.Paths, []string{"-"}) && c.Import.JSON.Source == "notes"
 		}},

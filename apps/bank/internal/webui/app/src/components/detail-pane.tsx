@@ -45,7 +45,7 @@ export function DetailPane({ selection }: { selection: Selection }) {
     return <CollectionDetail key={selection.id} id={selection.id} />;
   if (selection?.kind === "page") return <PageDetail key={selection.id} id={selection.id} />;
   if (selection?.kind === "file")
-    return <FileDetail key={selection.file.sha256} file={selection.file} />;
+    return <FileDetail key={selection.file.blake3} file={selection.file} />;
   if (selection?.kind === "message") return <LinkedMessage key={selection.id} id={selection.id} />;
   if (selection?.kind === "contact")
     return (

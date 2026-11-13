@@ -175,7 +175,7 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 			// The blob store is content-addressed and idempotent, so storing
 			// first is what makes the digest available to compare against
 			// what the message already has.
-			sum, size, err := blobs.Put(f)
+			sum, size, err := blobs.Put(ctx, f)
 			f.Close()
 			if err != nil {
 				return res, fail.Opf("store attachment %q: %w", a.Path, err)
@@ -193,7 +193,7 @@ func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSour
 				Filename:  name,
 				MimeType:  mime.TypeByExtension(filepath.Ext(name)),
 				SizeBytes: size,
-				SHA256:    sum,
+				BLAKE3:    sum,
 			})
 			if err != nil {
 				return res, fail.Opf("insert attachment %q: %w", name, err)

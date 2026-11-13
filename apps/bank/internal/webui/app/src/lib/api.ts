@@ -5,7 +5,7 @@ const attachment = type({
   filename: "string",
   "mime_type?": "string",
   "size_bytes?": "number",
-  sha256: "string",
+  blake3: "string",
   "text_status?": "string",
   "text_chars?": "number",
 });
@@ -300,7 +300,7 @@ export function getMailConflict(source: string, key: string, before?: number) {
 }
 
 export const libraryFile = type({
-  sha256: "string",
+  blake3: "string",
   filename: "string",
   mime_type: "string",
   size_bytes: "number",

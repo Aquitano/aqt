@@ -12,6 +12,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"lukechampine.com/blake3"
 )
 
@@ -62,7 +63,7 @@ func TestArchiveReopensReuseVerificationAndIndependentOffsets(t *testing.T) {
 	if _, err := io.ReadFull(first, buf); err != nil || string(buf) != "verified" {
 		t.Fatalf("first reader: %q, %v", buf, err)
 	}
-	a.stamp.Digest = disk.Digest{}
+	a.stamp.Digest = content.Digest{}
 	second, err := a.open(path)
 	if err != nil {
 		t.Fatalf("reopen repeated verification: %v", err)

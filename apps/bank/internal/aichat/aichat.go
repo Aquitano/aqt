@@ -207,11 +207,11 @@ func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, mes
 		mimeType = http.DetectContentType(head)
 	}
 
-	sumHex, size, err := md.blobs.Put(io.MultiReader(bytes.NewReader(head), rc))
+	digest, size, err := md.blobs.Put(ctx, io.MultiReader(bytes.NewReader(head), rc))
 	if err != nil {
 		return fail.Opf("store asset %q: %w", a.ID, err)
 	}
-	key := store.AttachmentKey(sumHex, name)
+	key := store.AttachmentKey(digest, name)
 	if have[key] > 0 {
 		have[key]--
 		return nil
@@ -221,7 +221,7 @@ func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, mes
 		Filename:  name,
 		MimeType:  mimeType,
 		SizeBytes: size,
-		SHA256:    sumHex,
+		BLAKE3:    digest,
 	})
 	if err != nil {
 		return fail.Opf("insert attachment %q: %w", name, err)

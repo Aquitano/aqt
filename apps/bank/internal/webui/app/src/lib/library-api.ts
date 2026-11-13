@@ -78,7 +78,7 @@ const itemSummary = item.pick("id", "title", "kind", "source");
 const mediaFileSchema = type({
   ...identity,
   id: "string",
-  sha256: "string",
+  blake3: "string",
   filename: "string",
   mime_type: "string",
   size_bytes: "number",

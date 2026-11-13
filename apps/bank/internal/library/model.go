@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 var ErrConflict = errors.New("library revision conflict")
@@ -165,14 +167,14 @@ type CollectionEdit struct {
 
 type File struct {
 	Identity
-	ID         string     `json:"id"`
-	SHA256     string     `json:"sha256"`
-	Filename   string     `json:"filename"`
-	MimeType   string     `json:"mime_type"`
-	SizeBytes  int64      `json:"size_bytes"`
-	ItemIDs    []string   `json:"item_ids"`
-	Provenance Provenance `json:"provenance"`
-	TextStatus string     `json:"text_status"`
+	ID         string         `json:"id"`
+	BLAKE3     content.Digest `json:"blake3"`
+	Filename   string         `json:"filename"`
+	MimeType   string         `json:"mime_type"`
+	SizeBytes  int64          `json:"size_bytes"`
+	ItemIDs    []string       `json:"item_ids"`
+	Provenance Provenance     `json:"provenance"`
+	TextStatus string         `json:"text_status"`
 }
 
 type Page struct {
@@ -432,8 +434,8 @@ func (b ImportBatch) Validate() error {
 		if err := validIdentity(v.Identity); err != nil {
 			return err
 		}
-		if len(v.SHA256) != 64 || strings.TrimLeft(v.SHA256, "0123456789abcdef") != "" || v.SizeBytes < 0 || v.Filename == "" {
-			return fmt.Errorf("file requires SHA256, filename and nonnegative size")
+		if v.BLAKE3.IsZero() || v.SizeBytes < 0 || v.Filename == "" {
+			return fmt.Errorf("file requires BLAKE3, filename and nonnegative size")
 		}
 	}
 	for _, v := range b.Pages {

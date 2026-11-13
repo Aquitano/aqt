@@ -1,9 +1,11 @@
 // Package blobtext is bank's extraction pass: it turns attachment bytes into
-// searchable text with packages/go/extract and records the outcome per blob.
+// searchable text with packages/go/extract and records the outcome per
+// content.
 //
 // Extraction is deliberately not part of importing. It is derived data —
-// rebuildable from the blobs at any time — and it is keyed on the blob's
-// sha256, so a PDF attached to forty messages is read once. Keeping it a
+// rebuildable from the blobs at any time — and it is keyed on the content, so
+// a PDF attached to forty messages, or already read by a disk scan, is read
+// once. Keeping it a
 // separate pass is also what lets the expensive half (OCR) run somewhere other
 // than the process that serves the archive over a network port.
 package blobtext
@@ -14,6 +16,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
@@ -28,7 +31,7 @@ type Archive interface {
 	RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error)
 	// OpenBlob makes the bytes available as a local file, because every
 	// extractor here either seeks or is a subprocess taking a path.
-	OpenBlob(ctx context.Context, sha256 string) (path string, cleanup func(), err error)
+	OpenBlob(ctx context.Context, d content.Digest) (path string, cleanup func(), err error)
 }
 
 // Selection is which content a run should work on.
@@ -116,18 +119,19 @@ func Run(ctx context.Context, a Archive, sel Selection, o extract.Options, progr
 			return sum, err
 		}
 		res := extractOne(ctx, a, b, o)
+		status := res.Stored()
 		if err := a.PutBlobText(ctx, store.BlobText{
-			SHA256:    b.SHA256,
+			BLAKE3:    b.BLAKE3,
 			Text:      res.Text,
 			Extractor: res.Extractor,
-			Status:    string(res.Status),
+			Status:    string(status),
 		}); err != nil {
-			return sum, fmt.Errorf("record %s: %w", short(b.SHA256), err)
+			return sum, fmt.Errorf("record %s: %w", short(b.BLAKE3), err)
 		}
-		sum.ByStatus[string(res.Status)]++
+		sum.ByStatus[string(status)]++
 		sum.Chars += int64(len(res.Text))
 		if res.Err != nil && len(sum.Errors) < maxReportedErrors {
-			sum.Errors = append(sum.Errors, fmt.Sprintf("%s (%s): %v", b.Filename, short(b.SHA256), res.Err))
+			sum.Errors = append(sum.Errors, fmt.Sprintf("%s (%s): %v", b.Filename, short(b.BLAKE3), res.Err))
 		}
 		if progress != nil {
 			progress(b, res)
@@ -144,7 +148,7 @@ func Run(ctx context.Context, a Archive, sel Selection, o extract.Options, progr
 }
 
 func extractOne(ctx context.Context, a Archive, b store.BlobRef, o extract.Options) extract.Result {
-	path, cleanup, err := a.OpenBlob(ctx, b.SHA256)
+	path, cleanup, err := a.OpenBlob(ctx, b.BLAKE3)
 	if err != nil {
 		return extract.Result{Status: extract.StatusFailed, Err: err}
 	}
@@ -152,9 +156,6 @@ func extractOne(ctx context.Context, a Archive, b store.BlobRef, o extract.Optio
 	return extract.File(ctx, path, b.Filename, b.MimeType, o)
 }
 
-func short(sha string) string {
-	if len(sha) > 12 {
-		return sha[:12]
-	}
-	return sha
+func short(d content.Digest) string {
+	return d.String()[:12]
 }

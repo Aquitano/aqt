@@ -129,13 +129,13 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		if mimeType == "" {
 			mimeType = http.DetectContentType(head)
 		}
-		sum, size, err := s.blobs.Put(buffer)
+		sum, size, err := s.blobs.Put(r.Context(), buffer)
 		part.Close()
 		if err != nil {
 			writeErr(w, 400, "file upload: "+err.Error())
 			return
 		}
-		files = append(files, library.File{SHA256: sum, Filename: filename, MimeType: mimeType, SizeBytes: size, ItemIDs: []string{}})
+		files = append(files, library.File{BLAKE3: sum, Filename: filename, MimeType: mimeType, SizeBytes: size, ItemIDs: []string{}})
 	}
 	if len(files) == 0 {
 		writeErr(w, 400, "at least one file is required")
@@ -158,7 +158,7 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	for i := range files {
-		files[i].Identity = library.Identity{Source: source, Account: account, ExternalID: files[i].SHA256 + ":" + files[i].Filename}
+		files[i].Identity = library.Identity{Source: source, Account: account, ExternalID: files[i].BLAKE3.String() + ":" + files[i].Filename}
 		files[i].ID = library.StableID("file", files[i].Identity)
 		if itemID != "" {
 			files[i].ItemIDs = []string{itemID}

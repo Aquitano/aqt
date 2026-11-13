@@ -80,12 +80,12 @@ function Attachments({ m }: { m: BankMessage }) {
   return (
     <div className="flex flex-col gap-1.5">
       {m.attachments.map((a) => (
-        <div key={a.sha256 + a.filename}>
+        <div key={a.blake3 + a.filename}>
           <button
             type="button"
             className="block w-full text-left"
-            aria-expanded={open === a.sha256 + a.filename}
-            onClick={() => setOpen(open === a.sha256 + a.filename ? null : a.sha256 + a.filename)}
+            aria-expanded={open === a.blake3 + a.filename}
+            onClick={() => setOpen(open === a.blake3 + a.filename ? null : a.blake3 + a.filename)}
           >
             <Attachment size="sm" className="hover:bg-accent">
               <AttachmentMedia>
@@ -106,7 +106,7 @@ function Attachments({ m }: { m: BankMessage }) {
               </AttachmentContent>
             </Attachment>
           </button>
-          {open === a.sha256 + a.filename && (
+          {open === a.blake3 + a.filename && (
             <div className="mt-2 rounded border p-3">
               <FilePreview file={a} />
             </div>

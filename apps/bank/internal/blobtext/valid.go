@@ -40,7 +40,7 @@ func ValidStoredStatus(s string) error {
 func ValidRunStatus(s string) error {
 	if s == string(extract.StatusManual) {
 		return fmt.Errorf("--status manual would overwrite transcriptions made by hand: " +
-			"replace one with `bank attachment text <sha256> --set`, " +
+			"replace one with `bank attachment text <blake3> --set`, " +
 			"or clear it with `--clear` to put the content back in the queue")
 	}
 	return ValidStatus(s)

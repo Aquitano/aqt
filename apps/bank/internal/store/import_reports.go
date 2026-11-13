@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 )
 
@@ -25,7 +26,7 @@ type importRunKey struct{}
 type importRun struct {
 	mu       sync.Mutex
 	inserted int
-	files    map[string]bool
+	files    map[content.Digest]bool
 	issues   []string
 }
 
@@ -38,13 +39,13 @@ func ImportIssue(ctx context.Context, issue string) {
 	}
 }
 
-func countImported(ctx context.Context, inserted int, sum string) {
+func countImported(ctx context.Context, inserted int, file content.Digest) {
 	if run, ok := ctx.Value(importRunKey{}).(*importRun); ok {
 		run.mu.Lock()
 		defer run.mu.Unlock()
 		run.inserted += inserted
-		if sum != "" {
-			run.files[sum] = true
+		if !file.IsZero() {
+			run.files[file] = true
 		}
 	}
 }
@@ -60,7 +61,7 @@ func RunImport[T any](ctx context.Context, st *Store, kind, input string, run fu
 	if err := st.pool.QueryRow(ctx, `insert into import_reports(kind,input) values($1,$2) returning id`, kind, cleanText(input)).Scan(&id); err != nil {
 		return zero, fail.Opf("start import report: %w", err)
 	}
-	counts := &importRun{files: map[string]bool{}}
+	counts := &importRun{files: map[content.Digest]bool{}}
 	result, importErr := run(context.WithValue(ctx, importRunKey{}, counts))
 	raw, err := json.Marshal(result)
 	if err != nil {

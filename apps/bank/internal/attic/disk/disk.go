@@ -8,14 +8,11 @@ package disk
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
-	"sync"
 	"time"
 
-	"lukechampine.com/blake3"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 // Fingerprint is what identifies a volume across reconnects, drive letters and
@@ -61,76 +58,34 @@ type Entry struct {
 	FileID uint64
 }
 
-type Digest [32]byte
-
-func (d Digest) MarshalText() ([]byte, error) {
-	return hex.AppendEncode(nil, d[:]), nil
-}
-
-func (d *Digest) UnmarshalText(text []byte) error {
-	if hex.DecodedLen(len(text)) != len(d) {
-		return fmt.Errorf("a BLAKE3 digest has %d hex characters, not %d", 2*len(d), len(text))
-	}
-	_, err := hex.Decode(d[:], text)
-	return err
-}
-
 // ErrInUse means another program has the file open for writing.
 var ErrInUse = errors.New("in use by another program")
 
 // ErrLocked means another process holds the lock that Lock asked for.
 var ErrLocked = errors.New("locked by another process")
 
-var hashBuffers = sync.Pool{New: func() any { return new([1 << 20]byte) }}
-
 // Hash reads the whole file once and returns its BLAKE3-256 digest and the
 // number of bytes read. Cancelling ctx stops it within one buffer, so a
 // 50 GB disk image does not hold up Ctrl+C.
-func Hash(ctx context.Context, path string) (Digest, int64, error) {
-	var d Digest
+func Hash(ctx context.Context, path string) (content.Digest, int64, error) {
 	f, err := Open(path)
 	if err != nil {
-		return d, 0, err
+		return content.Digest{}, 0, err
 	}
 	defer f.Close()
-	return hashReader(ctx, f)
+	return content.Hash(ctx, f)
 }
 
 // Verify rereads a held file and reports whether its bytes have digest. It
 // reads by offset, so the file's own read position stays at the start.
-func (f *Held) Verify(ctx context.Context, digest Digest) (bool, error) {
-	got, _, err := hashReader(ctx, io.NewSectionReader(f.File, 0, f.Entry.Size))
+func (f *Held) Verify(ctx context.Context, digest content.Digest) (bool, error) {
+	got, _, err := content.Hash(ctx, io.NewSectionReader(f.File, 0, f.Entry.Size))
 	return got == digest, err
 }
 
 // Hash reads the held object, whose Entry supplies the digest's metadata baseline.
-func (f *Held) Hash(ctx context.Context) (Digest, int64, error) {
-	return hashReader(ctx, f.File)
-}
-
-func hashReader(ctx context.Context, r io.Reader) (Digest, int64, error) {
-	var d Digest
-	buffer := hashBuffers.Get().(*[1 << 20]byte)
-	defer hashBuffers.Put(buffer)
-	h := blake3.New(len(d), nil)
-	n, err := io.CopyBuffer(h, ctxReader{ctx, r}, buffer[:])
-	if err != nil {
-		return d, n, err
-	}
-	h.Sum(d[:0])
-	return d, n, nil
-}
-
-type ctxReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (c ctxReader) Read(p []byte) (int, error) {
-	if err := c.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return c.r.Read(p)
+func (f *Held) Hash(ctx context.Context) (content.Digest, int64, error) {
+	return content.Hash(ctx, f.File)
 }
 
 // ReadSmall reads a small file, such as a repository's .git/config, with the

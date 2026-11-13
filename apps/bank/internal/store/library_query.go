@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/jackc/pgx/v5"
@@ -20,7 +22,7 @@ const libraryItemJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('evid
 const libraryCollectionJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotJSON + ` from library_snapshots s where ` + libraryCurrentSnapshot + ` order by ` + librarySnapshotOrder + ` limit 1))`
 const libraryCollectionSummaryJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotSummaryJSON + ` from library_snapshots s where ` + libraryCurrentSnapshot + ` order by ` + librarySnapshotOrder + ` limit 1))`
 const libraryActivityJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('evidence',coalesce((select jsonb_agg(jsonb_build_object('raw_ref',e.raw_ref,'locator',e.locator) order by e.raw_ref,e.locator) from library_activity_evidence e where e.activity_id=r.id),'[]'::jsonb))`
-const libraryFileJSON = `(to_jsonb(r)-'search_text'-'ingested_at') || jsonb_build_object('item_ids',coalesce((select jsonb_agg(f.item_id order by f.item_id) from library_item_files f where f.file_id=r.id),'[]'::jsonb),'text_status',coalesce((select status from blob_text where sha256=r.sha256),'pending'))`
+const libraryFileJSON = `(to_jsonb(r)-'search_text'-'ingested_at'-'content_id') || (select jsonb_build_object('blake3',encode(c.blake3,'hex'),'size_bytes',c.size_bytes) from contents c where c.id=r.content_id) || jsonb_build_object('item_ids',coalesce((select jsonb_agg(f.item_id order by f.item_id) from library_item_files f where f.file_id=r.id),'[]'::jsonb),'text_status',coalesce((select status from texts t where t.content_id=r.content_id),'pending'))`
 
 func libraryProjection(table string) string {
 	switch table {
@@ -80,16 +82,16 @@ func listLibrary[T any](ctx context.Context, s *Store, table string, o library.L
 			clauses = append(clauses, "exists(select 1 from library_item_files f where f.file_id=r.id and f.item_id="+next(o.ItemID)+")")
 		}
 	}
-	if o.Query != "" {
+	if o.Query != "" && table == "library_files" {
+		nameVector := "to_tsvector('simple',r.search_text || ' ' || regexp_replace(r.filename,'[._-]+',' ','g'))"
+		textCTEs, matches := fileTextMatch(o.Match, o.Query, next, "select content_id from candidate_files", nameVector, "r.content_id")
+		ctes = "with candidate_files as materialized(select r.* from library_files r where " + strings.Join(clauses, " and ") + "), " + textCTEs + " "
+		from = "candidate_files r"
+		clauses = []string{matches}
+	} else if o.Query != "" {
 		q := next(o.Query)
 		match := libraryTextQuery(o.Match, q)
 		predicate := "to_tsvector('simple',r.search_text) @@ " + match
-		if table == "library_files" {
-			ctes = "with candidate_files as materialized(select r.* from library_files r where " + strings.Join(clauses, " and ") + "), " + libraryTextMatches(q, "select distinct sha256 from candidate_files") + " "
-			from = "candidate_files r left join text_matches bt on bt.sha256=r.sha256"
-			clauses = []string{"true"}
-			predicate = "(to_tsvector('simple',r.search_text || ' ' || regexp_replace(r.filename,'[._-]+',' ','g')) || coalesce(bt.search_vector,''::tsvector)) @@ " + match
-		}
 		if table == "library_items" {
 			document := "st.notes || ' ' || array_to_string(st.tags,' ')"
 			if o.Match == "all" {
@@ -348,13 +350,32 @@ func libraryTextQuery(mode, parameter string) string {
 	}
 }
 
-func libraryTextMatches(parameter, digests string) string {
-	return `candidate_digests as materialized (` + digests + `), oversized_text as materialized (
- select b.sha256,b.text from blob_text b join candidate_digests d on d.sha256=b.sha256
- where b.status in ('ok','manual') and b.search_vector is null
- ), text_matches as materialized (
- select b.sha256,b.search_vector from blob_text b join candidate_digests d on d.sha256=b.sha256
- where b.status in ('ok','manual') and b.search_vector @@ ` + libraryTextQuery("any", parameter) + `
- union all select sha256,blob_text_query_vector(text,` + parameter + `) from oversized_text
- )`
+// fileTextMatch matches a file by its name or by the text read from its
+// content, through the texts BM25 index. With all, each word can be in either,
+// so "invoice due" finds invoice.pdf whose text says "payment due". contents
+// selects the candidate content ids. It returns the CTEs to put first and the
+// predicate over nameVector and contentID.
+func fileTextMatch(mode, query string, next func(any) string, contents, nameVector, contentID string) (string, string) {
+	operator, words := "|||", []string{query}
+	switch mode {
+	case "all":
+		operator = "&&&"
+		words = slices.DeleteFunc(strings.Fields(query), func(word string) bool {
+			return !strings.ContainsFunc(word, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) })
+		})
+	case "phrase":
+		operator = "###"
+	}
+	if len(words) == 0 {
+		return "text_matches as (select null::bigint as content_id where false)", "false"
+	}
+	ctes := make([]string, len(words))
+	clauses := make([]string, len(words))
+	for i, word := range words {
+		p := next(word)
+		matches := fmt.Sprintf("text_matches_%d", i)
+		ctes[i] = matches + " as materialized (select t.content_id from texts t where t.content_id in (" + contents + ") and t.status in ('ok','truncated','manual') and t.text " + operator + " " + p + "::text)"
+		clauses[i] = "(" + nameVector + " @@ " + libraryTextQuery(mode, p) + " or " + contentID + " in (select content_id from " + matches + "))"
+	}
+	return strings.Join(ctes, ", "), strings.Join(clauses, " and ")
 }

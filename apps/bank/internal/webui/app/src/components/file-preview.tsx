@@ -15,8 +15,8 @@ export function FilePreview({ file }: { file: Attachment }) {
   const preview = useRef<HTMLPreElement>(null);
   const [failedPreview, setFailedPreview] = useState("");
   const text = useQuery({
-    queryKey: ["file-text", file.sha256],
-    queryFn: () => getFileText(file.sha256),
+    queryKey: ["file-text", file.blake3],
+    queryFn: () => getFileText(file.blake3),
     retry: false,
   });
   const content = text.data?.text ?? "";
@@ -26,7 +26,7 @@ export function FilePreview({ file }: { file: Attachment }) {
       <h3 className="font-medium break-all">{file.filename}</h3>
       <div className="flex flex-wrap gap-2">
         <a
-          href={`/v1/blobs/${file.sha256}`}
+          href={`/v1/blobs/${file.blake3}`}
           download={file.filename}
           className={buttonVariants({ variant: "outline", size: "sm" })}
         >
@@ -44,36 +44,36 @@ export function FilePreview({ file }: { file: Attachment }) {
           </Button>
         )}
       </div>
-      {failedPreview === file.sha256 && (
+      {failedPreview === file.blake3 && (
         <p role="status" className="text-sm text-muted-foreground">
           This media cannot be previewed here. Download the original to play it.
         </p>
       )}
-      {file.mime_type?.startsWith("audio/") && failedPreview !== file.sha256 && (
+      {file.mime_type?.startsWith("audio/") && failedPreview !== file.blake3 && (
         <audio
           controls
           preload="metadata"
-          src={`/v1/attachments/${file.sha256}/preview`}
+          src={`/v1/attachments/${file.blake3}/preview`}
           className="w-full"
           aria-label={file.filename}
-          onError={() => setFailedPreview(file.sha256)}
+          onError={() => setFailedPreview(file.blake3)}
         />
       )}
-      {file.mime_type?.startsWith("video/") && failedPreview !== file.sha256 && (
+      {file.mime_type?.startsWith("video/") && failedPreview !== file.blake3 && (
         <video
           controls
           preload="metadata"
-          src={`/v1/attachments/${file.sha256}/preview`}
+          src={`/v1/attachments/${file.blake3}/preview`}
           className="max-h-96 w-full rounded-lg"
           aria-label={file.filename}
-          onError={() => setFailedPreview(file.sha256)}
+          onError={() => setFailedPreview(file.blake3)}
         />
       )}
       {file.mime_type === "application/pdf" && (
         <object
           aria-label={file.filename}
           type="application/pdf"
-          data={`/v1/attachments/${file.sha256}/preview`}
+          data={`/v1/attachments/${file.blake3}/preview`}
           className="h-96 w-full rounded border"
         >
           <p>PDF preview is unavailable. Download the original or read the extracted text below.</p>
@@ -82,7 +82,7 @@ export function FilePreview({ file }: { file: Attachment }) {
       {["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.mime_type ?? "") && (
         <img
           alt={file.filename}
-          src={`/v1/attachments/${file.sha256}/preview`}
+          src={`/v1/attachments/${file.blake3}/preview`}
           className="max-h-96 max-w-full object-contain"
         />
       )}
@@ -122,9 +122,9 @@ export function FilePreview({ file }: { file: Attachment }) {
 
 export function FileDetail({ file }: { file: Attachment }) {
   const messages = useInfiniteQuery({
-    queryKey: ["file-messages", file.sha256],
+    queryKey: ["file-messages", file.blake3],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => getFileMessages(file.sha256, pageParam),
+    queryFn: ({ pageParam }) => getFileMessages(file.blake3, pageParam),
     getNextPageParam: (last, pages) => (last.length === 50 ? pages.length * 50 : undefined),
   });
   return (

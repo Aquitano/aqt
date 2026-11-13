@@ -5,30 +5,30 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // Attachment text is writable over HTTP, not just readable, because the
 // machine that can run an OCR model is rarely the VPS. A laptop lists what
-// needs text, fetches the bytes through GET /v1/blobs/{sha256}, runs whatever
+// needs text, fetches the bytes through GET /v1/blobs/{blake3}, runs whatever
 // it likes, and puts the result back.
 
 // maxTextUpload bounds what is read off the wire. What is storable is
-// store.MaxAttachmentTextChars, which is smaller: reading past it is what lets
-// an oversized body be refused with a message saying how far over it is,
-// rather than as a truncated read.
+// extract.MaxChars, which is smaller: reading past it is what lets an
+// oversized body be refused with a message saying how far over it is, rather
+// than as a truncated read.
 const maxTextUpload = 8 << 20
 
-// pathDigest validates the {sha256} path segment before it reaches a query or
-// a file path, and reports whether the handler should carry on.
-func pathDigest(w http.ResponseWriter, r *http.Request) (string, bool) {
-	sum := r.PathValue("sha256")
-	if blob.ValidDigest(sum) != nil {
-		writeErr(w, http.StatusBadRequest, "sha256 must be 64 lowercase hex characters")
-		return "", false
+// pathDigest parses the {blake3} path segment before it reaches a query or a
+// file path, and reports whether the handler should carry on.
+func pathDigest(w http.ResponseWriter, r *http.Request) (content.Digest, bool) {
+	sum, err := content.Parse(r.PathValue("blake3"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "blake3 must be 64 lowercase hex characters")
+		return sum, false
 	}
 	return sum, true
 }
@@ -62,7 +62,7 @@ func (s *Server) handleAttachmentTextPut(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if !known {
-		writeErr(w, http.StatusNotFound, "no attachment with sha256 "+sum)
+		writeErr(w, http.StatusNotFound, "no attachment with blake3 "+sum.String())
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxTextUpload))
@@ -72,13 +72,13 @@ func (s *Server) handleAttachmentTextPut(w http.ResponseWriter, r *http.Request)
 	}
 	// Storing it would silently halve a transcription, which is the worst
 	// place to lose text: nothing else can produce it again.
-	if len(body) > store.MaxAttachmentTextChars {
+	if len(body) > extract.MaxChars {
 		writeErr(w, http.StatusBadRequest, fmt.Sprintf(
-			"text is %d bytes, over the %d a row holds", len(body), store.MaxAttachmentTextChars))
+			"text is %d bytes, over the %d a row holds", len(body), extract.MaxChars))
 		return
 	}
 	if err := s.db.PutBlobText(r.Context(), store.BlobText{
-		SHA256:    sum,
+		BLAKE3:    sum,
 		Text:      string(body),
 		Extractor: q.Get("extractor"),
 		Status:    status,
@@ -86,5 +86,5 @@ func (s *Server) handleAttachmentTextPut(w http.ResponseWriter, r *http.Request)
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"sha256": sum, "status": status})
+	writeJSON(w, http.StatusOK, map[string]string{"blake3": sum.String(), "status": status})
 }

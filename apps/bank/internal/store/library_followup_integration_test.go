@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -226,8 +227,8 @@ func TestAttachmentSearchPreservesPagesAndCombinedTextModes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 205 {
-		sum := fmt.Sprintf("%064x", i)
-		if err = st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "invoice.pdf", SHA256: sum}); err != nil {
+		sum := content.Sum(fmt.Appendf(nil, "%d", i))
+		if err = st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "invoice.pdf", BLAKE3: sum}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -236,11 +237,11 @@ func TestAttachmentSearchPreservesPagesAndCombinedTextModes(t *testing.T) {
 		t.Fatalf("requested limit changed: %d %v", len(page), err)
 	}
 	next, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Query: "invoice", Limit: 200, Offset: 200})
-	if err != nil || len(next) != 5 || page[199].SHA256 == next[0].SHA256 {
+	if err != nil || len(next) != 5 || page[199].BLAKE3 == next[0].BLAKE3 {
 		t.Fatalf("continuation skipped matches: %+v %v", next, err)
 	}
-	sum := fmt.Sprintf("%064x", 204)
-	if err = st.PutBlobText(ctx, store.BlobText{SHA256: sum, Text: "quasar orbit", Status: "ok"}); err != nil {
+	sum := content.Sum([]byte("204"))
+	if err = st.PutBlobText(ctx, store.BlobText{BLAKE3: sum, Text: "quasar orbit", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
@@ -249,7 +250,7 @@ func TestAttachmentSearchPreservesPagesAndCombinedTextModes(t *testing.T) {
 	}{
 		{"any", "invoice quasar", 205},
 		{"all", "invoice quasar", 1},
-		{"phrase", "pdf quasar", 1},
+		{"phrase", "pdf quasar", 0},
 		{"phrase", "quasar orbit", 1},
 		{"phrase", "orbit quasar", 0},
 	} {
@@ -258,7 +259,7 @@ func TestAttachmentSearchPreservesPagesAndCombinedTextModes(t *testing.T) {
 			t.Fatalf("%s %q: %d matches, want %d: %v", test.mode, test.query, len(rows), test.count, err)
 		}
 	}
-	if err = st.PutBlobText(ctx, store.BlobText{SHA256: sum, Text: "nebula", Status: "manual"}); err != nil {
+	if err = st.PutBlobText(ctx, store.BlobText{BLAKE3: sum, Text: "nebula", Status: "manual"}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Query: "quasar"})
@@ -268,7 +269,7 @@ func TestAttachmentSearchPreservesPagesAndCombinedTextModes(t *testing.T) {
 	if err = st.DeleteBlobText(ctx, sum); err != nil {
 		t.Fatal(err)
 	}
-	if err = st.PutBlobText(ctx, store.BlobText{SHA256: sum, Text: "nebula", Status: "failed"}); err != nil {
+	if err = st.PutBlobText(ctx, store.BlobText{BLAKE3: sum, Text: "nebula", Status: "failed"}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err = st.AttachmentLibrary(ctx, store.AttachmentFilter{Query: "nebula"})

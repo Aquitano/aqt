@@ -242,7 +242,7 @@ func storeAttachment(ctx context.Context, st *store.Store, blobs *blob.Store, op
 		store.ImportIssue(ctx, fmt.Sprintf("Missing WhatsApp media %s in message %d", name, messageID))
 		return nil
 	}
-	sumHex, size, err := blobs.Put(media)
+	digest, size, err := blobs.Put(ctx, media)
 	media.Close()
 	if err != nil {
 		return fail.Opf("store attachment %q: %w", name, err)
@@ -252,7 +252,7 @@ func storeAttachment(ctx context.Context, st *store.Store, blobs *blob.Store, op
 		Filename:  name,
 		MimeType:  mime.TypeByExtension(filepath.Ext(name)),
 		SizeBytes: size,
-		SHA256:    sumHex,
+		BLAKE3:    digest,
 	})
 	if err != nil {
 		return fail.Opf("insert attachment %q: %w", name, err)
