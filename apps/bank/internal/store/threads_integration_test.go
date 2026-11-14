@@ -20,7 +20,7 @@ func TestThreadPagesAcrossEqualTimestamps(t *testing.T) {
 	for i := range 11 {
 		messages = append(messages, msg("chat", "m"+fmt.Sprint(i), store.Message{ThreadID: "t", Body: "hello", SentAt: time.Unix(1, 0)}))
 	}
-	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{})
+	ids, err := st.InsertMessages(ctx, messages)
 	if err != nil {
 		t.Fatal(err)
 	}

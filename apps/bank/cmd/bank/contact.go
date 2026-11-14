@@ -279,7 +279,7 @@ func (c *contactMessagesCmd) Run(ctx context.Context) error {
 			title = excerpt(m.Body, 100)
 		}
 		fmt.Printf("%s  %s  %-8s  %-22s  %s\n",
-			m.Ref, m.SentAt.Format("2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
+			m.Ref, formatSent(m.SentAt, "2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
 	}
 	if len(msgs) == o.Limit {
 		fmt.Printf("Earlier messages: repeat with --before %s and without --offset\n", msgs[len(msgs)-1].Ref)
@@ -428,4 +428,12 @@ func contactErr(name string, err error) error {
 		return fmt.Errorf("no contact %q — see 'bank contact list'", name)
 	}
 	return err
+}
+
+// readInput reads a file, or stdin when path is "-".
+func readInput(path string) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(os.Stdin)
+	}
+	return os.ReadFile(path)
 }

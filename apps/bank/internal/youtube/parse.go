@@ -54,10 +54,9 @@ const watchedPrefix = "Watched "
 
 // parseJSON reads watch-history.json, written when the Takeout is configured
 // for JSON ("Multiple formats"): one JSON array of activity records. Records
-// are decoded one at a time — the raw bytes are held either way, for the
-// archive, but a heavy account's history runs to hundreds of megabytes and
-// there is no reason to materialize a decoded []entry beside the []watch it
-// reduces to.
+// are decoded one at a time — the raw bytes are held either way, but a heavy
+// account's history runs to hundreds of megabytes and there is no reason to
+// materialize a decoded []entry beside the []watch it reduces to.
 //
 // Ads are counted apart from records that carried nothing usable, so a
 // deliberate drop never looks like a parse failure.

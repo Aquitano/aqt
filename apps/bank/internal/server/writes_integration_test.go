@@ -31,7 +31,7 @@ func TestContactImportAndCoverageRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{db: st, read: st, blobs: blobs, dataDir: dir, archiveDir: filepath.Join(dir, "archive"), catalogue: noDisks{}}
+	s := &Server{db: st, read: st, blobs: blobs, dataDir: dir, catalogue: noDisks{}}
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 

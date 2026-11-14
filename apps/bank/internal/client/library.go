@@ -10,8 +10,8 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
-func (c *Client) ImportReports(ctx context.Context, before int64, limit int) ([]store.ImportReport, error) {
-	return getJSON[[]store.ImportReport](ctx, c, "/v1/import-reports", url.Values{"before": {strconv.FormatInt(before, 10)}, "limit": {strconv.Itoa(limit)}})
+func (c *Client) RawInputs(ctx context.Context, before int64, limit int) ([]store.RawInput, error) {
+	return getJSON[[]store.RawInput](ctx, c, "/v1/raw-inputs", url.Values{"before": {strconv.FormatInt(before, 10)}, "limit": {strconv.Itoa(limit)}})
 }
 func (c *Client) AttachmentLibrary(ctx context.Context, o store.AttachmentFilter) ([]store.LibraryFile, error) {
 	q := url.Values{"query": {o.Query}, "source": {o.Source}, "match": {o.Match}, "q": {o.Filename}, "text": {o.Text}, "type": {o.FileType}, "person": {o.Person}, "offset": {strconv.Itoa(o.Offset)}, "limit": {strconv.Itoa(o.Limit)}}

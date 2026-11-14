@@ -1,6 +1,7 @@
 package gmail
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,10 +13,10 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
-	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -48,18 +49,20 @@ const fetchWorkers = 8 // messages.get costs 5 quota units at 250 units/s/user
 
 // Sync pulls new mail. First run (or full=true) walks the whole mailbox;
 // afterwards it uses history.list deltas. Both paths are idempotent, so an
-// interrupted backfill just resumes on the next run.
-func Sync(ctx context.Context, st *store.Store, blobs *blob.Store, dataDir, archiveDir string, full bool) (SyncResult, error) {
+// interrupted backfill just resumes on the next run. Each message is imported
+// through target as one eml input.
+func Sync(ctx context.Context, target importer.Target, dataDir string, full bool) (SyncResult, error) {
 	c, err := newClient(ctx, dataDir)
 	if err != nil {
 		return SyncResult{}, err
 	}
-	return runSync(ctx, c, st, blobs, archiveDir, full)
+	return runSync(ctx, c, target, full)
 }
 
 // runSync is Sync with the API client already built, which is the seam the
 // tests use to drive both modes against a stub Gmail.
-func runSync(ctx context.Context, c *client, st *store.Store, blobs *blob.Store, archiveDir string, full bool) (SyncResult, error) {
+func runSync(ctx context.Context, c *client, target importer.Target, full bool) (SyncResult, error) {
+	st := target.Store
 	state, err := loadState(ctx, st)
 	if err != nil {
 		return SyncResult{}, err
@@ -69,7 +72,7 @@ func runSync(ctx context.Context, c *client, st *store.Store, blobs *blob.Store,
 	}
 
 	if state.HistoryID == "" {
-		return backfill(ctx, c, st, blobs, archiveDir, state)
+		return backfill(ctx, c, target, state)
 	}
 
 	ids, newHistoryID, ok, err := c.listHistory(ctx, state.HistoryID)
@@ -79,17 +82,18 @@ func runSync(ctx context.Context, c *client, st *store.Store, blobs *blob.Store,
 	if !ok {
 		fmt.Fprintln(os.Stderr, "bank: gmail history expired, falling back to a full mailbox walk (dedup makes this safe)")
 		state.HistoryID = ""
-		return backfill(ctx, c, st, blobs, archiveDir, state)
+		return backfill(ctx, c, target, state)
 	}
 	res := SyncResult{Mode: "incremental"}
-	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, state, &res); err != nil {
+	if err := fetchAll(ctx, c, target, ids, state, &res); err != nil {
 		saveQuarantine(ctx, st, state, &res)
 		return res, err
 	}
 	return res, finish(ctx, st, state, newHistoryID, &res)
 }
 
-func backfill(ctx context.Context, c *client, st *store.Store, blobs *blob.Store, archiveDir string, state *syncState) (SyncResult, error) {
+func backfill(ctx context.Context, c *client, target importer.Target, state *syncState) (SyncResult, error) {
+	st := target.Store
 	res := SyncResult{Mode: "backfill"}
 	// Snapshot the history id before listing: anything that arrives during the
 	// walk is covered by the next incremental run.
@@ -105,7 +109,7 @@ func backfill(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 		return res, err
 	}
 	fmt.Fprintf(os.Stderr, "bank: gmail backfill for %s: %d messages\n", prof.EmailAddress, len(ids))
-	if err := fetchAll(ctx, c, st, blobs, archiveDir, ids, state, &res); err != nil {
+	if err := fetchAll(ctx, c, target, ids, state, &res); err != nil {
 		saveQuarantine(ctx, st, state, &res)
 		return res, err
 	}
@@ -143,7 +147,7 @@ func saveQuarantine(ctx context.Context, st *store.Store, state *syncState, res 
 	}
 }
 
-func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store, archiveDir string, ids []string, state *syncState, res *SyncResult) error {
+func fetchAll(ctx context.Context, c *client, target importer.Target, ids []string, state *syncState, res *SyncResult) error {
 	var inserted, duplicates, attachments, failed, done atomic.Int64
 	quarantined := &quarantine{state: state}
 	// The dispatch loop keeps running while workers are already quarantining
@@ -165,8 +169,6 @@ func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 					fmt.Fprintf(os.Stderr, "bank: gmail %d/%d\n", n, len(ids))
 				}
 			}()
-			// An existing row may come from a run that failed while storing
-			// attachments. Let Ingest reconcile it before advancing history.
 			msg, err := c.getRaw(ctx, id)
 			if err != nil {
 				if errors.Is(err, errNotFound) {
@@ -177,35 +179,28 @@ func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 				fmt.Fprintf(os.Stderr, "bank: gmail message %s: %v\n", id, err)
 				return nil
 			}
-			rawRef, err := archive.Write(archiveDir, "gmail", msg.ID+".eml", msg.Raw)
+			options, err := json.Marshal(eml.EMLOptions{Source: "gmail", ExternalID: msg.ID, ThreadID: msg.ThreadID, SentAt: msg.InternalDate})
 			if err != nil {
-				return fail.Opf("archive gmail %s: %w", id, err)
+				return err
 			}
-			out, err := eml.Ingest(ctx, st, blobs, msg.Raw, eml.IngestOpts{
-				ArchiveDir: archiveDir,
-				Source:     "gmail",
-				ExternalID: msg.ID,
-				ThreadID:   msg.ThreadID,
-				SentAt:     msg.InternalDate,
-				RawRef:     rawRef,
-			})
+			raw, err := importer.Import(ctx, target, "eml", msg.ID+".eml", bytes.NewReader(msg.Raw), options)
+			if err == nil && raw.Report.Issues[ingest.Rejected] > 0 {
+				err = rejection(raw.Report)
+			}
 			switch {
 			case err == nil:
 			case fail.IsOp(err):
 				return err
 			default:
-				// The raw bytes are archived; re-fetching will produce the
-				// same unparseable message, so retrying forever helps nobody.
+				// The raw input is stored; re-fetching will produce the same
+				// unparseable message, so retrying forever helps nobody.
 				quarantined.add(id, "unparseable: "+err.Error())
 				fmt.Fprintf(os.Stderr, "bank: gmail message %s quarantined: %v\n", id, err)
 				return nil
 			}
-			if out.Inserted {
-				inserted.Add(1)
-			} else {
-				duplicates.Add(1)
-			}
-			attachments.Add(int64(out.Attachments))
+			inserted.Add(int64(raw.Report.Inserted))
+			duplicates.Add(int64(raw.Report.Duplicates + raw.Report.Retired))
+			attachments.Add(int64(raw.Report.Attachments))
 			return nil
 		})
 	}
@@ -218,6 +213,15 @@ func fetchAll(ctx context.Context, c *client, st *store.Store, blobs *blob.Store
 	res.QuarantinedIDs = append(res.QuarantinedIDs, quarantined.added...)
 	sort.Strings(res.QuarantinedIDs)
 	return err
+}
+
+func rejection(report ingest.Report) error {
+	for _, issue := range report.Details {
+		if issue.Kind == ingest.Rejected {
+			return errors.New(issue.Detail)
+		}
+	}
+	return errors.New("rejected by the eml source")
 }
 
 // quarantine records permanently unavailable message ids into the sync state.

@@ -523,12 +523,12 @@
           "filename": {
             "type": "string"
           },
-          "id": {
-            "format": "int64",
-            "type": "integer"
-          },
           "mime_type": {
             "type": "string"
+          },
+          "position": {
+            "format": "int64",
+            "type": "integer"
           },
           "size_bytes": {
             "format": "int64",
@@ -543,7 +543,7 @@
           }
         },
         "required": [
-          "id",
+          "position",
           "filename",
           "size_bytes",
           "blake3"
@@ -2084,47 +2084,41 @@
         ],
         "type": "object"
       },
-      "ImportReport": {
+      "ImportResult": {
         "additionalProperties": false,
         "properties": {
-          "error": {
-            "type": "string"
-          },
-          "finished_at": {
-            "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
+          "activity": {
             "format": "int64",
             "type": "integer"
           },
-          "input": {
-            "type": "string"
+          "collections": {
+            "format": "int64",
+            "type": "integer"
           },
-          "kind": {
-            "type": "string"
+          "duplicates": {
+            "format": "int64",
+            "type": "integer"
           },
-          "result": {},
-          "started_at": {
-            "format": "date-time",
-            "type": "string"
+          "files": {
+            "format": "int64",
+            "type": "integer"
           },
-          "status": {
-            "type": "string"
+          "items": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "pages": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "id",
-          "kind",
-          "input",
-          "started_at",
-          "finished_at",
-          "status",
-          "result",
-          "error"
+          "duplicates",
+          "items",
+          "activity",
+          "collections",
+          "files",
+          "pages"
         ],
         "type": "object"
       },
@@ -2212,6 +2206,22 @@
         "required": [
           "_tag",
           "message"
+        ],
+        "type": "object"
+      },
+      "Issue": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "detail"
         ],
         "type": "object"
       },
@@ -2382,8 +2392,7 @@
           "filename",
           "mime_type",
           "size_bytes",
-          "messages",
-          "last_at"
+          "messages"
         ],
         "type": "object"
       },
@@ -2626,8 +2635,9 @@
           "native_thread_id": {
             "type": "string"
           },
-          "raw_ref": {
-            "type": "string"
+          "raw_input": {
+            "format": "int64",
+            "type": "integer"
           },
           "references": {
             "items": {
@@ -2643,7 +2653,6 @@
           "message_id",
           "in_reply_to",
           "references",
-          "raw_ref",
           "native_thread_id",
           "has_reply_links",
           "incomplete",
@@ -2836,7 +2845,11 @@
           "parent_external_id": {
             "type": "string"
           },
-          "raw_ref": {
+          "raw_input": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "raw_locator": {
             "type": "string"
           },
           "recipients": {
@@ -2879,8 +2892,7 @@
           "ref",
           "source",
           "sender",
-          "body",
-          "sent_at"
+          "body"
         ],
         "type": "object"
       },
@@ -2930,7 +2942,11 @@
           "parent_external_id": {
             "type": "string"
           },
-          "raw_ref": {
+          "raw_input": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "raw_locator": {
             "type": "string"
           },
           "recipients": {
@@ -2973,8 +2989,7 @@
           "ref",
           "source",
           "sender",
-          "body",
-          "sent_at"
+          "body"
         ],
         "type": "object"
       },
@@ -3508,70 +3523,14 @@
           "locator": {
             "type": "string"
           },
-          "raw_ref": {
-            "type": "string"
+          "raw_input": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "raw_ref",
+          "raw_input",
           "locator"
-        ],
-        "type": "object"
-      },
-      "PublicationResult": {
-        "additionalProperties": false,
-        "properties": {
-          "activity": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "ads": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "collections": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "diagnostics": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "duplicates": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "files": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "items": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "pages": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "skipped": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "skipped",
-          "diagnostics",
-          "duplicates",
-          "items",
-          "activity",
-          "collections",
-          "files",
-          "pages"
         ],
         "type": "object"
       },
@@ -3643,17 +3602,57 @@
       "RawInput": {
         "additionalProperties": false,
         "properties": {
-          "bytes": {
-            "contentEncoding": "base64",
+          "blake3": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
             "type": "string"
           },
           "name": {
             "type": "string"
+          },
+          "options": {},
+          "received_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/Report"
+          },
+          "size_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
           }
         },
         "required": [
+          "id",
+          "kind",
           "name",
-          "bytes"
+          "blake3",
+          "size_bytes",
+          "options",
+          "received_at",
+          "finished_at",
+          "status",
+          "report",
+          "error"
         ],
         "type": "object"
       },
@@ -3677,6 +3676,56 @@
         "required": [
           "ref",
           "size"
+        ],
+        "type": "object"
+      },
+      "Report": {
+        "additionalProperties": false,
+        "properties": {
+          "attachments": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/Issue"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "duplicates": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "inserted": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "issues": {
+            "additionalProperties": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "library": {
+            "$ref": "#/components/schemas/ImportResult"
+          },
+          "retired": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "inserted",
+          "duplicates",
+          "retired",
+          "attachments",
+          "library",
+          "issues",
+          "details"
         ],
         "type": "object"
       },
@@ -3832,8 +3881,9 @@
           "external_id": {
             "type": "string"
           },
-          "raw_ref": {
-            "type": "string"
+          "raw_input": {
+            "format": "int64",
+            "type": "integer"
           },
           "reason": {
             "type": "string"
@@ -3863,7 +3913,6 @@
           "ref",
           "source",
           "external_id",
-          "sent_at",
           "retired_at"
         ],
         "type": "object"
@@ -4370,13 +4419,16 @@
           },
           "stale": {
             "type": "boolean"
+          },
+          "undated": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
           "source",
           "messages",
-          "earliest",
-          "latest",
+          "undated",
           "last_ingest",
           "last_sync",
           "stale"
@@ -4742,7 +4794,6 @@
           "source",
           "thread_id",
           "n",
-          "last_at",
           "last_ref",
           "sender",
           "subject",
@@ -9231,161 +9282,24 @@
         ]
       }
     },
-    "/v1/import-reports": {
-      "get": {
-        "operationId": "listImportReports",
-        "parameters": [
-          {
-            "description": "Only reports with an ID below this one. 0 starts at the newest.",
-            "explode": false,
-            "in": "query",
-            "name": "before",
-            "schema": {
-              "default": 0,
-              "description": "Only reports with an ID below this one. 0 starts at the newest.",
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          {
-            "description": "How many results, at most.",
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "default": 100,
-              "description": "How many results, at most.",
-              "format": "int64",
-              "maximum": 500,
-              "minimum": 1,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ImportReport"
-                  },
-                  "type": [
-                    "array",
-                    "null"
-                  ]
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedError"
-                }
-              }
-            },
-            "description": "Unauthorized: the bearer token is missing or unknown."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidRequestError"
-                }
-              }
-            },
-            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InternalError"
-                }
-              }
-            },
-            "description": "Internal: the server failed; message says how."
-          }
-        },
-        "summary": "List past imports with their outcome, newest first",
-        "tags": [
-          "imports"
-        ]
-      }
-    },
-    "/v1/import/{kind}": {
+    "/v1/import/chatgpt": {
       "post": {
-        "description": "kind is whatsapp, eml, mbox, discord, linkedin, youtube, chatgpt, claude, json, netflix, youtube-media or library. Every kind except json takes multipart/form-data whose last field is file, up to 16 GiB; eml and mbox may send a mail_context field before it. json takes the records as the body, a JSON array or NDJSON of at most 16 MiB that must arrive within a minute. The answer is the importer's report, and the attempt is kept in listImportReports. A file the importer cannot read is an InvalidRequest.",
-        "operationId": "importFile",
-        "parameters": [
-          {
-            "description": "The importer, such as whatsapp, mbox or json.",
-            "in": "path",
-            "name": "kind",
-            "required": true,
-            "schema": {
-              "description": "The importer, such as whatsapp, mbox or json.",
-              "type": "string"
-            }
-          },
-          {
-            "description": "The source to file messages under, for kinds that take one, such as eml.",
-            "explode": false,
-            "in": "query",
-            "name": "source",
-            "schema": {
-              "description": "The source to file messages under, for kinds that take one, such as eml.",
-              "type": "string"
-            }
-          },
-          {
-            "description": "The account at the source, for media and library kinds.",
-            "explode": false,
-            "in": "query",
-            "name": "account",
-            "schema": {
-              "description": "The account at the source, for media and library kinds.",
-              "type": "string"
-            }
-          },
-          {
-            "description": "netflix only: how the export writes dates.",
-            "explode": false,
-            "in": "query",
-            "name": "date_order",
-            "schema": {
-              "description": "netflix only: how the export writes dates.",
-              "enum": [
-                "mdy",
-                "dmy"
-              ],
-              "type": "string"
-            }
-          }
-        ],
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importChatgpt",
         "requestBody": {
           "content": {
-            "application/json": {
-              "schema": {
-                "description": "json only: the records."
-              }
-            },
             "multipart/form-data": {
               "schema": {
                 "properties": {
                   "file": {
                     "contentMediaType": "application/octet-stream",
-                    "description": "The export, as one file.",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
                     "format": "binary",
                     "type": "string"
                   },
-                  "mail_context": {
-                    "description": "eml and mbox only: the folder and identifiers the collector observed, as JSON.",
-                    "type": "string"
+                  "options": {
+                    "additionalProperties": false,
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -9402,11 +9316,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/RawInput"
                 }
               }
             },
-            "description": "The importer's report; its fields depend on kind."
+            "description": "OK"
           },
           "401": {
             "content": {
@@ -9456,7 +9370,1203 @@
             ]
           }
         ],
-        "summary": "Import one export file into the archive",
+        "summary": "ChatGPT data export (zip, json or directory).",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/claude": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importClaude",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Claude.ai data export (zip, json or directory).",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/discord": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importDiscord",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Discord GDPR data package (zip or directory).",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/eml": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importEml",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "external_id": {
+                        "type": "string"
+                      },
+                      "labels": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": [
+                          "array",
+                          "null"
+                        ]
+                      },
+                      "mailbox": {
+                        "type": "string"
+                      },
+                      "mailbox_kind": {
+                        "type": "string"
+                      },
+                      "sent_at": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "thread_id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "One .eml file, or a directory of them such as proton-mail-export output.",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/json": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importJson",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Messages as a JSON array, object or NDJSON, attachments inline as base64.",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/library": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importLibrary",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Versioned media library bundle (JSON).",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/linkedin": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importLinkedin",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "LinkedIn data export (zip, csv or directory).",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/markdown": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importMarkdown",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Markdown page publication as bank library index builds it (JSON).",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/mbox": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importMbox",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "mailbox": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "One mbox file, such as Gmail Takeout's.",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/netflix": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importNetflix",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "account": {
+                        "type": "string"
+                      },
+                      "date_order": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Netflix viewing activity CSV.",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/whatsapp": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importWhatsapp",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "WhatsApp 'Export chat' file: the zip with its media, or a bare .txt.",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/youtube": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importYoutube",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "YouTube watch history from Google Takeout (zip, directory or the history file).",
+        "tags": [
+          "imports"
+        ]
+      }
+    },
+    "/v1/import/youtube-media": {
+      "post": {
+        "description": "multipart/form-data with an optional options field, the kind's options as JSON, followed by the file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that raw input with the report of this import. An input the parser rejects stays stored, and the rejection is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+        "operationId": "importYoutubeMedia",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentMediaType": "application/octet-stream",
+                    "description": "The input, as one file. A directory is sent as a zip of it.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "options": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "account": {
+                        "type": "string"
+                      },
+                      "source": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RawInput"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "YouTube history, playlists and music library from Google Takeout.",
         "tags": [
           "imports"
         ]
@@ -11653,115 +12763,6 @@
         ]
       }
     },
-    "/v1/library/pages/publication": {
-      "post": {
-        "description": "`bank library index` builds the body. Each page must match its original's bytes and metadata.",
-        "operationId": "publishLibraryPages",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "account": {
-                    "type": "string"
-                  },
-                  "allow_confidential": {
-                    "type": "boolean"
-                  },
-                  "inputs": {
-                    "items": {
-                      "$ref": "#/components/schemas/RawInput"
-                    },
-                    "type": [
-                      "array",
-                      "null"
-                    ]
-                  },
-                  "pages": {
-                    "items": {
-                      "$ref": "#/components/schemas/Page"
-                    },
-                    "type": [
-                      "array",
-                      "null"
-                    ]
-                  },
-                  "source": {
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicationResult"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedError"
-                }
-              }
-            },
-            "description": "Unauthorized: the bearer token is missing or unknown."
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ForbiddenError"
-                }
-              }
-            },
-            "description": "Forbidden: the token is valid and only reads; this operation writes."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidRequestError"
-                }
-              }
-            },
-            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InternalError"
-                }
-              }
-            },
-            "description": "Internal: the server failed; message says how."
-          }
-        },
-        "security": [
-          {
-            "bearer": [
-              "write"
-            ]
-          }
-        ],
-        "summary": "Publish Markdown pages with the original files they were read from",
-        "tags": [
-          "library"
-        ]
-      }
-    },
     "/v1/library/pages/{id}": {
       "get": {
         "operationId": "getLibraryPage",
@@ -12302,6 +13303,92 @@
         "summary": "Run one read-only SQL query over the archive",
         "tags": [
           "messages"
+        ]
+      }
+    },
+    "/v1/raw-inputs": {
+      "get": {
+        "operationId": "listRawInputs",
+        "parameters": [
+          {
+            "description": "Only raw inputs with an ID below this one. 0 starts at the newest.",
+            "explode": false,
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "default": 0,
+              "description": "Only raw inputs with an ID below this one. 0 starts at the newest.",
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many results, at most.",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 100,
+              "description": "How many results, at most.",
+              "format": "int64",
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RawInput"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "summary": "List stored raw inputs with the outcome of their latest import, newest first",
+        "tags": [
+          "imports"
         ]
       }
     },

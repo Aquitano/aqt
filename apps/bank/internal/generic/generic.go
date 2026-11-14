@@ -1,50 +1,58 @@
 // Package generic imports arbitrary messages from JSON, the escape hatch for
-// agents and one-off sources. Input is either a JSON array or newline-delimited
-// objects:
+// agents and one-off sources. Input is a JSON array, a single object, or
+// newline-delimited objects:
 //
 //	{"source": "notes", "body": "...", "sent_at": "2024-05-13T21:08:00Z",
 //	 "thread": "...", "sender": "...", "recipients": ["..."], "subject": "...",
-//	 "external_id": "...", "attachments": [{"path": "/tmp/report.pdf"}]}
+//	 "external_id": "...",
+//	 "attachments": [{"filename": "report.pdf", "mime_type": "application/pdf", "data": "<base64>"}]}
 //
-// Only body (or subject) is required; source can come from --source. Omitted
-// external_id falls back to a content hash, omitted sent_at to import time.
-// Attachment paths are read from local disk into the blob store.
+// Only body (or subject) is required; source falls back to --source. Unknown
+// fields reject the entry. Attachments carry their bytes as standard base64
+// next to a required filename, so a stored input replays on any machine.
+//
+// sent_at is RFC 3339, "2006-01-02 15:04:05", "2006-01-02" or unix seconds.
+// Missing or null means the date is unknown. A time without a zone is read as
+// UTC, so the stored instant does not depend on the importing machine.
+//
+// An omitted external_id is derived from the source, thread, sender, subject,
+// body and sent_at as written in the input. Otherwise identical entries get an
+// occurrence counter, so a file listing the same note twice keeps both while
+// re-imports stay no-ops.
 package generic
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"mime"
-	"os"
-	"path/filepath"
 	"strconv"
 	"time"
+	"unicode"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
-	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
-type Result struct {
-	Inserted   int `json:"inserted"`
-	Duplicates int `json:"duplicates"`
-	// Retired counts entries whose key `bank retire` tombstoned; they stay out.
-	Retired     int `json:"retired"`
-	Attachments int `json:"attachments"`
-	// Healed counts attachment rows added to a message that was already
-	// archived without them, e.g. after a blob write failed mid-import.
-	Healed int `json:"healed"`
-	// Rejected counts entries the input got wrong. Database and blob-store
-	// failures abort the import instead of landing here.
-	Rejected int `json:"rejected"`
+type Source struct{}
+
+type Options struct {
+	Source string `json:"source,omitempty" help:"Source for entries that do not name one (default json)."`
 }
+
+func (o *Options) Normalize() error {
+	if o.Source == "" {
+		o.Source = "json"
+	}
+	return ingest.ValidSource(o.Source)
+}
+
+func (Source) Kind() string { return "json" }
 
 type entry struct {
 	Source      string          `json:"source"`
@@ -55,167 +63,91 @@ type entry struct {
 	Subject     string          `json:"subject"`
 	Body        string          `json:"body"`
 	SentAt      json.RawMessage `json:"sent_at"`
-	Attachments []struct {
-		Path     string `json:"path"`
-		Filename string `json:"filename"`
-	} `json:"attachments"`
+	Attachments []attachment    `json:"attachments"`
 }
 
-// allowAttachmentPaths gates attachments[].path (read from the local
-// filesystem): true for local CLI imports, false when the entries arrived
-// over HTTP — server-side path reads are an arbitrary-file-read primitive.
-func Import(ctx context.Context, st *store.Store, blobs *blob.Store, defaultSource, rawRef string, input []byte, now time.Time, allowAttachmentPaths bool) (Result, error) {
-	var res Result
-	if defaultSource != "" {
-		if err := archive.ValidSource(defaultSource); err != nil {
-			return res, err
-		}
-	}
-	limit := 0
-	if !allowAttachmentPaths {
-		limit = MaxRemoteEntries
-	}
-	entries, err := parseEntriesBounded(input, limit)
+type attachment struct {
+	Filename string `json:"filename"`
+	MimeType string `json:"mime_type"`
+	Data     string `json:"data"`
+}
+
+func (Source) Parse(ctx context.Context, raw ingest.Raw, opts Options, out ingest.Emitter) error {
+	f, err := raw.Open()
 	if err != nil {
-		return res, err
+		return err
 	}
+	defer f.Close()
 	seen := map[string]int{}
-	type pendingEntry struct {
-		index      int
-		entry      entry
-		externalID string
-	}
-	pending := make([]pendingEntry, 0, len(entries))
-	messages := make([]store.Message, 0, len(entries))
-	for i, e := range entries {
-		if e.Source == "" {
-			e.Source = defaultSource
+	return eachEntry(f, func(i int, value json.RawMessage) error {
+		if err := ctx.Err(); err != nil {
+			return err
 		}
-		if err := validate(e); err != nil {
-			res.Rejected++
-			fmt.Fprintf(os.Stderr, "bank: json entry %d: %v\n", i, err)
-			continue
-		}
-		if len(e.Attachments) > 0 && !allowAttachmentPaths {
-			res.Rejected++
-			fmt.Fprintf(os.Stderr, "bank: json entry %d: attachments[].path is only supported for local imports, not over BANK_URL\n", i)
-			continue
-		}
-		sentAt, err := parseSentAt(e.SentAt)
+		m, err := message(value, opts.Source, seen)
 		if err != nil {
-			res.Rejected++
-			fmt.Fprintf(os.Stderr, "bank: json entry %d: %v\n", i, err)
-			continue
+			out.Issue(ingest.Issuef(ingest.Rejected, "entry %d: %v", i, err))
+			return nil
 		}
-		externalID := e.ExternalID
-		if externalID == "" {
-			externalID = derivedID(e, sentAt, seen)
+		m.Locator = fmt.Sprintf("entry %d", i)
+		return out.Message(m)
+	})
+}
+
+func message(value json.RawMessage, defaultSource string, seen map[string]int) (ingest.Message, error) {
+	dec := json.NewDecoder(bytes.NewReader(value))
+	dec.DisallowUnknownFields()
+	var e entry
+	if err := dec.Decode(&e); err != nil {
+		return ingest.Message{}, err
+	}
+	if e.Source == "" {
+		e.Source = defaultSource
+	}
+	if err := ingest.ValidSource(e.Source); err != nil {
+		return ingest.Message{}, err
+	}
+	if e.Body == "" && e.Subject == "" {
+		return ingest.Message{}, fmt.Errorf(`missing "body"`)
+	}
+	sentAt, timeKey, err := parseSentAt(e.SentAt)
+	if err != nil {
+		return ingest.Message{}, err
+	}
+	parts := make([]ingest.Part, 0, len(e.Attachments))
+	for j, a := range e.Attachments {
+		if a.Filename == "" {
+			return ingest.Message{}, fmt.Errorf(`attachment %d: missing "filename"`, j)
 		}
-		if sentAt.IsZero() {
-			sentAt = now
+		data, err := base64.StdEncoding.DecodeString(a.Data)
+		if err != nil {
+			return ingest.Message{}, fmt.Errorf("attachment %d: data is not base64: %w", j, err)
 		}
-		pending = append(pending, pendingEntry{index: i, entry: e, externalID: externalID})
-		messages = append(messages, store.Message{
-			Source:     e.Source,
-			ExternalID: externalID,
-			ThreadID:   e.Thread,
-			Sender:     e.Sender,
-			Recipients: e.Recipients,
-			Subject:    e.Subject,
-			Body:       e.Body,
-			SentAt:     sentAt,
-			RawRef:     rawRef,
+		parts = append(parts, ingest.Part{
+			Filename: a.Filename,
+			MimeType: a.MimeType,
+			Open:     func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(data)), nil },
 		})
 	}
-	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{})
-	if err != nil {
-		return res, fail.Opf("insert messages: %w", err)
+	externalID := e.ExternalID
+	if externalID == "" {
+		externalID = derivedID(e, timeKey, seen)
 	}
-	var present []store.Message
-	for j, id := range ids {
-		if id == 0 {
-			present = append(present, messages[j])
-		}
-	}
-	if res.Retired, err = st.CountRetired(ctx, present); err != nil {
-		return res, fail.Opf("count retired messages: %w", err)
-	}
-	res.Duplicates = len(present) - res.Retired
-	for j, p := range pending {
-		i, e, externalID, id := p.index, p.entry, p.externalID, ids[j]
-		fresh := id != 0
-		if fresh {
-			res.Inserted++
-		} else {
-			if len(e.Attachments) == 0 {
-				continue
-			}
-			// The message row survived an earlier import whose blobs did not.
-			// Re-importing must fill the gap, not stop at deduplication.
-			if id, err = st.FindMessageID(ctx, e.Source, externalID); err != nil {
-				return res, fail.Opf("look up message: %w", err)
-			}
-			if id == 0 {
-				continue
-			}
-		}
-		have := map[string]int{}
-		if !fresh {
-			if have, err = st.AttachmentKeys(ctx, id); err != nil {
-				return res, fail.Opf("read attachments of message %d: %w", id, err)
-			}
-		}
-		for _, a := range e.Attachments {
-			f, err := os.Open(a.Path)
-			if err != nil {
-				res.Rejected++
-				fmt.Fprintf(os.Stderr, "bank: json entry %d attachment: %v\n", i, err)
-				continue
-			}
-			// The blob store is content-addressed and idempotent, so storing
-			// first is what makes the digest available to compare against
-			// what the message already has.
-			sum, size, err := blobs.Put(ctx, f)
-			f.Close()
-			if err != nil {
-				return res, fail.Opf("store attachment %q: %w", a.Path, err)
-			}
-			name := a.Filename
-			if name == "" {
-				name = filepath.Base(a.Path)
-			}
-			if key := store.AttachmentKey(sum, name); have[key] > 0 {
-				have[key]--
-				continue
-			}
-			err = st.InsertAttachment(ctx, store.Attachment{
-				MessageID: id,
-				Filename:  name,
-				MimeType:  mime.TypeByExtension(filepath.Ext(name)),
-				SizeBytes: size,
-				BLAKE3:    sum,
-			})
-			if err != nil {
-				return res, fail.Opf("insert attachment %q: %w", name, err)
-			}
-			res.Attachments++
-			if !fresh {
-				res.Healed++
-			}
-		}
-	}
-	return res, nil
+	return ingest.Message{
+		Source:     e.Source,
+		ExternalID: externalID,
+		ThreadID:   e.Thread,
+		Sender:     e.Sender,
+		Recipients: e.Recipients,
+		Subject:    e.Subject,
+		Body:       e.Body,
+		SentAt:     sentAt,
+		Parts:      parts,
+	}, nil
 }
 
-// derivedID hashes only fields the caller controls — never the import time,
-// which would make every re-import a duplicate. Entries without sent_at that
-// are otherwise identical get an occurrence counter within the batch, so a
-// file listing the same note twice keeps both while re-imports stay no-ops.
-func derivedID(e entry, sentAt time.Time, seen map[string]int) string {
-	timeKey := ""
-	if !sentAt.IsZero() {
-		timeKey = sentAt.UTC().Format(time.RFC3339Nano)
-	}
+// derivedID hashes only what the input says, never the import time or a
+// parsed instant, which depend on when and where the import runs.
+func derivedID(e entry, timeKey string, seen map[string]int) string {
 	base := e.Source + "\x00" + e.Thread + "\x00" + timeKey + "\x00" + e.Sender + "\x00" + e.Subject + "\x00" + e.Body
 	n := seen[base]
 	seen[base] = n + 1
@@ -226,71 +158,58 @@ func derivedID(e entry, sentAt time.Time, seen map[string]int) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func validate(e entry) error {
-	if e.Source == "" {
-		return fmt.Errorf(`missing "source" (or pass --source)`)
-	}
-	if err := archive.ValidSource(e.Source); err != nil {
+// eachEntry passes the top-level values of a JSON array, or of a stream of
+// objects, to fn one at a time.
+func eachEntry(r io.Reader, fn func(int, json.RawMessage) error) error {
+	br := bufio.NewReader(r)
+	isArray, err := startsWithArray(br)
+	if err != nil {
 		return err
 	}
-	if e.Body == "" && e.Subject == "" {
-		return fmt.Errorf(`missing "body"`)
+	dec := json.NewDecoder(br)
+	if !isArray {
+		for i := 0; ; i++ {
+			var value json.RawMessage
+			if err := dec.Decode(&value); errors.Is(err, io.EOF) {
+				return nil
+			} else if err != nil {
+				return err
+			}
+			if err := fn(i, value); err != nil {
+				return err
+			}
+		}
 	}
-	return nil
+	if _, err := dec.Token(); err != nil {
+		return err
+	}
+	for i := 0; dec.More(); i++ {
+		var value json.RawMessage
+		if err := dec.Decode(&value); err != nil {
+			return err
+		}
+		if err := fn(i, value); err != nil {
+			return err
+		}
+	}
+	if _, err := dec.Token(); err != nil {
+		return err
+	}
+	return expectEOF(dec)
 }
 
-// MaxRemoteEntries bounds decoded structs, including tiny empty objects that
-// would otherwise expand a small HTTP body into gigabytes of allocations.
-const MaxRemoteEntries = 10000
-
-// parseEntries accepts a JSON array, a single object, or a stream of
-// whitespace/newline-delimited objects (NDJSON).
-func parseEntries(input []byte) ([]entry, error) { return parseEntriesBounded(input, 0) }
-
-func parseEntriesBounded(input []byte, limit int) ([]entry, error) {
-	dec := json.NewDecoder(bytes.NewReader(input))
-	dec.UseNumber()
-	tok, err := dec.Token()
-	if errors.Is(err, io.EOF) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if d, ok := tok.(json.Delim); ok && d == '[' {
-		var out []entry
-		for dec.More() {
-			if limit > 0 && len(out) >= limit {
-				return nil, fmt.Errorf("JSON import exceeds %d entries; split the input", limit)
-			}
-			var e entry
-			if err := dec.Decode(&e); err != nil {
-				return nil, err
-			}
-			out = append(out, e)
-		}
-		if _, err := dec.Token(); err != nil { // the closing bracket
-			return nil, err
-		}
-		if err := expectEOF(dec); err != nil {
-			return nil, err
-		}
-		return out, nil
-	}
-	// Not an array: restart and decode a stream of objects.
-	dec = json.NewDecoder(bytes.NewReader(input))
-	var out []entry
+func startsWithArray(br *bufio.Reader) (bool, error) {
 	for {
-		var e entry
-		if err := dec.Decode(&e); errors.Is(err, io.EOF) {
-			return out, nil
-		} else if err != nil {
-			return nil, err
+		c, err := br.ReadByte()
+		if errors.Is(err, io.EOF) {
+			return false, nil
 		}
-		if limit > 0 && len(out) >= limit {
-			return nil, fmt.Errorf("JSON import exceeds %d entries; split the input", limit)
+		if err != nil {
+			return false, err
 		}
-		out = append(out, e)
+		if !unicode.IsSpace(rune(c)) {
+			return c == '[', br.UnreadByte()
+		}
 	}
 }
 
@@ -308,28 +227,28 @@ func expectEOF(dec *json.Decoder) error {
 	return fmt.Errorf("unexpected %v after the top-level JSON array", tok)
 }
 
-// parseSentAt accepts RFC 3339, "2006-01-02 15:04:05", "2006-01-02" (all as
-// JSON strings) or a unix-seconds number. Missing/null means "now".
-func parseSentAt(raw json.RawMessage) (time.Time, error) {
+// parseSentAt returns the instant and the text the derived id hashes: the
+// string as written, or the number as written.
+func parseSentAt(raw json.RawMessage) (time.Time, string, error) {
 	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
-		return time.Time{}, nil
+		return time.Time{}, "", nil
 	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
-		for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05", "2006-01-02"} {
-			if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
-				return t, nil
+		for _, layout := range []string{time.RFC3339Nano, "2006-01-02 15:04:05", "2006-01-02"} {
+			if t, err := time.ParseInLocation(layout, s, time.UTC); err == nil {
+				return t, s, nil
 			}
 		}
-		return time.Time{}, fmt.Errorf("unparseable sent_at %q", s)
+		return time.Time{}, "", fmt.Errorf("unparseable sent_at %q", s)
 	}
 	var n json.Number
 	if err := json.Unmarshal(raw, &n); err == nil {
 		secs, err := strconv.ParseInt(n.String(), 10, 64)
 		if err != nil {
-			return time.Time{}, fmt.Errorf("unparseable sent_at %s", n)
+			return time.Time{}, "", fmt.Errorf("unparseable sent_at %s", n)
 		}
-		return time.Unix(secs, 0), nil
+		return time.Unix(secs, 0).UTC(), n.String(), nil
 	}
-	return time.Time{}, fmt.Errorf("sent_at must be a string or unix seconds")
+	return time.Time{}, "", fmt.Errorf("sent_at must be a string or unix seconds")
 }

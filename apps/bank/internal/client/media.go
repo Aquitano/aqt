@@ -16,7 +16,6 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
-	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -181,8 +180,4 @@ func (c *Client) UploadLibraryFiles(ctx context.Context, paths []string, source,
 	}
 	defer response.Body.Close()
 	return result, json.NewDecoder(response.Body).Decode(&result)
-}
-
-func (c *Client) PublishLibraryPages(ctx context.Context, publication mediaimport.Publication) (mediaimport.Result, error) {
-	return postJSON[mediaimport.Result](ctx, c, "/v1/library/pages/publication", nil, publication)
 }

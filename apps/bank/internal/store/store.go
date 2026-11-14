@@ -28,22 +28,24 @@ type Message struct {
 	// ID is the row number joins use. It changes when the archive is rebuilt
 	// from its raw inputs, so it never leaves the process; Ref is what
 	// callers see and cite.
-	ID               int64     `json:"-"`
-	Ref              string    `json:"ref"`
-	Source           string    `json:"source"`
-	ExternalID       string    `json:"external_id,omitempty"`
-	MessageID        string    `json:"message_id,omitempty"` // RFC 822 Message-ID for mail sources
-	ParentExternalID string    `json:"parent_external_id,omitempty"`
-	BranchID         string    `json:"branch_id,omitempty"`
-	AlternativeIndex int       `json:"alternative_index,omitempty"`
-	ThreadID         string    `json:"thread_id,omitempty"`
-	Sender           string    `json:"sender"`
-	Recipients       []string  `json:"recipients,omitempty"`
-	Subject          string    `json:"subject,omitempty"`
-	Body             string    `json:"body"`
-	SentAt           time.Time `json:"sent_at"`
-	RawRef           string    `json:"raw_ref,omitempty"`
-	Score            float64   `json:"score,omitempty"`
+	ID               int64    `json:"-"`
+	Ref              string   `json:"ref"`
+	Source           string   `json:"source"`
+	ExternalID       string   `json:"external_id,omitempty"`
+	MessageID        string   `json:"message_id,omitempty"` // RFC 822 Message-ID for mail sources
+	ParentExternalID string   `json:"parent_external_id,omitempty"`
+	BranchID         string   `json:"branch_id,omitempty"`
+	AlternativeIndex int      `json:"alternative_index,omitempty"`
+	ThreadID         string   `json:"thread_id,omitempty"`
+	Sender           string   `json:"sender"`
+	Recipients       []string `json:"recipients,omitempty"`
+	Subject          string   `json:"subject,omitempty"`
+	Body             string   `json:"body"`
+	// SentAt is zero, and absent from JSON, when the source did not say.
+	SentAt     time.Time `json:"sent_at,omitzero"`
+	RawInput   int64     `json:"raw_input,omitempty"`
+	RawLocator string    `json:"raw_locator,omitempty"`
+	Score      float64   `json:"score,omitempty"`
 	// Snippet is a bounded window of the body around the match, plain text so
 	// it is safe to print anywhere. Empty when nothing matched in the body.
 	Snippet string `json:"snippet,omitempty"`
@@ -58,54 +60,35 @@ type Message struct {
 	AttachmentSnippet string `json:"attachment_snippet,omitempty"`
 }
 
-// InsertMessagesOpts selects how an import treats a message it has already
-// stored. The zero value preserves the existing row exactly. Rethread updates
-// the fields an importer derives from raw input and may learn to derive better
-// after a parser fix; the row still counts as a duplicate in the result.
-type InsertMessagesOpts struct {
-	Rethread bool
-}
-
 // messageBatchSize bounds one PostgreSQL protocol batch. The whole call still
-// runs in one transaction, so an import pays for one commit and remains atomic,
-// while batches keep client and server buffers bounded for histories with tens
-// of thousands of records.
+// runs in one transaction, so a batch of messages and their attachments
+// commits together or not at all.
 const messageBatchSize = 1000
 
 // notRetired makes every import skip a message `bank retire` removed, so
 // replaying the raw input that first brought it in cannot resurrect it. Mail
 // can come back under another external id, so the Message-ID is checked too.
-// The skipped row returns id zero like a duplicate; CountRetired tells the two
-// apart.
 const notRetired = `
 	where not exists (select 1 from message_tombstones t
 		where t.source = $1 and (t.external_id = $2 or ($3 <> '' and t.message_id = $3)))`
 
 const insertMessageSQL = `
-	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index, ref)
-	select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14` + notRetired + `
+	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_input_id, raw_locator, parent_external_id, branch_id, alternative_index, ref)
+	select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15` + notRetired + `
 	on conflict do nothing
 	returning id`
 
-const rethreadMessageSQL = `
-	insert into messages (source, external_id, message_id, thread_id, sender, recipients, subject, body, sent_at, raw_ref, parent_external_id, branch_id, alternative_index, ref)
-	select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14` + notRetired + `
-	on conflict (source, external_id) do update
-		set thread_id = excluded.thread_id, subject = excluded.subject, sent_at = excluded.sent_at,
-            parent_external_id = coalesce(nullif(excluded.parent_external_id, ''), messages.parent_external_id),
-            branch_id = coalesce(nullif(excluded.branch_id, ''), messages.branch_id),
-            alternative_index = case when excluded.alternative_index > 0 then excluded.alternative_index else messages.alternative_index end
-		where messages.thread_id is distinct from excluded.thread_id
-		   or messages.subject is distinct from excluded.subject
-		   or messages.sent_at is distinct from excluded.sent_at
-		   or (excluded.parent_external_id <> '' and messages.parent_external_id is distinct from excluded.parent_external_id)
-		   or (excluded.branch_id <> '' and messages.branch_id is distinct from excluded.branch_id)
-		   or (excluded.alternative_index > 0 and messages.alternative_index is distinct from excluded.alternative_index)
-	returning id, xmax = 0`
+// existingMessageSQL finds the row a skipped insert collided with, by
+// Message-ID first so mail that arrives under two id schemes resolves to one
+// row. No row means the message was retired.
+const existingMessageSQL = `
+	select id from messages
+	where source = $1 and (external_id = $2 or ($3 <> '' and message_id = $3))
+	order by ($3 <> '' and message_id = $3) desc, id limit 1`
 
 type Attachment struct {
-	ID        int64          `json:"id"`
 	MessageID int64          `json:"-"`
+	Position  int            `json:"position"`
 	Filename  string         `json:"filename"`
 	MimeType  string         `json:"mime_type,omitempty"`
 	SizeBytes int64          `json:"size_bytes"`
@@ -146,109 +129,149 @@ func (s *Store) SchemaVersion(ctx context.Context) (int32, error) {
 	return version, err
 }
 
-// InsertMessages inserts a batch atomically and returns one id per input, in
-// input order. An id of zero means that row was already present or its key was
-// retired; CountRetired tells the two apart. Records are
-// cleaned before the transaction begins, so malformed input cannot leave a
-// valid prefix committed.
-//
-// Work is sent through bounded pgx batches inside one transaction: a 40,000-row
-// history uses 40 protocol exchanges and one commit instead of 40,000 of each.
-// The zero-value options use a bare "on conflict do nothing", which also
-// swallows the partial unique index on (source, message_id). Rethread targets
-// only (source, external_id), matching InsertMessageRethreading's contract.
-func (s *Store) InsertMessages(ctx context.Context, messages []Message, o InsertMessagesOpts) ([]int64, error) {
-	cleaned := make([]Message, len(messages))
-	for i, m := range messages {
+// Record is one message to write with its attachments, whose bytes are
+// already in the blob store. An attachment's Position keys it within the
+// message.
+type Record struct {
+	Message     Message
+	Attachments []Attachment
+}
+
+// Written is what WriteMessages did with one record.
+type Written struct {
+	// ID is the message's row, new or existing; zero when it was retired.
+	ID       int64
+	Inserted bool
+	// Attachments counts the attachment rows this call added.
+	Attachments int
+}
+
+// WriteMessages writes records and their attachments in one transaction and
+// reports one Written per record, in order. A message already stored keeps
+// its row; its attachments are added at the positions it does not hold yet,
+// so repeating an import, or running it twice at once, writes nothing twice.
+// Records are cleaned before the transaction begins, so malformed input
+// cannot leave a valid prefix committed.
+func (s *Store) WriteMessages(ctx context.Context, records []Record) ([]Written, error) {
+	cleaned := make([]Message, len(records))
+	for i, r := range records {
 		var err error
-		if cleaned[i], err = m.clean(); err != nil {
+		if cleaned[i], err = r.Message.clean(); err != nil {
 			return nil, fmt.Errorf("message %d: %w", i, err)
 		}
 	}
-	ids := make([]int64, len(cleaned))
-	if len(cleaned) == 0 {
-		return ids, nil
+	out := make([]Written, len(records))
+	if len(records) == 0 {
+		return out, nil
 	}
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		for start := 0; start < len(cleaned); start += messageBatchSize {
+			end := min(start+messageBatchSize, len(cleaned))
+			if err := insertMessages(ctx, tx, cleaned[start:end], out[start:end]); err != nil {
+				return err
+			}
+		}
+		var skipped []Message
+		for i, w := range out {
+			if !w.Inserted {
+				skipped = append(skipped, cleaned[i])
+			}
+		}
+		if err := refCollisions(ctx, tx.Query, skipped); err != nil {
+			return err
+		}
+		return insertAttachments(ctx, tx, records, out)
+	})
+	return out, err
+}
 
-	// A singleton is the compatibility path used by mail ingestion. Avoid an
-	// explicit BEGIN/COMMIT around the one statement; PostgreSQL's autocommit is
-	// already atomic and Gmail intentionally runs several of these concurrently.
-	if len(cleaned) == 1 {
-		id, err := s.insertMessageRow(ctx, cleaned[0], o)
-		if err == nil && id == 0 {
-			err = refCollisions(ctx, s.pool.Query, cleaned)
+func insertMessages(ctx context.Context, tx pgx.Tx, messages []Message, out []Written) error {
+	var batch pgx.Batch
+	for _, m := range messages {
+		batch.Queue(insertMessageSQL, m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body,
+			nullTime(m.SentAt), nullID(m.RawInput), m.RawLocator, m.ParentExternalID, m.BranchID, m.AlternativeIndex, m.Ref)
+	}
+	results := tx.SendBatch(ctx, &batch)
+	for i := range messages {
+		err := results.QueryRow().Scan(&out[i].ID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
 		}
 		if err != nil {
-			return nil, err
+			results.Close()
+			return err
 		}
-		ids[0] = id
-		if id != 0 {
-			countImported(ctx, 1, content.Digest{})
-		}
-		return ids, nil
+		out[i].Inserted = true
 	}
+	if err := results.Close(); err != nil {
+		return err
+	}
+	for i, m := range messages {
+		if out[i].Inserted {
+			continue
+		}
+		err := tx.QueryRow(ctx, existingMessageSQL, m.Source, m.ExternalID, m.MessageID).Scan(&out[i].ID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+	}
+	return nil
+}
 
-	tx, err := s.pool.Begin(ctx)
+func insertAttachments(ctx context.Context, tx pgx.Tx, records []Record, out []Written) error {
+	for i, r := range records {
+		if out[i].ID == 0 {
+			continue
+		}
+		for _, a := range r.Attachments {
+			a.MessageID = out[i].ID
+			added, err := insertAttachment(ctx, tx, a)
+			if err != nil {
+				return err
+			}
+			if added {
+				out[i].Attachments++
+			}
+		}
+	}
+	return nil
+}
+
+// InsertMessages writes messages without attachments and returns one id per
+// input, zero for one that was already stored or retired.
+func (s *Store) InsertMessages(ctx context.Context, messages []Message) ([]int64, error) {
+	records := make([]Record, len(messages))
+	for i, m := range messages {
+		records[i] = Record{Message: m}
+	}
+	written, err := s.WriteMessages(ctx, records)
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback(context.WithoutCancel(ctx))
-
-	for start := 0; start < len(cleaned); start += messageBatchSize {
-		end := min(start+messageBatchSize, len(cleaned))
-		var batch pgx.Batch
-		query := insertMessageSQL
-		if o.Rethread {
-			query = rethreadMessageSQL
-		}
-		for _, m := range cleaned[start:end] {
-			batch.Queue(query, messageArgs(m)...)
-		}
-		results := tx.SendBatch(ctx, &batch)
-		var batchErr error
-		for i := start; i < end; i++ {
-			ids[i], batchErr = scanMessageInsert(results.QueryRow(), o)
-			if batchErr != nil {
-				break
-			}
-		}
-		if closeErr := results.Close(); batchErr == nil {
-			batchErr = closeErr
-		}
-		if batchErr != nil {
-			return nil, batchErr
-		}
-	}
-	var skipped []Message
-	for i, id := range ids {
-		if id == 0 {
-			skipped = append(skipped, cleaned[i])
-		}
-	}
-	if err := refCollisions(ctx, tx.Query, skipped); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	for _, id := range ids {
-		if id != 0 {
-			countImported(ctx, 1, content.Digest{})
+	ids := make([]int64, len(written))
+	for i, w := range written {
+		if w.Inserted {
+			ids[i] = w.ID
 		}
 	}
 	return ids, nil
 }
 
-func (s *Store) insertMessageRow(ctx context.Context, m Message, o InsertMessagesOpts) (int64, error) {
-	query := insertMessageSQL
-	if o.Rethread {
-		query = rethreadMessageSQL
+func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
+	ids, err := s.InsertMessages(ctx, []Message{m})
+	if err != nil {
+		return 0, err
 	}
-	return scanMessageInsert(s.pool.QueryRow(ctx, query, messageArgs(m)...), o)
+	return ids[0], nil
 }
 
-func messageArgs(m Message) []any {
-	return []any{m.Source, m.ExternalID, m.MessageID, m.ThreadID, m.Sender, m.Recipients, m.Subject, m.Body, m.SentAt, m.RawRef, m.ParentExternalID, m.BranchID, m.AlternativeIndex, m.Ref}
+// InsertAttachment writes one attachment at its position, unless the message
+// already holds one there.
+func (s *Store) InsertAttachment(ctx context.Context, a Attachment) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		_, err := insertAttachment(ctx, tx, a)
+		return err
+	})
 }
 
 // refCollisions fails when a skipped message's ref already belongs to a
@@ -282,60 +305,6 @@ func refCollisions(ctx context.Context, query func(context.Context, string, ...a
 	return nil
 }
 
-func scanMessageInsert(row pgx.Row, o InsertMessagesOpts) (int64, error) {
-	var id int64
-	if !o.Rethread {
-		err := row.Scan(&id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, nil
-		}
-		return id, err
-	}
-	var inserted bool
-	err := row.Scan(&id, &inserted)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, nil
-	}
-	if err != nil || !inserted {
-		return 0, err
-	}
-	return id, nil
-}
-
-// InsertMessage is the single-record compatibility wrapper around
-// InsertMessages. It is idempotent via (source, external_id) and returns zero
-// when the message was already present or retired.
-func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
-	ids, err := s.InsertMessages(ctx, []Message{m}, InsertMessagesOpts{})
-	if err != nil {
-		return 0, err
-	}
-	return ids[0], nil
-}
-
-// InsertMessageRethreading is InsertMessage for sources whose thread id,
-// subject, and sent_at are derived, and so can change when the derivation is
-// fixed: an already-stored message is re-keyed onto the incoming values
-// instead of being left under the old ones. Everything else about the stored
-// row is kept — a re-import is not an authority on a body that may since have
-// been repaired. SetLongerMessageBody is the one deliberate exception, and it
-// only ever adds text.
-//
-// Like InsertMessage it returns (0, nil) for a message that was already
-// present, re-keyed or not, so importers keep counting it as a duplicate
-// rather than as new, and for a retired one.
-//
-// Only (source, external_id) is treated as the conflict: a caller that also
-// sets MessageID would hit the second unique index as a raw error rather than
-// the silent skip InsertMessage gives it.
-func (s *Store) InsertMessageRethreading(ctx context.Context, m Message) (int64, error) {
-	ids, err := s.InsertMessages(ctx, []Message{m}, InsertMessagesOpts{Rethread: true})
-	if err != nil {
-		return 0, err
-	}
-	return ids[0], nil
-}
-
 // clean normalizes every text field to what the columns accept and rejects a
 // message that could not be identified.
 func (m Message) clean() (Message, error) {
@@ -345,18 +314,18 @@ func (m Message) clean() (Message, error) {
 		return m, fmt.Errorf("message needs source (%q) and external_id (%q)", m.Source, m.ExternalID)
 	}
 	m.Ref = ref.ForMessage(m.Source, m.MessageID, m.ExternalID).String()
-	if m.Recipients == nil {
-		m.Recipients = []string{}
+	recipients := make([]string, len(m.Recipients))
+	for i, r := range m.Recipients {
+		recipients[i] = cleanText(r)
 	}
+	m.Recipients = recipients
 	m.Sender = cleanText(m.Sender)
 	m.Subject = cleanText(m.Subject)
 	m.Body = cleanText(m.Body)
 	m.ThreadID = cleanText(m.ThreadID)
 	m.ParentExternalID = cleanText(m.ParentExternalID)
 	m.BranchID = cleanText(m.BranchID)
-	for i, r := range m.Recipients {
-		m.Recipients[i] = cleanText(r)
-	}
+	m.RawLocator = cleanText(m.RawLocator)
 	return m, nil
 }
 
@@ -372,48 +341,34 @@ func cleanText(s string) string {
 	return strings.ReplaceAll(s, "\x00", "")
 }
 
-// bodyTrimChars is the whitespace the body-length comparison ignores. Spelled
-// out rather than left to btrim's default (spaces only) so the SQL guard and
-// TrimmedBodyLen measure the same string.
-const bodyTrimChars = " \t\n\r\f\v"
-
-// TrimmedBodyLen is the Go side of the comparison SetLongerMessageBody makes in
-// SQL: both count bytes after stripping the same whitespace, so a caller that
-// decides from it agrees with the write it then asks for.
-func TrimmedBodyLen(s string) int { return len(strings.Trim(s, bodyTrimChars)) }
-
-// MessageBody reads one message's ref and body without its attachments, for
-// callers that only need to compare the body.
-func (s *Store) MessageBody(ctx context.Context, id int64) (ref, body string, err error) {
-	err = s.pool.QueryRow(ctx, `select ref, body from messages where id = $1`, id).Scan(&ref, &body)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", ErrNotFound
+// nullTime writes an unknown date as null.
+func nullTime(t time.Time) any {
+	if t.IsZero() {
+		return nil
 	}
-	return ref, body, err
+	return t
 }
 
-// SetLongerMessageBody replaces a message's body with one re-parsed from its
-// archived raw input, and reports whether it did. It is the single exception to
-// the rule that a re-import never rewrites a body (see
-// InsertMessageRethreading): the parser has since learned to read mail whose
-// stored body is a stub, and that text is only recoverable from the raw.
-//
-// The length comparison is the whole safety of it, and it lives in the
-// statement rather than in the caller: only strictly more text than the row
-// already holds is written, so the worst a wrong caller can do is nothing.
-//
-// The BM25 index is an ordinary Postgres index over these columns, so the
-// updated body is searchable when the statement commits — nothing to refresh,
-// the same reason RefreshAttachmentText needs no reindex step.
-func (s *Store) SetLongerMessageBody(ctx context.Context, id int64, body string) (bool, error) {
-	tag, err := s.pool.Exec(ctx, `
-		update messages set body = $2
-		where id = $1 and octet_length(btrim($2, $3)) > octet_length(btrim(body, $3))`,
-		id, cleanText(body), bodyTrimChars)
-	if err != nil {
-		return false, err
+func nullID(id int64) any {
+	if id == 0 {
+		return nil
 	}
-	return tag.RowsAffected() == 1, nil
+	return id
+}
+
+// optionalTime scans a nullable timestamptz, leaving the zero time for null.
+type optionalTime struct{ t *time.Time }
+
+func (o optionalTime) Scan(src any) error {
+	switch v := src.(type) {
+	case nil:
+		*o.t = time.Time{}
+	case time.Time:
+		*o.t = v
+	default:
+		return fmt.Errorf("cannot scan %T into a time", src)
+	}
+	return nil
 }
 
 // FindMessageID returns the row id for (source, external_id), or 0 if absent.
@@ -443,58 +398,6 @@ func (s *Store) FindByEmailMessageID(ctx context.Context, source, messageID stri
 		return 0, nil
 	}
 	return id, err
-}
-
-func (s *Store) MessageHasAttachments(ctx context.Context, messageID int64) (bool, error) {
-	var exists bool
-	err := s.pool.QueryRow(ctx,
-		`select exists (select 1 from attachments where message_id = $1)`, messageID).Scan(&exists)
-	return exists, err
-}
-
-// AttachmentKeys counts the attachments already stored for a message, keyed by
-// content and filename. Re-importing a message whose blobs failed the first
-// time uses this to add only what is missing.
-func (s *Store) AttachmentKeys(ctx context.Context, messageID int64) (map[string]int, error) {
-	rows, err := s.pool.Query(ctx,
-		`select c.blake3, a.filename from attachments a join contents c on c.id = a.content_id where a.message_id = $1`, messageID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]int{}
-	for rows.Next() {
-		var sum content.Digest
-		var filename string
-		if err := rows.Scan(&sum, &filename); err != nil {
-			return nil, err
-		}
-		out[AttachmentKey(sum, filename)]++
-	}
-	return out, rows.Err()
-}
-
-// AttachmentKey identifies one attachment by content and name, the pair that
-// makes re-import healing idempotent.
-func AttachmentKey(d content.Digest, filename string) string {
-	return d.String() + "\x00" + cleanText(filename)
-}
-
-func (s *Store) InsertAttachment(ctx context.Context, a Attachment) error {
-	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error { return insertAttachment(ctx, tx, a) })
-	if err == nil {
-		countImported(ctx, 0, a.BLAKE3)
-	}
-	return err
-}
-
-// HasMessage lets importers skip expensive fetches for already-archived mail.
-func (s *Store) HasMessage(ctx context.Context, source, externalID string) (bool, error) {
-	var exists bool
-	err := s.pool.QueryRow(ctx,
-		`select exists (select 1 from messages where source = $1 and external_id = $2)`,
-		source, cleanText(externalID)).Scan(&exists)
-	return exists, err
 }
 
 // GetSyncState returns the stored JSON state for a source, or nil if none.
@@ -553,11 +456,11 @@ func (s *Store) GetMessageDetailByRef(ctx context.Context, r ref.Message) (Messa
 
 // messageColumns is the full row every single-message read returns.
 const messageColumns = `m.id, m.ref, m.source, m.external_id, m.message_id, m.thread_id,
-	m.sender, m.recipients, m.subject, m.body, m.sent_at, m.raw_ref, m.parent_external_id, m.branch_id, m.alternative_index`
+	m.sender, m.recipients, m.subject, m.body, m.sent_at, coalesce(m.raw_input_id, 0), m.raw_locator, m.parent_external_id, m.branch_id, m.alternative_index`
 
 func (m *Message) scanFull(row pgx.Row) error {
 	return row.Scan(&m.ID, &m.Ref, &m.Source, &m.ExternalID, &m.MessageID, &m.ThreadID,
-		&m.Sender, &m.Recipients, &m.Subject, &m.Body, &m.SentAt, &m.RawRef, &m.ParentExternalID, &m.BranchID, &m.AlternativeIndex)
+		&m.Sender, &m.Recipients, &m.Subject, &m.Body, optionalTime{&m.SentAt}, &m.RawInput, &m.RawLocator, &m.ParentExternalID, &m.BranchID, &m.AlternativeIndex)
 }
 
 func (s *Store) GetMessage(ctx context.Context, id int64) (Message, []Attachment, error) {
@@ -596,10 +499,13 @@ func (s *Store) GetMessageByRef(ctx context.Context, r ref.Message) (Message, []
 }
 
 type SourceStats struct {
-	Source   string    `json:"source"`
-	Messages int64     `json:"messages"`
-	Earliest time.Time `json:"earliest"`
-	Latest   time.Time `json:"latest"`
+	Source   string `json:"source"`
+	Messages int64  `json:"messages"`
+	// Undated counts messages whose source gave no date. Earliest and Latest
+	// describe the others, and are absent when there are none.
+	Undated  int64     `json:"undated"`
+	Earliest time.Time `json:"earliest,omitzero"`
+	Latest   time.Time `json:"latest,omitzero"`
 	// LastIngest is when this source last gained a message — the freshness
 	// signal for manually dropped exports.
 	LastIngest time.Time `json:"last_ingest"`
@@ -628,7 +534,7 @@ func (s *Store) Stats(ctx context.Context) ([]SourceStats, error) {
 	// The type check keeps a state blob that is not an object (nothing writes
 	// one today) from failing the whole of `bank stats` on the `-` operator.
 	rows, err := s.pool.Query(ctx, `
-		select m.source, count(*), min(m.sent_at), max(m.sent_at), max(m.ingested_at),
+		select m.source, count(*), count(*) filter (where m.sent_at is null), min(m.sent_at), max(m.sent_at), max(m.ingested_at),
 		       coalesce(max(ss.updated_at) filter (
 		           where jsonb_typeof(ss.state) <> 'object' or ss.state - 'coverage' <> '{}'::jsonb),
 		           'epoch'::timestamptz),
@@ -645,7 +551,7 @@ func (s *Store) Stats(ctx context.Context) ([]SourceStats, error) {
 	for rows.Next() {
 		var st SourceStats
 		var lastSync time.Time
-		if err := rows.Scan(&st.Source, &st.Messages, &st.Earliest, &st.Latest, &st.LastIngest,
+		if err := rows.Scan(&st.Source, &st.Messages, &st.Undated, optionalTime{&st.Earliest}, optionalTime{&st.Latest}, &st.LastIngest,
 			&lastSync, &st.Coverage); err != nil {
 			return nil, err
 		}

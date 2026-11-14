@@ -34,9 +34,6 @@ func TestCLIParsesDocumentedForms(t *testing.T) {
 		{[]string{"fetch", strings.Repeat("ab", 32), "-o", "out.jpg"}, func(c cli) bool {
 			return c.Fetch.BLAKE3.String() == strings.Repeat("ab", 32) && c.Fetch.Output == "out.jpg"
 		}},
-		{[]string{"import", "json", "--source", "notes", "-"}, func(c cli) bool {
-			return reflect.DeepEqual(c.Import.JSON.Paths, []string{"-"}) && c.Import.JSON.Source == "notes"
-		}},
 		{[]string{"contact", "alias", "remove", "alice", "whatsapp:Alice"}, func(c cli) bool {
 			return c.Contact.Alias.Rm.Name == "alice" && reflect.DeepEqual(c.Contact.Alias.Rm.Aliases, []string{"whatsapp:Alice"})
 		}},
@@ -48,11 +45,11 @@ func TestCLIParsesDocumentedForms(t *testing.T) {
 		}},
 	} {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
-			var root cli
-			if _, err := newParser(&root).Parse(tt.args); err != nil {
+			root := newCLI()
+			if _, err := newParser(root).Parse(tt.args); err != nil {
 				t.Fatal(err)
 			}
-			if !tt.check(root) {
+			if !tt.check(*root) {
 				t.Fatalf("parsed %+v", root)
 			}
 		})

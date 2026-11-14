@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -15,6 +16,15 @@ import (
 func libraryItem(external string) library.Item {
 	identity := library.Identity{Source: "youtube", Account: "owner", ExternalID: external}
 	return library.Item{Identity: identity, ID: library.StableID("item", identity), Kind: "video", Title: "A careful voyage", Provider: "youtube", ProviderID: external}
+}
+
+func rawInput(t *testing.T, st *store.Store, name string) int64 {
+	t.Helper()
+	id, err := st.AddRawInput(context.Background(), "test", name, content.Sum([]byte(name)), int64(len(name)), json.RawMessage("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
 
 func TestLibraryImportKeepsObservationsAndSnapshots(t *testing.T) {
@@ -80,7 +90,7 @@ func TestLibraryReplayConflictsCaptureOrderAndSearchModes(t *testing.T) {
 	item := libraryItem("quiet")
 	item.Title = "Quiet ocean"
 	item.Creators = []string{"Named creator"}
-	item.Provenance = library.Provenance{RawRef: "youtube/history.json", Locator: "watch:1"}
+	item.Provenance = library.Provenance{RawInput: rawInput(t, st, "youtube/history.json"), Locator: "watch:1"}
 	second := libraryItem("forest")
 	second.Title = "Quiet forest"
 	event := library.Activity{Identity: library.Identity{Source: "netflix", Account: "owner", ExternalID: "observation"}, ItemID: item.ID, Kind: "watch", Occurred: library.Date{Precision: "day", Value: "2026-10-02"}}
@@ -89,7 +99,7 @@ func TestLibraryReplayConflictsCaptureOrderAndSearchModes(t *testing.T) {
 	}
 	partial := libraryItem("quiet")
 	partial.Title = partial.ProviderID
-	partial.Provenance = library.Provenance{RawRef: "youtube/playlist.csv", Locator: "entry:1"}
+	partial.Provenance = library.Provenance{RawInput: rawInput(t, st, "youtube/playlist.csv"), Locator: "entry:1"}
 	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Items: []library.Item{partial}}); err != nil {
 		t.Fatal(err)
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
@@ -28,7 +29,7 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, filepath.Join(dir, "archive"))
+	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, sources.All)
 	t.Cleanup(s.extraction.done.Wait)
 	token, err := Tokens(dir).New("refs-test", tokens.Write)
 	if err != nil {

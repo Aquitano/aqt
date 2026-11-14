@@ -1,7 +1,7 @@
 // Package discord imports the official GDPR data package ("Request all of my
 // data"). The package only contains the account owner's side of conversations;
 // attachments arrive as CDN URLs (kept in the body — the links expire, so the
-// bytes can't be archived from the package alone).
+// bytes can't be stored from the package alone).
 package discord
 
 import (
@@ -12,29 +12,20 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/export"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
-type Result struct {
-	Channels   int `json:"channels"`
-	Inserted   int `json:"inserted"`
-	Duplicates int `json:"duplicates"`
-	Skipped    int `json:"skipped"`
-	// FailedChannels names the channels whose message file could not be read
-	// or parsed. The import continues without them, so partial success has to
-	// be visible in the result rather than only in a stderr line that a JSON
-	// consumer never sees.
-	FailedChannels []string `json:"failed_channels,omitempty"`
-}
+// Source reads a data package zip; an unpacked package arrives packed as one.
+type Source struct{}
+
+type Options struct{}
+
+func (Source) Kind() string { return "discord" }
 
 type message struct {
 	ID     string
@@ -42,37 +33,23 @@ type message struct {
 	Body   string
 }
 
-// Import reads a data package zip or an unpacked package directory.
-func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
-	var res Result
-	exp, err := export.Open(inputPath)
+func (Source) Parse(ctx context.Context, raw ingest.Raw, _ Options, out ingest.Emitter) error {
+	exp, err := export.Open(raw)
 	if err != nil {
-		return res, err
+		return err
 	}
 	defer exp.Close()
 	fsys := exp.FS
-	rawRef := inputPath
-	switch {
-	case fsys == nil:
-		return res, fmt.Errorf("%s: expected a data package zip or its unpacked directory", inputPath)
-	case exp.Dir:
-		if abs, err := filepath.Abs(inputPath); err == nil {
-			rawRef = abs
-		}
-		fmt.Fprintf(os.Stderr, "bank: directory input is referenced, not archived — keep %s (or import the original zip)\n", rawRef)
-	default:
-		if rawRef, err = archive.Copy(archiveDir, "discord", inputPath); err != nil {
-			return res, fail.Opf("archive %s: %w", inputPath, err)
-		}
+	if fsys == nil {
+		return fmt.Errorf("%s: expected a data package zip or its unpacked directory", raw.Name)
 	}
 	// Some packages nest everything under a "package/" root.
 	if _, err := fs.Stat(fsys, "messages"); err != nil {
-		if _, err := fs.Stat(fsys, "package/messages"); err == nil {
-			if fsys, err = fs.Sub(fsys, "package"); err != nil {
-				return res, err
-			}
-		} else {
-			return res, fmt.Errorf("%s: no messages/ directory — not a Discord data package?", inputPath)
+		if _, err := fs.Stat(fsys, "package/messages"); err != nil {
+			return fmt.Errorf("%s: no messages/ directory, not a Discord data package?", raw.Name)
+		}
+		if fsys, err = fs.Sub(fsys, "package"); err != nil {
+			return err
 		}
 	}
 
@@ -81,37 +58,36 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 
 	dirs, err := fs.ReadDir(fsys, "messages")
 	if err != nil {
-		return res, err
+		return err
 	}
 	for _, d := range dirs {
 		if !d.IsDir() {
 			continue
 		}
+		dir := path.Join("messages", d.Name())
 		// The id is the thread: every server has a #general, and a renamed
 		// channel is still the same channel. The name is display data.
 		channelID := strings.TrimPrefix(d.Name(), "c")
 		name := channelNames[channelID]
 		if name == "" {
-			name = channelName(fsys, path.Join("messages", d.Name()))
+			name = channelName(fsys, dir)
 		}
 		label := name // a name says more to a reader than an id
 		if label == "" {
 			label = channelID
 		}
-		msgs, err := readChannel(fsys, path.Join("messages", d.Name()))
+		msgs, err := readChannel(fsys, dir)
 		if err != nil {
-			res.FailedChannels = append(res.FailedChannels, label)
-			fmt.Fprintf(os.Stderr, "bank: skipping discord channel %s (%s): %v\n", label, d.Name(), err)
+			out.Issue(ingest.Issuef(ingest.Rejected, "channel %s (%s): %v", label, dir, err))
 			continue
 		}
-		res.Channels++
-		messages := make([]store.Message, 0, len(msgs))
+		skipped := 0
 		for _, m := range msgs {
 			if m.Body == "" || m.ID == "" {
-				res.Skipped++
+				skipped++
 				continue
 			}
-			messages = append(messages, store.Message{
+			if err := out.Message(ingest.Message{
 				Source:     "discord",
 				ExternalID: m.ID,
 				ThreadID:   channelID,
@@ -119,25 +95,16 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 				Sender:     sender,
 				Body:       m.Body,
 				SentAt:     m.SentAt,
-				RawRef:     rawRef,
-			})
-		}
-		// Rethreading, not a plain insert: an archive filled before threads
-		// were keyed on channel ids still holds these messages under the channel
-		// name, and only a re-import can move them.
-		ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{Rethread: true})
-		if err != nil {
-			return res, fail.Opf("insert messages: %w", err)
-		}
-		for _, id := range ids {
-			if id == 0 {
-				res.Duplicates++
-			} else {
-				res.Inserted++
+				Locator:    dir,
+			}); err != nil {
+				return err
 			}
 		}
+		if skipped > 0 {
+			out.Issue(ingest.Issuef(ingest.Skipped, "channel %s (%s): %d messages with no id or no content", label, dir, skipped))
+		}
 	}
-	return res, nil
+	return nil
 }
 
 // readIndex maps channel id -> human name ("Direct Message with alice", ...).
@@ -275,5 +242,5 @@ func parseTime(s string) time.Time {
 			return t
 		}
 	}
-	return time.Unix(0, 0)
+	return time.Time{}
 }

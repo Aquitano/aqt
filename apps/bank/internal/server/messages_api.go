@@ -10,8 +10,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -76,9 +76,9 @@ func (s *Server) registerMessagesAPI(api huma.API) {
 			"must be one SELECT, VALUES or TABLE, and a read token may call it. Reading stops at the row cap or at " +
 			"8 MiB of values, and truncated says so; a value over 64 KiB is cut and counted in cut_values.",
 	}.For(api), s.query)
-	huma.Register(api, httpapi.Operation{ID: "listImportReports", Method: http.MethodGet, Path: "/v1/import-reports", Tag: "imports",
-		Summary: "List past imports with their outcome, newest first",
-	}.For(api), s.importReports)
+	huma.Register(api, httpapi.Operation{ID: "listRawInputs", Method: http.MethodGet, Path: "/v1/raw-inputs", Tag: "imports",
+		Summary: "List stored raw inputs with the outcome of their latest import, newest first",
+	}.For(api), s.rawInputs)
 }
 
 type browseThreadsInput struct {
@@ -172,7 +172,7 @@ type mailConflictInput struct {
 }
 
 func (s *Server) mailConflict(ctx context.Context, in *mailConflictInput) (*httpapi.Body[store.Thread], error) {
-	if err := archive.ValidSource(in.Source); err != nil {
+	if err := ingest.ValidSource(in.Source); err != nil {
 		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return reply(s.read.MailConflictMessages(ctx, in.Source, in.Key, in.Before, in.Limit))
@@ -229,11 +229,11 @@ func (s *Server) query(ctx context.Context, in *queryInput) (*httpapi.Body[store
 	return reply(s.read.Query(ctx, in.Body.SQL, in.Body.Limit))
 }
 
-type importReportsInput struct {
-	Before int64 `query:"before" default:"0" minimum:"0" doc:"Only reports with an ID below this one. 0 starts at the newest."`
+type rawInputsInput struct {
+	Before int64 `query:"before" default:"0" minimum:"0" doc:"Only raw inputs with an ID below this one. 0 starts at the newest."`
 	httpapi.PageSize
 }
 
-func (s *Server) importReports(ctx context.Context, in *importReportsInput) (*httpapi.Body[[]store.ImportReport], error) {
-	return list(s.db.ImportReports(ctx, in.Before, in.Limit))
+func (s *Server) rawInputs(ctx context.Context, in *rawInputsInput) (*httpapi.Body[[]store.RawInput], error) {
+	return list(s.db.RawInputs(ctx, in.Before, in.Limit))
 }

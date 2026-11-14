@@ -3,18 +3,18 @@ package aichat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"math"
-	"path/filepath"
+	"path"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/export"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
 // ChatGPT data export (chatgpt.com → Settings → Data controls → Export data):
@@ -62,66 +62,80 @@ type cgptAttachment struct {
 	MimeAlt string `json:"mimeType"`
 }
 
-func ImportChatGPT(ctx context.Context, st *store.Store, blobs *blob.Store, archiveDir, path string) (Result, error) {
-	var res Result
-	raw, rawRef, md, closeExport, err := loadChatGPTExport(archiveDir, blobs, path, ctx)
+// ChatGPT reads conversations.json itself or the export zip, whose
+// conversations may be split into numbered shards and whose assets ride along.
+type ChatGPT struct{}
+
+func (ChatGPT) Kind() string { return "chatgpt" }
+
+func (ChatGPT) Parse(_ context.Context, raw ingest.Raw, _ Options, out ingest.Emitter) error {
+	exp, err := export.Open(raw)
 	if err != nil {
-		return res, err
+		return err
 	}
-	defer closeExport()
-	var convs []cgptConversation
-	if err := json.Unmarshal(raw, &convs); err != nil {
-		return res, err
-	}
-	for _, c := range convs {
-		msgs := parseChatGPTConversation(c, true)
-		for key, node := range c.Mapping {
-			if node.Message == nil {
-				continue
-			}
-			m := node.Message
-			if m.Author.Role != "user" && m.Author.Role != "assistant" {
-				continue
-			}
-			for _, part := range m.Content.Parts {
-				var plain string
-				if json.Unmarshal(part, &plain) == nil || partText(part) != "" || len(assetPointerIDs(part)) > 0 {
-					continue
-				}
-				res.UnsupportedContent++
-				store.ImportIssue(ctx, "Unsupported content in "+key+" ("+c.Title+")")
-			}
-			if len(m.Content.Parts) == 0 && strings.TrimSpace(m.Content.Text) == "" && len(m.Metadata.Attachments) == 0 {
-				res.UnsupportedContent++
-				store.ImportIssue(ctx, "Empty or unsupported message "+key+" ("+c.Title+")")
-			}
+	defer exp.Close()
+	assets := loadChatGPTAssets(exp.FS)
+	files, err := eachConversation(raw, exp.FS, out, func(file string, c cgptConversation) error {
+		reportUnsupported(out, c)
+		thread := chatGPTThread(c)
+		named := c.Title
+		if named == "" {
+			named = thread
 		}
-		if len(msgs) == 0 {
-			res.EmptyConversations++
+		return emitConversation(out, "chatgpt", file+": conversation "+thread, named, parseChatGPTConversation(c), assets.part)
+	})
+	if err != nil {
+		return err
+	}
+	if files == 0 {
+		return errors.New("no conversations.json or conversations-N.json shards, not a data export?")
+	}
+	return nil
+}
+
+func reportUnsupported(out ingest.Emitter, c cgptConversation) {
+	keys := make([]string, 0, len(c.Mapping))
+	for key := range c.Mapping {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		m := c.Mapping[key].Message
+		if m == nil || (m.Author.Role != "user" && m.Author.Role != "assistant") {
 			continue
 		}
-		res.Conversations++
-		if err := res.ingest(ctx, st, "chatgpt", rawRef, msgs, md); err != nil {
-			return res, err
+		for _, part := range m.Content.Parts {
+			var plain string
+			if json.Unmarshal(part, &plain) == nil || partText(part) != "" || len(assetPointerIDs(part)) > 0 {
+				continue
+			}
+			out.Issue(ingest.Issuef(ingest.Unsupported, "unsupported content in message %s (%s)", key, c.Title))
+		}
+		if len(m.Content.Parts) == 0 && strings.TrimSpace(m.Content.Text) == "" && len(m.Metadata.Attachments) == 0 {
+			out.Issue(ingest.Issuef(ingest.Unsupported, "empty or unsupported message %s (%s)", key, c.Title))
 		}
 	}
-	return res, nil
+}
+
+// chatGPTThread picks the conversation's identity. conversation_id is the
+// stable one; the title is display data and repeats across unrelated chats
+// ("New chat"), so falling back to it is a last resort for an export that
+// carries neither id.
+func chatGPTThread(c cgptConversation) string {
+	switch {
+	case c.ConversationID != "":
+		return c.ConversationID
+	case c.ID != "":
+		return c.ID
+	}
+	return c.Title
 }
 
 // parseChatGPTConversation keeps the tree relationships on a deterministic
-// chronological list. Imports retain asset-only messages so missing files can
-// be reported even when the export contains no media.
-func parseChatGPTConversation(c cgptConversation, withAssets bool) []message {
-	// conversation_id is the stable identity; the title is display data and
-	// repeats across unrelated chats ("New chat"). Falling back to the title is
-	// a last resort for an export that carries neither id.
-	thread := c.ConversationID
-	if thread == "" {
-		thread = c.ID
-	}
-	if thread == "" {
-		thread = c.Title
-	}
+// chronological list. Asset-only messages are kept so missing files are
+// reported even when the input carries no media.
+func parseChatGPTConversation(c cgptConversation) []message {
+	thread := chatGPTThread(c)
 	var out []message
 	for nodeID, node := range c.Mapping {
 		m := node.Message
@@ -162,7 +176,7 @@ func parseChatGPTConversation(c cgptConversation, withAssets bool) []message {
 					}
 				}
 			}
-			if len(parts) == 0 && (!withAssets || len(refs) == 0) {
+			if len(parts) == 0 && len(refs) == 0 {
 				continue
 			}
 			body = strings.Join(parts, "\n")
@@ -329,58 +343,49 @@ func assetID(pointer string) string {
 	return ""
 }
 
-// loadChatGPTExport is loadConversations plus the export's media: an opener
-// for <asset-id>.dat files and the original-filename map, looked up by name
-// anywhere in a directory or zip that carries them. A bare conversations.json
-// has no media and imports text-only, exactly as before.
-func loadChatGPTExport(archiveDir string, blobs *blob.Store, path string, contexts ...context.Context) ([]byte, string, *media, func(), error) {
-	noop := func() {}
-	raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path, contexts...)
-	if err != nil {
-		return nil, "", nil, noop, err
+// chatGPTAssets finds an export's <asset-id>.dat files by name anywhere in the
+// zip, with the original filenames from conversation_asset_file_names.json. A
+// bare conversations.json has none, so every reference becomes a part the
+// input lacks.
+type chatGPTAssets struct {
+	fsys  fs.FS
+	paths map[string]string
+	// names maps "<id>.dat" to the file's original upload name.
+	names map[string]string
+}
+
+func loadChatGPTAssets(fsys fs.FS) chatGPTAssets {
+	a := chatGPTAssets{fsys: fsys, paths: map[string]string{}}
+	if fsys == nil {
+		return a
 	}
-	exp, err := export.Open(path)
-	if err != nil || exp.FS == nil {
-		return raw, rawRef, nil, noop, err
-	}
-	byName := map[string]string{}
-	_ = fs.WalkDir(exp.FS, ".", func(p string, d fs.DirEntry, err error) error {
+	_ = fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
-			byName[filepath.Base(p)] = p
+			a.paths[path.Base(p)] = p
 		}
 		return nil
 	})
-	md := &media{
-		blobs: blobs,
-		names: loadAssetNames(func() ([]byte, error) {
-			return fs.ReadFile(exp.FS, byName["conversation_asset_file_names.json"])
-		}),
-		open: func(id string) io.ReadCloser {
-			p, ok := byName[id+".dat"]
-			if !ok || !assetIDName.MatchString(id) {
-				return nil
-			}
-			f, err := exp.FS.Open(p)
-			if err != nil {
-				return nil
-			}
-			return f
-		},
+	// The names file only improves display names, so any failure just means
+	// none.
+	if p, ok := a.paths["conversation_asset_file_names.json"]; ok {
+		if raw, err := fs.ReadFile(fsys, p); err == nil {
+			_ = json.Unmarshal(raw, &a.names)
+		}
 	}
-	return raw, rawRef, md, func() { exp.Close() }, nil
+	return a
 }
 
-// loadAssetNames reads conversation_asset_file_names.json ("<id>.dat" →
-// original filename). The file is optional and only improves display names,
-// so any failure just means empty.
-func loadAssetNames(read func() ([]byte, error)) map[string]string {
-	raw, err := read()
-	if err != nil {
-		return nil
+func (a chatGPTAssets) part(ref assetRef) ingest.Part {
+	name := a.names[ref.ID+".dat"]
+	if name == "" {
+		name = ref.Name
 	}
-	var names map[string]string
-	if json.Unmarshal(raw, &names) != nil {
-		return nil
+	if name == "" {
+		name = ref.ID
 	}
-	return names
+	part := ingest.Part{Filename: name, MimeType: ref.Mime}
+	if p, ok := a.paths[ref.ID+".dat"]; ok && assetIDName.MatchString(ref.ID) {
+		part.Open = func() (io.ReadCloser, error) { return a.fsys.Open(p) }
+	}
+	return part
 }

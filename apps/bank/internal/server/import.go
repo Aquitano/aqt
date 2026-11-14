@@ -2,33 +2,15 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"errors"
-	"fmt"
-	"io"
-	"io/fs"
 	"log/slog"
-	"mime/multipart"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
-	"github.com/aquitano/aqt/apps/bank/internal/eml"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/generic"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
-
-// JSON imports decode in memory; two 16 MiB requests leave room for decoded
-// records and extraction inside the 2 GiB server container.
-const maxJSONUpload = 16 << 20
-
-var jsonImports = make(chan struct{}, 2)
 
 // extractAfterImport reads text out of newly stored attachments so an upload
 // becomes searchable inside its documents shortly after it lands. Newest first
@@ -120,7 +102,7 @@ func (s *Server) extractUntilCurrent() {
 
 func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Time) (backlog bool) {
 	o := extract.DefaultOptions()
-	o.TempDir = uploadStagingDir(s.dataDir)
+	o.TempDir = tempDir(s.dataDir)
 	sel := blobtext.Selection{Limit: blobtext.PostImportLimit, NewestFirst: true, StoredSince: since, RefreshSince: refreshSince}
 	summary, err := blobtext.Run(ctx, blobtext.Local{Store: s.db, Blobs: s.blobs}, sel, o, nil)
 	if err != nil {
@@ -130,140 +112,6 @@ func (s *Server) extractPending(ctx context.Context, since, refreshSince time.Ti
 	return summary.Considered == blobtext.PostImportLimit
 }
 
-func (s *Server) importJSON(ctx context.Context, source string, body []byte) (generic.Result, error) {
-	return store.RunImport(ctx, s.db, "json", "upload", func(ctx context.Context) (generic.Result, error) {
-		sum := sha256.Sum256(body)
-		rawRef, err := archive.Write(s.archiveDir, "json", fmt.Sprintf("upload-%x.json", sum[:6]), body)
-		if err != nil {
-			return generic.Result{}, fail.Opf("archive upload: %w", err)
-		}
-		// Attachment paths would resolve on the server's filesystem — an
-		// arbitrary file-read primitive for token holders, and never what a
-		// remote caller means anyway. Local imports keep them.
-		return generic.Import(ctx, s.db, s.blobs, source, rawRef, body, time.Now(), false)
-	})
-}
-
-// uploadMaxAge is how long a staging directory may sit untouched before it is
-// treated as abandoned. Comfortably longer than the slowest plausible upload
-// of a Takeout-sized mbox, so an upload in flight is never swept away.
-const uploadMaxAge = 24 * time.Hour
-
-func uploadStagingDir(dataDir string) string { return filepath.Join(dataDir, "tmp") }
-
-// pruneUploads removes staging directories left behind by a crash or a
-// restart. Nothing else lives under tmp/, and every entry there is named by
-// os.MkdirTemp, so age alone is a safe policy.
-func pruneUploads(dataDir string, maxAge time.Duration) error {
-	staging := uploadStagingDir(dataDir)
-	entries, err := os.ReadDir(staging)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	cutoff := time.Now().Add(-maxAge)
-	var failures []string
-	for _, e := range entries {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), "upload-") {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil || info.ModTime().After(cutoff) {
-			continue
-		}
-		if err := os.RemoveAll(filepath.Join(staging, e.Name())); err != nil {
-			failures = append(failures, err.Error())
-		}
-	}
-	if len(failures) > 0 {
-		return fmt.Errorf("%s: %s", staging, strings.Join(failures, "; "))
-	}
-	return nil
-}
-
-// saveUpload writes the multipart "file" part into a fresh temp dir, keeping the
-// original basename — importers derive thread names and sources from it. Staged
-// under the data dir, not /tmp: uploads can be Takeout-sized and tmpfs is small.
-func saveUpload(mr *multipart.Reader, dataDir string, observation **eml.MailImportContext) (string, func(), error) {
-	for {
-		part, err := mr.NextPart()
-		if errors.Is(err, io.EOF) {
-			return "", nil, fmt.Errorf("no file field in upload")
-		}
-		if err != nil {
-			return "", nil, err
-		}
-		if part.FormName() == "mail_context" {
-			if *observation != nil {
-				_ = part.Close()
-				return "", nil, fmt.Errorf("duplicate mail context field")
-			}
-			raw, err := io.ReadAll(io.LimitReader(part, archive.MaxMailContextBytes+1))
-			if err != nil {
-				return "", nil, err
-			}
-			context, err := archive.DecodeMailContext(raw)
-			if err != nil {
-				return "", nil, err
-			}
-			_ = part.Close()
-			*observation = context
-			continue
-		}
-		if part.FormName() != "file" {
-			part.Close()
-			continue
-		}
-		name := filepath.Base(filepath.FromSlash(part.FileName()))
-		if name == "." || name == ".." || name == string(filepath.Separator) || name == "" {
-			part.Close()
-			return "", nil, fmt.Errorf("upload has no usable filename")
-		}
-		staging := uploadStagingDir(dataDir)
-		if err := os.MkdirAll(staging, 0o700); err != nil {
-			part.Close()
-			return "", nil, fail.Opf("create upload staging dir: %w", err)
-		}
-		// Cheap enough to do per upload, and it keeps a long-lived server from
-		// accumulating debris between restarts.
-		if err := pruneUploads(dataDir, uploadMaxAge); err != nil {
-			slog.Warn("pruning abandoned uploads", "error", err)
-		}
-		dir, err := os.MkdirTemp(staging, "upload-")
-		if err != nil {
-			part.Close()
-			return "", nil, fail.Opf("create upload staging dir: %w", err)
-		}
-		cleanup := func() { os.RemoveAll(dir) }
-		path := filepath.Join(dir, name)
-		f, err := os.Create(path)
-		if err != nil {
-			part.Close()
-			cleanup()
-			return "", nil, fail.Opf("create upload file: %w", err)
-		}
-		_, err = io.Copy(f, part)
-		part.Close()
-		if closeErr := f.Close(); err == nil {
-			err = closeErr
-		}
-		if err != nil {
-			cleanup()
-			// A write that failed on our own file is the server's disk; a
-			// short read is the client's connection dying. Both surface, only
-			// the first is a 5xx.
-			var pathErr *fs.PathError
-			if errors.As(err, &pathErr) {
-				return "", nil, fail.Opf("saving upload: %w", err)
-			}
-			return "", nil, fmt.Errorf("saving upload: %w", err)
-		}
-		if _, err := mr.NextPart(); !errors.Is(err, io.EOF) {
-			cleanup()
-			return "", nil, fmt.Errorf("file must be the final multipart field")
-		}
-		return path, cleanup, nil
-	}
-}
+// tempDir is where extraction stages files, under the data dir rather than
+// /tmp: documents can be large and tmpfs is small.
+func tempDir(dataDir string) string { return filepath.Join(dataDir, "tmp") }

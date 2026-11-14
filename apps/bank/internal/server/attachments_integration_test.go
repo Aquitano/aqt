@@ -12,6 +12,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -43,7 +44,7 @@ func attachmentServer(t *testing.T) (*Server, *store.Store) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, filepath.Join(dir, "archive"))
+	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, sources.All)
 	t.Cleanup(s.extraction.done.Wait)
 	return s, st
 }

@@ -2,12 +2,11 @@ package aichat
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
+	"errors"
 	"strings"
 
-	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/export"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
 // Claude.ai data export (claude.ai → Settings → Privacy → Export data):
@@ -29,58 +28,53 @@ type claudeConversation struct {
 	} `json:"chat_messages"`
 }
 
-func ImportClaude(ctx context.Context, st *store.Store, archiveDir, path string) (Result, error) {
-	var res Result
-	// The export is several zips; anything that is not conversations
-	// (projects, memories, design chats) is handled by claudeextras.go. An
-	// input holding both — a folder the owner unpacked everything into —
-	// imports both.
-	var extrasFound bool
-	if info, err := os.Stat(path); err == nil && (info.IsDir() || strings.EqualFold(filepath.Ext(path), ".zip")) {
-		extras, closeExtras, err := loadClaudeExtras(path, info.IsDir())
-		if err != nil {
-			return res, err
-		}
-		if len(extras) > 0 {
-			defer closeExtras()
-			extrasFound = true
-			if err := importClaudeExtraInput(ctx, st, &res, archiveDir, path, extras, info.IsDir()); err != nil {
-				return res, err
-			}
-		}
-		if extrasFound && !hasClaudeConversations(path, info.IsDir()) {
-			return res, nil
-		}
-	}
-	raw, rawRef, err := loadConversations(archiveDir, "claude", path, ctx)
+// Claude reads one zip of the Claude.ai export, which arrives as several:
+// conversations, projects, memories and design chats. A bare
+// conversations.json works too.
+type Claude struct{}
+
+func (Claude) Kind() string { return "claude" }
+
+func (Claude) Parse(_ context.Context, raw ingest.Raw, _ Options, out ingest.Emitter) error {
+	exp, err := export.Open(raw)
 	if err != nil {
-		return res, err
+		return err
 	}
-	var convs []claudeConversation
-	if err := json.Unmarshal(raw, &convs); err != nil {
-		return res, err
-	}
-	for _, c := range convs {
-		msgs := parseClaudeConversation(c)
-		if len(msgs) == 0 {
-			res.EmptyConversations++
-			continue
-		}
-		res.Conversations++
-		if err := res.ingest(ctx, st, "claude", rawRef, msgs, nil); err != nil {
-			return res, err
+	defer exp.Close()
+	var extras int
+	if exp.FS != nil {
+		if extras, err = emitClaudeExtras(exp.FS, out); err != nil {
+			return err
 		}
 	}
-	return res, nil
+	files, err := eachConversation(raw, exp.FS, out, func(file string, c claudeConversation) error {
+		thread := claudeThread(c)
+		named := c.Name
+		if named == "" {
+			named = thread
+		}
+		return emitConversation(out, "claude", file+": conversation "+thread, named, parseClaudeConversation(c), nil)
+	})
+	if err != nil {
+		return err
+	}
+	if files+extras == 0 {
+		return errors.New("no conversations, projects, memories or design chats, not a Claude export?")
+	}
+	return nil
+}
+
+// claudeThread picks the conversation's identity. The uuid is the stable one;
+// the name is display data and repeats across unrelated conversations.
+func claudeThread(c claudeConversation) string {
+	if c.UUID != "" {
+		return c.UUID
+	}
+	return c.Name
 }
 
 func parseClaudeConversation(c claudeConversation) []message {
-	// The uuid is the stable identity; the name is display data and repeats
-	// across unrelated conversations.
-	thread := c.UUID
-	if thread == "" {
-		thread = c.Name
-	}
+	thread := claudeThread(c)
 	var out []message
 	for _, m := range c.ChatMessages {
 		body := strings.TrimSpace(m.Text)

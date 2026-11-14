@@ -134,7 +134,7 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	// sent_at to the second, so without it the sort is only a partial order:
 	// the same query can return the same rows in a different arrangement, and
 	// paging would then duplicate some and skip others.
-	sql += " order by paradedb.score(m.id) desc, m.sent_at desc, m.id desc limit " + next(o.Limit)
+	sql += " order by paradedb.score(m.id) desc, m.sort_at desc, m.id desc limit " + next(o.Limit)
 	if o.Offset > 0 {
 		sql += " offset " + next(o.Offset)
 	}
@@ -148,7 +148,7 @@ func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Messa
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.Ref, &m.Source, &m.ThreadID, &m.Sender, &m.Subject, &m.Body,
-			&m.SentAt, &m.Score, &m.Snippet, &m.AttachmentSnippet); err != nil {
+			optionalTime{&m.SentAt}, &m.Score, &m.Snippet, &m.AttachmentSnippet); err != nil {
 			return nil, err
 		}
 		m.Snippet = Snippet(m.Snippet, m.Body, query)

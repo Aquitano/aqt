@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
+	"unicode/utf8"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
 type Mailbox struct {
@@ -15,11 +17,33 @@ type Mailbox struct {
 	Count  int64  `json:"n"`
 }
 
+// MailboxObservation is the folder a mail was seen in during one import, and
+// for Gmail over IMAP the labels it carried.
+type MailboxObservation struct {
+	Kind  string
+	Paths []string
+}
+
+func (o MailboxObservation) Validate() error {
+	if o.Kind != "export" && o.Kind != "imap" {
+		return fmt.Errorf("mailbox kind must be export or imap")
+	}
+	if len(o.Paths) == 0 {
+		return fmt.Errorf("mailbox observation needs a folder")
+	}
+	for _, path := range o.Paths {
+		if path == "" || len(path) > 4096 || !utf8.ValidString(path) || strings.ContainsAny(path, "\x00\r\n") {
+			return fmt.Errorf("invalid mailbox path %q", path)
+		}
+	}
+	return nil
+}
+
 type MailProvenance struct {
 	MessageID      string   `json:"message_id"`
 	InReplyTo      []string `json:"in_reply_to"`
 	References     []string `json:"references"`
-	RawRef         string   `json:"raw_ref"`
+	RawInput       int64    `json:"raw_input,omitempty"`
 	NativeThreadID string   `json:"native_thread_id"`
 	HasReplyLinks  bool     `json:"has_reply_links"`
 	Incomplete     bool     `json:"incomplete"`
@@ -32,7 +56,7 @@ func (s *Store) loadMailProvenance(ctx context.Context, messages []MessageDetail
 	for index, message := range messages {
 		ids[index], positions[message.ID] = message.ID, index
 	}
-	rows, err := s.pool.Query(ctx, `select d.message_id,d.header_message_id,d.in_reply_to,d.reference_ids,d.header_raw_ref,d.native_thread_id,d.incomplete,n.conflict_key,
+	rows, err := s.pool.Query(ctx, `select d.message_id,d.header_message_id,d.in_reply_to,d.reference_ids,coalesce(d.header_raw_input,0),d.native_thread_id,d.incomplete,n.conflict_key,
 		exists(select 1 from mail_thread_edges e where e.source=d.source and (e.left_node=d.node_key or e.right_node=d.node_key))
 		from mail_details d join mail_thread_nodes n on n.source=d.source and n.node_key=d.node_key
 		where d.message_id=any($1)`, ids)
@@ -43,7 +67,7 @@ func (s *Store) loadMailProvenance(ctx context.Context, messages []MessageDetail
 	for rows.Next() {
 		var id int64
 		var provenance MailProvenance
-		if err := rows.Scan(&id, &provenance.MessageID, &provenance.InReplyTo, &provenance.References, &provenance.RawRef, &provenance.NativeThreadID, &provenance.Incomplete, &provenance.ConflictKey, &provenance.HasReplyLinks); err != nil {
+		if err := rows.Scan(&id, &provenance.MessageID, &provenance.InReplyTo, &provenance.References, &provenance.RawInput, &provenance.NativeThreadID, &provenance.Incomplete, &provenance.ConflictKey, &provenance.HasReplyLinks); err != nil {
 			return err
 		}
 		messages[positions[id]].Mail = &provenance
@@ -60,7 +84,7 @@ func (s *Store) ResolveMailMessage(ctx context.Context, source, messageID, exter
 }
 
 func (s *Store) ListMailboxes(ctx context.Context, source string) ([]Mailbox, error) {
-	if err := archive.ValidSource(source); err != nil {
+	if err := ingest.ValidSource(source); err != nil {
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `select b.id,b.source,b.kind,b.path,count(m.message_id)

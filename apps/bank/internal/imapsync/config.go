@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
 type Config struct {
@@ -97,7 +97,7 @@ func (config Config) validate() error {
 	seen := make(map[string]bool)
 	sources := make(map[string]bool)
 	for _, account := range config.Accounts {
-		if err := archive.ValidSource(account.ID); err != nil {
+		if err := ingest.ValidSource(account.ID); err != nil {
 			return fmt.Errorf("account id: %w", err)
 		}
 		if seen[account.ID] {
@@ -108,7 +108,7 @@ func (config Config) validate() error {
 			return fmt.Errorf("each IMAP account needs a distinct source; duplicate %q", account.Source)
 		}
 		sources[account.Source] = true
-		if err := archive.ValidSource(account.Source); err != nil {
+		if err := ingest.ValidSource(account.Source); err != nil {
 			return fmt.Errorf("account %s source: %w", account.ID, err)
 		}
 		host, port, err := net.SplitHostPort(account.Address)

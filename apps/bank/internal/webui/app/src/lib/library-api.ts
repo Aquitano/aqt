@@ -1,9 +1,9 @@
 import { type } from "arktype";
 
-import { api, message, libraryFile, type SearchParams } from "@/lib/api";
+import { api, message, libraryFile, rawInput, type SearchParams } from "@/lib/api";
 
 const identity = { source: "string", account: "string", external_id: "string" } as const;
-const provenance = type({ raw_ref: "string", locator: "string" });
+const provenance = type({ raw_input: "number", locator: "string" });
 const date = type({ value: "string", precision: "string" });
 const state = type({
   revision: "number",
@@ -108,16 +108,6 @@ const groups = {
   pages: page.array(),
   coverage: "string[]",
 } as const;
-const importResult = type({
-  items: "number",
-  activity: "number",
-  collections: "number",
-  files: "number",
-  pages: "number",
-  "skipped?": "number",
-  "ads?": "number",
-  "diagnostics?": "string[] | null",
-});
 export type MediaItem = typeof item.infer;
 export type MediaState = typeof state.infer;
 export type Activity = typeof activity.infer;
@@ -189,7 +179,7 @@ export function createCollection(
         external_id: "",
         captured: { value: "", precision: "unknown" },
         completeness: "complete",
-        provenance: { raw_ref: "", locator: "" },
+        provenance: { raw_input: 0, locator: "" },
         entries,
       },
     }),
@@ -219,12 +209,12 @@ export function find(params: SearchParams, offset = 0) {
     type({ messages: message.array(), attachments: libraryFile.array(), ...groups }),
   );
 }
+// Options go before the file: the server checks them before it stores bytes.
 export function importLibrary(kind: string, file: File, account: string) {
   const body = new FormData();
+  body.append("options", JSON.stringify(account.trim() ? { account: account.trim() } : {}));
   body.append("file", file);
-  const params = new URLSearchParams();
-  if (account.trim()) params.set("account", account.trim());
-  return api(`/v1/import/${encodeURIComponent(kind)}?${params}`, importResult, {
+  return api(`/v1/import/${encodeURIComponent(kind)}`, rawInput, {
     method: "POST",
     body,
   });

@@ -15,9 +15,13 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
+	"github.com/aquitano/aqt/apps/bank/internal/importtest"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
-	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
+
+var emlKind = importer.Register(eml.EML{}, "")
 
 // stubGmail serves the three endpoints the sync uses. Message ids map to a
 // status: 200 with a real mail, 404 for one that is gone for good, or 500 for
@@ -115,15 +119,10 @@ func (g *stubGmail) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func syncFixture(t *testing.T) (*store.Store, *blob.Store, string) {
+func syncFixture(t *testing.T) (*store.Store, importer.Target) {
 	t.Helper()
-	st := storetest.New(t)
-	root := t.TempDir()
-	blobs, err := blob.New(filepath.Join(root, "blobs"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return st, blobs, filepath.Join(root, "archive")
+	target := importtest.Target(t, emlKind)
+	return target.Store, target
 }
 
 func loadedState(t *testing.T, st *store.Store) syncState {
@@ -143,12 +142,12 @@ func loadedState(t *testing.T, st *store.Store) syncState {
 
 func TestBackfillAdvancesPastAPermanently404Message(t *testing.T) {
 	ctx := context.Background()
-	st, blobs, archiveDir := syncFixture(t)
+	st, target := syncFixture(t)
 	g := &stubGmail{t: t, historyID: "100", ids: []string{"good", "gone"},
 		status: map[string]int{"gone": http.StatusNotFound}}
 	g.start(t)
 
-	res, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false)
+	res, err := runSync(ctx, &client{http: http.DefaultClient}, target, false)
 	if err != nil {
 		t.Fatalf("a message that no longer exists must not fail the run: %v", err)
 	}
@@ -170,7 +169,7 @@ func TestBackfillAdvancesPastAPermanently404Message(t *testing.T) {
 	g.historyID = "101"
 	g.history = []string{"gone"}
 	before := g.fetchCount("gone")
-	res, err = runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false)
+	res, err = runSync(ctx, &client{http: http.DefaultClient}, target, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +186,7 @@ func TestBackfillAdvancesPastAPermanently404Message(t *testing.T) {
 
 func TestSyncHealsAttachmentsOnExistingMessage(t *testing.T) {
 	ctx := context.Background()
-	st, blobs, archiveDir := syncFixture(t)
+	st, target := syncFixture(t)
 	id, err := st.InsertMessage(ctx, store.Message{Source: "gmail", ExternalID: "partial", Body: "body", SentAt: time.Unix(1, 0)})
 	if err != nil {
 		t.Fatal(err)
@@ -199,7 +198,7 @@ func TestSyncHealsAttachmentsOnExistingMessage(t *testing.T) {
 	g := &stubGmail{t: t, historyID: "100", ids: []string{"partial"}, raw: map[string]string{"partial": raw}}
 	g.start(t)
 	for _, full := range []bool{false, true} {
-		res, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, full)
+		res, err := runSync(ctx, &client{http: http.DefaultClient}, target, full)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -219,12 +218,12 @@ func TestSyncHealsAttachmentsOnExistingMessage(t *testing.T) {
 
 func TestRetryableFailureHoldsTheCheckpoint(t *testing.T) {
 	ctx := context.Background()
-	st, blobs, archiveDir := syncFixture(t)
+	st, target := syncFixture(t)
 	g := &stubGmail{t: t, historyID: "100", ids: []string{"good", "flaky"},
 		status: map[string]int{"flaky": http.StatusInternalServerError}}
 	g.start(t)
 
-	res, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false)
+	res, err := runSync(ctx, &client{http: http.DefaultClient}, target, false)
 	if err == nil {
 		t.Fatal("a retryable failure should surface")
 	}
@@ -237,7 +236,7 @@ func TestRetryableFailureHoldsTheCheckpoint(t *testing.T) {
 
 	// Once the API recovers, the same run completes and the checkpoint moves.
 	g.status = map[string]int{}
-	res, err = runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false)
+	res, err = runSync(ctx, &client{http: http.DefaultClient}, target, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,12 +255,12 @@ func TestQuarantineSurvivesAFailedRun(t *testing.T) {
 	// aborts it outright. Both must still remember what they learned about
 	// messages Gmail will never serve again.
 	t.Run("retryable failure", func(t *testing.T) {
-		st, blobs, archiveDir := syncFixture(t)
+		st, target := syncFixture(t)
 		g := &stubGmail{t: t, historyID: "100", ids: []string{"gone", "flaky"},
 			status: map[string]int{"gone": http.StatusNotFound, "flaky": http.StatusInternalServerError}}
 		g.start(t)
 
-		if _, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false); err == nil {
+		if _, err := runSync(ctx, &client{http: http.DefaultClient}, target, false); err == nil {
 			t.Fatal("the retryable failure should surface")
 		}
 		state := loadedState(t, st)
@@ -274,19 +273,27 @@ func TestQuarantineSurvivesAFailedRun(t *testing.T) {
 	})
 
 	t.Run("operational failure", func(t *testing.T) {
-		st, blobs, _ := syncFixture(t)
-		// An archive root under a regular file: every archive write fails with
-		// ENOTDIR, which is an operational failure and aborts the run.
-		file := filepath.Join(t.TempDir(), "not-a-dir")
-		if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		st, target := syncFixture(t)
+		// A blob root replaced by a regular file: every blob write fails,
+		// which is an operational failure and aborts the run.
+		root := filepath.Join(t.TempDir(), "blobs")
+		blobs, err := blob.New(root)
+		if err != nil {
 			t.Fatal(err)
 		}
+		if err := os.Remove(root); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(root, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		target.Blobs = blobs
 		g := &stubGmail{t: t, historyID: "100", ids: []string{"gone", "good"},
 			status: map[string]int{"gone": http.StatusNotFound}, held: "good"}
 		g.start(t)
 
-		if _, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, filepath.Join(file, "archive"), false); err == nil {
-			t.Fatal("a broken archive should abort the run")
+		if _, err := runSync(ctx, &client{http: http.DefaultClient}, target, false); err == nil {
+			t.Fatal("a broken blob store should abort the run")
 		}
 		state := loadedState(t, st)
 		if state.HistoryID != "" {
@@ -304,7 +311,7 @@ func TestQuarantineSurvivesAFailedRun(t *testing.T) {
 // read and map write".
 func TestBackfillDispatchAndQuarantineDoNotRace(t *testing.T) {
 	ctx := context.Background()
-	st, blobs, archiveDir := syncFixture(t)
+	st, target := syncFixture(t)
 	g := &stubGmail{t: t, historyID: "100", status: map[string]int{}}
 	const total = 600
 	for i := range total {
@@ -316,7 +323,7 @@ func TestBackfillDispatchAndQuarantineDoNotRace(t *testing.T) {
 	}
 	g.start(t)
 
-	res, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false)
+	res, err := runSync(ctx, &client{http: http.DefaultClient}, target, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +337,7 @@ func TestBackfillDispatchAndQuarantineDoNotRace(t *testing.T) {
 
 func TestSyncPreservesCoverageAndOtherState(t *testing.T) {
 	ctx := context.Background()
-	st, blobs, archiveDir := syncFixture(t)
+	st, target := syncFixture(t)
 	if err := st.SetCoverage(ctx, "gmail", "archive since 2011"); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +346,7 @@ func TestSyncPreservesCoverageAndOtherState(t *testing.T) {
 	}
 	g := &stubGmail{t: t, historyID: "100", ids: []string{}}
 	g.start(t)
-	if _, err := runSync(ctx, &client{http: http.DefaultClient}, st, blobs, archiveDir, false); err != nil {
+	if _, err := runSync(ctx, &client{http: http.DefaultClient}, target, false); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := st.GetSyncState(ctx, "gmail")

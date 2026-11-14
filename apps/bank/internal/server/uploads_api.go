@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"io"
 	"mime"
@@ -16,13 +17,12 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
-	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
-	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // maxUploadFiles bounds one library upload.
@@ -31,26 +31,9 @@ const maxUploadFiles = 100
 // registerUploadsAPI describes the routes that take files: imports, library
 // file uploads and page publications.
 func (s *Server) registerUploadsAPI(api huma.API) {
-	imports := httpapi.Operation{ID: "importFile", Method: http.MethodPost, Path: "/v1/import/{kind}", Tag: "imports",
-		Summary: "Import one export file into the archive",
-		Description: "kind is whatsapp, eml, mbox, discord, linkedin, youtube, chatgpt, claude, json, netflix, " +
-			"youtube-media or library. Every kind except json takes multipart/form-data whose last field is file, " +
-			"up to 16 GiB; eml and mbox may send a mail_context field before it. json takes the records as the " +
-			"body, a JSON array or NDJSON of at most 16 MiB that must arrive within a minute. The answer is the " +
-			"importer's report, and the attempt is kept in listImportReports. A file the importer cannot read is " +
-			"an InvalidRequest.",
-		Writes: true,
-	}.For(api)
-	imports.Responses["200"] = &huma.Response{Description: "The importer's report; its fields depend on kind.",
-		Content: map[string]*huma.MediaType{"application/json": {Schema: &huma.Schema{Type: "object"}}}}
-	huma.Register(api, imports, s.importFile)
-	httpapi.Registered(api, imports.Method, imports.Path).RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
-		"multipart/form-data": {Schema: &huma.Schema{Type: "object", Required: []string{"file"}, Properties: map[string]*huma.Schema{
-			"mail_context": {Type: "string", Description: "eml and mbox only: the folder and identifiers the collector observed, as JSON."},
-			"file":         {Type: "string", Format: "binary", Description: "The export, as one file."},
-		}}},
-		"application/json": {Schema: &huma.Schema{Description: "json only: the records."}},
-	}}
+	for _, kind := range s.kinds {
+		s.registerImport(api, kind)
+	}
 
 	upload := httpapi.Operation{ID: "uploadLibraryFiles", Method: http.MethodPost, Path: "/v1/library/files", Tag: "library",
 		Summary: "Keep up to 100 files in the library",
@@ -66,111 +49,112 @@ func (s *Server) registerUploadsAPI(api huma.API) {
 			"file": {Type: "array", Items: &huma.Schema{Type: "string", Format: "binary"}},
 		}}},
 	}}
+}
 
-	huma.Register(api, libraryBody(httpapi.Operation{ID: "publishLibraryPages", Method: http.MethodPost, Path: "/v1/library/pages/publication", Tag: "library",
-		Summary:     "Publish Markdown pages with the original files they were read from",
-		Description: "`bank library index` builds the body. Each page must match its original's bytes and metadata.",
-		Writes:      true,
-	}.For(api), http.StatusOK), s.publishLibraryPages)
+// registerImport describes one kind's import route. Its options field has
+// the kind's own options schema.
+func (s *Server) registerImport(api huma.API, kind importer.Kind) {
+	op := httpapi.Operation{ID: "import" + exportedName(kind.Name), Method: http.MethodPost, Path: "/v1/import/" + kind.Name, Tag: "imports",
+		Summary: kind.Help,
+		Description: "multipart/form-data with an optional options field, the kind's options as JSON, followed by the " +
+			"file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that " +
+			"raw input with the report of this import. An input the parser rejects stays stored, and the rejection " +
+			"is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
+		Writes: true,
+	}.For(api)
+	huma.Register(api, op, func(ctx context.Context, in *importInput) (*httpapi.Body[store.RawInput], error) {
+		return s.importInput(ctx, kind, in)
+	})
+	// Every source names its type Options, so the schema is inlined from a
+	// registry of its own instead of named in the document's.
+	options := huma.NewMapRegistry("#/components/schemas/", huma.DefaultSchemaNamer).Schema(kind.Options, false, "")
+	httpapi.Registered(api, op.Method, op.Path).RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
+		"multipart/form-data": {Schema: &huma.Schema{Type: "object", Required: []string{"file"}, Properties: map[string]*huma.Schema{
+			"options": options,
+			"file":    {Type: "string", Format: "binary", Description: "The input, as one file. A directory is sent as a zip of it."},
+		}}},
+	}}
+}
+
+// exportedName turns a kind such as youtube-media into YoutubeMedia.
+func exportedName(kind string) string {
+	var b strings.Builder
+	for _, word := range strings.FieldsFunc(kind, func(r rune) bool { return r == '-' || r == '_' }) {
+		b.WriteString(strings.ToUpper(word[:1]) + word[1:])
+	}
+	return b.String()
 }
 
 type importInput struct {
-	Kind      string `path:"kind" doc:"The importer, such as whatsapp, mbox or json."`
-	Source    string `query:"source" doc:"The source to file messages under, for kinds that take one, such as eml."`
-	Account   string `query:"account" doc:"The account at the source, for media and library kinds."`
-	DateOrder string `query:"date_order" enum:"mdy,dmy" doc:"netflix only: how the export writes dates."`
 	httpapi.Stream
 }
 
-// Uploads are always single files: directory inputs stay a client concern, the
-// CLI walks them and posts one file per request.
-func (s *Server) importFile(ctx context.Context, in *importInput) (*httpapi.Body[any], error) {
+// imports bounds the imports that parse at once, for every kind: parsers
+// hold records, mail and attachments in memory, and the container has 2 GiB.
+// Storing an upload's bytes streams to disk and does not wait for a slot.
+var imports = make(chan struct{}, 2)
+
+// maxOptions bounds the options field, which is read into memory.
+const maxOptions = 64 << 10
+
+func (s *Server) importInput(ctx context.Context, kind importer.Kind, in *importInput) (*httpapi.Body[store.RawInput], error) {
 	received := time.Now()
-	if err := importer.Check(in.Kind); err != nil {
-		return nil, httpapi.Invalid.New(err.Error())
-	}
-	if in.DateOrder != "" && in.Kind != "netflix" {
-		return nil, httpapi.Invalid.New("date_order requires a Netflix import")
-	}
-	// The source names a directory under the archive root and arrives here
-	// straight from a query string, so it is checked before any bytes are
-	// written rather than deep inside an importer.
-	if in.Source != "" {
-		if err := archive.ValidSource(in.Source); err != nil {
-			return nil, httpapi.Invalid.New(err.Error())
-		}
-	}
-	var res any
-	var err error
-	if in.Kind == "json" {
-		res, err = s.importJSONBody(ctx, in)
-	} else {
-		res, err = s.importUpload(ctx, in)
-	}
-	if err != nil {
-		return nil, err
-	}
-	s.extractAfterImport(received)
-	return &httpapi.Body[any]{Body: res}, nil
-}
-
-func (s *Server) importJSONBody(ctx context.Context, in *importInput) (any, error) {
-	if in.ContentLength() > maxJSONUpload {
-		return nil, httpapi.Invalid.New("a JSON import is at most 16 MiB")
-	}
-	select {
-	case jsonImports <- struct{}{}:
-		defer func() { <-jsonImports }()
-	case <-ctx.Done():
-		return nil, internal(ctx.Err())
-	}
-	timeout := cmp.Or(s.jsonReadTimeout, time.Minute)
-	if err := in.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-		return nil, internal(err)
-	}
-	in.Open(maxJSONUpload)
-	body, err := io.ReadAll(&in.Stream)
-	if err != nil {
-		return nil, in.Failed()
-	}
-	// Keep a failed body's deadline in place for net/http's cleanup reads.
-	// Successful uploads may spend longer importing after the body is read.
-	if err := in.SetReadDeadline(time.Time{}); err != nil {
-		return nil, internal(err)
-	}
-	res, err := s.importJSON(ctx, in.Source, body)
-	if err != nil {
-		return nil, importFailure(err)
-	}
-	return res, nil
-}
-
-func (s *Server) importUpload(ctx context.Context, in *importInput) (any, error) {
 	parts, err := in.Multipart(maxUpload)
 	if err != nil {
 		return nil, err
 	}
-	var observation *eml.MailImportContext
-	path, cleanup, err := saveUpload(parts, s.dataDir, &observation)
-	if err != nil {
-		return nil, cmp.Or(in.Failed(), importFailure(err))
+	target := importer.Target{Store: s.db, Blobs: s.blobs, Kinds: s.kinds}
+	var options json.RawMessage
+	var id int64
+	for id == 0 {
+		part, err := parts.NextPart()
+		if errors.Is(err, io.EOF) {
+			return nil, httpapi.Invalid.New("no file field in upload")
+		}
+		if err != nil {
+			return nil, cmp.Or(in.Failed(), error(httpapi.Invalid.New("malformed multipart body: "+err.Error())))
+		}
+		switch part.FormName() {
+		case "options":
+			if options != nil {
+				return nil, httpapi.Invalid.New("duplicate options field")
+			}
+			if options, err = io.ReadAll(io.LimitReader(part, maxOptions+1)); err != nil {
+				return nil, cmp.Or(in.Failed(), error(httpapi.Invalid.New("reading options: "+err.Error())))
+			}
+			if len(options) > maxOptions {
+				return nil, httpapi.Invalid.New("options are larger than 64 KiB")
+			}
+		case "file":
+			name := filepath.Base(filepath.FromSlash(strings.ReplaceAll(part.FileName(), "\\", "/")))
+			id, err = importer.Store(ctx, target, kind.Name, name, part, options)
+			if err != nil {
+				return nil, cmp.Or(in.Failed(), importFailure(err))
+			}
+		}
+		part.Close()
 	}
-	defer cleanup()
-	if observation != nil && in.Kind != "eml" && in.Kind != "mbox" {
-		return nil, httpapi.Invalid.New("mail context requires an EML or MBOX import")
+	if _, err := parts.NextPart(); !errors.Is(err, io.EOF) {
+		return nil, cmp.Or(in.Failed(), error(httpapi.Invalid.New("file must be the final multipart field")))
 	}
-	res, err := importer.Run(ctx, importer.Target{Store: s.db, Blobs: s.blobs, ArchiveDir: s.archiveDir}, in.Kind,
-		importer.Input{Path: path, Source: in.Source, Account: in.Account, DateOrder: in.DateOrder, Mail: observation})
+	select {
+	case imports <- struct{}{}:
+		defer func() { <-imports }()
+	case <-ctx.Done():
+		return nil, internal(ctx.Err())
+	}
+	raw, err := importer.Run(ctx, target, id)
 	if err != nil {
 		return nil, importFailure(err)
 	}
-	return res, nil
+	s.extractAfterImport(received)
+	return &httpapi.Body[store.RawInput]{Body: raw}, nil
 }
 
-// importFailure classifies an importer's error by the importers' own
-// contract, which the inbox sweep relies on as well: a failing database, disk
-// or context is marked with fail.Op, and anything else is the input's. A
-// failure of the server is answered without its cause.
+// importFailure classifies an import's error by the importer's contract: a
+// failing database, disk or context is marked with fail.Op, and anything
+// else is the input's. A failure of the server is answered without its
+// cause.
 func importFailure(err error) error {
 	if fail.IsOp(err) {
 		return internal(err)
@@ -190,7 +174,7 @@ type uploadLibraryFilesInput struct {
 func (s *Server) uploadLibraryFiles(ctx context.Context, in *uploadLibraryFilesInput) (*httpapi.Body[[]library.File], error) {
 	received := time.Now()
 	source, account := cmp.Or(in.Source, "files"), cmp.Or(in.Account, "owner")
-	if err := archive.ValidSource(source); err != nil {
+	if err := ingest.ValidSource(source); err != nil {
 		return nil, httpapi.Invalid.New(err.Error())
 	}
 	if strings.ContainsRune(account, 0) {
@@ -277,18 +261,4 @@ func (s *Server) storeUploadedFile(ctx context.Context, part *multipart.Part, st
 
 func newManualIdentity() library.Identity {
 	return library.Identity{Source: "manual", Account: "owner", ExternalID: rand.Text()}
-}
-
-// Schemas are named after their Go type, and the combined search answers
-// with a Result too.
-type publicationResult mediaimport.Result
-
-func (s *Server) publishLibraryPages(ctx context.Context, in *struct {
-	Body strictJSON[mediaimport.Publication]
-}) (*httpapi.Body[publicationResult], error) {
-	result, err := mediaimport.Publish(ctx, s.db, s.archiveDir, in.Body.Value)
-	if err != nil {
-		return nil, importFailure(err)
-	}
-	return &httpapi.Body[publicationResult]{Body: publicationResult(result)}, nil
 }

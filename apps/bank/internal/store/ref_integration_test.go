@@ -105,7 +105,7 @@ func TestRefIsStableAndAddressable(t *testing.T) {
 		taken := ref.ForMessage(collider.Source, "", collider.ExternalID).String()
 		storetest.Exec(t, dsn, `update messages set ref = $1 where source = 'gmail'`, taken)
 		for _, batch := range [][]store.Message{{collider}, {collider, msg(goldenSource, "bystander", store.Message{})}} {
-			_, err := st.InsertMessages(ctx, batch, store.InsertMessagesOpts{})
+			_, err := st.InsertMessages(ctx, batch)
 			if err == nil || !strings.Contains(err.Error(), "message ref collision") {
 				t.Fatalf("inserting %d messages: err = %v, want a ref collision", len(batch), err)
 			}

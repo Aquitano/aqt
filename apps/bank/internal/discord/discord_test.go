@@ -57,3 +57,9 @@ func TestParseJSON(t *testing.T) {
 		t.Errorf("timestamp = %v", msgs[0].SentAt)
 	}
 }
+
+func TestParseTimeLeavesAnUnknownTimestampZero(t *testing.T) {
+	if got := parseTime("yesterday"); !got.IsZero() {
+		t.Errorf("parseTime = %v, want the zero time", got)
+	}
+}

@@ -29,15 +29,16 @@ func (o BrowseOpts) Validate() error {
 }
 
 type ThreadGroup struct {
-	Source   string    `json:"source"`
-	ThreadID string    `json:"thread_id"`
-	Count    int64     `json:"n"`
-	LastAt   time.Time `json:"last_at"`
-	LastRef  string    `json:"last_ref"`
-	Sender   string    `json:"sender"`
-	Subject  string    `json:"subject"`
-	Preview  string    `json:"preview"`
-	Members  string    `json:"members"`
+	Source   string `json:"source"`
+	ThreadID string `json:"thread_id"`
+	Count    int64  `json:"n"`
+	// LastAt is absent when no message in the thread has a date.
+	LastAt  time.Time `json:"last_at,omitzero"`
+	LastRef string    `json:"last_ref"`
+	Sender  string    `json:"sender"`
+	Subject string    `json:"subject"`
+	Preview string    `json:"preview"`
+	Members string    `json:"members"`
 }
 
 func (s *Store) BrowseThreads(ctx context.Context, o BrowseOpts) ([]ThreadGroup, error) {
@@ -79,16 +80,16 @@ func (s *Store) BrowseThreads(ctx context.Context, o BrowseOpts) ([]ThreadGroup,
 	// Empty thread ids remain individual messages. Order ties include source
 	// and identity so pagination cannot shuffle equal-time conversations.
 	rows, err := s.pool.Query(ctx, `select source, thread_id, count(*), max(sent_at),
-		(array_agg(ref order by sent_at desc,id desc))[1],
-		(array_agg(sender order by sent_at desc,id desc))[1],
-		coalesce((array_agg(nullif(subject,'') order by sent_at desc,id desc)
+		(array_agg(ref order by sort_at desc,id desc))[1],
+		(array_agg(sender order by sort_at desc,id desc))[1],
+		coalesce((array_agg(nullif(subject,'') order by sort_at desc,id desc)
 			filter(where subject<>''))[1],''),
-		(array_agg(left(body,240) order by sent_at desc,id desc))[1],
+		(array_agg(left(body,240) order by sort_at desc,id desc))[1],
 		left(string_agg(distinct nullif(sender,''),', ' order by nullif(sender,''))
 			filter(where sender !~* '^thomas( breindl)?$'),200)
 		from messages m where ($1='' or source=$1)`+predicates+`
 		group by source, thread_id, case when thread_id='' then id else 0 end
-		order by max(sent_at) `+order+`, source, thread_id, min(id)
+		order by max(sort_at) `+order+`, source, thread_id, min(id)
 		limit $2 offset $3`, args...)
 	if err != nil {
 		return nil, err
@@ -98,7 +99,7 @@ func (s *Store) BrowseThreads(ctx context.Context, o BrowseOpts) ([]ThreadGroup,
 	for rows.Next() {
 		var g ThreadGroup
 		var members *string
-		if err := rows.Scan(&g.Source, &g.ThreadID, &g.Count, &g.LastAt, &g.LastRef, &g.Sender, &g.Subject, &g.Preview, &members); err != nil {
+		if err := rows.Scan(&g.Source, &g.ThreadID, &g.Count, optionalTime{&g.LastAt}, &g.LastRef, &g.Sender, &g.Subject, &g.Preview, &members); err != nil {
 			return nil, err
 		}
 		if members != nil {

@@ -3,7 +3,7 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
 import { getFileMessages, getFileText, RequestError, type Attachment } from "@/lib/api";
-import { Highlight } from "@/lib/format";
+import { fmtDay, Highlight } from "@/lib/format";
 import { select, useLocation } from "@/lib/navigation";
 import { selectMessage } from "@/views/search";
 
@@ -142,7 +142,7 @@ export function FileDetail({ file }: { file: Attachment }) {
         >
           <span className="flex min-w-0 flex-col gap-1 text-left">
             <span>
-              {message.sender} · {new Date(message.sent_at).toLocaleDateString()}
+              {message.sender} · {fmtDay(message.sent_at)}
             </span>
             <span className="line-clamp-2">{message.subject || message.body}</span>
           </span>

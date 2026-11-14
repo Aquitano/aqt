@@ -18,12 +18,16 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 const uidWindow = 10000
 const batchBytes = 16 << 20
 
-type Importer func(context.Context, string, string, eml.MailImportContext) (eml.Result, error)
+// Importer imports one downloaded message file as an eml input and returns the
+// stored raw input with its report.
+type Importer func(ctx context.Context, path string, opts eml.EMLOptions) (store.RawInput, error)
 
 type Result struct {
 	Fetched    int   `json:"fetched"`
@@ -289,23 +293,22 @@ func flushQueued(ctx context.Context, st *state, config Config, account Account,
 		group.Go(func() error {
 			requestCtx, cancel := context.WithTimeout(groupCtx, timeout)
 			defer cancel()
-			observation := eml.MailImportContext{Version: 1, Kind: "imap", Mailbox: folder, RelativePath: filepath.Base(file.Path), AccountID: account.ID}
+			options := eml.EMLOptions{Source: account.Source, Mailbox: folder, MailboxKind: "imap"}
 			if file.Gmail != nil {
-				observation.Version, observation.ThreadID, observation.Labels = 2, file.Gmail.ThreadID, file.Gmail.Labels
+				options.ThreadID, options.Labels = file.Gmail.ThreadID, file.Gmail.Labels
 			}
-			outcome, err := importer(requestCtx, account.Source, file.Path, observation)
+			raw, err := importer(requestCtx, file.Path, options)
 			if err != nil {
 				return fmt.Errorf("UID %d import failed: %w", file.UID, err)
 			}
-			if outcome.MailContextVersion != observation.Version {
-				return fmt.Errorf("UID %d mail context was not acknowledged; upgrade Bank before retrying", file.UID)
+			report := raw.Report
+			if report.Inserted+report.Duplicates+report.Retired+report.Issues[ingest.Rejected] != 1 {
+				return fmt.Errorf("UID %d was not acknowledged as one message (inserted=%d duplicates=%d retired=%d rejected=%d)",
+					file.UID, report.Inserted, report.Duplicates, report.Retired, report.Issues[ingest.Rejected])
 			}
-			if outcome.Inserted+outcome.Duplicates+outcome.Rejected != 1 {
-				return fmt.Errorf("UID %d was not acknowledged as one message (inserted=%d duplicates=%d rejected=%d)", file.UID, outcome.Inserted, outcome.Duplicates, outcome.Rejected)
-			}
-			inserted.Add(int64(outcome.Inserted))
-			duplicates.Add(int64(outcome.Duplicates))
-			rejected[index] = outcome.Rejected == 1
+			inserted.Add(int64(report.Inserted))
+			duplicates.Add(int64(report.Duplicates + report.Retired))
+			rejected[index] = report.Issues[ingest.Rejected] == 1
 			return nil
 		})
 	}

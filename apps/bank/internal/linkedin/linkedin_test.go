@@ -3,6 +3,7 @@ package linkedin
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseCSV(t *testing.T) {
@@ -62,5 +63,25 @@ two,Same title,A,B,2024-01-01 12:00:00 UTC,,hello
 	}
 	if msgs[0].Thread == msgs[1].Thread {
 		t.Fatalf("unrelated conversations merged under %q", msgs[0].Thread)
+	}
+}
+
+func TestParseDateDoesNotDependOnTheMachineZone(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := time.Local
+	t.Cleanup(func() { time.Local = local })
+
+	time.Local = time.UTC
+	elsewhere := parseDate("2024-01-01 12:00:00 CET")
+	time.Local = berlin
+	inBerlin := parseDate("2024-01-01 12:00:00 CET")
+	if !elsewhere.Equal(inBerlin) {
+		t.Errorf("parsed %v outside Berlin and %v inside it", elsewhere, inBerlin)
+	}
+	if !parseDate("unknown").IsZero() {
+		t.Error("an unreadable date should be the zero time")
 	}
 }

@@ -1,13 +1,13 @@
 package aichat
 
 import (
-	"archive/zip"
 	"context"
-	"os"
+	"errors"
 	"path/filepath"
 	"testing"
 
-	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/apps/bank/internal/importtest"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
 func TestParseClaudeProject(t *testing.T) {
@@ -38,12 +38,8 @@ func TestParseClaudeProject(t *testing.T) {
 func TestParseClaudeProjectSkipsStarter(t *testing.T) {
 	raw := `{"uuid": "p-2", "name": "How to use Claude", "is_starter_project": true,
 	  "docs": [{"uuid": "d-9", "filename": "guide.md", "content": "Anthropic's onboarding text"}]}`
-	msgs, err := parseClaudeProject([]byte(raw))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(msgs) != 0 {
-		t.Fatalf("starter project imported: %+v", msgs)
+	if msgs, err := parseClaudeProject([]byte(raw)); !errors.Is(err, errStarterProject) {
+		t.Fatalf("starter project imported: %+v %v", msgs, err)
 	}
 }
 
@@ -96,77 +92,49 @@ func TestParseClaudeDesignChat(t *testing.T) {
 }
 
 func TestImportClaudeExtrasZip(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
-	dir := t.TempDir()
+	target := importtest.Target(t, claudeKind)
+	path := exportZip(t, map[string]string{
+		"projects/p-1.json": `{"uuid": "p-1", "name": "Uni", "description": "Course planning.",
+		  "created_at": "2026-06-09T20:26:09+00:00",
+		  "docs": [{"uuid": "d-1", "filename": "plan.md", "content": "DBI, DBII", "created_at": "2026-06-10T08:00:00+00:00"}]}`,
+		"projects/p-2.json": `{"uuid": "p-2", "name": "How to use Claude", "is_starter_project": true}`,
+	})
 
-	zipPath := filepath.Join(dir, "projects-000.zip")
-	f, err := os.Create(zipPath)
-	if err != nil {
-		t.Fatal(err)
+	got := importtest.MustImport(t, target, "claude", path, nil)
+	if got.Report.Inserted != 2 || got.Report.Issues[ingest.Dropped] != 1 || got.Status != "complete" {
+		t.Fatalf("import = %+v, want one project with two messages and the starter dropped", got)
 	}
-	zw := zip.NewWriter(f)
-	w, err := zw.Create("projects/p-1.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.Write([]byte(`{"uuid": "p-1", "name": "Uni", "description": "Course planning.",
-	  "created_at": "2026-06-09T20:26:09+00:00",
-	  "docs": [{"uuid": "d-1", "filename": "plan.md", "content": "DBI, DBII", "created_at": "2026-06-10T08:00:00+00:00"}]}`)); err != nil {
-		t.Fatal(err)
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	f.Close()
-
-	res, err := ImportClaude(ctx, st, filepath.Join(dir, "archive"), zipPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Conversations != 1 || res.Inserted != 2 {
-		t.Fatalf("result = %+v, want one project with two messages", res)
-	}
-	id, err := st.FindMessageID(ctx, "claude", "d-1")
+	id, err := target.Store.FindMessageID(context.Background(), "claude", "d-1")
 	if err != nil || id == 0 {
 		t.Fatalf("project doc not imported: id=%d err=%v", id, err)
 	}
 
-	again, err := ImportClaude(ctx, st, filepath.Join(dir, "archive"), zipPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if again.Inserted != 0 || again.Duplicates != 2 {
-		t.Fatalf("re-import = %+v", again)
+	again := importtest.MustImport(t, target, "claude", path, nil)
+	if again.Report.Inserted != 0 || again.Report.Duplicates != 2 {
+		t.Fatalf("re-import = %+v", again.Report)
 	}
 }
 
 func TestImportClaudeMixedDirImportsBoth(t *testing.T) {
+	target := importtest.Target(t, claudeKind)
+	dir := filepath.Join(t.TempDir(), "claude-export")
+	writeFile(t, dir, "conversations.json", `[{"uuid": "c-1", "name": "Bank schema", "chat_messages": [
+	  {"uuid": "m-1", "sender": "human", "created_at": "2024-05-13T21:08:00Z", "text": "one datastore or two?", "content": []}]}]`)
+	writeFile(t, dir, "memories/a-1.json", `{"conversations_memory": "Thomas studies in Passau.", "account_uuid": "a-1"}`)
+
+	got := importtest.MustImport(t, target, "claude", dir, nil)
+	if got.Report.Inserted != 2 {
+		t.Fatalf("import = %+v, want the conversation and the memory both imported", got.Report)
+	}
 	ctx := context.Background()
-	st := storetest.New(t)
-	dir := t.TempDir()
-
-	convs := `[{"uuid": "c-1", "name": "Bank schema", "chat_messages": [
-	  {"uuid": "m-1", "sender": "human", "created_at": "2024-05-13T21:08:00Z", "text": "one datastore or two?", "content": []}]}]`
-	if err := os.WriteFile(filepath.Join(dir, "conversations.json"), []byte(convs), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(filepath.Join(dir, "memories"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mem := `{"conversations_memory": "Thomas studies in Passau.", "account_uuid": "a-1"}`
-	if err := os.WriteFile(filepath.Join(dir, "memories", "a-1.json"), []byte(mem), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	res, err := ImportClaude(ctx, st, filepath.Join(dir, "archive"), dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Conversations != 2 || res.Inserted != 2 {
-		t.Fatalf("result = %+v, want the conversation and the memory both imported", res)
-	}
-	if id, err := st.FindMessageID(ctx, "claude", "m-1"); err != nil || id == 0 {
+	if id, err := target.Store.FindMessageID(ctx, "claude", "m-1"); err != nil || id == 0 {
 		t.Errorf("conversation skipped in a mixed folder: id=%d err=%v", id, err)
+	}
+	threads, err := target.Store.GetThread(ctx, "claude", "memory", 0)
+	if err != nil || len(threads.Messages) != 1 {
+		t.Fatalf("memory thread: %+v %v", threads, err)
+	}
+	if !threads.Messages[0].SentAt.IsZero() {
+		t.Errorf("memory sent_at = %v, want undated", threads.Messages[0].SentAt)
 	}
 }

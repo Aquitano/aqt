@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"io"
 	"io/fs"
@@ -12,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/client"
@@ -102,17 +104,15 @@ func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 func TestLibraryRemoteImportsAndMarkdownRetraction(t *testing.T) {
 	ctx := context.Background()
 	c, _ := libraryClient(t)
-	input := filepath.Join(t.TempDir(), "NetflixViewingHistory.csv")
-	if err := os.WriteFile(input, []byte("Title,Date\nExample: Season 1: Pilot,2025-04-03\nExample: Season 1: Pilot,2025-04-03\n"), 0600); err != nil {
-		t.Fatal(err)
+	history := "Title,Date\nExample: Season 1: Pilot,2025-04-03\nExample: Season 1: Pilot,2025-04-03\n"
+	netflix := json.RawMessage(`{"account": "profile-one"}`)
+	raw, err := c.Import(ctx, "netflix", "NetflixViewingHistory.csv", strings.NewReader(history), netflix)
+	if err != nil || raw.Report.Library.Activity != 2 || raw.Report.Library.Items != 1 {
+		t.Fatalf("Netflix import: %+v %v", raw, err)
 	}
-	result, err := c.ImportMediaFile(ctx, "netflix", "", "profile-one", input)
-	if err != nil || result.Activity != 2 || result.Items != 1 {
-		t.Fatalf("Netflix import: %+v %v", result, err)
-	}
-	result, err = c.ImportMediaFile(ctx, "netflix", "", "profile-one", input)
-	if err != nil || result.Activity != 0 {
-		t.Fatalf("Netflix replay: %+v %v", result, err)
+	raw, err = c.Import(ctx, "netflix", "NetflixViewingHistory.csv", strings.NewReader(history), netflix)
+	if err != nil || raw.Report.Library.Activity != 0 {
+		t.Fatalf("Netflix replay: %+v %v", raw, err)
 	}
 	activity, err := c.ListLibraryActivity(ctx, library.ListOptions{Source: "netflix", Account: "profile-one", Limit: 20})
 	if err != nil || len(activity) != 2 || activity[0].Occurred.Precision != "day" {
@@ -120,16 +120,27 @@ func TestLibraryRemoteImportsAndMarkdownRetraction(t *testing.T) {
 	}
 	root := t.TempDir()
 	path := filepath.Join(root, "page.md")
+	publish := func() store.RawInput {
+		t.Helper()
+		publication, err := mediaimport.BuildPublication(root, mediaimport.PublicationOptions{Source: "brain", Account: "wiki"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		document, err := json.Marshal(publication)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := c.Import(ctx, "markdown", "publication.json", bytes.NewReader(document), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
 	if err = os.WriteFile(path, []byte("---\ntitle: Film notes\nanswers:\n  - Where is the violet telescope?\nsensitivity: normal\n---\nThe film has a memorable ending.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	publication, err := mediaimport.BuildPublication(root, mediaimport.Options{Source: "brain", Account: "wiki"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err = c.PublishLibraryPages(ctx, publication)
-	if err != nil || result.Pages != 1 {
-		t.Fatalf("publication: %+v %v", result, err)
+	if raw = publish(); raw.Report.Library.Pages != 1 {
+		t.Fatalf("publication: %+v", raw)
 	}
 	found, err := c.Find(ctx, "violet telescope", store.SearchOpts{Limit: 20}, library.ListOptions{Limit: 20})
 	if err != nil || len(found.Pages) != 1 {
@@ -138,13 +149,7 @@ func TestLibraryRemoteImportsAndMarkdownRetraction(t *testing.T) {
 	if err = os.WriteFile(path, []byte("---\ntitle: Film notes\nsensitivity: confidential\n---\nPrivate.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	publication, err = mediaimport.BuildPublication(root, mediaimport.Options{Source: "brain", Account: "wiki"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = c.PublishLibraryPages(ctx, publication); err != nil {
-		t.Fatal(err)
-	}
+	publish()
 	found, err = c.Find(ctx, "violet telescope", store.SearchOpts{Limit: 20}, library.ListOptions{Limit: 20})
 	if err != nil || len(found.Pages) != 0 {
 		t.Fatalf("revoked page is still searchable: %+v %v", found, err)

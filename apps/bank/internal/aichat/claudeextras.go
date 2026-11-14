@@ -1,60 +1,62 @@
 package aichat
 
 import (
-	"archive/zip"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
-	"io"
+	"errors"
 	"io/fs"
-	"os"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
-// The Claude.ai export arrives as several zips, not one: conversations,
-// projects (each with its uploaded docs), memories (what Claude remembers
-// about the account), and design chats. `bank import claude` takes any of
-// them; this file covers everything that is not conversations.json.
-// light_metadata (users.json, login_history.json) holds no messages and has
-// nothing to import.
-
-// claudeExtra is one importable JSON file from a non-conversations zip,
-// identified by the directory the export files it under.
-type claudeExtra struct {
-	kind string // "projects" | "memories" | "design_chats"
-	name string
-	read func() ([]byte, error)
-}
+// Everything in a Claude.ai export that is not conversations.json: projects
+// (each with its uploaded docs), memories (what Claude remembers about the
+// account), and design chats. light_metadata (users.json,
+// login_history.json) holds no messages and has nothing to import.
 
 var claudeExtraKinds = map[string]bool{"projects": true, "memories": true, "design_chats": true}
 
-// claudeExtraEntry classifies one path inside an export zip or directory.
-func claudeExtraEntry(name string) (string, bool) {
-	dir := filepath.Base(filepath.Dir(name))
-	if claudeExtraKinds[dir] && strings.EqualFold(filepath.Ext(name), ".json") {
+// claudeExtraKind classifies one path inside an export zip by the directory
+// the export files it under.
+func claudeExtraKind(name string) (string, bool) {
+	dir := path.Base(path.Dir(name))
+	if claudeExtraKinds[dir] && strings.EqualFold(path.Ext(name), ".json") {
 		return dir, true
 	}
 	return "", false
 }
 
-func importClaudeExtras(ctx context.Context, st *store.Store, res *Result, rawRef string, extras []claudeExtra) error {
-	// Name order keeps runs deterministic; zip and directory listings differ.
-	sort.Slice(extras, func(i, j int) bool { return extras[i].name < extras[j].name })
-	for _, e := range extras {
-		raw, err := e.read()
+var errStarterProject = errors.New("starter project")
+
+// emitClaudeExtras emits every project, memory and design chat in the zip and
+// returns how many files it found.
+func emitClaudeExtras(fsys fs.FS, out ingest.Emitter) (int, error) {
+	var names []string
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		if _, ok := claudeExtraKind(p); ok {
+			names = append(names, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	for _, name := range names {
+		kind, _ := claudeExtraKind(name)
+		raw, err := fs.ReadFile(fsys, name)
 		if err != nil {
-			return fail.Opf("read %s: %w", e.name, err)
+			out.Issue(ingest.Issuef(ingest.Rejected, "%s: %v", name, err))
+			continue
 		}
 		var msgs []message
-		switch e.kind {
+		switch kind {
 		case "projects":
 			msgs, err = parseClaudeProject(raw)
 		case "memories":
@@ -62,19 +64,19 @@ func importClaudeExtras(ctx context.Context, st *store.Store, res *Result, rawRe
 		case "design_chats":
 			msgs, err = parseClaudeDesignChat(raw)
 		}
-		if err != nil {
-			return fmt.Errorf("%s: %w", e.name, err)
-		}
-		if len(msgs) == 0 {
-			res.EmptyConversations++
+		switch {
+		case errors.Is(err, errStarterProject):
+			out.Issue(ingest.Issuef(ingest.Dropped, "%s is a starter project", name))
+			continue
+		case err != nil:
+			out.Issue(ingest.Issuef(ingest.Rejected, "%s: %v", name, err))
 			continue
 		}
-		res.Conversations++
-		if err := res.ingest(ctx, st, "claude", rawRef, msgs, nil); err != nil {
-			return err
+		if err := emitConversation(out, "claude", name, name, msgs, nil); err != nil {
+			return 0, err
 		}
 	}
-	return nil
+	return len(names), nil
 }
 
 // A project is a container: its description and prompt template are one
@@ -102,7 +104,7 @@ func parseClaudeProject(raw []byte) ([]message, error) {
 	if p.IsStarter {
 		// Starter projects ("How to use Claude") and their docs are Anthropic's
 		// onboarding content, not something the owner wrote or received.
-		return nil, nil
+		return nil, errStarterProject
 	}
 	var out []message
 	if body := strings.TrimSpace(strings.TrimSpace(p.Description) + "\n\n" + strings.TrimSpace(p.PromptTemplate)); body != "" {
@@ -136,10 +138,11 @@ func parseClaudeProject(raw []byte) ([]message, error) {
 }
 
 // Memory is Claude's own running notes about the account: one blob for
-// conversations, one per project. The file carries no timestamps, and the
-// text is rewritten in place as it evolves, so each version's external id is
-// a hash of its content — a re-export with updated memory archives the new
-// version alongside the old instead of silently keeping only the first.
+// conversations, one per project. The file carries no timestamps, so its
+// messages are undated. The text is rewritten in place as it evolves, so each
+// version's external id is a hash of its content: a re-export with updated
+// memory archives the new version alongside the old instead of silently
+// keeping only the first.
 type claudeMemory struct {
 	ConversationsMemory string            `json:"conversations_memory"`
 	ProjectMemories     map[string]string `json:"project_memories"`
@@ -248,107 +251,4 @@ func parseClaudeDesignChat(raw []byte) ([]message, error) {
 		})
 	}
 	return out, nil
-}
-
-// loadClaudeExtras finds the importable files of a non-conversations export
-// zip or directory. The returned closer owns the zip handle the readers pull
-// from; nothing found means this input holds conversations (or nothing).
-func loadClaudeExtras(path string, isDir bool) ([]claudeExtra, func(), error) {
-	noop := func() {}
-	if isDir {
-		var extras []claudeExtra
-		err := filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() {
-				return err
-			}
-			if kind, ok := claudeExtraEntry(p); ok {
-				extras = append(extras, claudeExtra{kind: kind, name: p, read: func() ([]byte, error) { return os.ReadFile(p) }})
-			}
-			return nil
-		})
-		return extras, noop, err
-	}
-	zr, err := zip.OpenReader(path)
-	if err != nil {
-		return nil, noop, err
-	}
-	var extras []claudeExtra
-	for _, f := range zr.File {
-		if f.FileInfo().IsDir() {
-			continue
-		}
-		if kind, ok := claudeExtraEntry(f.Name); ok {
-			extras = append(extras, claudeExtra{kind: kind, name: f.Name, read: func() ([]byte, error) {
-				rc, err := f.Open()
-				if err != nil {
-					return nil, err
-				}
-				defer rc.Close()
-				return io.ReadAll(rc)
-			}})
-		}
-	}
-	if len(extras) == 0 {
-		zr.Close()
-		return nil, noop, nil
-	}
-	return extras, func() { zr.Close() }, nil
-}
-
-// hasClaudeConversations reports whether the input also carries a
-// conversations.json or numbered shards, so a mixed folder imports both.
-func hasClaudeConversations(path string, isDir bool) bool {
-	if isDir {
-		if _, err := os.Stat(filepath.Join(path, "conversations.json")); err == nil {
-			return true
-		}
-		entries, err := os.ReadDir(path)
-		if err != nil {
-			return false
-		}
-		for _, e := range entries {
-			if _, ok := shardNumber(e.Name()); ok {
-				return true
-			}
-		}
-		return false
-	}
-	zr, err := zip.OpenReader(path)
-	if err != nil {
-		return false
-	}
-	defer zr.Close()
-	for _, f := range zr.File {
-		if f.Name == "conversations.json" {
-			return true
-		}
-		if _, ok := shardNumber(f.Name); ok {
-			return true
-		}
-	}
-	return false
-}
-
-// importClaudeExtraInput archives the input and runs every extra through the
-// parsers. The whole zip (or each file of a directory walk) is the raw input.
-func importClaudeExtraInput(ctx context.Context, st *store.Store, res *Result, archiveDir, path string, extras []claudeExtra, isDir bool) error {
-	if !isDir {
-		rawRef, err := archive.Copy(archiveDir, "claude", path)
-		if err != nil {
-			return fail.Opf("archive %s: %w", path, err)
-		}
-		return importClaudeExtras(ctx, st, res, rawRef, extras)
-	}
-	// Directory files are archived one by one — there is no single input file.
-	for i := range extras {
-		e := extras[i]
-		rawRef, err := archive.Copy(archiveDir, "claude", e.name)
-		if err != nil {
-			return fail.Opf("archive %s: %w", e.name, err)
-		}
-		if err := importClaudeExtras(ctx, st, res, rawRef, []claudeExtra{e}); err != nil {
-			return err
-		}
-	}
-	return nil
 }

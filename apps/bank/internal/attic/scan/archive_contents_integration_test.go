@@ -25,8 +25,8 @@ func testScanSharesContentsAndTextWithTheArchive(t *testing.T, catalogue newCata
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, body := range []string{contract, scanned} {
-		a := bankstore.Attachment{MessageID: id, Filename: "vertrag.txt", SizeBytes: int64(len(body)), BLAKE3: content.Sum([]byte(body))}
+	for i, body := range []string{contract, scanned} {
+		a := bankstore.Attachment{MessageID: id, Position: i, Filename: "vertrag.txt", SizeBytes: int64(len(body)), BLAKE3: content.Sum([]byte(body))}
 		if err := archive.InsertAttachment(ctx, a); err != nil {
 			t.Fatal(err)
 		}

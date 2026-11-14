@@ -12,23 +12,19 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/export"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
-type Result struct {
-	Inserted   int `json:"inserted"`
-	Duplicates int `json:"duplicates"`
-	Skipped    int `json:"skipped"`
-}
+type Source struct{}
+
+type Options struct{}
+
+func (Source) Kind() string { return "linkedin" }
 
 type message struct {
 	ConversationID string
@@ -41,20 +37,17 @@ type message struct {
 	SentAt         time.Time
 }
 
-func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
-	var res Result
-
-	msgs, rawRef, err := readMessages(archiveDir, inputPath)
+func (Source) Parse(ctx context.Context, raw ingest.Raw, _ Options, out ingest.Emitter) error {
+	msgs, err := readMessages(raw)
 	if err != nil {
-		return res, err
+		return err
 	}
-	messages := make([]store.Message, 0, len(msgs))
-	for _, m := range msgs {
+	for i, m := range msgs {
+		locator := fmt.Sprintf("row %d", i+1)
 		if m.Body == "" && m.Subject == "" {
-			res.Skipped++
+			out.Issue(ingest.Issuef(ingest.Skipped, "%s: no subject and no content", locator))
 			continue
 		}
-		sum := sha256.Sum256([]byte(m.ConversationID + "\x00" + m.SentAt.UTC().Format(time.RFC3339) + "\x00" + m.From + "\x00" + m.Body))
 		var recipients []string
 		if m.To != "" {
 			recipients = []string{m.To}
@@ -63,62 +56,52 @@ func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) 
 		if subject == "" {
 			subject = m.Title
 		}
-		messages = append(messages, store.Message{
+		if err := out.Message(ingest.Message{
 			Source:     "linkedin",
-			ExternalID: hex.EncodeToString(sum[:]),
+			ExternalID: externalID(m),
 			ThreadID:   m.Thread,
 			Sender:     m.From,
 			Recipients: recipients,
 			Subject:    subject,
 			Body:       m.Body,
 			SentAt:     m.SentAt,
-			RawRef:     rawRef,
-		})
-	}
-	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{Rethread: true})
-	if err != nil {
-		return res, fail.Opf("insert messages: %w", err)
-	}
-	for _, id := range ids {
-		if id == 0 {
-			res.Duplicates++
-		} else {
-			res.Inserted++
+			Locator:    locator,
+		}); err != nil {
+			return err
 		}
 	}
-	return res, nil
+	return nil
 }
 
-// readMessages archives the raw input, then parses messages.csv out of the
-// export zip, its unpacked directory, or the CSV itself.
-func readMessages(archiveDir, inputPath string) ([]message, string, error) {
-	exp, err := export.Open(inputPath)
+func externalID(m message) string {
+	var date string
+	if !m.SentAt.IsZero() {
+		date = m.SentAt.UTC().Format(time.RFC3339)
+	}
+	sum := sha256.Sum256([]byte(m.ConversationID + "\x00" + date + "\x00" + m.From + "\x00" + m.Body))
+	return hex.EncodeToString(sum[:])
+}
+
+// readMessages parses messages.csv out of the export zip or the CSV itself.
+func readMessages(raw ingest.Raw) ([]message, error) {
+	exp, err := export.Open(raw)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	defer exp.Close()
-	archived := inputPath
 	var f io.ReadCloser
 	if exp.FS == nil {
-		f, err = os.Open(inputPath)
+		f, err = raw.Open()
 	} else if name, findErr := findMessagesCSV(exp.FS); findErr != nil {
-		err = fmt.Errorf("%s: %w", inputPath, findErr)
+		err = fmt.Errorf("%s: %w", raw.Name, findErr)
 	} else {
 		f, err = exp.FS.Open(name)
-		if exp.Dir {
-			archived = filepath.Join(inputPath, filepath.FromSlash(name))
-		}
 	}
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	defer f.Close()
-	rawRef, err := archive.Copy(archiveDir, "linkedin", archived)
-	if err != nil {
-		return nil, "", fail.Opf("archive %s: %w", archived, err)
-	}
-	msgs, err := parseCSV(f)
-	return msgs, rawRef, err
+	return parseCSV(f)
 }
 
 func findMessagesCSV(fsys fs.FS) (string, error) {
@@ -194,11 +177,18 @@ func parseCSV(r io.Reader) ([]message, error) {
 	}
 }
 
+// parseDate reads the abbreviation layout's wall clock as UTC, which is what
+// LinkedIn writes. time.Parse would resolve any other abbreviation against the
+// machine's zone when that zone knows it, making the instant, and the external
+// id hashed from it, depend on where the import runs.
 func parseDate(s string) time.Time {
-	for _, layout := range []string{"2006-01-02 15:04:05 MST", "2006-01-02 15:04:05", time.RFC3339} {
+	if t, err := time.Parse("2006-01-02 15:04:05 MST", s); err == nil {
+		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.UTC)
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339} {
 		if t, err := time.Parse(layout, s); err == nil {
 			return t
 		}
 	}
-	return time.Unix(0, 0)
+	return time.Time{}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 type reportsCmd struct {
-	Before int64 `help:"Page backward from this report id."`
+	Before int64 `help:"Page backward from this raw input id."`
 	Limit  int   `default:"${limit}" help:"Page size, 1-${max_limit}."`
 	JSON   bool  `help:"JSON output."`
 }
@@ -28,15 +28,16 @@ func (c *reportsCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeBackend()
-	reports, err := b.ImportReports(ctx, c.Before, c.Limit)
+	inputs, err := b.RawInputs(ctx, c.Before, c.Limit)
 	if err != nil {
 		return err
 	}
 	if c.JSON {
-		return printJSON(reports)
+		return printJSON(inputs)
 	}
-	for _, r := range reports {
-		fmt.Printf("#%d %s %s %s\n  %s\n  %s\n", r.ID, r.StartedAt.Format(time.RFC3339), r.Kind, r.Status, r.Input, r.Result)
+	for _, r := range inputs {
+		fmt.Printf("#%d %s ", r.ID, r.ReceivedAt.Format(time.RFC3339))
+		printRawInput(r)
 		if r.Error != "" {
 			fmt.Printf("  %s\n", r.Error)
 		}

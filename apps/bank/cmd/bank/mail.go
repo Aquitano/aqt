@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -28,7 +29,7 @@ type mailRebuildCmd struct {
 }
 
 func (c *mailRebuildCmd) Run(ctx context.Context, mail *mailCmd) error {
-	if err := archive.ValidSource(mail.Source); err != nil {
+	if err := ingest.ValidSource(mail.Source); err != nil {
 		return err
 	}
 	if client.FromEnv() != nil {
@@ -43,14 +44,18 @@ func (c *mailRebuildCmd) Run(ctx context.Context, mail *mailCmd) error {
 		return err
 	}
 	defer pool.Close()
-	report, err := eml.RebuildMail(ctx, store.New(pool), filepath.Join(dataDir(), "archive"), mail.Source, c.Apply)
+	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
+	if err != nil {
+		return err
+	}
+	report, err := eml.RebuildMail(ctx, store.New(pool), blobs, mail.Source, c.Apply)
 	return errors.Join(err, printJSON(report))
 }
 
 type mailMailboxesCmd struct{}
 
 func (mailMailboxesCmd) Run(ctx context.Context, mail *mailCmd) error {
-	if err := archive.ValidSource(mail.Source); err != nil {
+	if err := ingest.ValidSource(mail.Source); err != nil {
 		return err
 	}
 	backend, closeBackend, err := openBackend(ctx)
@@ -78,7 +83,7 @@ type mailConflictCmd struct {
 }
 
 func (c *mailConflictCmd) Run(ctx context.Context, mail *mailCmd) error {
-	if err := archive.ValidSource(mail.Source); err != nil {
+	if err := ingest.ValidSource(mail.Source); err != nil {
 		return err
 	}
 	if err := page.Check(c.Limit, 0); err != nil {

@@ -30,7 +30,7 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	for _, path := range []string{"/v1/attachment-library?type=pdf", "/v1/attachments/" + testDigest.String() + "/messages", "/v1/import-reports"} {
+	for _, path := range []string{"/v1/attachment-library?type=pdf", "/v1/attachments/" + testDigest.String() + "/messages", "/v1/raw-inputs"} {
 		if w := request(path); w.Code != 200 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
@@ -53,8 +53,8 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}
-	if w := request("/v1/import-reports?before=-1"); w.Code != 422 {
-		t.Fatalf("import reports: %d %s", w.Code, w.Body)
+	if w := request("/v1/raw-inputs?before=-1"); w.Code != 422 {
+		t.Fatalf("raw inputs: %d %s", w.Code, w.Body)
 	}
 	// The web UI sends every filter, set or not.
 	if w := request("/v1/attachment-library?q=&text=&type=&person=&since=&until=&match=&offset=0"); w.Code != 200 {
@@ -64,12 +64,12 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, content := range []string{"<html><script>alert(1)</script></html>", "%PDF-1.4\npreview"} {
+	for i, content := range []string{"<html><script>alert(1)</script></html>", "%PDF-1.4\npreview"} {
 		sum, size, err := s.blobs.Put(context.Background(), strings.NewReader(content))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: "untrusted.pdf", MimeType: "application/pdf", BLAKE3: sum, SizeBytes: size}); err != nil {
+		if err := st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Position: i + 1, Filename: "untrusted.pdf", MimeType: "application/pdf", BLAKE3: sum, SizeBytes: size}); err != nil {
 			t.Fatal(err)
 		}
 		w := request("/v1/attachments/" + sum.String() + "/preview")
@@ -122,7 +122,7 @@ func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct{ filename, mime string }{{"soundtrack.flac", "audio/flac"}, {"raw.mp3", "audio/mpeg"}, {"soundtrack.aac", "audio/aac"}} {
+	for i, test := range []struct{ filename, mime string }{{"soundtrack.flac", "audio/flac"}, {"raw.mp3", "audio/mpeg"}, {"soundtrack.aac", "audio/aac"}} {
 		encoded, err := os.ReadFile(filepath.Join("testdata", "preview", test.filename+".base64"))
 		if err != nil {
 			t.Fatal(err)
@@ -135,7 +135,7 @@ func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: test.filename, MimeType: "application/octet-stream", BLAKE3: sum, SizeBytes: size}); err != nil {
+		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Position: i + 1, Filename: test.filename, MimeType: "application/octet-stream", BLAKE3: sum, SizeBytes: size}); err != nil {
 			t.Fatal(err)
 		}
 		r := httptest.NewRequest("GET", "/v1/attachments/"+sum.String()+"/preview", nil)
@@ -151,25 +151,17 @@ func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 func TestLibraryRemoteNetflixDateOrder(t *testing.T) {
 	ctx := context.Background()
 	c, _ := libraryClient(t)
-	input := filepath.Join(t.TempDir(), "viewing.csv")
-	if err := os.WriteFile(input, []byte("Title,Date\nA Film,03/04/2024\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.ImportMediaFile(ctx, "netflix", "", "dates", input, "dmy"); err != nil {
+	if _, err := c.Import(ctx, "netflix", "viewing.csv", strings.NewReader("Title,Date\nA Film,03/04/2024\n"), json.RawMessage(`{"account": "dates", "date_order": "dmy"}`)); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := c.ListLibraryActivity(ctx, library.ListOptions{Source: "netflix", Account: "dates"})
 	if err != nil || len(rows) != 1 || rows[0].Occurred.Value != "2024-04-03" {
 		t.Fatalf("remote day-first date: %+v %v", rows, err)
 	}
-	s, token := testServer(t)
-	for _, path := range []string{"/v1/import/netflix?date_order=ymd", "/v1/import/youtube-media?date_order=dmy"} {
-		r := httptest.NewRequest("POST", path, nil)
-		r.Header.Set("Authorization", "Bearer "+token)
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, r)
-		if w.Code != 422 || !strings.Contains(w.Body.String(), "date_order") {
-			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
+	for kind, options := range map[string]string{"netflix": `{"date_order": "ymd"}`, "youtube-media": `{"date_order": "dmy"}`} {
+		_, err := c.Import(ctx, kind, "viewing.csv", strings.NewReader("Title,Date\n"), json.RawMessage(options))
+		if err == nil || !strings.Contains(err.Error(), "date") {
+			t.Fatalf("%s %s: %v, want the date order refused", kind, options, err)
 		}
 	}
 }

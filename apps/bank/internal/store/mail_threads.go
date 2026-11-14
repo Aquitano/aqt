@@ -11,19 +11,17 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
-
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 )
 
 type MailProjection struct {
 	MessageID       string
-	RawRef          string
+	RawInput        int64
 	InReplyTo       []string
 	References      []string
 	NativeThreadID  string
 	PreserveNative  bool
 	PreserveHeaders bool
-	Context         *archive.MailImportContext
+	Mailbox         *MailboxObservation
 }
 
 type MailLimits struct{ Nodes, Edges, Messages int }
@@ -51,7 +49,8 @@ type MailProjectionResult struct {
 
 type mailNode struct{ Key, ThreadID, Conflict string }
 type mailHeaders struct {
-	MessageID, RawRef     string
+	MessageID             string
+	RawInput              int64
 	InReplyTo, References []string
 }
 type mailMember struct {
@@ -82,8 +81,8 @@ func (s *Store) projectMail(ctx context.Context, id int64, projection MailProjec
 	if err != nil {
 		return result, err
 	}
-	if projection.Context != nil {
-		if err := projection.Context.Validate(); err != nil {
+	if projection.Mailbox != nil {
+		if err := projection.Mailbox.Validate(); err != nil {
 			return result, err
 		}
 	}
@@ -112,8 +111,8 @@ func (s *Store) projectMail(ctx context.Context, id int64, projection MailProjec
 	result.PreviousThreadID = message.ThreadID
 	var previousKey, native string
 	var headers mailHeaders
-	err = transaction.QueryRow(ctx, `select node_key,native_thread_id,header_message_id,header_raw_ref,in_reply_to,reference_ids
-		from mail_details where message_id=$1`, id).Scan(&previousKey, &native, &headers.MessageID, &headers.RawRef, &headers.InReplyTo, &headers.References)
+	err = transaction.QueryRow(ctx, `select node_key,native_thread_id,header_message_id,coalesce(header_raw_input,0),in_reply_to,reference_ids
+		from mail_details where message_id=$1`, id).Scan(&previousKey, &native, &headers.MessageID, &headers.RawInput, &headers.InReplyTo, &headers.References)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return result, err
 	}
@@ -134,7 +133,7 @@ func (s *Store) projectMail(ctx context.Context, id int64, projection MailProjec
 		}
 	}
 	if projection.PreserveHeaders && previousKey != "" {
-		projection.MessageID, projection.RawRef = headers.MessageID, headers.RawRef
+		projection.MessageID, projection.RawInput = headers.MessageID, headers.RawInput
 		projection.InReplyTo, projection.References = headers.InReplyTo, headers.References
 	}
 	key := "ref:" + message.Ref
@@ -194,7 +193,7 @@ func (s *Store) projectMail(ctx context.Context, id int64, projection MailProjec
 	if !apply {
 		if preview != nil && !result.Incomplete {
 			preview.remember(id, edges, members, components, history)
-			preview.headers[id] = mailHeaders{MessageID: projection.MessageID, RawRef: projection.RawRef, InReplyTo: projection.InReplyTo, References: projection.References}
+			preview.headers[id] = mailHeaders{MessageID: projection.MessageID, RawInput: projection.RawInput, InReplyTo: projection.InReplyTo, References: projection.References}
 		}
 		return result, nil
 	}

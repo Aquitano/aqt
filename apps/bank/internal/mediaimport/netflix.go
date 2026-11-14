@@ -1,43 +1,67 @@
 package mediaimport
 
 import (
+	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 )
 
 var netflixSeason = regexp.MustCompile(`(?i):\s*(?:season|staffel|series|book|part)\s+(\d+)\s*:`)
 
-func parseNetflix(inputPath string, opts Options) (Parsed, error) {
-	if opts.NetflixDateOrder != "" && opts.NetflixDateOrder != "mdy" && opts.NetflixDateOrder != "dmy" {
-		return Parsed{}, fmt.Errorf("Netflix date order must be mdy or dmy")
+// Netflix reads a "Viewing activity" CSV. Netflix exports have no native
+// viewing ids, so a viewing is identified by its title, its date and its
+// occurrence count for that pair within the export.
+type Netflix struct{}
+
+type NetflixOptions struct {
+	Source    string `json:"source,omitempty" help:"Source name to file the records under (default netflix)."`
+	Account   string `json:"account,omitempty" help:"Profile or account identity; keep it stable across imports."`
+	DateOrder string `json:"date_order,omitempty" help:"Order of slash dates: mdy (default) or dmy."`
+}
+
+func (o *NetflixOptions) Normalize() error {
+	if o.Source == "" {
+		o.Source = "netflix"
 	}
-	raw, err := os.ReadFile(inputPath)
+	if o.DateOrder == "" {
+		o.DateOrder = "mdy"
+	}
+	if o.DateOrder != "mdy" && o.DateOrder != "dmy" {
+		return fmt.Errorf("Netflix date order must be mdy or dmy")
+	}
+	return ingest.ValidSource(o.Source)
+}
+
+func (Netflix) Kind() string { return "netflix" }
+
+func (n Netflix) Parse(_ context.Context, raw ingest.Raw, opts NetflixOptions, out ingest.Emitter) error {
+	data, err := os.ReadFile(raw.Path)
 	if err != nil {
-		return Parsed{}, err
+		return err
 	}
-	name := filepath.Base(inputPath)
-	p := Parsed{Batch: emptyBatch(), Inputs: []RawInput{{Name: name, Bytes: raw}}, Diagnostics: []string{}}
-	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(raw), "\ufeff")))
+	name := raw.Name
+	batch := emptyBatch()
+	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(data), "\ufeff")))
 	header, err := r.Read()
 	if err != nil {
-		return p, fmt.Errorf("Netflix header: %w", err)
+		return fmt.Errorf("Netflix header: %w", err)
 	}
 	fields := csvFields(header)
 	if _, ok := fields["title"]; !ok {
-		return p, fmt.Errorf("Netflix CSV requires Title and Date columns")
+		return fmt.Errorf("Netflix CSV requires Title and Date columns")
 	}
 	if _, ok := fields["date"]; !ok {
-		return p, fmt.Errorf("Netflix CSV requires Title and Date columns")
+		return fmt.Errorf("Netflix CSV requires Title and Date columns")
 	}
 	items := map[string]bool{}
 	occurrences := map[string]int{}
@@ -47,16 +71,15 @@ func parseNetflix(inputPath string, opts Options) (Parsed, error) {
 			break
 		}
 		if err != nil {
-			return p, fmt.Errorf("Netflix CSV row %d: %w", row, err)
+			return fmt.Errorf("Netflix CSV row %d: %w", row, err)
 		}
 		title := csvValue(values, fields, "title")
-		date, err := netflixDate(csvValue(values, fields, "date"), opts.NetflixDateOrder)
+		date, err := netflixDate(csvValue(values, fields, "date"), opts.DateOrder)
 		if title == "" || err != nil {
-			p.Skipped++
-			p.Diagnostics = append(p.Diagnostics, fmt.Sprintf("Netflix row %d skipped: empty title or invalid date", row))
+			out.Issue(ingest.Issuef(ingest.Skipped, "%s: CSV row %d has an empty title or invalid date", name, row))
 			continue
 		}
-		itemIdentity := identity(opts, "title:"+digest([]byte(title)))
+		itemIdentity := identity(opts.Source, opts.Account, "title:"+digest([]byte(title)))
 		itemID := library.StableID("item", itemIdentity)
 		if !items[itemID] {
 			item := library.Item{Identity: itemIdentity, ID: itemID, Kind: "other", Title: title, Creators: []string{}, FileIDs: []string{}, Provenance: provenance(name, fmt.Sprintf("CSV row %d", row))}
@@ -66,19 +89,18 @@ func parseNetflix(inputPath string, opts Options) (Parsed, error) {
 				item.Series = strings.TrimSpace(title[:match[0]])
 				item.Season = &n
 			}
-			p.Batch.Items = append(p.Batch.Items, item)
+			batch.Items = append(batch.Items, item)
 			items[itemID] = true
 		}
 		viewing := digest([]byte(title + "\x00" + date.Precision + "\x00" + date.Value))
 		occurrences[viewing]++
-		eventIdentity := identity(opts, fmt.Sprintf("viewing:%s:occurrence:%d", viewing, occurrences[viewing]))
-		p.Batch.Activity = append(p.Batch.Activity, library.Activity{Identity: eventIdentity, ID: library.StableID("activity", eventIdentity), ItemID: itemID, Kind: "watch", Title: title, Occurred: date, Provenance: provenance(name, fmt.Sprintf("CSV row %d", row))})
+		eventIdentity := identity(opts.Source, opts.Account, fmt.Sprintf("viewing:%s:occurrence:%d", viewing, occurrences[viewing]))
+		batch.Activity = append(batch.Activity, library.Activity{Identity: eventIdentity, ID: library.StableID("activity", eventIdentity), ItemID: itemID, Kind: "watch", Title: title, Occurred: date, Provenance: provenance(name, fmt.Sprintf("CSV row %d", row))})
 	}
-	if len(p.Batch.Activity) == 0 {
-		return p, fmt.Errorf("Netflix CSV contained no usable viewing records")
+	if len(batch.Activity) == 0 {
+		return fmt.Errorf("Netflix CSV contained no usable viewing records")
 	}
-	p.Diagnostics = append(p.Diagnostics, "Netflix exports have no native viewing IDs; overlapping exports are matched by title, date and occurrence count. Repeated rows in one export remain separate observations. Viewing records do not establish completion.")
-	return p, nil
+	return emitBatch(out, n.Kind(), batch)
 }
 
 func netflixDate(value, order string) (library.Date, error) {

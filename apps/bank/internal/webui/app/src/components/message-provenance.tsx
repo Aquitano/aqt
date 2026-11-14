@@ -24,11 +24,19 @@ export function MessageProvenance({ message }: { message: Message }) {
     ["Source", message.source],
     ["Message ref", message.ref || "Not recorded"],
     ["External ID", message.external_id || "Not recorded"],
-    ["Original archived input", message.raw_ref || "Not recorded"],
+    [
+      "Raw input",
+      message.raw_input
+        ? `#${message.raw_input}${message.raw_locator ? `, at ${message.raw_locator}` : ""}`
+        : "Not recorded",
+    ],
     ["Current conversation", message.thread_id || "None"],
     ...(mail
       ? [
-          ["Header archived input", mail.raw_ref || "Not recorded for these headers"],
+          [
+            "Header raw input",
+            mail.raw_input ? `#${mail.raw_input}` : "Not recorded for these headers",
+          ],
           ["Normalized Message-ID", mail.message_id || "None usable"],
           ["In-Reply-To", mail.in_reply_to.join(", ") || "None"],
           ["References", mail.references.join(", ") || "None"],

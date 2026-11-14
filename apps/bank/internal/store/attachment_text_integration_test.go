@@ -97,7 +97,7 @@ func TestListBlobsNewestFirstAcrossLibraryAndMail(t *testing.T) {
 	st, dsn := storetest.NewNamed(t)
 	id := seedMessage(t, st, "old", "Old message", "old.pdf", digestA)
 	storetest.Exec(t, dsn, `update messages set ingested_at='1999-01-01'`)
-	storetest.Exec(t, dsn, `update attachments set ingested_at=null`)
+	storetest.Exec(t, dsn, `update attachments set ingested_at='1999-01-01'`)
 	files := []library.File{}
 	for i := range 201 {
 		files = append(files, library.File{Identity: library.Identity{Source: "files", Account: "owner", ExternalID: fmt.Sprint(i)}, BLAKE3: content.Sum([]byte(fmt.Sprint(i))), Filename: fmt.Sprintf("old-%d.txt", i), MimeType: "text/plain", SizeBytes: 1})
@@ -106,7 +106,7 @@ func TestListBlobsNewestFirstAcrossLibraryAndMail(t *testing.T) {
 		t.Fatal(err)
 	}
 	storetest.Exec(t, dsn, `update library_files set ingested_at='2000-01-01'`)
-	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "fresh.pdf", MimeType: "application/pdf", SizeBytes: 1, BLAKE3: digestB}); err != nil {
+	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Position: 1, Filename: "fresh.pdf", MimeType: "application/pdf", SizeBytes: 1, BLAKE3: digestB}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := st.ListBlobs(ctx, store.ListBlobsOpts{Statuses: []string{store.StatusPending}, Limit: 200, NewestFirst: true})

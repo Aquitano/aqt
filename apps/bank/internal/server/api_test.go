@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"os"
 	"testing"
+
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
 )
 
 // The committed document is the API contract reviewers and code-mode hosts read.
 func TestCommittedSpecMatchesTheServer(t *testing.T) {
-	spec, err := Spec()
+	spec, err := Spec(sources.All)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,18 +1,21 @@
 package eml
 
 import (
+	"bytes"
 	"context"
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
+	"encoding/json"
 	"testing"
 
-	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/content"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
+	"github.com/aquitano/aqt/apps/bank/internal/importtest"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+)
+
+var (
+	emlKind  = importer.Register(EML{}, "")
+	mboxKind = importer.Register(Mbox{}, "")
 )
 
 const twoAttachmentMail = "From: a@example.com\r\n" +
@@ -27,174 +30,61 @@ const twoAttachmentMail = "From: a@example.com\r\n" +
 	"--B\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"two.pdf\"\r\n\r\nSECOND\r\n" +
 	"--B--\r\n"
 
-// blobStore returns a blob store plus a switch that makes writes fail, which
-// is how an import dies between the message row and its bytes in real life
-// (a full disk, a read-only mount). A file parked on the root fails writes on
-// every OS and for root, which directory permissions do not.
-func blobStore(t *testing.T) (*blob.Store, func(writable bool)) {
+func mailTarget(t *testing.T, st *store.Store) importer.Target {
 	t.Helper()
-	root := filepath.Join(t.TempDir(), "blobs")
-	blobs, err := blob.New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	parked := root + ".parked"
-	return blobs, func(writable bool) {
-		var err error
-		if writable {
-			if err = os.Remove(root); err == nil {
-				err = os.Rename(parked, root)
-			}
-		} else if err = os.Rename(root, parked); err == nil {
-			err = os.WriteFile(root, nil, 0o600)
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
+	return importtest.On(t, st, emlKind, mboxKind)
 }
 
-func countAttachments(t *testing.T, st *store.Store, messageID int64) int {
-	t.Helper()
-	keys, err := st.AttachmentKeys(context.Background(), messageID)
+// importRaw imports raw as one input named name. It does not touch t, so
+// concurrent tests can call it from their own goroutines.
+func importRaw(target importer.Target, kind, name, raw string, options any) (store.RawInput, error) {
+	encoded, err := json.Marshal(options)
 	if err != nil {
-		t.Fatal(err)
+		return store.RawInput{}, err
 	}
-	n := 0
-	for _, c := range keys {
-		n += c
-	}
-	return n
+	return importer.Import(context.Background(), target, kind, name, bytes.NewReader([]byte(raw)), encoded)
 }
 
-func TestIngestHealsAttachmentsOnReimport(t *testing.T) {
+func mustImportRaw(t *testing.T, target importer.Target, kind, name, raw string, options any) store.RawInput {
+	t.Helper()
+	got, err := importRaw(target, kind, name, raw, options)
+	if err != nil {
+		t.Fatalf("import %s: %v", name, err)
+	}
+	return got
+}
+
+func TestImportingTheSameMailTwiceAddsNothing(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
-	blobs, setWritable := blobStore(t)
-	raw := []byte(twoAttachmentMail)
-	opts := IngestOpts{Source: "proton", RawRef: "proton/two.eml"}
-
-	setWritable(false)
-	res, err := Ingest(ctx, st, blobs, raw, opts)
-	if err == nil {
-		t.Fatal("a failing blob store should surface")
+	target := mailTarget(t, st)
+	first := mustImportRaw(t, target, "eml", "two.eml", twoAttachmentMail, EMLOptions{})
+	if first.Report.Inserted != 1 || first.Report.Attachments != 2 {
+		t.Fatalf("first import: %+v", first.Report)
 	}
-	if !fail.IsOp(err) {
-		t.Errorf("a blob-store failure must be operational, not a rejected message: %v", err)
-	}
-	if !res.Inserted {
-		t.Fatal("the message row should already be committed — that is what makes this recoverable")
+	second := mustImportRaw(t, target, "eml", "two.eml", twoAttachmentMail, EMLOptions{})
+	if second.Report.Inserted != 0 || second.Report.Duplicates != 1 || second.Report.Attachments != 0 {
+		t.Fatalf("second import: %+v", second.Report)
 	}
 	id, err := st.FindByEmailMessageID(ctx, "proton", "two@example.com")
-	if err != nil || id == 0 {
-		t.Fatalf("message not found: %d %v", id, err)
-	}
-	if n := countAttachments(t, st, id); n != 0 {
-		t.Fatalf("%d attachments stored despite the failure", n)
-	}
-
-	setWritable(true)
-	res, err = Ingest(ctx, st, blobs, raw, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Inserted {
-		t.Error("the message was inserted a second time")
-	}
-	if res.Healed != 2 || res.Attachments != 2 {
-		t.Fatalf("healed %d of 2 attachments (%+v)", res.Healed, res)
-	}
-	if n := countAttachments(t, st, id); n != 2 {
-		t.Fatalf("%d attachment rows, want 2", n)
-	}
-
-	// A blob file lost after its row was recorded comes back from the re-import,
-	// without duplicating the row.
-	keys, err := st.AttachmentKeys(ctx, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var lost content.Digest
-	for key := range keys {
-		hexDigest, _, _ := strings.Cut(key, "\x00")
-		if lost, err = content.Parse(hexDigest); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Remove(blobs.Path(lost)); err != nil {
-		t.Fatal(err)
-	}
-	res, err = Ingest(ctx, st, blobs, raw, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Healed != 0 || countAttachments(t, st, id) != 2 {
-		t.Fatalf("a third import changed something: %+v", res)
-	}
-	if _, err := os.Stat(blobs.Path(lost)); err != nil {
-		t.Fatalf("the lost blob was not restored: %v", err)
+	message, err := st.GetMessageDetail(ctx, id)
+	if err != nil || len(message.Attachments) != 2 || message.RawInput != first.ID {
+		t.Fatalf("message: %+v, %v", message, err)
 	}
 }
 
-func TestIngestHealsOnlyMissingAttachments(t *testing.T) {
-	ctx := context.Background()
-	st, dsn := storetest.NewNamed(t)
-	blobs, _ := blobStore(t)
-	raw := []byte(twoAttachmentMail)
-	opts := IngestOpts{Source: "proton", RawRef: "proton/two.eml"}
-
-	if _, err := Ingest(ctx, st, blobs, raw, opts); err != nil {
-		t.Fatal(err)
+func TestUnparseableMailIsRejectedNotFailed(t *testing.T) {
+	target := mailTarget(t, storetest.New(t))
+	raw := mustImportRaw(t, target, "eml", "broken.eml", "this is not a header\r\n\r\nbody", EMLOptions{})
+	if raw.Status != "gaps" || raw.Report.Issues[ingest.Rejected] != 1 || raw.Report.Inserted != 0 {
+		t.Fatalf("unparseable mail: %+v", raw)
 	}
-	id, err := st.FindByEmailMessageID(ctx, "proton", "two@example.com")
-	if err != nil || id == 0 {
-		t.Fatalf("message not found: %d %v", id, err)
-	}
-	// Lose one attachment row, the shape a partially stored message has.
-	atts, err := st.AttachmentKeys(ctx, id)
-	if err != nil || len(atts) != 2 {
-		t.Fatalf("keys = %v, err = %v", atts, err)
-	}
-	_, all, err := st.GetMessage(ctx, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	storetest.Exec(t, dsn, `delete from attachments where id = $1`, all[0].ID)
-
-	res, err := Ingest(ctx, st, blobs, raw, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Healed != 1 {
-		t.Errorf("healed %d, want exactly the missing one", res.Healed)
-	}
-	if n := countAttachments(t, st, id); n != 2 {
-		t.Errorf("%d attachment rows, want 2 with no duplicates", n)
-	}
-}
-
-// captureStderr collects what fn writes to os.Stderr.
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := os.Stderr
-	os.Stderr = w
-	defer func() { os.Stderr = old }()
-	fn()
-	w.Close()
-	out, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(out)
 }
 
 func TestImportMboxReportsAFileThatDidNotSplit(t *testing.T) {
-	ctx := context.Background()
-	blobs, _ := blobStore(t)
 	// The second separator is in a dialect the splitter does not know (a
 	// two-digit year), so both messages arrive as one and the import would
 	// otherwise report a clean "1 new".
@@ -213,44 +103,29 @@ func TestImportMboxReportsAFileThatDidNotSplit(t *testing.T) {
 		"a single message is not": {clean, false},
 	} {
 		t.Run(name, func(t *testing.T) {
-			st := storetest.New(t)
-			dir := t.TempDir()
-			path := filepath.Join(dir, "All mail.mbox")
-			if err := os.WriteFile(path, []byte(tc.mbox), 0o600); err != nil {
-				t.Fatal(err)
+			target := mailTarget(t, storetest.New(t))
+			raw := mustImportRaw(t, target, "mbox", "All mail.mbox", tc.mbox, MboxOptions{})
+			if raw.Report.Inserted != 1 {
+				t.Fatalf("report = %+v, want the one message the splitter found", raw.Report)
 			}
-			var res Result
-			var err error
-			stderr := captureStderr(t, func() {
-				res, err = ImportMbox(ctx, st, blobs, filepath.Join(dir, "archive"), "gmail", path)
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if res.Inserted != 1 {
-				t.Fatalf("res = %+v, want the one message the splitter found", res)
-			}
-			if got := strings.Contains(stderr, "ONE message"); got != tc.wantWarning {
-				t.Errorf("warned = %v, want %v; stderr = %q", got, tc.wantWarning, stderr)
+			if got := raw.Report.Issues[ingest.Incomplete] > 0; got != tc.wantWarning {
+				t.Errorf("warned = %v, want %v; report = %+v", got, tc.wantWarning, raw.Report)
 			}
 		})
 	}
 }
 
-func TestIngestSkipsRetiredMail(t *testing.T) {
+func TestImportSkipsRetiredMail(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
-	blobs, _ := blobStore(t)
-	raw := []byte(twoAttachmentMail)
-	opts := IngestOpts{Source: "proton", ExternalID: "mail:two", RawRef: "proton/two.eml"}
-	if _, err := Ingest(ctx, st, blobs, raw, opts); err != nil {
-		t.Fatal(err)
-	}
+	target := mailTarget(t, st)
+	options := EMLOptions{ExternalID: "mail:two"}
+	mustImportRaw(t, target, "eml", "two.eml", twoAttachmentMail, options)
 	if _, err := st.RetireMessages(ctx, store.RetireOptions{Source: "proton", ExternalPrefixes: []string{"mail:"}, Apply: true}); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Ingest(ctx, st, blobs, raw, opts)
-	if err != nil || res.Inserted || res.Attachments != 0 {
-		t.Fatalf("replayed retired mail: %+v %v", res, err)
+	raw := mustImportRaw(t, target, "eml", "two.eml", twoAttachmentMail, options)
+	if raw.Report.Inserted != 0 || raw.Report.Retired != 1 || raw.Report.Attachments != 0 {
+		t.Fatalf("replayed retired mail: %+v", raw.Report)
 	}
 }

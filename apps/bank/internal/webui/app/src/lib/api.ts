@@ -24,7 +24,7 @@ const mailProvenance = type({
   message_id: "string",
   in_reply_to: "string[]",
   references: "string[]",
-  raw_ref: "string",
+  "raw_input?": "number",
   native_thread_id: "string",
   has_reply_links: "boolean",
   incomplete: "boolean",
@@ -37,7 +37,8 @@ export const messageRef = /^msg:[0-9a-f]{16}$/;
 export const message = type({
   ref: "string",
   source: "string",
-  "raw_ref?": "string",
+  "raw_input?": "number",
+  "raw_locator?": "string",
   "message_id?": "string",
   "mail?": mailProvenance,
   "external_id?": "string",
@@ -51,7 +52,8 @@ export const message = type({
   "body?": "string",
   "snippet?": "string",
   "attachment_snippet?": "string",
-  sent_at: "string",
+  // Absent when the source did not say when the message was sent.
+  "sent_at?": "string",
   "attachments?": attachment.array().or("null"),
   "mailboxes?": mailbox.array().or("null"),
 });
@@ -70,8 +72,9 @@ export type Contact = typeof contact.infer;
 const sourceStat = type({
   source: "string",
   messages: "number",
-  earliest: "string",
-  latest: "string",
+  undated: "number",
+  "earliest?": "string",
+  "latest?": "string",
   last_ingest: "string",
   last_sync: "string | null",
   "coverage?": "string",
@@ -91,7 +94,7 @@ const threadGroup = type({
   source: "string",
   thread_id: "string",
   n: "number",
-  last_at: "string",
+  "last_at?": "string",
   last_ref: "string",
   sender: "string",
   subject: "string",
@@ -306,7 +309,7 @@ export const libraryFile = type({
   mime_type: "string",
   size_bytes: "number",
   messages: "number",
-  last_at: "string",
+  "last_at?": "string",
   "snippet?": "string",
 });
 export type LibraryFile = typeof libraryFile.infer;
@@ -326,32 +329,35 @@ const blobText = type({ text: "string", status: "string" });
 export function getFileText(sum: string) {
   return api(`/v1/attachments/${sum}/text`, blobText);
 }
-const importReport = type({
+export const rawInput = type({
   id: "number",
   kind: "string",
-  input: "string",
-  started_at: "string",
+  name: "string",
+  size_bytes: "number",
+  received_at: "string",
   finished_at: "string | null",
-  status: "string",
+  status: "'running' | 'complete' | 'gaps' | 'failed'",
   error: "string",
-  result: type({
-    "inserted?": "number",
-    "duplicates?": "number",
-    "files_preserved?": "number",
-    "missing_media?": "number",
-    "unsupported_content?": "number",
-    "skipped?": "number",
-    "rejected?": "number",
-    "damaged?": "number",
-    "empty_conversations?": "number",
-    "failed_sessions?": "string[]",
-    "failed_channels?": "string[]",
-    "issues?": "string[]",
-    "warnings?": "string[]",
+  report: type({
+    inserted: "number",
+    duplicates: "number",
+    retired: "number",
+    attachments: "number",
+    library: type({
+      items: "number",
+      activity: "number",
+      collections: "number",
+      files: "number",
+      pages: "number",
+      duplicates: "number",
+    }),
+    issues: "Record<string, number> | null",
+    details: type({ kind: "string", detail: "string" }).array().or("null"),
   }),
 });
-export function getImportReports(before = 0) {
-  return api(`/v1/import-reports?before=${before}`, importReport.array());
+export type RawInput = typeof rawInput.infer;
+export function getRawInputs(before = 0) {
+  return api(`/v1/raw-inputs?before=${before}`, rawInput.array());
 }
 
 export function getMessageParent(ref: string) {

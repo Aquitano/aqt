@@ -25,17 +25,6 @@ func New(root string) (*Store, error) {
 // Put streams r into the store and returns its digest and size. Content
 // already present is left alone: identical bytes are stored once.
 func (s *Store) Put(ctx context.Context, r io.Reader) (content.Digest, int64, error) {
-	return s.put(ctx, r, false)
-}
-
-// Replace is Put for repairs: it rewrites the file even when something already
-// sits at that digest's path. Only `bank verify --heal` needs it, because
-// corrupted bytes are exactly the case Put's "already there" shortcut skips.
-func (s *Store) Replace(ctx context.Context, r io.Reader) (content.Digest, int64, error) {
-	return s.put(ctx, r, true)
-}
-
-func (s *Store) put(ctx context.Context, r io.Reader, overwrite bool) (content.Digest, int64, error) {
 	tmp, err := os.CreateTemp(s.root, "put-*")
 	if err != nil {
 		return content.Digest{}, 0, err
@@ -57,7 +46,7 @@ func (s *Store) put(ctx context.Context, r io.Reader, overwrite bool) (content.D
 	}
 
 	dest := s.Path(digest)
-	if _, err := os.Stat(dest); err == nil && !overwrite {
+	if _, err := os.Stat(dest); err == nil {
 		return digest, size, nil
 	}
 	if err := makeFanOut(filepath.Dir(dest)); err != nil {
@@ -66,10 +55,8 @@ func (s *Store) put(ctx context.Context, r io.Reader, overwrite bool) (content.D
 	// The caller commits a row naming this digest once Put returns, so the
 	// rename has to be durable by then too.
 	if err := publish(tmp.Name(), dest); err != nil {
-		if !overwrite {
-			if info, statErr := os.Stat(dest); statErr == nil && info.Mode().IsRegular() && info.Size() == size {
-				return digest, size, nil
-			}
+		if info, statErr := os.Stat(dest); statErr == nil && info.Mode().IsRegular() && info.Size() == size {
+			return digest, size, nil
 		}
 		return content.Digest{}, 0, err
 	}

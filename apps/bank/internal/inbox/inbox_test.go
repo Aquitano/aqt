@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 // drop writes a file into inbox/<kind>/ and returns its path. The mtime is
@@ -44,20 +47,20 @@ func TestSweepDispositions(t *testing.T) {
 	bad := drop(t, root, "eml", "broken.eml")
 	drop(t, root, "eml", ".hidden.eml") // must be ignored
 
-	route := func(_ context.Context, kind, path string) (Outcome, error) {
+	route := func(_ context.Context, kind, path string) (store.RawInput, error) {
 		switch filepath.Base(path) {
 		case "good.zip":
-			return Outcome{Inserted: 3}, nil
+			return raw(ingest.Report{Inserted: 3}), nil
 		case "already.zip":
-			return Outcome{Duplicates: 3}, nil
+			return raw(ingest.Report{Duplicates: 3}), nil
 		case "broken.eml":
-			return Outcome{}, errors.New("not an email")
+			return store.RawInput{}, errors.New("not an email")
 		}
 		t.Fatalf("unexpected route(%s, %s)", kind, path)
-		return Outcome{}, nil
+		return store.RawInput{}, nil
 	}
 
-	res, err := Sweep(context.Background(), root, route)
+	res, err := Sweep(context.Background(), root, kinds, route)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,12 +93,12 @@ func TestSweepLeavesFilesAfterOperationalFailure(t *testing.T) {
 	later := drop(t, root, "whatsapp", "two.zip")
 
 	calls := 0
-	route := func(context.Context, string, string) (Outcome, error) {
+	route := func(context.Context, string, string) (store.RawInput, error) {
 		calls++
-		return Outcome{}, fail.Opf("insert message: %w", errors.New("connection refused"))
+		return store.RawInput{}, fail.Opf("insert message: %w", errors.New("connection refused"))
 	}
 
-	res, err := Sweep(context.Background(), root, route)
+	res, err := Sweep(context.Background(), root, kinds, route)
 	if err == nil {
 		t.Fatal("an operational failure should surface")
 	}
@@ -114,15 +117,15 @@ func TestSweepLeavesFilesAfterOperationalFailure(t *testing.T) {
 func TestSweepIsRetrySafe(t *testing.T) {
 	root := t.TempDir()
 	drop(t, root, "json", "notes.json")
-	route := func(context.Context, string, string) (Outcome, error) {
-		return Outcome{Inserted: 1}, nil
+	route := func(context.Context, string, string) (store.RawInput, error) {
+		return raw(ingest.Report{Inserted: 1}), nil
 	}
-	if _, err := Sweep(context.Background(), root, route); err != nil {
+	if _, err := Sweep(context.Background(), root, kinds, route); err != nil {
 		t.Fatal(err)
 	}
 	// The same name arriving again must not overwrite the first one.
 	drop(t, root, "json", "notes.json")
-	if _, err := Sweep(context.Background(), root, route); err != nil {
+	if _, err := Sweep(context.Background(), root, kinds, route); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"notes.json", "notes-2.json"} {
@@ -131,7 +134,7 @@ func TestSweepIsRetrySafe(t *testing.T) {
 		}
 	}
 	// A second sweep of an empty drop zone does nothing at all.
-	res, err := Sweep(context.Background(), root, route)
+	res, err := Sweep(context.Background(), root, kinds, route)
 	if err != nil || len(res.Files) != 0 {
 		t.Fatalf("res = %+v, err = %v", res, err)
 	}
@@ -146,9 +149,9 @@ func TestSweepLeavesFreshFilesToSettle(t *testing.T) {
 	if err := os.Chtimes(fresh, now, now); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Sweep(context.Background(), root, func(context.Context, string, string) (Outcome, error) {
+	res, err := Sweep(context.Background(), root, kinds, func(context.Context, string, string) (store.RawInput, error) {
 		t.Fatal("a still-settling file was routed")
-		return Outcome{}, nil
+		return store.RawInput{}, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -165,9 +168,9 @@ func TestSweepIgnoresUnknownDirectories(t *testing.T) {
 	root := t.TempDir()
 	drop(t, root, "not-a-source", "x.txt")
 	drop(t, root, doneDir, "x.txt")
-	res, err := Sweep(context.Background(), root, func(context.Context, string, string) (Outcome, error) {
+	res, err := Sweep(context.Background(), root, kinds, func(context.Context, string, string) (store.RawInput, error) {
 		t.Fatal("an unknown directory was routed")
-		return Outcome{}, nil
+		return store.RawInput{}, nil
 	})
 	if err != nil || len(res.Files) != 0 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "not-a-source") {
 		t.Fatalf("res = %+v, err = %v", res, err)
@@ -177,11 +180,11 @@ func TestSweepIgnoresUnknownDirectories(t *testing.T) {
 func TestSweepFilesAWhollyRejectedFileAsRejected(t *testing.T) {
 	root := t.TempDir()
 	drop(t, root, "json", "all-bad.json")
-	route := func(context.Context, string, string) (Outcome, error) {
+	route := func(context.Context, string, string) (store.RawInput, error) {
 		// The file parsed, but every record in it was unusable.
-		return Outcome{Rejected: 4}, nil
+		return raw(ingest.Report{Issues: map[ingest.IssueKind]int{ingest.Rejected: 4}}), nil
 	}
-	res, err := Sweep(context.Background(), root, route)
+	res, err := Sweep(context.Background(), root, kinds, route)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,4 +194,10 @@ func TestSweepFilesAWhollyRejectedFileAsRejected(t *testing.T) {
 	if !exists(filepath.Join(root, rejectedDir, "json", "all-bad.json")) {
 		t.Error("a file whose every record was rejected was filed as a success")
 	}
+}
+
+var kinds = []string{"whatsapp", "eml", "mbox", "json"}
+
+func raw(report ingest.Report) store.RawInput {
+	return store.RawInput{ID: 1, Report: report}
 }

@@ -9,7 +9,9 @@ import (
 	"strings"
 )
 
-func WalkMailTree(root, layout string, importFile func(string, string, MailImportContext) error, skipped func(string, string)) error {
+// WalkMailTree calls importFile with the kind, path and mailbox of every mail
+// file under root, and skipped with the reason for everything else.
+func WalkMailTree(root, layout string, importFile func(kind, path, mailbox string) error, skipped func(string, string)) error {
 	if layout != "eml" && layout != "thunderbird" {
 		return fmt.Errorf("mail tree layout must be eml or thunderbird")
 	}
@@ -70,10 +72,6 @@ func WalkMailTree(root, layout string, importFile func(string, string, MailImpor
 			}
 			mailbox = strings.Join(parts, "/")
 		}
-		observation := MailImportContext{Version: 1, Kind: "export", Mailbox: mailbox, RelativePath: relative}
-		if err := observation.Validate(); err != nil {
-			return err
-		}
-		return importFile(kind, filename, observation)
+		return importFile(kind, filename, mailbox)
 	})
 }

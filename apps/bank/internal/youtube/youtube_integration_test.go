@@ -5,12 +5,16 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
+	"github.com/aquitano/aqt/apps/bank/internal/importtest"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
+
+var kind = importer.Register(Source{}, "YouTube watch history")
 
 // historyPath is where a Takeout puts the file, product folder and all, so the
 // tests exercise the lookup rather than a flat directory. htmlHistoryPath is
@@ -60,24 +64,18 @@ func takeoutZipFiles(t *testing.T, histories map[string]string) string {
 func TestImportFromTakeoutZip(t *testing.T) {
 	ctx := context.Background()
 	st, dsn := storetest.NewNamed(t)
-	archiveDir := filepath.Join(t.TempDir(), "archive")
+	target := importtest.On(t, st, kind)
 
-	res, err := Import(ctx, st, archiveDir, takeoutZip(t, historyJSON))
-	if err != nil {
-		t.Fatal(err)
+	got := importtest.MustImport(t, target, "youtube", takeoutZip(t, historyJSON), nil)
+	if got.Report.Inserted != 4 || got.Report.Duplicates != 0 {
+		t.Errorf("report = %+v, want the four non-ad records", got.Report)
 	}
-	if res.Inserted != 4 || res.Duplicates != 0 {
-		t.Errorf("res = %+v, want the four non-ad records", res)
-	}
-	if res.Ads != 1 {
-		t.Errorf("ads = %d, want the Google Ads impression dropped", res.Ads)
-	}
-	if res.Channels != 2 {
-		t.Errorf("channels = %d, want the two named channels", res.Channels)
+	if got.Report.Issues[ingest.Dropped] != 1 || got.Status != "complete" {
+		t.Errorf("report = %+v status %s, want the Google Ads impression dropped and the import complete", got.Report, got.Status)
 	}
 
 	// The channel is the thread, so one lookup returns everything watched from
-	// it — with the video title as the subject and the watch URL as the body.
+	// it, with the video title as the subject and the watch URL as the body.
 	th, err := st.GetThread(ctx, "youtube", "UCsBjURrPoezykLs9EqgamOA", 0)
 	if err != nil {
 		t.Fatalf("no thread for the channel id: %v", err)
@@ -92,62 +90,32 @@ func TestImportFromTakeoutZip(t *testing.T) {
 	if m.Body != "https://www.youtube.com/watch?v=5C_HPTJg5ek" {
 		t.Errorf("body = %q, want the watch URL", m.Body)
 	}
-
-	// The archive keeps the history file, not the Takeout it arrived in: the
-	// mail beside it is another source's data, and a full export is gigabytes.
-	entries, err := os.ReadDir(filepath.Join(archiveDir, "youtube"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("archive holds %d files, want only the history", len(entries))
-	}
-	if got := entries[0].Name(); !strings.HasSuffix(got, "-watch-history.json") {
-		t.Errorf("archived as %q, want a content-hashed watch-history.json", got)
-	}
 	if n := pgschematest.QueryInt(t, dsn,
-		`select count(*) from messages where raw_ref = $1`, "youtube/"+entries[0].Name()); n != 4 {
-		t.Errorf("%d messages cite the archived history, want 4", n)
+		`select count(*) from messages where raw_input_id = $1 and raw_locator = 'watch-history.json'`, got.ID); n != 4 {
+		t.Errorf("%d messages cite the Takeout's history file, want 4", n)
 	}
 }
 
 // HTML is what a default-configured Takeout writes, so the whole path gets one
-// end-to-end pass: the lookup finding the .html, the extension dispatch, and
-// the archive keeping the file under its own name.
+// end-to-end pass: the lookup finding the .html and the extension dispatch.
 func TestImportFromAnHTMLTakeout(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
-	archiveDir := filepath.Join(t.TempDir(), "archive")
+	target := importtest.Target(t, kind)
 
-	res, err := Import(ctx, st, archiveDir, takeoutZipFiles(t, map[string]string{htmlHistoryPath: historyHTML}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Inserted != 3 || res.Ads != 1 {
-		t.Errorf("res = %+v, want the three watches kept and the ad dropped", res)
-	}
-	entries, err := os.ReadDir(filepath.Join(archiveDir, "youtube"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 || !strings.HasSuffix(entries[0].Name(), "-watch-history.html") {
-		t.Errorf("archive = %v, want one content-hashed watch-history.html", entries)
+	got := importtest.MustImport(t, target, "youtube", takeoutZipFiles(t, map[string]string{htmlHistoryPath: historyHTML}), nil)
+	if got.Report.Inserted != 3 || got.Report.Issues[ingest.Dropped] != 1 {
+		t.Errorf("report = %+v, want the three watches kept and the ad dropped", got.Report)
 	}
 }
 
 // An export configured for "Multiple formats" carries both; the JSON is the
 // one read, being the richer format.
 func TestJSONWinsWhenAnExportCarriesBoth(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
+	target := importtest.Target(t, kind)
 
-	res, err := Import(ctx, st, filepath.Join(t.TempDir(), "archive"),
-		takeoutZipFiles(t, map[string]string{historyPath: historyJSON, htmlHistoryPath: historyHTML}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Inserted != 4 {
-		t.Errorf("res = %+v, want the JSON fixture's four records, not the HTML's three", res)
+	got := importtest.MustImport(t, target, "youtube",
+		takeoutZipFiles(t, map[string]string{historyPath: historyJSON, htmlHistoryPath: historyHTML}), nil)
+	if got.Report.Inserted != 4 {
+		t.Errorf("report = %+v, want the JSON fixture's four records, not the HTML's three", got.Report)
 	}
 }
 
@@ -155,20 +123,13 @@ func TestJSONWinsWhenAnExportCarriesBoth(t *testing.T) {
 // re-reading one must not double the archive. A repeat watch of the same video
 // is a different event and does survive.
 func TestReimportKeepsOneRowPerWatchEvent(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
-	archiveDir := filepath.Join(t.TempDir(), "archive")
+	target := importtest.Target(t, kind)
 
 	first := takeoutZip(t, historyJSON)
-	if _, err := Import(ctx, st, archiveDir, first); err != nil {
-		t.Fatal(err)
-	}
-	res, err := Import(ctx, st, archiveDir, first)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Inserted != 0 || res.Duplicates != 4 {
-		t.Errorf("res = %+v, want every record recognized as already archived", res)
+	importtest.MustImport(t, target, "youtube", first, nil)
+	got := importtest.MustImport(t, target, "youtube", first, nil)
+	if got.Report.Inserted != 0 || got.Report.Duplicates != 4 {
+		t.Errorf("report = %+v, want every record recognized as already archived", got.Report)
 	}
 
 	// A later export repeats the overlap and adds one more watch of a video
@@ -183,41 +144,30 @@ func TestReimportKeepsOneRowPerWatchEvent(t *testing.T) {
 	  "subtitles":[{"name":"Fireship","url":"https://www.youtube.com/channel/UCsBjURrPoezykLs9EqgamOA"}],
 	  "time":"2026-08-14T09:12:33.123Z"}
 	]`
-	res, err = Import(ctx, st, archiveDir, takeoutZip(t, repeat))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Inserted != 1 || res.Duplicates != 1 {
-		t.Errorf("res = %+v, want the second watch kept and the re-export ignored", res)
+	got = importtest.MustImport(t, target, "youtube", takeoutZip(t, repeat), nil)
+	if got.Report.Inserted != 1 || got.Report.Duplicates != 1 {
+		t.Errorf("report = %+v, want the second watch kept and the re-export ignored", got.Report)
 	}
 }
 
 // Google has changed the sub-second precision of the time field between export
 // generations; the same event must still hash to the same id.
 func TestSubSecondPrecisionDoesNotSplitAnEvent(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
-	archiveDir := filepath.Join(t.TempDir(), "archive")
+	target := importtest.Target(t, kind)
 
 	record := func(time string) string {
 		return `[{"header":"YouTube","title":"Watched Rust in 100 Seconds",
 			"titleUrl":"https://www.youtube.com/watch?v=5C_HPTJg5ek",
 			"time":"` + time + `"}]`
 	}
-	if _, err := Import(ctx, st, archiveDir, takeoutZip(t, record("2026-08-14T09:12:33.123456Z"))); err != nil {
-		t.Fatal(err)
-	}
-	res, err := Import(ctx, st, archiveDir, takeoutZip(t, record("2026-08-14T09:12:33Z")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Inserted != 0 || res.Duplicates != 1 {
-		t.Errorf("res = %+v, want the same event under a coarser timestamp", res)
+	importtest.MustImport(t, target, "youtube", takeoutZip(t, record("2026-08-14T09:12:33.123456Z")), nil)
+	got := importtest.MustImport(t, target, "youtube", takeoutZip(t, record("2026-08-14T09:12:33Z")), nil)
+	if got.Report.Inserted != 0 || got.Report.Duplicates != 1 {
+		t.Errorf("report = %+v, want the same event under a coarser timestamp", got.Report)
 	}
 }
 
 func TestImportFromAnUnpackedTakeoutAndABareHistoryFile(t *testing.T) {
-	ctx := context.Background()
 	dir := t.TempDir()
 	nested := filepath.Join(dir, filepath.FromSlash(historyPath))
 	if err := os.MkdirAll(filepath.Dir(nested), 0o700); err != nil {
@@ -232,26 +182,20 @@ func TestImportFromAnUnpackedTakeoutAndABareHistoryFile(t *testing.T) {
 		"bare history file": nested,
 	} {
 		t.Run(name, func(t *testing.T) {
-			st := storetest.New(t)
-			res, err := Import(ctx, st, filepath.Join(t.TempDir(), "archive"), input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if res.Inserted != 4 {
-				t.Errorf("res = %+v, want the four non-ad records", res)
+			got := importtest.MustImport(t, importtest.Target(t, kind), "youtube", input, nil)
+			if got.Report.Inserted != 4 {
+				t.Errorf("report = %+v, want the four non-ad records", got.Report)
 			}
 		})
 	}
 }
 
 func TestImportRejectsSomethingThatIsNotAHistoryExport(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "notes.json"), []byte(`[]`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Import(ctx, st, filepath.Join(t.TempDir(), "archive"), dir); err == nil {
+	if _, err := importtest.Import(t, importtest.Target(t, kind), "youtube", dir, nil); err == nil {
 		t.Fatal("a directory with no watch history should not import as one")
 	}
 }

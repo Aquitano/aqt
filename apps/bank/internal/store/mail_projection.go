@@ -25,13 +25,13 @@ func persistMailFacts(ctx context.Context, transaction pgx.Tx, message Message, 
 	if projection.References == nil {
 		projection.References = []string{}
 	}
-	if _, err := transaction.Exec(ctx, `insert into mail_details(message_id,source,node_key,in_reply_to,reference_ids,native_thread_id,incomplete,header_message_id,header_raw_ref)
+	if _, err := transaction.Exec(ctx, `insert into mail_details(message_id,source,node_key,in_reply_to,reference_ids,native_thread_id,incomplete,header_message_id,header_raw_input)
 		values($1,$2,$3,$4,$5,$6,$7,$8,$9) on conflict(message_id) do update set node_key=excluded.node_key,
 		in_reply_to=excluded.in_reply_to,reference_ids=excluded.reference_ids,native_thread_id=excluded.native_thread_id,incomplete=excluded.incomplete,
-		header_message_id=excluded.header_message_id,header_raw_ref=excluded.header_raw_ref
-		where (mail_details.node_key,mail_details.in_reply_to,mail_details.reference_ids,mail_details.native_thread_id,mail_details.incomplete,mail_details.header_message_id,mail_details.header_raw_ref)
-		is distinct from (excluded.node_key,excluded.in_reply_to,excluded.reference_ids,excluded.native_thread_id,excluded.incomplete,excluded.header_message_id,excluded.header_raw_ref)`,
-		message.ID, message.Source, key, projection.InReplyTo, projection.References, projection.NativeThreadID, incomplete, projection.MessageID, projection.RawRef); err != nil {
+		header_message_id=excluded.header_message_id,header_raw_input=excluded.header_raw_input
+		where (mail_details.node_key,mail_details.in_reply_to,mail_details.reference_ids,mail_details.native_thread_id,mail_details.incomplete,mail_details.header_message_id,mail_details.header_raw_input)
+		is distinct from (excluded.node_key,excluded.in_reply_to,excluded.reference_ids,excluded.native_thread_id,excluded.incomplete,excluded.header_message_id,excluded.header_raw_input)`,
+		message.ID, message.Source, key, projection.InReplyTo, projection.References, projection.NativeThreadID, incomplete, projection.MessageID, nullID(projection.RawInput)); err != nil {
 		return err
 	}
 	if incomplete {
@@ -55,11 +55,11 @@ func persistMailFacts(ctx context.Context, transaction pgx.Tx, message Message, 
 }
 
 func persistMailboxObservation(ctx context.Context, transaction pgx.Tx, message Message, projection MailProjection) error {
-	if projection.Context == nil {
+	if projection.Mailbox == nil {
 		return nil
 	}
-	observation := projection.Context
-	paths := append([]string{observation.Mailbox}, observation.Labels...)
+	observation := projection.Mailbox
+	paths := append([]string{}, observation.Paths...)
 	for i, path := range paths {
 		if observation.Kind == "imap" && strings.EqualFold(path, "INBOX") {
 			paths[i] = "INBOX"

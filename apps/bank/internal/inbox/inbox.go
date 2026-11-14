@@ -2,10 +2,11 @@
 // $BANK_DATA_DIR/inbox/<kind>/ are routed to the importer that owns that
 // directory and then filed away by outcome.
 //
-// Nothing moves before an importer has returned, and every importer is
+// Nothing moves before an import has returned, and every import is
 // idempotent, so an interrupted sweep is safe to re-run: whatever is still in
 // the drop zone has either not been imported or was imported and will
-// deduplicate on the second pass.
+// deduplicate on the second pass. Every swept file is stored as a raw input
+// before it is parsed, so one a parser rejected can be replayed after a fix.
 package inbox
 
 import (
@@ -19,24 +20,13 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
-// Kinds are the importer names that double as inbox subdirectory names.
-var Kinds = []string{"whatsapp", "eml", "mbox", "discord", "linkedin", "youtube", "chatgpt", "claude", "json", "netflix", "youtube-media", "library"}
-
-// Outcome is what a router reports back about one imported file, reduced to
-// the three numbers the sweep needs to pick a disposition.
-type Outcome struct {
-	Inserted   int
-	Duplicates int
-	Rejected   int
-	// Result is the importer's own result value, carried through to JSON
-	// output untouched.
-	Result any
-}
-
-// Router imports one path with the importer that owns kind.
-type Router func(ctx context.Context, kind, path string) (Outcome, error)
+// Router imports one path as kind and returns the stored input with its
+// report.
+type Router func(ctx context.Context, kind, path string) (store.RawInput, error)
 
 // Disposition is what the sweep did with a file. Each one is retry-safe:
 // anything not filed away stays in the drop zone for the next run.
@@ -71,7 +61,9 @@ type FileResult struct {
 	Disposition Disposition `json:"disposition"`
 	MovedTo     string      `json:"moved_to,omitempty"`
 	Detail      string      `json:"detail,omitempty"`
-	Result      any         `json:"result,omitempty"`
+	// RawInput is the stored input, absent when the import failed before
+	// the input was stored.
+	RawInput *store.RawInput `json:"raw_input,omitempty"`
 }
 
 type Result struct {
@@ -92,18 +84,19 @@ const (
 // Sweep processes every entry dropped under inboxDir. It stops at the first
 // operational failure — a broken database will only produce a longer list of
 // the same error — and returns what it managed before that.
-func Sweep(ctx context.Context, inboxDir string, route Router) (Result, error) {
+// Kinds are the import kinds, which double as subdirectory names.
+func Sweep(ctx context.Context, inboxDir string, kinds []string, route Router) (Result, error) {
 	res := Result{Files: []FileResult{}}
 	entries, err := os.ReadDir(inboxDir)
 	if err != nil && !os.IsNotExist(err) {
 		return res, err
 	}
 	for _, e := range entries {
-		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && !slices.Contains(Kinds, e.Name()) {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && !slices.Contains(kinds, e.Name()) {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("%s is not an import kind; its files are never swept", filepath.Join(inboxDir, e.Name())))
 		}
 	}
-	for _, kind := range Kinds {
+	for _, kind := range kinds {
 		entries, err := os.ReadDir(filepath.Join(inboxDir, kind))
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -150,7 +143,10 @@ func Sweep(ctx context.Context, inboxDir string, route Router) (Result, error) {
 
 func sweepOne(ctx context.Context, inboxDir, kind, path string, route Router) (FileResult, error) {
 	fr := FileResult{Path: path, Kind: kind}
-	out, err := route(ctx, kind, path)
+	raw, err := route(ctx, kind, path)
+	if raw.ID != 0 {
+		fr.RawInput = &raw
+	}
 	switch {
 	case err != nil && fail.IsOp(err):
 		fr.Disposition = Failed
@@ -163,17 +159,17 @@ func sweepOne(ctx context.Context, inboxDir, kind, path string, route Router) (F
 		fr.MovedTo = moved
 		return fr, moveErr
 	}
-	fr.Result = out.Result
-	if out.Rejected > 0 {
-		fr.Detail = fmt.Sprintf("%d record(s) rejected", out.Rejected)
+	rejected := raw.Report.Issues[ingest.Rejected]
+	if rejected > 0 {
+		fr.Detail = fmt.Sprintf("%d record(s) rejected", rejected)
 	}
 	bucket := doneDir
 	switch {
-	case out.Inserted > 0:
+	case raw.Report.Stored() > 0:
 		fr.Disposition = Imported
-	case out.Duplicates > 0:
+	case raw.Report.Known() > 0:
 		fr.Disposition = Duplicate
-	case out.Rejected > 0:
+	case rejected > 0:
 		// The importer read the file but kept none of it; calling that
 		// "imported" would file a problem away as a success.
 		fr.Disposition = Rejected

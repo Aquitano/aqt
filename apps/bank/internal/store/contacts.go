@@ -405,18 +405,18 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 		sql += " and m.sent_at < " + next(o.Until)
 	}
 	if !o.Before.IsZero() {
-		var at time.Time
 		var id int64
-		err := s.pool.QueryRow(ctx, `select m.sent_at, m.id from messages m where m.ref=$2 and`+aliasMatch("$1"), c.ID, o.Before.String()).Scan(&at, &id)
+		err := s.pool.QueryRow(ctx, `select m.id from messages m where m.ref=$2 and`+aliasMatch("$1"), c.ID, o.Before.String()).Scan(&id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("before cursor is not a message for this contact")
 		}
 		if err != nil {
 			return nil, err
 		}
-		sql += " and (m.sent_at,m.id)<(" + next(at) + "," + next(id) + ")"
+		anchor := next(id)
+		sql += " and (m.sort_at,m.id)<((select sort_at from messages where id=" + anchor + ")," + anchor + ")"
 	}
-	sql += " order by m.sent_at desc, m.id desc limit " + next(o.Limit)
+	sql += " order by m.sort_at desc, m.id desc limit " + next(o.Limit)
 	if o.Offset > 0 {
 		sql += " offset " + next(o.Offset)
 	}

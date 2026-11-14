@@ -21,7 +21,7 @@ func TestThreadContextIncludesLateSearchHit(t *testing.T) {
 		messages = append(messages, store.Message{Source: "whatsapp", ExternalID: fmt.Sprint(i),
 			ThreadID: "long-chat", Body: "message", SentAt: time.Unix(int64(i), 0)})
 	}
-	if _, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{}); err != nil {
+	if _, err := st.InsertMessages(ctx, messages); err != nil {
 		t.Fatal(err)
 	}
 	target := ref.ForMessage("whatsapp", "", "2002").String()

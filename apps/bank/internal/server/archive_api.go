@@ -6,8 +6,8 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -26,7 +26,7 @@ type mailboxesInput struct {
 }
 
 func (s *Server) mailboxes(ctx context.Context, in *mailboxesInput) (*httpapi.Body[[]store.Mailbox], error) {
-	if err := archive.ValidSource(in.Source); err != nil {
+	if err := ingest.ValidSource(in.Source); err != nil {
 		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return list(s.read.ListMailboxes(ctx, in.Source))

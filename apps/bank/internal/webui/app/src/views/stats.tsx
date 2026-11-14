@@ -35,6 +35,7 @@ export function StatsView({
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               {fmtDay(s.earliest)} → {fmtDay(s.latest)}
+              {s.undated > 0 && ` · ${s.undated.toLocaleString("en")} undated`}
             </div>
             <div className="text-xs text-muted-foreground">
               Last import: {fmtDay(s.last_ingest)}

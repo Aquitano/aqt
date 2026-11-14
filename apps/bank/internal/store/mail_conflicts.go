@@ -83,10 +83,10 @@ func (s *Store) MailConflictMessages(ctx context.Context, source, key string, be
 			}
 			return result, err
 		}
-		query += ` and (m.sent_at,m.id)<($4,$5)`
-		args = append(args, anchor.SentAt, anchor.ID)
+		query += ` and (m.sort_at,m.id)<((select sort_at from messages where id=$4),$4)`
+		args = append(args, anchor.ID)
 	}
-	rows, err := s.pool.Query(ctx, query+` order by m.sent_at desc,m.id desc limit $3`, args...)
+	rows, err := s.pool.Query(ctx, query+` order by m.sort_at desc,m.id desc limit $3`, args...)
 	if err != nil {
 		return result, err
 	}

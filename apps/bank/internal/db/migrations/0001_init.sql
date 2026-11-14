@@ -44,11 +44,34 @@ create index texts_bm25_idx on texts using bm25 (
     (text::pdb.unicode_words('ascii_folding=true'))
 ) with (key_field = 'content_id', mutable_segment_rows = 0);
 
+-- Raw inputs
+--
+-- Every export, upload and fetched mail is stored as it arrived before it is
+-- parsed: its bytes are a content in the blob store, and options are the
+-- typed settings it was imported with. Replaying the archive is reading this
+-- table in id order through today's parsers. The same bytes under the same
+-- name and options are one input; importing them again reruns that row.
+create table raw_inputs (
+    id          bigint generated always as identity primary key,
+    kind        text not null check (kind <> ''),
+    content_id  bigint not null references contents,
+    name        text not null,
+    options     jsonb not null default '{}',
+    received_at timestamptz not null default now(),
+    finished_at timestamptz,
+    -- running until the parser returns: one that stays running was
+    -- interrupted. gaps means records were missing or rejected.
+    status      text not null default 'running' check (status in ('running', 'complete', 'gaps', 'failed')),
+    report      jsonb not null default '{}',
+    error       text not null default '',
+    unique (kind, content_id, name, options)
+);
+
 -- Messages and mail
 
 -- id is a row number for joins and changes when the archive is rebuilt; ref is
 -- what a citation carries. ref.ForMessage derives it from the source and the
--- identifier that keys the message, and InsertMessages writes it.
+-- identifier that keys the message, and WriteMessages writes it.
 create table messages (
     id                 bigint generated always as identity primary key,
     ref                text not null unique check (ref ~ '^msg:[0-9a-f]{16}$'),
@@ -59,8 +82,17 @@ create table messages (
     recipients         text[] not null default '{}',
     subject            text not null default '',
     body               text not null default '',
-    sent_at            timestamptz not null,
-    raw_ref            text not null default '',
+    -- Null when the source does not say when the message was sent.
+    sent_at            timestamptz,
+    -- Every ordering and page cursor uses sort_at, so an undated message
+    -- sorts before every dated one: first when reading oldest first, last in
+    -- newest-first lists.
+    sort_at            timestamptz not null generated always as (coalesce(sent_at, '-infinity')) stored,
+    -- Null only for rows written without an import, such as test fixtures.
+    raw_input_id       bigint references raw_inputs,
+    -- Where inside the raw input the message was read, when one input holds
+    -- many records.
+    raw_locator        text not null default '',
     ingested_at        timestamptz not null default now(),
     -- RFC 822 Message-ID, stored separately from external_id so mail that
     -- arrives twice under different id schemes (Gmail API id vs Takeout mbox)
@@ -78,14 +110,15 @@ create table messages (
 );
 
 create index messages_sent_at_idx on messages (sent_at);
+create index messages_raw_input_idx on messages (raw_input_id);
 -- Message-ID dedup is structural because a check-then-insert races under the
--- sync's concurrent workers. InsertMessage uses a bare "on conflict do
--- nothing", so a violation skips silently.
+-- sync's concurrent workers. The insert uses a bare "on conflict do nothing",
+-- so a violation skips silently.
 create unique index messages_source_message_id_key
     on messages (source, message_id) where message_id <> '';
 -- `bank thread <id>` reads one conversation in chronological order.
-create index messages_thread_idx on messages (thread_id, sent_at, id);
-create index messages_source_thread_page_idx on messages (source, thread_id, sent_at, id);
+create index messages_thread_idx on messages (thread_id, sort_at, id);
+create index messages_source_thread_page_idx on messages (source, thread_id, sort_at, id);
 create index messages_parent_idx on messages (source, thread_id, parent_external_id)
     where parent_external_id <> '';
 
@@ -96,16 +129,18 @@ create index messages_bm25_idx on messages
     using bm25 (id, subject, body, sender, recipients, attachment_text)
     with (key_field = 'id');
 
+-- position is the attachment's place in the record its source read, so an
+-- import repeated or run concurrently writes each attachment once.
 create table attachments (
-    id          bigint generated always as identity primary key,
     message_id  bigint not null references messages (id) on delete cascade,
+    position    integer not null check (position >= 0),
     filename    text not null,
     mime_type   text not null default '',
     content_id  bigint not null references contents,
-    ingested_at timestamptz default clock_timestamp()
+    ingested_at timestamptz not null default clock_timestamp(),
+    primary key (message_id, position)
 );
 
-create index attachments_message_id_idx on attachments (message_id);
 create index attachments_content_idx on attachments (content_id);
 
 -- A retired message keeps its identity here after its row is deleted: imports
@@ -116,9 +151,9 @@ create table message_tombstones (
     external_id text not null,
     message_id  text not null default '',
     ref         text not null unique check (ref ~ '^msg:[0-9a-f]{16}$'),
-    sent_at     timestamptz not null,
+    sent_at     timestamptz,
     subject     text not null default '',
-    raw_ref     text not null default '',
+    raw_input_id bigint references raw_inputs,
     reason      text not null default '',
     replacement text not null default '',
     retired_at  timestamptz not null default now(),
@@ -131,17 +166,6 @@ create table sync_state (
     source     text primary key,
     state      jsonb not null,
     updated_at timestamptz not null default now()
-);
-
-create table import_reports (
-    id          bigint generated always as identity primary key,
-    kind        text not null,
-    input       text not null,
-    started_at  timestamptz not null default now(),
-    finished_at timestamptz,
-    status      text not null default 'running',
-    result      jsonb not null default '{}',
-    error       text not null default ''
 );
 
 create table mailboxes (
@@ -176,7 +200,7 @@ create table mail_details (
     native_thread_id  text not null default '',
     incomplete        boolean not null default false,
     header_message_id text not null default '',
-    header_raw_ref    text not null default '',
+    header_raw_input  bigint references raw_inputs,
     foreign key (source, node_key) references mail_thread_nodes (source, node_key)
 );
 create index mail_details_node on mail_details (source, node_key);
@@ -352,10 +376,10 @@ create index library_items_search on library_items using gin (to_tsvector('simpl
 create index library_items_provider on library_items (provider, provider_id) where provider_id <> '';
 
 create table library_item_evidence (
-    item_id text not null references library_items (id),
-    raw_ref text not null check (raw_ref <> ''),
-    locator text not null default '',
-    primary key (item_id, raw_ref, locator)
+    item_id      text not null references library_items (id),
+    raw_input_id bigint not null references raw_inputs,
+    locator      text not null default '',
+    primary key (item_id, raw_input_id, locator)
 );
 
 create table library_activity (
@@ -376,21 +400,13 @@ create table library_activity (
 );
 create index library_activity_search on library_activity using gin (to_tsvector('simple', search_text));
 create index library_activity_item on library_activity (item_id);
-create index library_activity_legacy_netflix on library_activity (source, account, item_id)
-    where kind = 'watch' and external_id ~ '^file:[0-9a-f]{64}:row:[0-9]+$';
 
 create table library_activity_evidence (
-    activity_id text not null references library_activity (id),
-    raw_ref     text not null check (raw_ref <> ''),
-    locator     text not null default '',
-    primary key (activity_id, raw_ref, locator)
+    activity_id  text not null references library_activity (id),
+    raw_input_id bigint not null references raw_inputs,
+    locator      text not null default '',
+    primary key (activity_id, raw_input_id, locator)
 );
-
-create table library_activity_aliases (
-    id          text primary key,
-    activity_id text not null references library_activity (id)
-);
-create index library_activity_aliases_activity on library_activity_aliases (activity_id);
 
 create table library_collections (
     id          text primary key,

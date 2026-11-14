@@ -60,10 +60,18 @@ func Resolve(ctx context.Context, archive *store.Store, contents Contents, cited
 	return resolveLibrary(ctx, archive, contents, cited)
 }
 
+// dated is a message's date for At, absent when the source gave none.
+func dated(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
+}
+
 func resolveMessage(ctx context.Context, archive *store.Store, contents Contents, cited ref.Message) (Resolved, error) {
 	m, attachments, err := archive.GetMessageByRef(ctx, cited)
 	if retired, ok := errors.AsType[*store.RetiredError](err); ok {
-		out := Resolved{Ref: cited.String(), Kind: "retired_message", Title: retired.Retired.Subject, At: &retired.Retired.SentAt,
+		out := Resolved{Ref: cited.String(), Kind: "retired_message", Title: retired.Retired.Subject, At: dated(retired.Retired.SentAt),
 			Href: "/v1/messages/" + cited.String(), Links: []Link{}}
 		if id := retired.Retired.Replacement; id != "" {
 			out.Links = append(out.Links, Link{Relation: "replaced_by", Ref: id, Href: "/v1/refs/" + id})
@@ -80,7 +88,7 @@ func resolveMessage(ctx context.Context, archive *store.Store, contents Contents
 	if title == "" {
 		title = firstWords(m.Body)
 	}
-	out := Resolved{Ref: cited.String(), Kind: "message", Title: title, At: &m.SentAt, Href: "/v1/messages/" + cited.String(), Links: []Link{}}
+	out := Resolved{Ref: cited.String(), Kind: "message", Title: title, At: dated(m.SentAt), Href: "/v1/messages/" + cited.String(), Links: []Link{}}
 	digests := make([]content.Digest, len(attachments))
 	for i, a := range attachments {
 		digests[i] = a.BLAKE3

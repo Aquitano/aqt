@@ -2,7 +2,7 @@ package aichat
 
 import (
 	"archive/zip"
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 )
 
 func TestParseChatGPTConversation(t *testing.T) {
@@ -32,7 +35,7 @@ func TestParseChatGPTConversation(t *testing.T) {
 	if err := unmarshal(raw, &c); err != nil {
 		t.Fatal(err)
 	}
-	msgs := parseChatGPTConversation(c, false)
+	msgs := parseChatGPTConversation(c)
 	if len(msgs) != 3 {
 		t.Fatalf("got %d messages, want 3 (system skipped): %+v", len(msgs), msgs)
 	}
@@ -70,7 +73,7 @@ func TestParseChatGPTConversationSubSecondOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 20 { // map iteration order varies per run
-		msgs := parseChatGPTConversation(c, false)
+		msgs := parseChatGPTConversation(c)
 		if got := msgs[0].ExternalID + "," + msgs[1].ExternalID + "," + msgs[2].ExternalID; got != "msg-a,msg-b,msg-c" {
 			t.Fatalf("order = %s, want msg-a,msg-b,msg-c", got)
 		}
@@ -96,7 +99,7 @@ func TestParseChatGPTVoiceConversation(t *testing.T) {
 	if err := unmarshal(raw, &c); err != nil {
 		t.Fatal(err)
 	}
-	msgs := parseChatGPTConversation(c, false)
+	msgs := parseChatGPTConversation(c)
 	if len(msgs) != 1 {
 		t.Fatalf("got %d messages, want the transcribed one only: %+v", len(msgs), msgs)
 	}
@@ -129,9 +132,9 @@ func TestParseChatGPTAssets(t *testing.T) {
 	if err := unmarshal(raw, &c); err != nil {
 		t.Fatal(err)
 	}
-	msgs := parseChatGPTConversation(c, true)
+	msgs := parseChatGPTConversation(c)
 	// n3's only pointer is a traversal attempt, so with its reference refused
-	// the message holds nothing and is dropped even with assets on.
+	// the message holds nothing and is dropped.
 	if len(msgs) != 2 {
 		t.Fatalf("got %d messages, want 2 (asset-only kept, traversal-only dropped): %+v", len(msgs), msgs)
 	}
@@ -151,12 +154,6 @@ func TestParseChatGPTAssets(t *testing.T) {
 	}
 	if msgs[1].Body != "" {
 		t.Errorf("audio-only body = %q", msgs[1].Body)
-	}
-
-	// The same conversation without assets keeps only the message with text.
-	msgs = parseChatGPTConversation(c, false)
-	if len(msgs) != 1 || msgs[0].ExternalID != "msg-1" {
-		t.Fatalf("without assets = %+v, want the text-bearing message only", msgs)
 	}
 }
 
@@ -204,8 +201,8 @@ func TestParseClaudeConversation(t *testing.T) {
 	}
 }
 
-// A conversation whose messages carry no text must parse to nothing, so
-// ImportClaude counts it as empty instead of ingesting bodies it will skip.
+// A conversation whose messages carry no text must parse to nothing, so it is
+// reported as skipped instead of stored with empty bodies.
 func TestParseClaudeConversationWithoutText(t *testing.T) {
 	raw := `{
 	  "uuid": "c-2", "name": "Screenshots only",
@@ -235,7 +232,7 @@ func TestSameTitleConversationsStayApart(t *testing.T) {
 		         "content": {"content_type": "text", "parts": ["hi"]}}}}}`, &c); err != nil {
 			t.Fatal(err)
 		}
-		return parseChatGPTConversation(c, false)
+		return parseChatGPTConversation(c)
 	}
 	claude := func(uuid string) []message {
 		var c claudeConversation
@@ -272,103 +269,67 @@ func unmarshal(s string, v any) error {
 	return json.Unmarshal([]byte(s), v)
 }
 
+// conversation is a ChatGPT conversation with one user message.
+func conversation(id string) string {
+	return `{"title":"` + id + `","conversation_id":"` + id + `","mapping":{"n":{"message":{"id":"` + id + `-m","author":{"role":"user"},"create_time":1715629680.0,"content":{"content_type":"text","parts":["hi"]}}}}}`
+}
+
 // The files of a sharded export: two conversation shards plus the neighbour a
 // loose conversations*.json glob would wrongly pick up.
 var shardedExport = map[string]string{
-	"conversations-000.json":             `[{"title":"one","conversation_id":"c-1"}]`,
-	"conversations-001.json":             `[{"title":"two","conversation_id":"c-2"},{"title":"three","conversation_id":"c-3"}]`,
-	"conversation_asset_file_names.json": `{"file-x":"image.png"}`,
+	"conversations-000.json":             "[" + conversation("c-1") + "]",
+	"conversations-001.json":             "[" + conversation("c-2") + "," + conversation("c-3") + "]",
+	"conversation_asset_file_names.json": `{"file-x.dat":"image.png"}`,
 	"user.json":                          `{"id":"u-1"}`,
 }
 
-func TestLoadConversationsDir(t *testing.T) {
-	dir := exportDir(t, map[string]string{
-		"conversations.json": `[{"title":"one"},{"title":"two"}]`,
-		"user.json":          `{"id":"u-1"}`,
-	})
-	archiveDir := t.TempDir()
-	raw, rawRef, err := loadConversations(archiveDir, "chatgpt", dir)
+func TestChatGPTShardedExport(t *testing.T) {
+	got, err := parseInput(ChatGPT{}, exportZip(t, shardedExport))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(conversationTitles(t, raw)) != 2 {
-		t.Errorf("raw = %s", raw)
+	if threads := got.threads(); threads != "c-1,c-2,c-3" || len(got.issues) != 0 {
+		t.Fatalf("threads = %s, issues = %+v, want the shards read in shard order", threads, got.issues)
 	}
-	archived, err := os.ReadFile(filepath.Join(archiveDir, rawRef))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(conversationTitles(t, archived)) != 2 {
-		t.Errorf("archived %s does not hold conversations.json: %s", rawRef, archived)
+	if got.messages[1].Locator != "conversations-001.json: conversation c-2" {
+		t.Errorf("locator = %q", got.messages[1].Locator)
 	}
 }
 
-func TestLoadConversationsShardedDir(t *testing.T) {
-	dir := exportDir(t, shardedExport)
-	archiveDir := t.TempDir()
-	raw, rawRef, err := loadConversations(archiveDir, "chatgpt", dir)
+func TestChatGPTMissingShardIsIncomplete(t *testing.T) {
+	got, err := parseInput(ChatGPT{}, exportZip(t, map[string]string{
+		"conversations-000.json": "[" + conversation("c-1") + "]",
+		"conversations-002.json": "[" + conversation("c-3") + "]",
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	titles := conversationTitles(t, raw)
-	if strings.Join(titles, ",") != "one,two,three" {
-		t.Errorf("titles = %v, want the shards concatenated in shard order", titles)
+	if threads := got.threads(); threads != "c-1,c-3" {
+		t.Errorf("threads = %s", threads)
 	}
-	// The raw ref must hold the merged array, not one of the shards.
-	archived, err := os.ReadFile(filepath.Join(archiveDir, rawRef))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(conversationTitles(t, archived)) != 3 {
-		t.Errorf("archived %s does not hold the merged array: %s", rawRef, archived)
+	if len(got.issues) != 1 || got.issues[0].Kind != ingest.Incomplete {
+		t.Errorf("issues = %+v, want the missing shard", got.issues)
 	}
 }
 
-func TestLoadConversationsShardedZip(t *testing.T) {
-	path := exportZip(t, shardedExport)
-	archiveDir := t.TempDir()
-	raw, rawRef, err := loadConversations(archiveDir, "chatgpt", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	titles := conversationTitles(t, raw)
-	if strings.Join(titles, ",") != "one,two,three" {
-		t.Errorf("titles = %v, want the shards concatenated in shard order", titles)
-	}
-	// A zip archives as itself; only the directory branch archives a merge.
-	archived, err := os.ReadFile(filepath.Join(archiveDir, rawRef))
-	if err != nil {
-		t.Fatal(err)
-	}
-	original, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(archived, original) {
-		t.Errorf("archived %s is not the export zip", rawRef)
+func TestChatGPTWithoutConversations(t *testing.T) {
+	path := exportZip(t, map[string]string{"user.json": `{"id":"u-1"}`, "conversation_asset_file_names.json": `{}`})
+	if _, err := parseInput(ChatGPT{}, path); err == nil {
+		t.Error("want an error for an export holding no conversations")
 	}
 }
 
-func TestLoadConversationsWithoutConversations(t *testing.T) {
-	rest := map[string]string{"user.json": `{"id":"u-1"}`, "conversation_asset_file_names.json": `{}`}
-	for _, path := range []string{exportDir(t, rest), exportZip(t, rest)} {
-		if _, _, err := loadConversations(t.TempDir(), "chatgpt", path); err == nil {
-			t.Errorf("%s: want an error for an export holding no conversations", path)
-		}
-	}
-}
-
-func TestMergeShardsOrdersByNumber(t *testing.T) {
+func TestConversationFilesOrdersByNumber(t *testing.T) {
 	// Unpadded shards: lexically conversations-10.json sorts first.
-	raw, err := mergeShards(fstest.MapFS{
-		"conversations-9.json":  {Data: []byte(`[{"title":"nine"}]`)},
-		"conversations-10.json": {Data: []byte(`[{"title":"ten"}]`)},
+	names, _, err := conversationFiles(fstest.MapFS{
+		"conversations-9.json":  {Data: []byte(`[]`)},
+		"conversations-10.json": {Data: []byte(`[]`)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if titles := conversationTitles(t, raw); strings.Join(titles, ",") != "nine,ten" {
-		t.Errorf("titles = %v", titles)
+	if strings.Join(names, ",") != "conversations-9.json,conversations-10.json" {
+		t.Errorf("names = %v", names)
 	}
 }
 
@@ -398,20 +359,37 @@ func TestMissingShards(t *testing.T) {
 	}
 }
 
-func exportDir(t *testing.T, parts map[string]string) string {
-	t.Helper()
-	dir := t.TempDir()
-	for name, content := range parts {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
-			t.Fatal(err)
-		}
+// recorder is an Emitter that keeps what a source emits.
+type recorder struct {
+	messages []ingest.Message
+	issues   []ingest.Issue
+}
+
+func (r *recorder) Message(m ingest.Message) error {
+	r.messages = append(r.messages, m)
+	return nil
+}
+func (r *recorder) Library(library.ImportBatch) error { return nil }
+func (r *recorder) Pages(ingest.Pages) error          { return nil }
+func (r *recorder) Issue(i ingest.Issue)              { r.issues = append(r.issues, i) }
+
+func (r *recorder) threads() string {
+	threads := make([]string, len(r.messages))
+	for i, m := range r.messages {
+		threads[i] = m.ThreadID
 	}
-	return dir
+	return strings.Join(threads, ",")
+}
+
+func parseInput(src ingest.Source[Options], path string) (*recorder, error) {
+	got := &recorder{}
+	err := src.Parse(context.Background(), ingest.Raw{Name: filepath.Base(path), Path: path}, Options{}, got)
+	return got, err
 }
 
 func exportZip(t *testing.T, parts map[string]string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "chatgpt-export.zip")
+	path := filepath.Join(t.TempDir(), "export.zip")
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
@@ -431,17 +409,4 @@ func exportZip(t *testing.T, parts map[string]string) string {
 		t.Fatal(err)
 	}
 	return path
-}
-
-func conversationTitles(t *testing.T, raw []byte) []string {
-	t.Helper()
-	var convs []cgptConversation
-	if err := json.Unmarshal(raw, &convs); err != nil {
-		t.Fatalf("merged array does not parse: %v", err)
-	}
-	titles := make([]string, len(convs))
-	for i, c := range convs {
-		titles[i] = c.Title
-	}
-	return titles
 }

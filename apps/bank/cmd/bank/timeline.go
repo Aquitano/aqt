@@ -9,6 +9,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
 )
 
 type timelineCmd struct {
@@ -110,7 +111,7 @@ func (c *refCmd) Run(ctx context.Context) error {
 type openapiCmd struct{}
 
 func (openapiCmd) Run() error {
-	spec, err := server.Spec()
+	spec, err := server.Spec(sources.All)
 	if err != nil {
 		return err
 	}

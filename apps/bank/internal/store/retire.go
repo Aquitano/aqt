@@ -20,9 +20,9 @@ type RetiredMessage struct {
 	Ref         string    `json:"ref"`
 	Source      string    `json:"source"`
 	ExternalID  string    `json:"external_id"`
-	SentAt      time.Time `json:"sent_at"`
+	SentAt      time.Time `json:"sent_at,omitzero"`
 	Subject     string    `json:"subject,omitempty"`
-	RawRef      string    `json:"raw_ref,omitempty"`
+	RawInput    int64     `json:"raw_input,omitempty"`
 	Reason      string    `json:"reason,omitempty"`
 	Replacement string    `json:"replacement,omitempty"`
 	RetiredAt   time.Time `json:"retired_at"`
@@ -169,15 +169,15 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 
 	for i := range res.Prefixes {
 		rows, err := tx.Query(ctx, `
-			select m.ref, m.source, m.external_id, m.sent_at, m.subject, m.raw_ref
+			select m.ref, m.source, m.external_id, m.sent_at, m.subject, coalesce(m.raw_input_id, 0)
 			from messages m where m.source = $1 and starts_with(m.external_id, $2)
-			order by m.sent_at, m.id limit $3`, o.Source, res.Prefixes[i].Prefix, retireSamples)
+			order by m.sort_at, m.id limit $3`, o.Source, res.Prefixes[i].Prefix, retireSamples)
 		if err != nil {
 			return res, err
 		}
 		samples, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (RetiredMessage, error) {
 			var r RetiredMessage
-			err := row.Scan(&r.Ref, &r.Source, &r.ExternalID, &r.SentAt, &r.Subject, &r.RawRef)
+			err := row.Scan(&r.Ref, &r.Source, &r.ExternalID, optionalTime{&r.SentAt}, &r.Subject, &r.RawInput)
 			r.Replacement = o.Replacements[r.Ref]
 			return r, err
 		})
@@ -220,10 +220,10 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 	tag, err := tx.Exec(ctx, `
 		with gone as (
 			delete from messages m where `+retiringPredicate+`
-			returning m.source, m.external_id, m.message_id, m.ref, m.sent_at, m.subject, m.raw_ref
+			returning m.source, m.external_id, m.message_id, m.ref, m.sent_at, m.subject, m.raw_input_id
 		)
-		insert into message_tombstones (source, external_id, message_id, ref, sent_at, subject, raw_ref, reason, replacement)
-		select g.source, g.external_id, g.message_id, g.ref, g.sent_at, g.subject, g.raw_ref, $3, coalesce(r.id, '')
+		insert into message_tombstones (source, external_id, message_id, ref, sent_at, subject, raw_input_id, reason, replacement)
+		select g.source, g.external_id, g.message_id, g.ref, g.sent_at, g.subject, g.raw_input_id, $3, coalesce(r.id, '')
 		from gone g left join unnest($4::text[], $5::text[]) as r(ref, id) on r.ref = g.ref
 		on conflict (source, external_id) do nothing`,
 		o.Source, o.ExternalPrefixes, cleanText(o.Reason), refs, ids)
@@ -237,33 +237,13 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 	return res, nil
 }
 
-// CountRetired counts the messages an import skipped because `bank retire`
-// tombstoned their external id or Message-ID. InsertMessages reports them as
-// already present, so importers subtract this from their duplicates.
-func (s *Store) CountRetired(ctx context.Context, messages []Message) (int, error) {
-	if len(messages) == 0 {
-		return 0, nil
-	}
-	sources, externalIDs, messageIDs := make([]string, len(messages)), make([]string, len(messages)), make([]string, len(messages))
-	for i, m := range messages {
-		sources[i], externalIDs[i], messageIDs[i] = m.Source, cleanText(m.ExternalID), cleanText(m.MessageID)
-	}
-	var n int
-	err := s.pool.QueryRow(ctx, `
-		select count(*) from unnest($1::text[], $2::text[], $3::text[]) as k(source, external_id, message_id)
-		where exists (select 1 from message_tombstones t where t.source = k.source
-			and (t.external_id = k.external_id or (k.message_id <> '' and t.message_id = k.message_id)))`,
-		sources, externalIDs, messageIDs).Scan(&n)
-	return n, err
-}
-
 // RetiredByRef is the tombstone a ref lookup falls back to.
 func (s *Store) RetiredByRef(ctx context.Context, cited ref.Message) (RetiredMessage, error) {
 	var r RetiredMessage
 	err := s.pool.QueryRow(ctx, `
-		select ref, source, external_id, sent_at, subject, raw_ref, reason, replacement, retired_at
+		select ref, source, external_id, sent_at, subject, coalesce(raw_input_id, 0), reason, replacement, retired_at
 		from message_tombstones where ref = $1`, cited.String()).
-		Scan(&r.Ref, &r.Source, &r.ExternalID, &r.SentAt, &r.Subject, &r.RawRef, &r.Reason, &r.Replacement, &r.RetiredAt)
+		Scan(&r.Ref, &r.Source, &r.ExternalID, optionalTime{&r.SentAt}, &r.Subject, &r.RawInput, &r.Reason, &r.Replacement, &r.RetiredAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return r, ErrNotFound
 	}

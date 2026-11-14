@@ -38,7 +38,7 @@ func markdownAccount(root, account string) string {
 	return "directory:" + digest([]byte(filepath.ToSlash(abs)))[:24]
 }
 
-func sensitivityAllowed(value string, opts Options) (bool, error) {
+func sensitivityAllowed(value string, opts PublicationOptions) (bool, error) {
 	maximum := opts.MaxSensitivity
 	if maximum == "" {
 		maximum = "normal"
@@ -58,24 +58,24 @@ func sensitivityAllowed(value string, opts Options) (bool, error) {
 	}
 }
 
-func parseMarkdown(root string, opts Options) (Parsed, error) {
-	p := Parsed{Batch: emptyBatch(), Inputs: []RawInput{}, Diagnostics: []string{}}
+func parseMarkdown(root string, opts PublicationOptions) ([]library.Page, []Input, error) {
+	pages, inputs := []library.Page{}, []Input{}
 	if _, err := sensitivityAllowed("normal", opts); err != nil {
-		return p, err
+		return nil, nil, err
 	}
 	info, err := os.Lstat(root)
 	if err != nil {
-		return p, err
+		return nil, nil, err
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return p, fmt.Errorf("selected Markdown directory cannot be a symlink")
+		return nil, nil, fmt.Errorf("selected Markdown directory cannot be a symlink")
 	}
 	if !info.IsDir() {
-		return p, fmt.Errorf("Markdown publication requires an explicitly selected directory")
+		return nil, nil, fmt.Errorf("Markdown publication requires an explicitly selected directory")
 	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
-		return p, err
+		return nil, nil, err
 	}
 	opts.Account = markdownAccount(abs, opts.Account)
 	scanRoot := abs
@@ -116,7 +116,6 @@ func parseMarkdown(root string, opts Options) (Parsed, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		if brainVault && excludedBrainPage(rel) {
-			p.Skipped++
 			return nil
 		}
 		raw, err := os.ReadFile(path)
@@ -126,20 +125,22 @@ func parseMarkdown(root string, opts Options) (Parsed, error) {
 		if len(raw) > 8<<20 {
 			return fmt.Errorf("%s exceeds the 8 MiB page limit", rel)
 		}
-		input := RawInput{Name: rel, Bytes: raw}
+		input := Input{Name: rel, Bytes: raw}
 		page, err := markdownDocument(input, opts, path)
 		if err != nil {
 			return fmt.Errorf("%s: %w", rel, err)
 		}
 		if page == nil {
-			p.Skipped++
 			return nil
 		}
-		p.Batch.Pages = append(p.Batch.Pages, *page)
-		p.Inputs = append(p.Inputs, input)
+		pages = append(pages, *page)
+		inputs = append(inputs, input)
 		return nil
 	})
-	return p, err
+	if err != nil {
+		return nil, nil, err
+	}
+	return pages, inputs, nil
 }
 
 func nonNil(values []string) []string {
@@ -169,7 +170,7 @@ func readFrontmatter(raw []byte) (markdownMeta, string, error) {
 	return markdownMeta{}, "", fmt.Errorf("unterminated YAML frontmatter")
 }
 
-func markdownDocument(input RawInput, opts Options, sensitivityPath string) (*library.Page, error) {
+func markdownDocument(input Input, opts PublicationOptions, sensitivityPath string) (*library.Page, error) {
 	meta, body, err := readFrontmatter(input.Bytes)
 	if err != nil {
 		return nil, err
@@ -208,9 +209,9 @@ func markdownDocument(input RawInput, opts Options, sensitivityPath string) (*li
 	if title == "" {
 		title = strings.TrimSuffix(filepath.Base(input.Name), filepath.Ext(input.Name))
 	}
-	id := identity(opts, input.Name)
+	id := identity(opts.Source, opts.Account, input.Name)
 	sum := digest(input.Bytes)
-	return &library.Page{Identity: id, ID: library.StableID("page", id), Path: input.Name, Title: title, Body: body, Answers: nonNil(meta.Answers), Tags: nonNil(meta.Tags), Aliases: nonNil(meta.Aliases), ContentHash: sum, Revision: sum, Sensitivity: sensitivity, Provenance: provenance(input.Name, "selected Markdown publication")}, nil
+	return &library.Page{Identity: id, ID: library.StableID("page", id), Path: input.Name, Title: title, Body: body, Answers: nonNil(meta.Answers), Tags: nonNil(meta.Tags), Aliases: nonNil(meta.Aliases), ContentHash: sum, Revision: sum, Sensitivity: sensitivity, Provenance: library.Provenance{Locator: input.Name}}, nil
 }
 
 func excludedBrainPage(path string) bool {

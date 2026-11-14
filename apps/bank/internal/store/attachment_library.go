@@ -27,8 +27,9 @@ type LibraryFile struct {
 	MimeType  string         `json:"mime_type"`
 	SizeBytes int64          `json:"size_bytes"`
 	Messages  int            `json:"messages"`
-	LastAt    time.Time      `json:"last_at"`
-	Snippet   string         `json:"snippet,omitempty"`
+	// LastAt is absent when none of the messages holding it has a date.
+	LastAt  time.Time `json:"last_at,omitzero"`
+	Snippet string    `json:"snippet,omitempty"`
 }
 
 func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]LibraryFile, error) {
@@ -84,11 +85,11 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 		where += " and exists(select 1 from matching_names n where n.content_id=a.content_id and n.filename=a.filename)"
 	}
 	rows, err := s.pool.Query(ctx, `with `+ctes+`matched as (
- select a.content_id,min(a.filename) filename,min(a.mime_type) mime_type,max(m.sent_at) last_at
+ select a.content_id,min(a.filename) filename,min(a.mime_type) mime_type,max(m.sent_at) last_at,max(m.sort_at) sort_at
  from attachments a join messages m on m.id=a.message_id where `+where+` group by a.content_id
  ) select c.blake3,matched.filename,matched.mime_type,c.size_bytes,
  (select count(distinct message_id) from attachments a where a.content_id=matched.content_id),last_at,`+snippet+`
- from matched join contents c on c.id=matched.content_id order by last_at desc,c.blake3 limit `+arg(o.Limit)+` offset `+arg(o.Offset), args...)
+ from matched join contents c on c.id=matched.content_id order by matched.sort_at desc,c.blake3 limit `+arg(o.Limit)+` offset `+arg(o.Offset), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +97,7 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	out := []LibraryFile{}
 	for rows.Next() {
 		var a LibraryFile
-		if err := rows.Scan(&a.BLAKE3, &a.Filename, &a.MimeType, &a.SizeBytes, &a.Messages, &a.LastAt, &a.Snippet); err != nil {
+		if err := rows.Scan(&a.BLAKE3, &a.Filename, &a.MimeType, &a.SizeBytes, &a.Messages, optionalTime{&a.LastAt}, &a.Snippet); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -111,7 +112,7 @@ func (s *Store) AttachmentMessages(ctx context.Context, d content.Digest, offset
 	}
 	rows, err := s.pool.Query(ctx, `select `+messageColumns+` from messages m where exists
  (select 1 from attachments a join contents c on c.id=a.content_id where a.message_id=m.id and c.blake3=$1)
- order by m.sent_at desc,m.id desc limit $2 offset $3`, d, limit, offset)
+ order by m.sort_at desc,m.id desc limit $2 offset $3`, d, limit, offset)
 	if err != nil {
 		return nil, err
 	}

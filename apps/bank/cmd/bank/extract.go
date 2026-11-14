@@ -14,10 +14,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
@@ -49,7 +49,7 @@ func (c *extractCmd) Run(ctx context.Context) error {
 		}
 	}
 	if c.Source != "" {
-		if err := archive.ValidSource(c.Source); err != nil {
+		if err := ingest.ValidSource(c.Source); err != nil {
 			return err
 		}
 	}
@@ -311,7 +311,7 @@ func (c *attachmentListCmd) Run(ctx context.Context) error {
 	// The same check `bank extract --source` makes: a malformed source names
 	// nothing, and an empty listing reads as an archive with no attachments.
 	if c.Source != "" {
-		if err := archive.ValidSource(c.Source); err != nil {
+		if err := ingest.ValidSource(c.Source); err != nil {
 			return err
 		}
 	}

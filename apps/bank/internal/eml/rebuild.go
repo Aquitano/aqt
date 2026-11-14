@@ -6,16 +6,17 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/mail"
-	"os"
 	"path"
-	"path/filepath"
+	"strconv"
 	"strings"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/export"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -34,9 +35,11 @@ type RebuildReport struct {
 	Issues         []string `json:"issues"`
 }
 
-func RebuildMail(ctx context.Context, st *store.Store, root, source string, apply bool) (RebuildReport, error) {
+// RebuildMail recomputes the mail projection of one source from the headers
+// of its stored eml and mbox inputs, in the order they arrived.
+func RebuildMail(ctx context.Context, st *store.Store, blobs *blob.Store, source string, apply bool) (RebuildReport, error) {
 	report := RebuildReport{Apply: apply, Issues: []string{}}
-	if err := archive.ValidSource(source); err != nil {
+	if err := ingest.ValidSource(source); err != nil {
 		return report, err
 	}
 	limits, err := store.MailGroupingLimits()
@@ -54,34 +57,43 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 			report.Issues = append(report.Issues, message)
 		}
 	}
-	project := func(record archive.MailContextRecord, identity string) error {
-		input, err := archive.OpenMailRaw(root, record)
+	ids, err := st.RawInputIDs(ctx, []string{"eml", "mbox"})
+	if err != nil {
+		return report, err
+	}
+	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return report, err
+		}
+		raw, err := st.RawInput(ctx, id)
 		if err != nil {
-			note(record.RawRef + ": " + err.Error())
-			return nil
+			return report, err
 		}
-		defer input.Close()
-		digest := sha256.New()
-		if _, err := io.Copy(digest, input); err != nil {
-			return err
+		var opts EMLOptions
+		if err := json.Unmarshal(raw.Options, &opts); err != nil {
+			note(fmt.Sprintf("raw input %d options: %v", raw.ID, err))
+			continue
 		}
-		if _, err := input.Seek(0, io.SeekStart); err != nil {
-			return err
+		if opts.Source != source {
+			continue
 		}
-		rawDigest := hex.EncodeToString(digest.Sum(nil))
-		prefix := "mail-projection-v4:" + identity + ":" + rawDigest + ":" + string(configuration)
+		if raw.Kind == "mbox" && opts.Mailbox != "" {
+			opts.MailboxKind = "export"
+		}
+		label := "raw input " + strconv.FormatInt(raw.ID, 10)
+		prefix := "mail-projection-v5:" + raw.BLAKE3.String() + ":" + string(raw.Options) + ":" + string(configuration)
 		report.Inputs++
-		visit := func(input io.Reader, contentDigest string) error {
+		visit := func(input io.Reader, contentDigest, locator string) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			envelope, err := mail.ReadMessage(input)
 			if err != nil {
-				note(record.RawRef + ": " + err.Error())
+				note(label + " " + locator + ": " + err.Error())
 				return nil
 			}
 			message := parseHeader(envelope.Header)
-			externalID := record.ExternalID
+			externalID := opts.ExternalID
 			if externalID == "" {
 				externalID = message.MessageID
 				if externalID == "" {
@@ -89,9 +101,6 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				}
 			}
 			id, err := st.ResolveMailMessage(ctx, source, message.MessageID, externalID)
-			if err == nil && id == 0 && record.ExternalID == "" && source == "gmail" && record.InputKind == "eml" {
-				id, err = st.FindMessageID(ctx, source, strings.TrimSuffix(path.Base(record.RawRef), ".eml"))
-			}
 			if err != nil {
 				return err
 			}
@@ -109,7 +118,12 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				report.Skipped++
 				return nil
 			}
-			facts := store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References, RawRef: record.RawRef, NativeThreadID: message.nativeThreadID(record.ThreadID, record.InputKind == "mbox" && source == "gmail"), PreserveNative: true, PreserveHeaders: true, Context: record.Context}
+			facts := store.MailProjection{MessageID: message.NormalizedMessageID, InReplyTo: message.InReplyTo, References: message.References,
+				RawInput: raw.ID, NativeThreadID: message.nativeThreadID(opts.ThreadID, raw.Kind == "mbox" && source == "gmail"),
+				PreserveNative: true, PreserveHeaders: true}
+			if box := opts.mailbox(); box != nil {
+				facts.Mailbox = &store.MailboxObservation{Kind: box.Kind, Paths: box.Paths}
+			}
 			var projection store.MailProjectionResult
 			if apply {
 				projection, err = st.ProjectMail(ctx, id, facts, true, workKey)
@@ -120,7 +134,7 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 				return err
 			}
 			report.Messages++
-			if record.Context == nil {
+			if opts.Mailbox == "" {
 				report.UnknownFolders++
 			}
 			if projection.ThreadID != projection.PreviousThreadID {
@@ -137,60 +151,65 @@ func RebuildMail(ctx context.Context, st *store.Store, root, source string, appl
 			}
 			return nil
 		}
-		if record.InputKind == "mbox" {
-			return SplitMbox(input, func(raw []byte) error {
-				digest := sha256.Sum256(raw)
-				return visit(bytes.NewReader(raw), hex.EncodeToString(digest[:]))
-			})
-		}
-		return visit(input, rawDigest)
-	}
-	known := make(map[string]bool)
-	contexts, err := os.ReadDir(filepath.Join(root, source, ".mail-contexts"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return report, err
-	}
-	for _, entry := range contexts {
-		if err := ctx.Err(); err != nil {
-			return report, err
-		}
-		record, err := archive.ReadMailContext(root, source, entry.Name())
-		if err != nil {
-			note(entry.Name() + ": " + err.Error())
-			continue
-		}
-		known[record.RawRef] = true
-		if err := project(record, entry.Name()); err != nil {
-			return report, err
-		}
-	}
-	entries, err := os.ReadDir(filepath.Join(root, source))
-	if err != nil {
-		return report, err
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		extension := strings.ToLower(filepath.Ext(entry.Name()))
-		if extension != ".eml" && extension != ".mbox" {
-			continue
-		}
-		reference := source + "/" + entry.Name()
-		if known[reference] {
-			continue
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			note(reference + ": symlink skipped")
-			continue
-		}
-		if err := project(archive.MailContextRecord{Version: 1, Source: source, RawRef: reference, InputKind: strings.TrimPrefix(extension, ".")}, "raw"); err != nil {
-			return report, err
+		if err := rebuildInput(raw, blobs, visit); err != nil {
+			return report, fmt.Errorf("%s: %w", label, err)
 		}
 	}
 	report.PreviewResets = preview.Resets
 	if report.Invalid > 0 {
-		return report, fmt.Errorf("%d invalid archive inputs; see rebuild issues", report.Invalid)
+		return report, fmt.Errorf("%d invalid inputs; see rebuild issues", report.Invalid)
 	}
 	return report, nil
+}
+
+// rebuildInput visits every message of one stored input with the digest its
+// default external id is derived from.
+func rebuildInput(raw store.RawInput, blobs *blob.Store, visit func(io.Reader, string, string) error) error {
+	sum := func(data []byte) string {
+		digest := sha256.Sum256(data)
+		return hex.EncodeToString(digest[:])
+	}
+	input := ingest.Raw{Name: raw.Name, Path: blobs.Path(raw.BLAKE3)}
+	if raw.Kind == "mbox" {
+		f, err := input.Open()
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		n := 0
+		return SplitMbox(f, func(data []byte) error {
+			n++
+			return visit(bytes.NewReader(data), sum(data), fmt.Sprintf("message %d", n))
+		})
+	}
+	if !export.IsZip(raw.Name) {
+		f, err := input.Open()
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		digest := sha256.New()
+		if _, err := io.Copy(digest, f); err != nil {
+			return err
+		}
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		return visit(f, hex.EncodeToString(digest.Sum(nil)), "")
+	}
+	exp, err := export.Open(input)
+	if err != nil {
+		return err
+	}
+	defer exp.Close()
+	return fs.WalkDir(exp.FS, ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.EqualFold(path.Ext(name), ".eml") {
+			return err
+		}
+		data, err := fs.ReadFile(exp.FS, name)
+		if err != nil {
+			return err
+		}
+		return visit(bytes.NewReader(data), sum(data), name)
+	})
 }

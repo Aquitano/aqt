@@ -27,8 +27,8 @@ func TestMailTreePreservesFolderIdentity(t *testing.T) {
 				}
 			}
 			var got []string
-			err := WalkMailTree(root, layout, func(_, _ string, observation MailImportContext) error {
-				got = append(got, observation.Mailbox)
+			err := WalkMailTree(root, layout, func(_, _, mailbox string) error {
+				got = append(got, mailbox)
 				return nil
 			}, nil)
 			if err != nil {

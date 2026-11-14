@@ -13,17 +13,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
@@ -326,90 +323,34 @@ func (c *Client) Blob(ctx context.Context, d content.Digest) (io.ReadCloser, err
 	return resp.Body, nil
 }
 
-func (c *Client) ImportJSON(ctx context.Context, source string, body []byte) (generic.Result, error) {
-	q := url.Values{}
-	if source != "" {
-		q.Set("source", source)
-	}
-	resp, err := c.send(ctx, http.MethodPost, "/v1/import/json", q, "application/json", bytes.NewReader(body))
-	if err != nil {
-		return generic.Result{}, err
-	}
-	defer resp.Body.Close()
-	var res generic.Result
-	return res, json.NewDecoder(resp.Body).Decode(&res)
-}
-
-// ImportFile uploads one file and decodes that importer's Result, e.g.
-// ImportFile[whatsapp.Result](ctx, c, "whatsapp", "", path).
-func ImportFile[T any](ctx context.Context, c *Client, kind, source, path string, contexts ...*archive.MailImportContext) (T, error) {
-	var res T
-	var contextJSON []byte
-	if len(contexts) > 1 {
-		return res, fmt.Errorf("only one mail context is allowed")
-	}
-	if len(contexts) == 1 && contexts[0] != nil {
-		if kind != "eml" && kind != "mbox" {
-			return res, fmt.Errorf("mail context requires an EML or MBOX import")
-		}
-		if err := contexts[0].Validate(); err != nil {
-			return res, err
-		}
-		var err error
-		contextJSON, err = json.Marshal(contexts[0])
-		if err != nil {
-			return res, err
-		}
-		if len(contextJSON) > archive.MaxMailContextBytes {
-			return res, fmt.Errorf("mail context is too large")
-		}
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return res, err
-	}
-	defer f.Close()
-
+// Import uploads one input of kind with its options. The server stores it
+// before parsing it and answers with the raw input and its report.
+func (c *Client) Import(ctx context.Context, kind, name string, r io.Reader, options json.RawMessage) (store.RawInput, error) {
+	var res store.RawInput
 	pr, pw := io.Pipe()
 	defer pr.Close()
 	mw := multipart.NewWriter(pw)
 	go func() {
-		if contextJSON != nil {
-			if err := mw.WriteField("mail_context", string(contextJSON)); err != nil {
-				_ = pw.CloseWithError(err)
-				return
-			}
+		if len(options) == 0 {
+			options = json.RawMessage(`{}`)
 		}
-		part, err := mw.CreateFormFile("file", filepath.Base(path))
+		err := mw.WriteField("options", string(options))
+		var part io.Writer
 		if err == nil {
-			_, err = io.Copy(part, f)
+			part, err = mw.CreateFormFile("file", name)
+		}
+		if err == nil {
+			_, err = io.Copy(part, r)
 		}
 		if err == nil {
 			err = mw.Close()
 		}
 		pw.CloseWithError(err)
 	}()
-
-	q := url.Values{}
-	if source != "" {
-		q.Set("source", source)
-	}
-	resp, err := c.send(ctx, http.MethodPost, "/v1/import/"+kind, q, mw.FormDataContentType(), pr)
+	resp, err := c.send(ctx, http.MethodPost, "/v1/import/"+kind, nil, mw.FormDataContentType(), pr)
 	if err != nil {
 		return res, fmt.Errorf("import %s: %w", kind, err)
 	}
 	defer resp.Body.Close()
-	var raw json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return res, err
-	}
-	if contextJSON != nil {
-		var ack struct {
-			Version int `json:"mail_context_version"`
-		}
-		if err := json.Unmarshal(raw, &ack); err != nil || ack.Version != contexts[0].Version {
-			return res, fmt.Errorf("server did not acknowledge mail context version %d; upgrade Bank before retrying", contexts[0].Version)
-		}
-	}
-	return res, json.Unmarshal(raw, &res)
+	return res, json.NewDecoder(resp.Body).Decode(&res)
 }

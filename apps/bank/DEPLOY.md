@@ -32,7 +32,7 @@ git clone <monorepo-url> /opt/aqt
 cd /opt/aqt/apps/bank
 ```
 
-The data directory holds blobs, raw archives, the inbox and the token file, and must be owned by the uid the container runs as (65532, the image's `nonroot` user):
+The data directory holds blobs, which include the raw inputs, the inbox and the token file, and must be owned by the uid the container runs as (65532, the image's `nonroot` user):
 
 ```sh
 mkdir -p /data/aqt-bank /data/pgdata
@@ -45,7 +45,7 @@ Write `/opt/aqt/apps/bank/.env` (`chmod 600` — it holds the database password)
 COMPOSE_PROFILES=server           # add ",ocr" to also read scanned documents
 POSTGRES_PASSWORD=<strong-password>
 BANK_PG_DIR=/data/pgdata          # Postgres on the encrypted volume
-BANK_DATA_DIR=/data/aqt-bank      # blobs, archives, inbox, tokens
+BANK_DATA_DIR=/data/aqt-bank      # blobs, inbox, tokens
 BANK_LISTEN=100.x.y.z:8480        # the box's tailscale address — never 0.0.0.0
 TZ=Europe/Berlin                  # date filters and WhatsApp timestamps are local time
 ```
@@ -149,9 +149,8 @@ the distroless server. `bank version` reports the build revision supplied throug
 stop new requests and allow active requests up to 30 seconds before the database
 pools close.
 
-JSON imports are limited to 16 MiB and 10,000 entries, with at most two decoded
-concurrently. Each body must arrive within one minute after its import slot is
-available. Split larger JSON submissions into separate imports. File uploads continue to stream to disk with the existing 16 GiB limit.
+At most two imports parse at once, whatever their kind. An upload streams
+straight into the blob store, up to 16 GiB per file.
 
 ### Text inside attachments
 
@@ -197,18 +196,6 @@ bank attachment text <blake3> --set transcript.txt # store it, marked "manual"
 
 Text stored that way is never overwritten by a later automatic pass. `bank extract --ocr` also works straight from the laptop against `BANK_URL`, which is the option worth knowing if you have better tools there than tesseract: it downloads each pending file, runs whatever is installed locally, and stores only the text.
 
-### Healing mail bodies
-
-Some senders write the message only in the HTML part and fill the plain alternative with a "open this in an HTML viewer" template. The parser used to store that template as the body; it now prefers the HTML. Mail imported before that keeps the stub, and the text is still in the archived raw:
-
-```sh
-docker compose run --rm bank reimport mbox --heal-bodies          # report only
-docker compose run --rm bank reimport mbox --heal-bodies --apply  # write the longer bodies
-docker compose run --rm bank reimport mbox --heal-bodies --source proton
-```
-
-It re-parses every archived `.mbox` and `.eml` of the source (default `gmail`), matches each message to its row by Message-ID, and replaces the body only where the re-parse is strictly longer — never shorter, never equal, nothing but the body column. **Dry run is the default**; read the report before passing `--apply`. Run it after a parser change that affects `body()`, not on a schedule: a healed body stays healed, and a second pass finds nothing.
-
 ## 3. Gmail authorization on a headless box
 
 Put the OAuth client JSON at `/data/aqt-bank/gmail/client_secret.json` first (`chown 65532:65532` it). The flow needs a browser to reach the callback listener, and the container's own loopback is not reachable from anywhere, so bind it to the container's interfaces and publish that on the host's loopback:
@@ -234,7 +221,7 @@ Install the official `proton-mail-export` CLI on the VPS. Its EML output directo
 
 ## 5. Remote CLI (`bank serve`)
 
-Running the CLI on the laptop against a remote `DATABASE_URL` splits the archive in half: rows land in the VPS Postgres, blobs and raw archives land on the laptop. Instead, point the laptop at the server container with `BANK_URL`.
+Running the CLI on the laptop against a remote `DATABASE_URL` splits the archive in half: rows land in the VPS Postgres, blobs and raw inputs land on the laptop. Instead, point the laptop at the server container with `BANK_URL`.
 
 There is no TLS in `bank serve` — it is published on the box's Tailscale address and the tailnet does transport security. That is what `BANK_LISTEN` in section 2 sets.
 
@@ -338,13 +325,12 @@ restic -r s3:... forget --keep-daily 14 --keep-weekly 8 --keep-monthly 24 --prun
 30 4 * * *  /usr/local/bin/bank-backup >> /var/log/bank-backup.log 2>&1
 ```
 
-Restore drill: `restic restore latest`, `pg_restore -d bank bank.dump`, point `BANK_DATA_DIR` at the restored dir, then `docker compose run --rm bank verify` — it walks every message, hashes every attachment blob and reports anything the database claims but the disk no longer has. Do this once before trusting the setup.
+Restore drill: `restic restore latest`, `pg_restore -d bank bank.dump`, point `BANK_DATA_DIR` at the restored dir, then `docker compose run --rm bank verify`. It hashes every content that an attachment, a library file or a raw input refers to, and reports bytes that are missing, corrupt or the wrong size. Do this once before trusting the setup.
 
-Include `archive/<source>/.mail-contexts/` in the archive backup. These hidden directories preserve mailbox observations and supplied mail identifiers that raw EML alone cannot recover. Verification checks their digests and raw references. After restoring the database and files, `bank mail rebuild --source <source>` previews mail projection recovery without writes. Add `--apply` only after reviewing the report. Rebuild checkpoints live in the restored database, not on the collector laptop. See [MAIL.md](MAIL.md).
+Mailbox observations and supplied mail identifiers are stored as options of the raw inputs, so the database dump holds them and `blobs/` holds the mail itself. After restoring the database and files, `bank mail rebuild --source <source>` previews mail projection recovery without writes. Add `--apply` only after reviewing the report. Rebuild checkpoints live in the restored database, not on the collector laptop. See [MAIL.md](MAIL.md).
 
 ```sh
 docker compose run --rm bank verify           # read-only report
-docker compose run --rm bank verify --heal    # rebuild what the archived raw inputs still contain
 ```
 
 ## 8. Full reset (wipe the archive, keep the deployment)
@@ -358,13 +344,13 @@ docker compose stop bank                       # no writes while wiping; db stay
 
 docker compose exec -T db psql -U bank -d bank -c \
   "truncate messages, contacts, sync_state,
-   import_reports, mailboxes, mail_thread_nodes, mail_thread_conflicts,
+   raw_inputs, mailboxes, mail_thread_nodes, mail_thread_conflicts,
    mail_thread_aliases, mail_rebuild_progress, library_items,
    library_collections, library_files, library_pages restart identity cascade;"
 
-# blobs, raw import archives and upload staging (host side; BANK_DATA_DIR
-# from .env). tokens/, gmail/ and inbox/ deliberately survive.
-rm -rf /data/aqt-bank/blobs /data/aqt-bank/archive /data/aqt-bank/tmp
+# blobs, which include the raw inputs, and extraction staging (host side;
+# BANK_DATA_DIR from .env). tokens/, gmail/ and inbox/ deliberately survive.
+rm -rf /data/aqt-bank/blobs /data/aqt-bank/tmp
 
 docker compose up -d                           # bank serve comes back empty
 docker compose run --rm bank stats             # every source should be gone
@@ -372,9 +358,9 @@ docker compose run --rm bank stats             # every source should be gone
 
 The cascade also clears dependent attachments, mailbox membership, library activity,
 tracking state, collection snapshots, edit history, item links, and provenance evidence.
-This includes `library_activity_aliases` and `library_activity_evidence`.
+This includes `library_activity_evidence`.
 Library ratings, statuses, notes, tags and collection edits exist only in Postgres,
-not in the raw archive, so a re-import does not bring them back.
+not in the raw inputs, so a re-import does not bring them back.
 `message_tombstones` is not in the list, so messages retired with `bank retire` stay out of a re-import; add it to forget them.
 `contents` and `texts` are not in the list either: the catalogue of files on disks shares them, and a re-import finds the text already read for the same bytes.
 `schema_version` stays, so no migration re-runs; `restart identity` resets

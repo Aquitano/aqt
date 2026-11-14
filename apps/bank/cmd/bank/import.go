@@ -5,91 +5,132 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/alecthomas/kong"
 
-	"github.com/aquitano/aqt/apps/bank/internal/aichat"
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
-	"github.com/aquitano/aqt/apps/bank/internal/discord"
-	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/generic"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/inbox"
-	"github.com/aquitano/aqt/apps/bank/internal/linkedin"
-	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
-	"github.com/aquitano/aqt/apps/bank/internal/whatsapp"
-	"github.com/aquitano/aqt/apps/bank/internal/youtube"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
 
+// importCmd holds one subcommand per registered kind, built from the kind's
+// options, beside the two commands that are not a single kind.
 type importCmd struct {
-	Whatsapp     importFilesCmd    `cmd:"" help:"WhatsApp \"Export chat\" files (.zip, or .txt beside its media)."`
-	Eml          importFilesCmd    `cmd:"" name:"eml" help:".eml files or directories (default source: proton)."`
-	Mbox         importFilesCmd    `cmd:"" name:"mbox" help:"mbox files (default source: gmail)."`
-	MailTree     importMailTreeCmd `cmd:"" name:"mail-tree" help:"A folder tree of mail, preserving each folder."`
-	Discord      importFilesCmd    `cmd:"" help:"Discord GDPR data package (zip or directory)."`
-	Linkedin     importFilesCmd    `cmd:"" name:"linkedin" help:"LinkedIn data export (zip, csv or directory)."`
-	Youtube      importFilesCmd    `cmd:"" name:"youtube" help:"YouTube watch history from Google Takeout (zip, directory or the history file)."`
-	YoutubeMedia importMediaCmd    `cmd:"" name:"youtube-media" help:"YouTube history, playlists and music library."`
-	Netflix      importMediaCmd    `cmd:"" help:"Netflix viewing activity CSV."`
-	Library      importMediaCmd    `cmd:"" help:"Versioned media library bundle (JSON)."`
-	Markdown     importMediaCmd    `cmd:"" help:"Checked Markdown page publication."`
-	ChatGPT      importFilesCmd    `cmd:"" name:"chatgpt" help:"ChatGPT data export (zip, json or directory)."`
-	Claude       importFilesCmd    `cmd:"" name:"claude" help:"Claude.ai data export (zip, json or directory)."`
-	JSON         importFilesCmd    `cmd:"" name:"json" help:"Arbitrary JSON/NDJSON messages; - reads stdin."`
-	Inbox        importInboxCmd    `cmd:"" help:"Sweep $BANK_DATA_DIR/inbox/<kind>/."`
+	Kinds    kong.Plugins      `embed:""`
+	MailTree importMailTreeCmd `cmd:"" name:"mail-tree" help:"A folder tree of mail, preserving each folder."`
+	Inbox    importInboxCmd    `cmd:"" help:"Sweep $BANK_DATA_DIR/inbox/<kind>/."`
 }
 
-type importFilesCmd struct {
-	Paths     []string `arg:"" name:"path"`
-	Source    string   `help:"Source the messages are filed under."`
-	Mailbox   string   `help:"Historical mailbox observation for an EML or MBOX file."`
-	NoExtract bool     `help:"Skip reading text out of attachments."`
+// importBackend is where imports go: the server through BANK_URL, or this
+// machine's archive.
+type importBackend struct {
+	remote *client.Client
+	local  *importer.Target
+	close  func()
 }
 
-func (c *importFilesCmd) Run(ctx context.Context, kctx *kong.Context) error {
-	kind := kctx.Selected().Name
-	source := c.Source
-	if source == "" {
-		source = importer.DefaultSource(kind)
-	}
-	if source != "" {
-		if err := archive.ValidSource(source); err != nil {
-			return err
-		}
-	}
-	if c.Mailbox != "" {
-		if kind != "eml" && kind != "mbox" {
-			return fmt.Errorf("--mailbox requires eml or mbox")
-		}
-		return importMailboxFiles(ctx, kind, source, c.Mailbox, c.Paths, c.NoExtract)
-	}
+func openImportBackend(ctx context.Context) (*importBackend, error) {
 	if remote := client.FromEnv(); remote != nil {
-		return importRemote(ctx, remote, kind, source, c.Paths)
+		return &importBackend{remote: remote, close: func() {}}, nil
 	}
+	local, closeLocal, err := openLocal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &importBackend{local: local, close: closeLocal}, nil
+}
 
-	d, closeStore, err := openLocal(ctx)
+// importPath imports one file or directory and prints what it did.
+func (b *importBackend) importPath(ctx context.Context, kind, path string, options json.RawMessage) error {
+	name, r, err := importer.Open(path)
 	if err != nil {
 		return err
 	}
-	defer closeStore()
-	for _, path := range c.Paths {
-		res, err := importer.Run(ctx, *d, kind, importer.Input{Path: path, Source: source})
-		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
-		}
-		printImportResult(kind, source, path, res)
+	defer r.Close()
+	if err := b.importReader(ctx, kind, name, r, options); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
 	}
-	return extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, c.NoExtract)
+	return nil
+}
+
+func (b *importBackend) importReader(ctx context.Context, kind, name string, r io.Reader, options json.RawMessage) error {
+	var raw store.RawInput
+	var err error
+	if b.remote != nil {
+		raw, err = b.remote.Import(ctx, kind, name, r, options)
+	} else {
+		raw, err = importer.Import(ctx, *b.local, kind, name, r, options)
+	}
+	if err != nil {
+		return err
+	}
+	printRawInput(raw)
+	return nil
+}
+
+// extract reads text out of what the imports stored; the server does that
+// itself after each upload.
+func (b *importBackend) extract(ctx context.Context, skip bool) error {
+	if b.local == nil {
+		return nil
+	}
+	return extractAfterImport(ctx, blobtext.Local{Store: b.local.Store, Blobs: b.local.Blobs}, skip)
+}
+
+func runImport(ctx context.Context, kind string, paths []string, options json.RawMessage, noExtract bool) error {
+	k, err := sources.All.Lookup(kind)
+	if err != nil {
+		return err
+	}
+	if options, err = k.Normalize(options); err != nil {
+		return err
+	}
+	b, err := openImportBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer b.close()
+	for _, path := range paths {
+		if err := b.importPath(ctx, kind, path, options); err != nil {
+			return err
+		}
+	}
+	return b.extract(ctx, noExtract)
+}
+
+// printRawInput says what one import did: one line on stdout, and the
+// reported issues on stderr.
+func printRawInput(r store.RawInput) {
+	rep := r.Report
+	line := fmt.Sprintf("%s (%s): %d new, %d already known", r.Kind, r.Name, rep.Inserted, rep.Duplicates)
+	if rep.Retired > 0 {
+		line += fmt.Sprintf(", %d retired", rep.Retired)
+	}
+	if rep.Attachments > 0 {
+		line += fmt.Sprintf(", %d attachments", rep.Attachments)
+	}
+	if l := rep.Library; l != (library.ImportResult{}) {
+		line += fmt.Sprintf(", library: %d items, %d activity, %d collections, %d files, %d pages, %d already known",
+			l.Items, l.Activity, l.Collections, l.Files, l.Pages, l.Duplicates)
+	}
+	for _, kind := range slices.Sorted(maps.Keys(rep.Issues)) {
+		line += fmt.Sprintf(", %d %s", rep.Issues[kind], strings.ReplaceAll(string(kind), "_", " "))
+	}
+	fmt.Printf("%s [raw input %d, %s]\n", line, r.ID, r.Status)
+	for _, issue := range rep.Details {
+		fmt.Fprintf(os.Stderr, "bank: %s: %s\n", issue.Kind, issue.Detail)
+	}
 }
 
 // extractAfterImport reads text out of whatever the import just stored, so a
@@ -124,16 +165,6 @@ func extractAfterImport(ctx context.Context, a blobtext.Archive, skip bool) erro
 	return nil
 }
 
-// inboxSource is the default source for an unattended sweep, where refusing an
-// entry for want of a --source would just leave the file sitting there: a JSON
-// drop that names no source of its own lands under "json".
-func inboxSource(kind string) string {
-	if kind == "json" {
-		return "json"
-	}
-	return importer.DefaultSource(kind)
-}
-
 type importInboxCmd struct {
 	JSON      bool `help:"JSON output."`
 	NoExtract bool `help:"Skip reading text out of attachments."`
@@ -150,12 +181,13 @@ func (c *importInboxCmd) Run(ctx context.Context) error {
 	defer closeStore()
 
 	inboxDir := filepath.Join(dataDir(), "inbox")
-	res, sweepErr := inbox.Sweep(ctx, inboxDir, func(ctx context.Context, kind, path string) (inbox.Outcome, error) {
-		out, err := importer.Run(ctx, *d, kind, importer.Input{Path: path, Source: inboxSource(kind)})
+	res, sweepErr := inbox.Sweep(ctx, inboxDir, d.Kinds.Names(), func(ctx context.Context, kind, path string) (store.RawInput, error) {
+		name, r, err := importer.Open(path)
 		if err != nil {
-			return inbox.Outcome{}, err
+			return store.RawInput{}, fail.Op(err)
 		}
-		return importOutcome(out), nil
+		defer r.Close()
+		return importer.Import(ctx, *d, kind, name, r, nil)
 	})
 	if err := extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, c.NoExtract); err != nil {
 		return err
@@ -170,11 +202,11 @@ func (c *importInboxCmd) Run(ctx context.Context) error {
 		fmt.Fprintf(os.Stderr, "bank: %s\n", warning)
 	}
 	if len(res.Files) == 0 {
-		fmt.Printf("inbox is empty (%s/<%s>/)\n", inboxDir, strings.Join(inbox.Kinds, "|"))
+		fmt.Printf("inbox is empty (%s/<%s>/)\n", inboxDir, strings.Join(d.Kinds.Names(), "|"))
 		return sweepErr
 	}
 	for _, f := range res.Files {
-		fmt.Printf("%-10s %-9s %s", f.Kind, f.Disposition, filepath.Base(f.Path))
+		fmt.Printf("%-13s %-9s %s", f.Kind, f.Disposition, filepath.Base(f.Path))
 		if f.Detail != "" {
 			fmt.Printf("  (%s)", f.Detail)
 		}
@@ -188,376 +220,56 @@ func (c *importInboxCmd) Run(ctx context.Context) error {
 	return sweepErr
 }
 
-// reimportKinds are the sources bank reimport can replay: their kind and
-// source coincide, their importer reads back the same file shape it archived,
-// and the original filename is recoverable from the archived name. Mail is
-// absent deliberately — gmail archives one .eml per synced message, and
-// eml/mbox archives live under a --source (proton, gmail, ...) that does not
-// determine the kind. `reimport mbox --heal-bodies` is the one pass that does
-// re-read mail, and it repairs one column instead of replaying an import.
-var reimportKinds = []string{"chatgpt", "claude", "discord", "whatsapp", "linkedin", "youtube"}
-
-// healBodiesKind is the pseudo-kind that reaches the mail healer. It is a kind
-// rather than a command of its own because it is the same operation from the
-// operator's side: read what was archived, apply what the code learned since.
-const healBodiesKind = "mbox"
-
-// reimportCmd replays every archived raw input of one source through the
-// current importer. Imports are idempotent, so the only visible effect is
-// whatever today's importer does better than the one that first read the file
-// — messages it used to drop, threads it used to key wrong.
+// reimportCmd replays stored raw inputs through today's sources. Imports are
+// idempotent, so the only visible effect is whatever today's source does
+// better than the one that first read the input.
 type reimportCmd struct {
-	Kind       string `arg:"" help:"chatgpt, claude, discord, whatsapp, linkedin, youtube, or mbox with --heal-bodies."`
-	NoExtract  bool   `help:"Skip reading text out of attachments."`
-	JSON       bool   `help:"JSON output."`
-	HealBodies bool   `help:"Re-read archived mail and replace stub bodies today's parser reads better (mbox only)."`
-	Apply      bool   `help:"Write the healed bodies; without it, --heal-bodies is a dry run."`
-	Source     string `help:"Mail source for --heal-bodies (default gmail)."`
+	Kinds     []string `arg:"" optional:"" name:"kind" help:"Kinds to replay; every kind when none is given."`
+	NoExtract bool     `help:"Skip reading text out of attachments."`
+	JSON      bool     `help:"JSON output."`
 }
 
 func (c *reimportCmd) Run(ctx context.Context) error {
-	kind := c.Kind
 	if client.FromEnv() != nil {
-		return fmt.Errorf("reimport replays the server's own archive; run it there, not through BANK_URL")
-	}
-	if kind == healBodiesKind {
-		if !c.HealBodies {
-			return fmt.Errorf("mail is not replayed wholesale; `bank reimport mbox --heal-bodies` re-reads it to replace stub bodies today's parser reads better")
-		}
-		return healMailBodies(ctx, c.Source, c.Apply, c.JSON)
-	}
-	if c.HealBodies || c.Apply || c.Source != "" {
-		return fmt.Errorf("--heal-bodies, --apply and --source belong to `bank reimport %s`", healBodiesKind)
-	}
-	if !slices.Contains(reimportKinds, kind) {
-		return fmt.Errorf("cannot replay %q; reimport covers %s", kind, strings.Join(reimportKinds, ", "))
+		return fmt.Errorf("reimport replays the server's own raw inputs; run it there, not through BANK_URL")
 	}
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeStore()
-
-	entries, err := archive.List(d.ArchiveDir, kind)
-	if err != nil {
-		return err
-	}
-	if len(entries) == 0 {
-		fmt.Printf("nothing archived under %s\n", filepath.Join(d.ArchiveDir, kind))
-		return nil
-	}
-	staging, err := os.MkdirTemp(stagingDir(), "reimport-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(staging)
-
 	type replayed struct {
-		Ref    string `json:"ref"`
-		Result any    `json:"result,omitempty"`
-		Error  string `json:"error,omitempty"`
+		store.RawInput
+		Problem string `json:"problem,omitempty"`
 	}
-	var out []replayed
-	var failed int
-	for i, e := range entries {
-		// One directory per input: original names repeat across exports
-		// (every merged ChatGPT export stages as conversations.json).
-		sub := filepath.Join(staging, strconv.Itoa(i))
-		if err := os.Mkdir(sub, 0o700); err != nil {
-			return err
-		}
-		p, err := archive.Stage(d.ArchiveDir, e, sub)
+	out := []replayed{}
+	failed := 0
+	err = importer.Replay(ctx, *d, c.Kinds, func(raw store.RawInput, err error) {
+		r := replayed{RawInput: raw}
 		if err != nil {
-			return fmt.Errorf("stage %s: %w", e.Ref, err)
-		}
-		res, err := importer.Run(ctx, *d, kind, importer.Input{Path: p})
-		if err != nil {
-			// A file today's importer cannot parse must not cost the rest of
-			// the replay; anything operational (database, archive) still
-			// aborts, as one failure would just repeat for every input.
-			if fail.IsOp(err) {
-				return fmt.Errorf("%s: %w", e.Ref, err)
-			}
 			failed++
-			out = append(out, replayed{Ref: e.Ref, Error: err.Error()})
-			fmt.Fprintf(os.Stderr, "bank: skipping %s: %v\n", e.Ref, err)
-			continue
+			r.Problem = err.Error()
+			fmt.Fprintf(os.Stderr, "bank: raw input %d (%s): %v\n", raw.ID, raw.Name, err)
+		} else if !c.JSON {
+			printRawInput(raw)
 		}
-		out = append(out, replayed{Ref: e.Ref, Result: res})
-		if !c.JSON {
-			printImportResult(kind, "", e.Ref, res)
-		}
+		out = append(out, r)
+	})
+	if err != nil {
+		return err
 	}
 	if c.JSON {
 		if err := printJSON(out); err != nil {
 			return err
 		}
+	} else if len(out) == 0 {
+		fmt.Println("no raw inputs to replay")
 	}
 	if err := extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, c.NoExtract); err != nil {
 		return err
 	}
 	if failed > 0 {
-		return fmt.Errorf("%d of %d archived inputs failed to replay", failed, len(entries))
+		return fmt.Errorf("%d of %d raw inputs failed to replay", failed, len(out))
 	}
 	return nil
-}
-
-// healMailBodies re-reads one mail source's archived raws and replaces bodies
-// the current parser reads better than the one that first imported them. It
-// reports without writing unless apply is set: the write is the one exception
-// to "a re-import never overwrites a body", so it should be read before it is
-// taken.
-func healMailBodies(ctx context.Context, source string, apply, asJSON bool) error {
-	if source == "" {
-		source = importer.DefaultSource(healBodiesKind)
-	}
-	if err := archive.ValidSource(source); err != nil {
-		return err
-	}
-	d, closeStore, err := openLocal(ctx)
-	if err != nil {
-		return err
-	}
-	defer closeStore()
-
-	verb := "would heal"
-	if apply {
-		verb = "healed"
-	}
-	heals := []eml.BodyHeal{}
-	res, err := eml.HealBodies(ctx, d.Store, d.ArchiveDir, source, apply, func(h eml.BodyHeal) {
-		if asJSON {
-			heals = append(heals, h)
-			return
-		}
-		fmt.Printf("%s: %s raw=%s subject=%q stored=%d reparsed=%d\n",
-			verb, h.MessageRef, h.Ref, h.Subject, h.Stored, h.Reparsed)
-	})
-	if err != nil {
-		return err
-	}
-	if asJSON {
-		return printJSON(struct {
-			eml.HealResult
-			Heals []eml.BodyHeal `json:"heals"`
-		}{res, heals})
-	}
-	printHealResult(source, res)
-	return nil
-}
-
-func printHealResult(source string, res eml.HealResult) {
-	outcome := "to heal"
-	if res.Applied {
-		outcome = "healed"
-	}
-	fmt.Printf("%s: %s, %s read, %d still archived, %d %s",
-		source, plural(res.Files, "raw file"), plural(res.Messages, "message"), res.Matched, res.Healed, outcome)
-	if res.Rejected > 0 {
-		fmt.Printf(", %d unreadable", res.Rejected)
-	}
-	fmt.Println()
-	if !res.Applied && res.Healed > 0 {
-		fmt.Println("dry run — pass --apply to write these bodies")
-	}
-}
-
-// importOutcome reduces an importer's result to the counts the sweep uses to
-// pick a disposition.
-func importOutcome(res any) inbox.Outcome {
-	switch r := res.(type) {
-	case mediaimport.Result:
-		return inbox.Outcome{Inserted: r.Items + r.Activity + r.Collections + r.Files + r.Pages, Duplicates: r.Duplicates, Rejected: r.Skipped, Result: r}
-	case eml.Result:
-		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: r.Rejected, Result: r}
-	case whatsapp.Result:
-		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
-	case discord.Result:
-		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Rejected: len(r.FailedChannels), Result: r}
-	case linkedin.Result:
-		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
-	case youtube.Result:
-		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates + r.Retired, Result: r}
-	case aichat.Result:
-		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates, Result: r}
-	case generic.Result:
-		return inbox.Outcome{Inserted: r.Inserted, Duplicates: r.Duplicates + r.Retired, Rejected: r.Rejected, Result: r}
-	}
-	return inbox.Outcome{Result: res}
-}
-
-func printImportResult(kind, source, path string, res any) {
-	switch r := res.(type) {
-	case mediaimport.Result:
-		fmt.Printf("%s (%s): %d items, %d activity records, %d collections, %d files, %d pages, %d already known, %d skipped\n", kind, filepath.Base(path), r.Items, r.Activity, r.Collections, r.Files, r.Pages, r.Duplicates, r.Skipped)
-		for _, diagnostic := range r.Diagnostics {
-			fmt.Fprintln(os.Stderr, "bank: "+diagnostic)
-		}
-	case eml.Result:
-		printEmlResult(source, path, r)
-	case whatsapp.Result:
-		printWhatsAppResult(r)
-	case discord.Result:
-		printDiscordResult(r)
-	case linkedin.Result:
-		printLinkedInResult(r)
-	case youtube.Result:
-		printYouTubeResult(r)
-	case aichat.Result:
-		printAIChatResult(kind, path, r)
-	case generic.Result:
-		printGenericResult(r)
-	}
-}
-
-func printEmlResult(source, path string, res eml.Result) {
-	fmt.Printf("%s (%s): %d new, %d already known, %d attachments", source, filepath.Base(path), res.Inserted, res.Duplicates, res.Attachments)
-	if res.Healed > 0 {
-		fmt.Printf(" (%d recovered)", res.Healed)
-	}
-	if res.Rejected > 0 {
-		fmt.Printf(", %d rejected as malformed", res.Rejected)
-	}
-	if res.Damaged > 0 {
-		fmt.Printf(", %d with damaged MIME structure", res.Damaged)
-	}
-	fmt.Println()
-	for _, w := range res.Warnings {
-		fmt.Fprintf(os.Stderr, "bank: %s\n", w)
-	}
-}
-
-func printWhatsAppResult(res whatsapp.Result) {
-	fmt.Printf("%s: %d new, %d already known, %d attachments", res.Thread, res.Inserted, res.Duplicates, res.Attachments)
-	if res.MissingMedia > 0 {
-		fmt.Printf(", %d media files referenced but not in export", res.MissingMedia)
-	}
-	fmt.Println()
-}
-
-func printDiscordResult(res discord.Result) {
-	fmt.Printf("discord: %d channels, %d new, %d already known, %d empty rows skipped",
-		res.Channels, res.Inserted, res.Duplicates, res.Skipped)
-	if len(res.FailedChannels) > 0 {
-		fmt.Printf(", %d channels unreadable (%s)", len(res.FailedChannels), strings.Join(res.FailedChannels, ", "))
-	}
-	fmt.Println()
-}
-
-func printLinkedInResult(res linkedin.Result) {
-	fmt.Printf("linkedin: %d new, %d already known, %d empty rows skipped\n",
-		res.Inserted, res.Duplicates, res.Skipped)
-}
-
-func printYouTubeResult(res youtube.Result) {
-	fmt.Printf("youtube: %d channels, %d new, %d already known, %d records skipped",
-		res.Channels, res.Inserted, res.Duplicates, res.Skipped)
-	if res.Retired > 0 {
-		fmt.Printf(", %d retired", res.Retired)
-	}
-	if res.Ads > 0 {
-		fmt.Printf(", %d ad impressions dropped", res.Ads)
-	}
-	fmt.Println()
-}
-
-// printAIChatResult names the file it is reporting on, so a sharded export does
-// not print a wall of indistinguishable lines, and reconciles the conversations
-// found in the input against the ones that made it in — a gap between the two
-// is the only visible sign of silently dropped conversations.
-func printAIChatResult(kind, path string, res aichat.Result) {
-	found := res.Conversations + res.EmptyConversations
-	fmt.Printf("%s (%s): %d conversations found, %d imported, %d new, %d already known, %d skipped",
-		kind, filepath.Base(path), found, res.Conversations, res.Inserted, res.Duplicates, res.Skipped)
-	if res.EmptyConversations > 0 {
-		fmt.Printf(", %d conversations without importable messages", res.EmptyConversations)
-	}
-	if res.Attachments > 0 || res.MissingMedia > 0 {
-		fmt.Printf(", %d attachments (%d missing from export)", res.Attachments, res.MissingMedia)
-	}
-	fmt.Println()
-}
-
-func printGenericResult(res generic.Result) {
-	fmt.Printf("json: %d new, %d already known, %d attachments", res.Inserted, res.Duplicates, res.Attachments)
-	if res.Healed > 0 {
-		fmt.Printf(" (%d recovered)", res.Healed)
-	}
-	if res.Retired > 0 {
-		fmt.Printf(", %d retired", res.Retired)
-	}
-	if res.Rejected > 0 {
-		fmt.Printf(", %d entries rejected", res.Rejected)
-	}
-	fmt.Println()
-}
-
-func importRemote(ctx context.Context, c *client.Client, kind, source string, paths []string) error {
-	for _, path := range paths {
-		if kind == "json" {
-			input, err := readInput(path)
-			if err != nil {
-				return err
-			}
-			res, err := c.ImportJSON(ctx, source, input)
-			if err != nil {
-				return fmt.Errorf("%s: %w", path, err)
-			}
-			printGenericResult(res)
-			continue
-		}
-		files, err := remoteImportFiles(kind, path)
-		if err != nil {
-			return err
-		}
-		for _, f := range files {
-			if err := importRemoteFile(ctx, c, kind, source, f); err != nil {
-				return fmt.Errorf("%s: %w", f, err)
-			}
-		}
-	}
-	return nil
-}
-
-func remoteImportFiles(kind, path string) ([]string, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.IsDir() {
-		return []string{path}, nil
-	}
-	if kind != "eml" {
-		return nil, fmt.Errorf("%s: remote import of %s takes a file, not a directory", path, kind)
-	}
-	var out []string
-	err = filepath.WalkDir(path, func(p string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !strings.EqualFold(filepath.Ext(p), ".eml") {
-			return err
-		}
-		out = append(out, p)
-		return nil
-	})
-	return out, err
-}
-
-func importRemoteFile(ctx context.Context, c *client.Client, kind, source, path string) error {
-	raw, err := client.ImportFile[json.RawMessage](ctx, c, kind, source, path)
-	if err != nil {
-		return err
-	}
-	res, err := importer.Decode(kind, raw)
-	if err != nil {
-		return err
-	}
-	printImportResult(kind, source, path, res)
-	return nil
-}
-
-// readInput reads a file, or stdin when path is "-".
-func readInput(path string) ([]byte, error) {
-	if path == "-" {
-		return io.ReadAll(os.Stdin)
-	}
-	return os.ReadFile(path)
 }

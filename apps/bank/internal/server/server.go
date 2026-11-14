@@ -21,6 +21,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -57,24 +58,19 @@ type Catalogue interface {
 }
 
 type Server struct {
-	db              *store.Store // importers need the concrete store
-	read            reader
-	blobs           *blob.Store
-	archiveDir      string
-	dataDir         string
-	jsonReadTimeout time.Duration
-	extraction      extraction
-	catalogue       Catalogue
+	db         *store.Store // importers need the concrete store
+	read       reader
+	blobs      *blob.Store
+	kinds      importer.Registry
+	dataDir    string
+	extraction extraction
+	catalogue  Catalogue
 }
 
-// New serves the archive in db and the files on disks in catalogue.
-func New(db *store.Store, catalogue Catalogue, blobs *blob.Store, dataDir, archiveDir string) *Server {
-	s := &Server{db: db, read: db, catalogue: catalogue, blobs: blobs, archiveDir: archiveDir, dataDir: dataDir}
-	// Uploads staged by a process that died are nobody's to clean up later.
-	if err := pruneUploads(dataDir, uploadMaxAge); err != nil {
-		slog.Warn("pruning abandoned uploads", "error", err)
-	}
-	return s
+// New serves the archive in db and the files on disks in catalogue. The
+// kinds are the import kinds it serves a route for.
+func New(db *store.Store, catalogue Catalogue, blobs *blob.Store, dataDir string, kinds importer.Registry) *Server {
+	return &Server{db: db, read: db, catalogue: catalogue, blobs: blobs, kinds: kinds, dataDir: dataDir}
 }
 
 func Tokens(dataDir string) tokens.Store {

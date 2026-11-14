@@ -3,42 +3,89 @@ package mediaimport
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path/filepath"
 	"reflect"
 	"strings"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 const MaxPublicationBytes = 32 << 20
 
+// Publication is a checked set of Markdown pages with the original bytes of
+// each, built on the machine that holds the directory and imported as one
+// JSON document.
 type Publication struct {
 	Source            string         `json:"source"`
 	Account           string         `json:"account"`
 	Pages             []library.Page `json:"pages"`
-	Inputs            []RawInput     `json:"inputs"`
+	Inputs            []Input        `json:"inputs"`
 	AllowConfidential bool           `json:"allow_confidential"`
 }
 
-func BuildPublication(inputPath string, opts Options) (Publication, error) {
+type PublicationOptions struct {
+	Source            string
+	Account           string
+	MaxSensitivity    string
+	AllowConfidential bool
+}
+
+// BuildPublication scans a selected Markdown directory into a publication.
+func BuildPublication(dir string, opts PublicationOptions) (Publication, error) {
 	if opts.Source == "" {
 		opts.Source = "markdown"
 	}
-	opts.Account = markdownAccount(inputPath, opts.Account)
-	parsed, err := Parse("markdown", inputPath, opts)
+	opts.Account = markdownAccount(dir, opts.Account)
+	pages, inputs, err := parseMarkdown(dir, opts)
 	if err != nil {
 		return Publication{}, err
 	}
-	publication := Publication{Source: opts.Source, Account: opts.Account, Pages: parsed.Batch.Pages, Inputs: parsed.Inputs, AllowConfidential: opts.AllowConfidential}
+	publication := Publication{Source: opts.Source, Account: opts.Account, Pages: pages, Inputs: inputs, AllowConfidential: opts.AllowConfidential}
 	if err := publication.Validate(); err != nil {
 		return Publication{}, err
 	}
 	return publication, nil
+}
+
+// Markdown publishes a Publication document. Its pages replace every page
+// published before under the same source and account.
+type Markdown struct{}
+
+type MarkdownOptions struct{}
+
+func (Markdown) Kind() string { return "markdown" }
+
+func (Markdown) Parse(_ context.Context, raw ingest.Raw, _ MarkdownOptions, out ingest.Emitter) error {
+	f, err := raw.Open()
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Size() > MaxPublicationBytes {
+		return fmt.Errorf("publication exceeds the 32 MiB limit")
+	}
+	var publication Publication
+	dec := json.NewDecoder(f)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&publication); err != nil {
+		return fmt.Errorf("publication: %w", err)
+	}
+	if err := dec.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("publication must contain one JSON object")
+	}
+	if err := publication.Validate(); err != nil {
+		return err
+	}
+	return out.Pages(ingest.Pages{Source: publication.Source, Account: publication.Account, Pages: publication.Pages})
 }
 
 func sensitivityRank(s string) int {
@@ -55,7 +102,7 @@ func sensitivityRank(s string) int {
 }
 
 func (p Publication) Validate() error {
-	if err := archive.ValidSource(p.Source); err != nil {
+	if err := ingest.ValidSource(p.Source); err != nil {
 		return err
 	}
 	if p.Account == "" || len(p.Account) > 4096 || strings.ContainsRune(p.Account, 0) {
@@ -74,7 +121,7 @@ func (p Publication) Validate() error {
 	if len(raw) > MaxPublicationBytes {
 		return fmt.Errorf("publication exceeds the 32 MiB limit")
 	}
-	inputs := map[string]RawInput{}
+	inputs := map[string]Input{}
 	for _, input := range p.Inputs {
 		if !fs.ValidPath(input.Name) || filepath.IsAbs(input.Name) || strings.ContainsAny(input.Name, "\\:") || !strings.EqualFold(filepath.Ext(input.Name), ".md") {
 			return fmt.Errorf("invalid publication input path %q", input.Name)
@@ -92,7 +139,7 @@ func (p Publication) Validate() error {
 		}
 		inputs[input.Name] = input
 	}
-	opts := Options{Source: p.Source, Account: p.Account, MaxSensitivity: "personal", AllowConfidential: p.AllowConfidential}
+	opts := PublicationOptions{Source: p.Source, Account: p.Account, MaxSensitivity: "personal", AllowConfidential: p.AllowConfidential}
 	if p.AllowConfidential {
 		opts.MaxSensitivity = "confidential"
 	}
@@ -119,33 +166,9 @@ func (p Publication) Validate() error {
 		if page.Identity != expected.Identity || page.ID != expected.ID || page.ContentHash != expected.ContentHash || page.Revision != expected.Revision || page.Title != expected.Title || page.Body != expected.Body || !reflect.DeepEqual(nonNil(page.Answers), expected.Answers) || !reflect.DeepEqual(nonNil(page.Tags), expected.Tags) || !reflect.DeepEqual(nonNil(page.Aliases), expected.Aliases) {
 			return fmt.Errorf("page %s does not match its original bytes, metadata or identity", page.Path)
 		}
-		if page.Provenance.RawRef != "input:"+input.Name {
+		if page.Provenance != (library.Provenance{Locator: input.Name}) {
 			return fmt.Errorf("page %s has invalid source provenance", page.Path)
 		}
 	}
 	return (library.ImportBatch{Version: 1, Pages: p.Pages}).Validate()
-}
-
-func Publish(ctx context.Context, st *store.Store, archiveDir string, publication Publication) (Result, error) {
-	return store.RunImport(ctx, st, "markdown", "publication:"+publication.Account, func(ctx context.Context) (Result, error) {
-		result := Result{Diagnostics: []string{}}
-		if err := publication.Validate(); err != nil {
-			return result, err
-		}
-		pages := append([]library.Page{}, publication.Pages...)
-		refs := map[string]string{}
-		for _, input := range publication.Inputs {
-			ref, err := preserveLibraryInput(archiveDir, publication.Source, input)
-			if err != nil {
-				return result, fail.Opf("preserve %s: %w", input.Name, err)
-			}
-			refs[input.Name] = ref
-		}
-		for i := range pages {
-			pages[i].Provenance.RawRef = refs[pages[i].Path]
-		}
-		var err error
-		result.ImportResult, err = st.PublishLibraryPages(ctx, publication.Source, publication.Account, pages)
-		return result, importFailure(err)
-	})
 }

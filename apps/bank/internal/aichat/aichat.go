@@ -1,49 +1,21 @@
-// Package aichat imports ChatGPT and Claude.ai conversation exports.
+// Package aichat reads ChatGPT and Claude.ai conversation exports.
 // Source conversation IDs and stable message IDs keep reimports idempotent.
 package aichat
 
 import (
-	"bytes"
-	"context"
-	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"mime"
-	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
-	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/export"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
-type Result struct {
-	UnsupportedContent int `json:"unsupported_content,omitempty"`
-	Conversations      int `json:"conversations"`
-	Inserted           int `json:"inserted"`
-	Duplicates         int `json:"duplicates"`
-	Skipped            int `json:"skipped"`
-	// EmptyConversations counts conversations that yielded no importable
-	// message and were dropped whole. Without it the loss is invisible: such a
-	// conversation never reaches any other counter.
-	EmptyConversations int `json:"empty_conversations"`
-	Attachments        int `json:"attachments,omitempty"`
-	// MissingMedia counts asset references whose file the export does not
-	// contain — ChatGPT drops expired assets from the download, so a nonzero
-	// count is normal for an old account, not an import failure.
-	MissingMedia int `json:"missing_media,omitempty"`
-}
+type Options struct{}
 
 type message struct {
 	ParentExternalID string
@@ -58,180 +30,82 @@ type message struct {
 	Sender  string
 	Body    string
 	SentAt  time.Time
-	// Attachments are asset references parsed out of the message; resolving
-	// them to bytes needs a media source, which only some inputs carry.
+	// Attachments are asset references parsed out of the message; only some
+	// inputs carry the bytes behind them.
 	Attachments []assetRef
 }
 
-// assetRef names one exported asset: the id keys the file on disk, name and
-// mime come from the export's metadata when it has them.
+// assetRef names one exported asset: the id keys the file in the export, name
+// and mime come from the export's metadata when it has them.
 type assetRef struct {
 	ID   string
 	Name string
 	Mime string
 }
 
-// media resolves asset ids to their exported bytes. nil media (bare
-// conversations.json, claude) imports messages text-only, same
-// as before attachments existed.
-type media struct {
-	blobs *blob.Store
-	open  func(id string) io.ReadCloser
-	// names maps "<id>.dat" to the file's original upload name.
-	names map[string]string
-}
-
-func (r *Result) ingest(ctx context.Context, st *store.Store, source, rawRef string, msgs []message, md *media) error {
-	valid := make([]message, 0, len(msgs))
-	messages := make([]store.Message, 0, len(msgs))
+// emitConversation sends one conversation's messages. named identifies the
+// conversation in issues; part resolves an asset reference to an attachment.
+func emitConversation(out ingest.Emitter, source, locator, named string, msgs []message, part func(assetRef) ingest.Part) error {
+	if len(msgs) == 0 {
+		out.Issue(ingest.Issuef(ingest.Skipped, "%s has no importable message", named))
+		return nil
+	}
 	for _, m := range msgs {
 		if m.ExternalID == "" {
-			// One malformed export record (a mapping node without an id, a
-			// Claude message without a uuid) must not abort the whole import.
-			r.Skipped++
-			named := m.Subject // the title says more to a human than the conversation id
-			if named == "" {
-				named = m.Thread
-			}
-			store.ImportIssue(ctx, fmt.Sprintf("Record without an id in %s", named))
-			fmt.Fprintf(os.Stderr, "bank: %s: skipping record without an id in %q\n", source, named)
+			out.Issue(ingest.Issuef(ingest.Skipped, "record without an id in %s", named))
 			continue
 		}
-		if m.SentAt.IsZero() {
-			m.SentAt = time.Unix(0, 0) // unknown date: obvious epoch sentinel
-		}
-		valid = append(valid, m)
-		messages = append(messages, store.Message{
+		im := ingest.Message{
 			Source:           source,
 			ExternalID:       m.ExternalID,
+			ThreadID:         m.Thread,
+			Sender:           m.Sender,
+			Subject:          m.Subject,
+			Body:             m.Body,
+			SentAt:           m.SentAt,
 			ParentExternalID: m.ParentExternalID,
 			BranchID:         m.BranchID,
 			AlternativeIndex: m.AlternativeIndex,
-			ThreadID:         m.Thread,
-			Subject:          m.Subject,
-			Sender:           m.Sender,
-			Body:             m.Body,
-			SentAt:           m.SentAt,
-			RawRef:           rawRef,
-		})
-	}
-	// Rethreading, not a plain insert: an archive filled before threads were
-	// keyed on conversation ids still holds these messages under their old
-	// title-keyed thread, and only a re-import can move them.
-	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{Rethread: true})
-	if err != nil {
-		return fail.Opf("insert messages: %w", err)
-	}
-	for i, m := range valid {
-		id := ids[i]
-		if md == nil {
-			r.MissingMedia += len(m.Attachments)
-			for _, a := range m.Attachments {
-				store.ImportIssue(ctx, "Missing asset "+a.ID+" in message "+m.ExternalID)
-			}
+			Locator:          locator,
 		}
-		if id == 0 {
-			r.Duplicates++
-			// Heal attachments: an earlier import from a media-less input
-			// (bare conversations.json) inserted the message but could not
-			// store the files.
-			if md != nil && len(m.Attachments) > 0 {
-				if err := r.healAssets(ctx, st, md, source, m); err != nil {
-					return err
-				}
-			}
-			continue
+		for _, a := range m.Attachments {
+			im.Parts = append(im.Parts, part(a))
 		}
-		r.Inserted++
-		if md != nil {
-			for _, a := range m.Attachments {
-				if err := r.storeAsset(ctx, st, md, id, a, nil); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
-func (r *Result) healAssets(ctx context.Context, st *store.Store, md *media, source string, m message) error {
-	id, err := st.FindMessageID(ctx, source, m.ExternalID)
-	if err != nil {
-		return fail.Opf("look up message: %w", err)
-	}
-	if id == 0 {
-		return nil
-	}
-	have, err := st.AttachmentKeys(ctx, id)
-	if err != nil {
-		return fail.Opf("read attachments of message %d: %w", id, err)
-	}
-	for _, a := range m.Attachments {
-		if err := r.storeAsset(ctx, st, md, id, a, have); err != nil {
+		if err := out.Message(im); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *Result) storeAsset(ctx context.Context, st *store.Store, md *media, messageID int64, a assetRef, have map[string]int) error {
-	rc := md.open(a.ID)
-	if rc == nil {
-		r.MissingMedia++
-		store.ImportIssue(ctx, fmt.Sprintf("Missing asset %s (%s) in message %d", a.ID, a.Name, messageID))
-		return nil
-	}
-	defer rc.Close()
-
-	name := md.names[a.ID+".dat"]
-	if name == "" {
-		name = a.Name
-	}
-	if name == "" {
-		name = a.ID
-	}
-	mimeType := a.Mime
-	if mimeType == "" {
-		mimeType = mime.TypeByExtension(filepath.Ext(name))
-	}
-
-	// Many exported assets carry no usable extension ("image.png" aside, ids
-	// and bare UUIDs are common), so sniff the bytes when nothing named them.
-	head := make([]byte, 512)
-	n, err := io.ReadFull(rc, head)
-	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
-		return fail.Opf("read asset %q: %w", a.ID, err)
-	}
-	head = head[:n]
-	if mimeType == "" {
-		mimeType = http.DetectContentType(head)
-	}
-
-	digest, size, err := md.blobs.Put(ctx, io.MultiReader(bytes.NewReader(head), rc))
+// eachInArray decodes a JSON array one element at a time, so an export of
+// hundreds of megabytes is never held whole.
+func eachInArray[T any](r io.Reader, name string, each func(T) error) error {
+	dec := json.NewDecoder(r)
+	tok, err := dec.Token()
 	if err != nil {
-		return fail.Opf("store asset %q: %w", a.ID, err)
+		return fmt.Errorf("%s: %w", name, err)
 	}
-	key := store.AttachmentKey(digest, name)
-	if have[key] > 0 {
-		have[key]--
-		return nil
+	if d, ok := tok.(json.Delim); !ok || d != '[' {
+		return fmt.Errorf("%s: not a JSON array", name)
 	}
-	err = st.InsertAttachment(ctx, store.Attachment{
-		MessageID: messageID,
-		Filename:  name,
-		MimeType:  mimeType,
-		SizeBytes: size,
-		BLAKE3:    digest,
-	})
-	if err != nil {
-		return fail.Opf("insert attachment %q: %w", name, err)
+	for dec.More() {
+		var v T
+		if err := dec.Decode(&v); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		if err := each(v); err != nil {
+			return err
+		}
 	}
-	r.Attachments++
+	if _, err := dec.Token(); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
 	return nil
 }
 
 // shardName matches the numbered files a ChatGPT export splits its
-// conversations into (conversations-000.json … conversations-025.json). The
+// conversations into (conversations-000.json to conversations-025.json). The
 // digits are required: a looser match would also take
 // conversation_asset_file_names.json, which is not a conversations array.
 var shardName = regexp.MustCompile(`^conversations-(\d+)\.json$`)
@@ -255,54 +129,38 @@ func shardNumber(name string) (int, bool) {
 	return n, true
 }
 
-// mergeShards concatenates the numbered conversation files at the export's
-// root, in shard order, into the single conversations array the importers
-// expect. Ordering is by number, not by name, so an export that stops
-// zero-padding still merges in export order.
-func mergeShards(fsys fs.FS, contexts ...context.Context) ([]byte, error) {
+// conversationFiles names the files at the export's root that hold its
+// conversations: conversations.json, or else the numbered shards in shard
+// order. Ordering is by number, not by name, so an export that stops
+// zero-padding still reads in export order. missing lists the shard numbers
+// absent from the run.
+func conversationFiles(fsys fs.FS) (names []string, missing []int, err error) {
 	entries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var shards []shard
 	for _, e := range entries {
-		if num, ok := shardNumber(e.Name()); ok && !e.IsDir() {
+		if e.IsDir() {
+			continue
+		}
+		if e.Name() == "conversations.json" {
+			return []string{e.Name()}, nil, nil
+		}
+		if num, ok := shardNumber(e.Name()); ok {
 			shards = append(shards, shard{num: num, name: e.Name()})
 		}
 	}
-	if len(shards) == 0 {
-		return nil, errors.New("no conversations.json or conversations-N.json shards — not a data export?")
-	}
 	sort.Slice(shards, func(i, j int) bool { return shards[i].num < shards[j].num })
-	if missing := missingShards(shards); len(missing) > 0 {
-		if len(contexts) > 0 {
-			store.ImportIssue(contexts[0], fmt.Sprintf("Missing conversation shards: %v", missing))
-		}
-		names := make([]string, len(missing))
-		for i, n := range missing {
-			names[i] = strconv.Itoa(n)
-		}
-		fmt.Fprintf(os.Stderr, "bank: conversation shard(s) %s are missing — importing the %d that are present\n",
-			strings.Join(names, ", "), len(shards))
-	}
-	all := []json.RawMessage{}
 	for _, s := range shards {
-		raw, err := fs.ReadFile(fsys, s.name)
-		if err != nil {
-			return nil, err
-		}
-		var convs []json.RawMessage
-		if err := json.Unmarshal(raw, &convs); err != nil {
-			return nil, fmt.Errorf("%s: %w", s.name, err)
-		}
-		all = append(all, convs...)
+		names = append(names, s.name)
 	}
-	return json.Marshal(all)
+	return names, missingShards(shards), nil
 }
 
 // missingShards lists the shard numbers absent from an otherwise contiguous
 // run, given shards already sorted by number. Numbering starts wherever the
-// first shard does — only holes after it mean a file was lost, which would
+// first shard does: only holes after it mean a file was lost, which would
 // otherwise import as a silently short archive.
 func missingShards(shards []shard) []int {
 	var missing []int
@@ -314,56 +172,40 @@ func missingShards(shards []shard) []int {
 	return missing
 }
 
-// archiveName names merged shard content the way archive.Copy names a file:
-// content hash first, so distinct exports never collide and re-archiving the
-// same one is a no-op.
-func archiveName(raw []byte) string {
-	sum := sha256.Sum256(raw)
-	return fmt.Sprintf("%x-conversations.json", sum[:6])
-}
-
-// loadConversations resolves an export given as conversations.json itself, the
-// export zip, or an unpacked export directory, archiving the raw input. Exports
-// since 2026 ship numbered shards instead of one conversations.json; those are
-// merged back into one array and archived as that array.
-func loadConversations(archiveDir, source, path string, contexts ...context.Context) ([]byte, string, error) {
-	exp, err := export.Open(path)
-	if err != nil {
-		return nil, "", err
+// eachConversation decodes every conversation of an input, from a bare
+// conversations.json or from the conversation files of an export zip, and
+// reports missing shards as an Incomplete issue. It returns how many files it
+// read, so a caller can tell an export without conversations.
+func eachConversation[T any](raw ingest.Raw, fsys fs.FS, out ingest.Emitter, each func(file string, c T) error) (int, error) {
+	if fsys == nil {
+		f, err := raw.Open()
+		if err != nil {
+			return 0, err
+		}
+		defer f.Close()
+		return 1, eachInArray(f, raw.Name, func(c T) error { return each(raw.Name, c) })
 	}
-	defer exp.Close()
-	archived := path
-	var raw []byte
-	if exp.FS == nil {
-		raw, err = os.ReadFile(path)
-	} else {
-		raw, err = fs.ReadFile(exp.FS, "conversations.json")
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			if raw, err = mergeShards(exp.FS, contexts...); err != nil {
-				return nil, "", fmt.Errorf("%s: %w", path, err)
+	names, missing, err := conversationFiles(fsys)
+	if err != nil {
+		return 0, err
+	}
+	if len(missing) > 0 {
+		out.Issue(ingest.Issuef(ingest.Incomplete, "conversation shards %v are missing", missing))
+	}
+	for _, name := range names {
+		err := func() error {
+			f, err := fsys.Open(name)
+			if err != nil {
+				return err
 			}
-			if exp.Dir {
-				// The merged array is the logical input; the shards it came
-				// from have no single path to copy.
-				rawRef, err := archive.Write(archiveDir, source, archiveName(raw), raw)
-				if err != nil {
-					return nil, "", fail.Opf("archive %s: %w", path, err)
-				}
-				return raw, rawRef, nil
-			}
-		case exp.Dir:
-			archived = filepath.Join(path, "conversations.json")
+			defer f.Close()
+			return eachInArray(f, name, func(c T) error { return each(name, c) })
+		}()
+		if err != nil {
+			return 0, err
 		}
 	}
-	if err != nil {
-		return nil, "", err
-	}
-	rawRef, err := archive.Copy(archiveDir, source, archived)
-	if err != nil {
-		return nil, "", fail.Opf("archive %s: %w", archived, err)
-	}
-	return raw, rawRef, nil
+	return len(names), nil
 }
 
 func parseTimestamp(s string) time.Time {
@@ -372,5 +214,5 @@ func parseTimestamp(s string) time.Time {
 			return t
 		}
 	}
-	return time.Unix(0, 0)
+	return time.Time{}
 }

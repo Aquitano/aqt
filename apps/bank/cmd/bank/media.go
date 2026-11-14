@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/rand"
@@ -15,11 +16,11 @@ import (
 
 	"github.com/alecthomas/kong"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
@@ -320,20 +321,21 @@ func (c *libraryIndexCmd) Run(ctx context.Context, lib *libraryCmd) error {
 	if source == "" {
 		source = "brain"
 	}
-	opts := mediaimport.Options{Source: source, Account: o.Account, MaxSensitivity: lib.MaxSensitivity, AllowConfidential: lib.AllowConfidential}
+	opts := mediaimport.PublicationOptions{Source: source, Account: o.Account, MaxSensitivity: lib.MaxSensitivity, AllowConfidential: lib.AllowConfidential}
 	publication, err := mediaimport.BuildPublication(c.Dir, opts)
 	if err != nil {
 		return err
 	}
-	if remote := client.FromEnv(); remote != nil {
-		return printLibrary(remote.PublishLibraryPages(ctx, publication))
-	}
-	local, closeLocal, err := openLocal(ctx)
+	encoded, err := json.Marshal(publication)
 	if err != nil {
 		return err
 	}
-	defer closeLocal()
-	return printLibrary(mediaimport.Publish(ctx, local.Store, local.ArchiveDir, publication))
+	b, err := openImportBackend(ctx)
+	if err != nil {
+		return err
+	}
+	defer b.close()
+	return b.importReader(ctx, "markdown", "publication.json", bytes.NewReader(encoded), nil)
 }
 
 func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, noExtract bool) error {
@@ -346,7 +348,7 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 	if o.Account == "" {
 		o.Account = "owner"
 	}
-	if err := archive.ValidSource(o.Source); err != nil {
+	if err := ingest.ValidSource(o.Source); err != nil {
 		return err
 	}
 	for _, path := range paths {

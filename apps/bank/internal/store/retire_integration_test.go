@@ -136,7 +136,4 @@ func TestRetiredMailStaysRetiredUnderAnotherExternalID(t *testing.T) {
 	if err != nil || id != 0 {
 		t.Fatalf("the retired mail came back as message %d: %v", id, err)
 	}
-	if n, err := st.CountRetired(ctx, []store.Message{fromTakeout}); err != nil || n != 1 {
-		t.Fatalf("retired count = %d, %v; want 1", n, err)
-	}
 }

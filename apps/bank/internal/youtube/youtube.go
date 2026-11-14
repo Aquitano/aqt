@@ -17,7 +17,6 @@
 package youtube
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -30,113 +29,70 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/export"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
-type Result struct {
-	// Channels counts the distinct channels the input covers, whether or not
-	// their videos were already archived — it describes the export, the way
-	// Inserted and Duplicates describe what it changed.
-	Channels   int `json:"channels"`
-	Inserted   int `json:"inserted"`
-	Duplicates int `json:"duplicates"`
-	// Retired counts watches whose key `bank retire` tombstoned; they stay out.
-	Retired int `json:"retired"`
-	// Skipped counts records with no title or no readable timestamp: there is
-	// nothing to store and nothing to deduplicate on.
-	Skipped int `json:"skipped"`
-	// Ads counts advertisement impressions dropped on purpose. Reported rather
-	// than silent, so the gap between the file's record count and the archive's
-	// is explained.
-	Ads int `json:"ads,omitempty"`
-}
+// Source reads the watch history out of a Takeout zip (an unpacked Takeout
+// arrives packed as one) or the history file itself: watch-history.html, the
+// format Takeout writes by default, or watch-history.json, the "Multiple
+// formats" option.
+type Source struct{}
 
-// Import reads the watch history out of a Takeout zip, an unpacked Takeout
-// directory, or the history file itself (watch-history.html, the format
-// Takeout writes by default, or watch-history.json, the "Multiple formats"
-// option). Re-importing an overlapping export is a no-op.
-func Import(ctx context.Context, st *store.Store, archiveDir, inputPath string) (Result, error) {
-	var res Result
+type Options struct{}
 
-	raw, name, err := readHistory(inputPath)
+func (Source) Kind() string { return "youtube" }
+
+func (Source) Parse(ctx context.Context, raw ingest.Raw, _ Options, out ingest.Emitter) error {
+	data, file, err := readHistory(raw)
 	if err != nil {
-		return res, err
+		return err
 	}
-	watches, ads, skipped, err := parse(bytes.NewReader(raw), name)
+	history, err := ParseHistory(data, file)
 	if err != nil {
-		return res, fmt.Errorf("%s: %w", name, err)
+		return fmt.Errorf("%s: %w", file, err)
 	}
-	res.Ads, res.Skipped = ads, skipped
-	if len(watches) == 0 {
+	if len(history.Events) == 0 {
 		// Records that parsed but yielded nothing mean the file is a history
-		// export — an all-ads file, or a localized HTML export whose timestamps
-		// no layout reads — and the diagnosis should say so, not deny the file.
-		if ads+skipped > 0 {
-			return res, fmt.Errorf("%s: no importable watches — %d ads, %d records unreadable", inputPath, ads, skipped)
+		// export, an all-ads file or a localized HTML export whose timestamps
+		// no layout reads, and the diagnosis should say so.
+		if history.Ads+history.Skipped > 0 {
+			return fmt.Errorf("%s: no importable watches, %d ads, %d records unreadable", raw.Name, history.Ads, history.Skipped)
 		}
-		return res, fmt.Errorf("%s: no watch records — not a YouTube history export?", inputPath)
+		return fmt.Errorf("%s: no watch records, not a YouTube history export?", raw.Name)
 	}
-
-	rawRef, err := archiveHistory(archiveDir, inputPath, name, raw)
-	if err != nil {
-		return res, err
+	if history.Ads > 0 {
+		out.Issue(ingest.Issuef(ingest.Dropped, "%s: %d advertisement impressions", file, history.Ads))
 	}
-
-	channels := map[string]bool{}
-	seen := map[string]int{}
-	messages := make([]store.Message, 0, len(watches))
-	for _, w := range watches {
-		thread := w.thread()
-		messages = append(messages, store.Message{
+	if history.Skipped > 0 {
+		out.Issue(ingest.Issuef(ingest.Skipped, "%s: %d records with no title or no readable timestamp", file, history.Skipped))
+	}
+	for _, e := range history.Events {
+		if err := out.Message(ingest.Message{
 			Source:     "youtube",
-			ExternalID: watchDigest(w, seen),
-			ThreadID:   thread,
-			Sender:     w.Channel,
-			Subject:    w.Title,
-			Body:       w.URL,
-			SentAt:     w.WatchedAt,
-			RawRef:     rawRef,
-		})
-		if thread != "" {
-			channels[thread] = true
+			ExternalID: e.ExternalID,
+			ThreadID:   e.thread(),
+			Sender:     e.Channel,
+			Subject:    e.Title,
+			Body:       e.URL,
+			SentAt:     e.WatchedAt,
+			Locator:    file,
+		}); err != nil {
+			return err
 		}
 	}
-	// Rethreading, not plain insert: thread, subject and sent_at are all
-	// derived (channel-name fallback, prefix stripping, HTML zone resolution),
-	// so `bank reimport youtube` must be able to re-key rows when a derivation
-	// is fixed — the same reason Discord rethreads.
-	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{Rethread: true})
-	if err != nil {
-		return res, fail.Opf("insert messages: %w", err)
-	}
-	var present []store.Message
-	for i, id := range ids {
-		if id == 0 {
-			present = append(present, messages[i])
-		} else {
-			res.Inserted++
-		}
-	}
-	if res.Retired, err = st.CountRetired(ctx, present); err != nil {
-		return res, fail.Opf("count retired messages: %w", err)
-	}
-	res.Duplicates = len(present) - res.Retired
-	res.Channels = len(channels)
-	return res, nil
+	return nil
 }
 
 // thread groups a channel's videos into one conversation. The id is preferred
 // over the name for the same reason Discord keys channels on ids: names repeat
 // and get changed, ids do not. A record with no channel at all — a removed
 // video, or one watched signed out — belongs to no thread.
-func (w watch) thread() string {
-	if w.ChannelID != "" {
-		return w.ChannelID
+func (e HistoryEvent) thread() string {
+	if e.ChannelID != "" {
+		return e.ChannelID
 	}
-	return w.Channel
+	return e.Channel
 }
 
 // watchDigest derives a stable external_id. Identity is the video plus the
@@ -155,7 +111,7 @@ func (w watch) thread() string {
 // reason WhatsApp's digest formats without converting: HTML timestamps carry a
 // zone abbreviation that resolves against the importing machine's zone, so the
 // instant — and a digest derived from it — would change with the machine,
-// re-inserting every row when `bank reimport youtube` runs somewhere else. The
+// re-inserting every row when the input is replayed somewhere else. The
 // wall clock is what the export wrote and is the same everywhere; JSON
 // timestamps are UTC, so for them the two are one thing.
 //
@@ -183,36 +139,36 @@ func watchDigest(w watch, seen map[string]int) string {
 var historyNames = []string{"watch-history.json", "watch-history.html"}
 
 // readHistory returns the history file's bytes and its base name, given the
-// export zip, an unpacked export directory, or the file itself.
-func readHistory(inputPath string) ([]byte, string, error) {
-	exp, err := export.Open(inputPath)
+// export zip or the file itself.
+func readHistory(raw ingest.Raw) ([]byte, string, error) {
+	exp, err := export.Open(raw)
 	if err != nil {
 		return nil, "", err
 	}
 	defer exp.Close()
 	if exp.FS != nil {
-		return readHistoryFS(exp.FS, inputPath)
+		return readHistoryFS(exp.FS, raw.Name)
 	}
-	raw, err := os.ReadFile(inputPath)
+	data, err := os.ReadFile(raw.Path)
 	if err != nil {
 		return nil, "", err
 	}
-	return raw, filepath.Base(inputPath), nil
+	return data, filepath.Base(raw.Name), nil
 }
 
-func readHistoryFS(fsys fs.FS, inputPath string) ([]byte, string, error) {
+func readHistoryFS(fsys fs.FS, name string) ([]byte, string, error) {
 	found, err := findHistory(fsys)
 	if err != nil {
 		return nil, "", err
 	}
 	if found == "" {
-		return nil, "", fmt.Errorf("%s: no %s — not a YouTube Takeout export?", inputPath, strings.Join(historyNames, " or "))
+		return nil, "", fmt.Errorf("%s: no %s, not a YouTube Takeout export?", name, strings.Join(historyNames, " or "))
 	}
-	raw, err := fs.ReadFile(fsys, found)
+	data, err := fs.ReadFile(fsys, found)
 	if err != nil {
 		return nil, "", err
 	}
-	return raw, path.Base(found), nil
+	return data, path.Base(found), nil
 }
 
 // findHistory walks for the history file by base name, in historyNames order.
@@ -245,22 +201,6 @@ func findHistory(fsys fs.FS) (string, error) {
 		return nil
 	})
 	return found, err
-}
-
-// archiveHistory keeps the history file rather than the input it came in. A
-// full Takeout is every Google product at once — the mail in it is a source of
-// its own, with its own archive copy — and can run to gigabytes, so copying it
-// whole under archive/youtube/ would archive other sources' data twice over.
-// The bytes kept are exactly the ones this importer read, under the file's own
-// name behind a content hash, which is both how archive.Copy names a file and
-// what `bank reimport youtube` replays.
-func archiveHistory(archiveDir, inputPath, name string, raw []byte) (string, error) {
-	sum := sha256.Sum256(raw)
-	rawRef, err := archive.Write(archiveDir, "youtube", fmt.Sprintf("%x-%s", sum[:6], name), raw)
-	if err != nil {
-		return "", fail.Opf("archive %s: %w", inputPath, err)
-	}
-	return rawRef, nil
 }
 
 // parse picks the reader for the format the file name announces.

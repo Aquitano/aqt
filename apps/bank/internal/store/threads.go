@@ -24,8 +24,9 @@ type Thread struct {
 	HasAfter  bool            `json:"has_after"`
 }
 
-// Cursors name messages in this thread. Pages use (sent_at, id), so messages
-// with equal timestamps are neither repeated nor skipped.
+// Cursors name messages in this thread. Pages use (sort_at, id), so messages
+// with equal timestamps are neither repeated nor skipped, and undated
+// messages come first.
 type ThreadOpts struct {
 	Limit   int
 	Before  ref.Message
@@ -149,9 +150,9 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 	} else {
 		first, last := out.Messages[0], out.Messages[len(out.Messages)-1]
 		err = s.pool.QueryRow(ctx, `select
-			exists(select 1 from messages where source=$1 and thread_id=$2 and (sent_at,id)<($3,$4)),
-			exists(select 1 from messages where source=$1 and thread_id=$2 and (sent_at,id)>($5,$6))`,
-			out.Source, out.ThreadID, first.SentAt, first.ID, last.SentAt, last.ID).Scan(&out.HasBefore, &out.HasAfter)
+			exists(select 1 from messages where source=$1 and thread_id=$2 and (sort_at,id)<((select sort_at from messages where id=$3),$3)),
+			exists(select 1 from messages where source=$1 and thread_id=$2 and (sort_at,id)>((select sort_at from messages where id=$4),$4))`,
+			out.Source, out.ThreadID, first.ID, last.ID).Scan(&out.HasBefore, &out.HasAfter)
 		if err != nil {
 			return out, err
 		}
@@ -171,14 +172,14 @@ func (s *Store) threadRows(ctx context.Context, thread Thread, anchor Message, o
 	query := `select ` + messageColumns + ` from messages m where m.source=$1 and m.thread_id=$2`
 	args := []any{thread.Source, thread.ThreadID, limit}
 	if op != "" {
-		query += ` and (m.sent_at,m.id) ` + op + ` ($4,$5)`
-		args = append(args, anchor.SentAt, anchor.ID)
+		query += ` and (m.sort_at,m.id) ` + op + ` ((select sort_at from messages where id=$4),$4)`
+		args = append(args, anchor.ID)
 	}
 	order := "asc"
 	if descending {
 		order = "desc"
 	}
-	query += ` order by m.sent_at ` + order + `, m.id ` + order + ` limit $3`
+	query += ` order by m.sort_at ` + order + `, m.id ` + order + ` limit $3`
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -207,17 +208,17 @@ func (s *Store) loadAttachments(ctx context.Context, messages []MessageDetail) e
 	for i, m := range messages {
 		ids[i], byID[m.ID] = m.ID, i
 	}
-	rows, err := s.pool.Query(ctx, `select a.id, a.message_id, a.filename, a.mime_type, c.size_bytes, c.blake3,
+	rows, err := s.pool.Query(ctx, `select a.position, a.message_id, a.filename, a.mime_type, c.size_bytes, c.blake3,
 		coalesce(t.status, 'pending'), coalesce(t.chars, 0)
 		from attachments a join contents c on c.id = a.content_id left join texts t on t.content_id = a.content_id
-		where a.message_id=any($1) order by a.id`, ids)
+		where a.message_id=any($1) order by a.message_id, a.position`, ids)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var a Attachment
-		if err := rows.Scan(&a.ID, &a.MessageID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.BLAKE3, &a.TextStatus, &a.TextChars); err != nil {
+		if err := rows.Scan(&a.Position, &a.MessageID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.BLAKE3, &a.TextStatus, &a.TextChars); err != nil {
 			return err
 		}
 		i := byID[a.MessageID]

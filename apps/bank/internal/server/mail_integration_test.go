@@ -2,22 +2,21 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/client"
-	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
-func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
+func TestMailboxObservationsAndThreadConflictHTTP(t *testing.T) {
 	ctx := context.Background()
-	server, database := attachmentServer(t)
+	server, _ := attachmentServer(t)
 	token, err := Tokens(server.dataDir).New("mail-test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
@@ -25,26 +24,27 @@ func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
 	httpServer := httptest.NewServer(server.Handler())
 	defer httpServer.Close()
 	remote := client.New(httpServer.URL, token)
-	input := filepath.Join(t.TempDir(), "mail.eml")
-	root := []byte("Message-ID: <root@example.com>\r\nSubject: Invoice\r\n\r\nroot")
-	if err := os.WriteFile(input, root, 0600); err != nil {
-		t.Fatal(err)
+	root := "Message-ID: <root@example.com>\r\nSubject: Invoice\r\n\r\nroot"
+	child := "Message-ID: <child@example.com>\r\nIn-Reply-To: <root@example.com>\r\nSubject: Reply\r\n\r\nchild"
+	importMail := func(name, body, options string) store.RawInput {
+		t.Helper()
+		raw, err := remote.Import(ctx, "eml", name, strings.NewReader(body), json.RawMessage(options))
+		if err != nil {
+			t.Fatalf("import %s %s: %v", name, options, err)
+		}
+		return raw
 	}
 	for index, mailbox := range []string{"Work!", "Work"} {
-		observation := &eml.MailImportContext{Version: 1, Kind: "export", Mailbox: mailbox, RelativePath: "mail.eml"}
-		result, err := client.ImportFile[eml.Result](ctx, remote, "eml", "mail", input, observation)
-		if err != nil || result.MailContextVersion != 1 || result.Inserted != 1-index || result.Duplicates != index {
-			t.Fatalf("upload: %+v %v", result, err)
+		raw := importMail("mail.eml", root, `{"source": "mail", "mailbox": "`+mailbox+`"}`)
+		if raw.Report.Inserted != 1-index || raw.Report.Duplicates != index {
+			t.Fatalf("upload to %s: %+v", mailbox, raw.Report)
 		}
 	}
 	mailboxes, err := remote.ListMailboxes(ctx, "mail")
 	if err != nil || len(mailboxes) != 2 {
 		t.Fatalf("mailboxes: %+v %v", mailboxes, err)
 	}
-	child := []byte("Message-ID: <child@example.com>\r\nIn-Reply-To: <root@example.com>\r\nSubject: Reply\r\n\r\nchild")
-	if _, err := eml.Ingest(ctx, database, server.blobs, child, eml.IngestOpts{Source: "mail"}); err != nil {
-		t.Fatal(err)
-	}
+	importMail("child.eml", child, `{"source": "mail"}`)
 	groups, err := remote.BrowseThreads(ctx, store.BrowseOpts{Source: "mail", MailboxID: mailboxes[0].ID, Subject: "invoice", Limit: 10})
 	if err != nil || len(groups) != 1 || groups[0].Count != 1 {
 		t.Fatalf("filtered groups: %+v %v", groups, err)
@@ -62,16 +62,12 @@ func TestMailImportContextAndThreadConflictHTTP(t *testing.T) {
 		if err != nil || detail.Mail == nil || message.Mail == nil || !detail.Mail.HasReplyLinks || !message.Mail.HasReplyLinks {
 			t.Fatalf("mail provenance missing over HTTP: %+v %v", detail, err)
 		}
-		if message.MessageID == "root@example.com" && (detail.Mail.RawRef != detail.RawRef || len(detail.Mailboxes) != 2) {
-			t.Fatalf("archive or folder provenance lost: %+v", detail)
+		if message.MessageID == "root@example.com" && (detail.RawInput == 0 || detail.Mail.RawInput == 0 || len(detail.Mailboxes) != 2) {
+			t.Fatalf("raw input or folder provenance lost: %+v", detail)
 		}
 	}
-	if _, err := eml.Ingest(ctx, database, server.blobs, root, eml.IngestOpts{Source: "mail", ThreadID: "provider-one"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := eml.Ingest(ctx, database, server.blobs, child, eml.IngestOpts{Source: "mail", ThreadID: "provider-two"}); err != nil {
-		t.Fatal(err)
-	}
+	importMail("mail.eml", root, `{"source": "mail", "thread_id": "provider-one"}`)
+	importMail("child.eml", child, `{"source": "mail", "thread_id": "provider-two"}`)
 	_, err = remote.GetThreadPage(ctx, "mail", groups[0].ThreadID, store.ThreadOpts{Limit: 10})
 	var conflict *store.MailThreadConflictError
 	if !errors.As(err, &conflict) || len(conflict.Choices) != 2 {

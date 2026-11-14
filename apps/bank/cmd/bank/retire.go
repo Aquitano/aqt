@@ -54,7 +54,7 @@ func (c *retireCmd) Run(ctx context.Context) error {
 	for _, p := range res.Prefixes {
 		fmt.Printf("%s %q: %s, %s\n", res.Source, p.Prefix, plural(int(p.Messages), "message"), plural(int(p.Attachments), "attachment"))
 		for _, m := range p.Samples {
-			fmt.Printf("  %s  %s  %s  %s", m.Ref, m.SentAt.Format(time.DateOnly), m.ExternalID, excerpt(m.Subject, 60))
+			fmt.Printf("  %s  %s  %s  %s", m.Ref, formatSent(m.SentAt, time.DateOnly), m.ExternalID, excerpt(m.Subject, 60))
 			if m.Replacement != "" {
 				fmt.Printf("  -> %s", m.Replacement)
 			}

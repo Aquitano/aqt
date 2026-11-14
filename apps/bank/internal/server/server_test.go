@@ -1,11 +1,14 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,6 +29,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
@@ -150,11 +154,11 @@ func testServer(t *testing.T) (*Server, string) {
 		t.Fatal(err)
 	}
 	return &Server{
-		read:       &fakeReader{msgs: []store.Message{{ID: 7, Ref: "msg:0123456789abcdef", Source: "whatsapp", Body: "hi", SentAt: time.Unix(0, 0)}}},
-		blobs:      blobs,
-		dataDir:    dir,
-		archiveDir: filepath.Join(dir, "archive"),
-		catalogue:  noDisks{},
+		read:      &fakeReader{msgs: []store.Message{{ID: 7, Ref: "msg:0123456789abcdef", Source: "whatsapp", Body: "hi", SentAt: time.Unix(0, 0)}}},
+		blobs:     blobs,
+		kinds:     sources.All,
+		dataDir:   dir,
+		catalogue: noDisks{},
 	}, token
 }
 
@@ -473,15 +477,40 @@ func TestEmptyListsSerializeAsArrays(t *testing.T) {
 	}
 }
 
+// importForm is a multipart import body: the options field, then the file.
+func importForm(t *testing.T, options, name, body string) (*bytes.Buffer, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	form := multipart.NewWriter(&buf)
+	if err := form.WriteField("options", options); err != nil {
+		t.Fatal(err)
+	}
+	part, err := form.CreateFormFile("file", name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(part, body); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &buf, form.FormDataContentType()
+}
+
+// A source names rows, never a path: the options are refused before any
+// byte is stored, and stored bytes go to the content-addressed blob store.
 func TestImportRejectsUnsafeSource(t *testing.T) {
 	s, token := testServer(t)
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
-	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/import/json?source=../../escape", strings.NewReader("[]"))
+	body, contentType := importForm(t, `{"source": "../../escape"}`, "../../escape.json", "[]")
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/import/json", body)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", contentType)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -490,9 +519,18 @@ func TestImportRejectsUnsafeSource(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422", resp.StatusCode)
 	}
-	// The traversal must not have created anything next to the archive root.
-	if _, err := os.Stat(filepath.Join(filepath.Dir(filepath.Dir(s.archiveDir)), "escape")); err == nil {
-		t.Fatal("a sibling directory was created")
+	err = filepath.WalkDir(filepath.Dir(s.dataDir), func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		stored := !d.IsDir() && strings.HasPrefix(path, filepath.Join(s.dataDir, "blobs"))
+		if stored || strings.Contains(d.Name(), "escape") {
+			t.Errorf("a refused import wrote %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -510,48 +548,6 @@ func TestImportFailureSeparatesInputFromInfrastructure(t *testing.T) {
 		if !errors.As(importFailure(tc.err), &failed) || failed.GetStatus() != tc.want {
 			t.Errorf("%v: %v, want status %d", tc.err, failed, tc.want)
 		}
-	}
-}
-
-func TestPruneUploadsKeepsActiveStaging(t *testing.T) {
-	dir := t.TempDir()
-	staging := uploadStagingDir(dir)
-	if err := os.MkdirAll(staging, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mk := func(name string, age time.Duration) string {
-		p := filepath.Join(staging, name)
-		if err := os.MkdirAll(p, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(p, "payload"), []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		when := time.Now().Add(-age)
-		if err := os.Chtimes(p, when, when); err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-	stale := mk("upload-old", 48*time.Hour)
-	fresh := mk("upload-new", time.Minute)
-	other := mk("not-an-upload", 48*time.Hour)
-
-	if err := pruneUploads(dir, uploadMaxAge); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		t.Error("an abandoned staging dir survived")
-	}
-	if _, err := os.Stat(fresh); err != nil {
-		t.Error("an upload in flight was pruned")
-	}
-	if _, err := os.Stat(other); err != nil {
-		t.Error("an unrelated directory was removed")
-	}
-	// A missing staging directory is the normal case on a fresh install.
-	if err := pruneUploads(t.TempDir(), uploadMaxAge); err != nil {
-		t.Errorf("no staging dir should not be an error: %v", err)
 	}
 }
 

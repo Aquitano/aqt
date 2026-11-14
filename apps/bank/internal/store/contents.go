@@ -23,15 +23,29 @@ func upsertContent(ctx context.Context, tx pgx.Tx, d content.Digest, size int64)
 	return id, err
 }
 
-// insertAttachment stores one attachment row and the contents row it names.
-func insertAttachment(ctx context.Context, tx pgx.Tx, a Attachment) error {
+// insertAttachment stores one attachment row and the contents row it names,
+// unless the message already holds an attachment at that position.
+func insertAttachment(ctx context.Context, tx pgx.Tx, a Attachment) (bool, error) {
 	contentID, err := upsertContent(ctx, tx, a.BLAKE3, a.SizeBytes)
 	if err != nil {
-		return err
+		return false, err
 	}
-	_, err = tx.Exec(ctx, `insert into attachments (message_id, filename, mime_type, content_id) values ($1, $2, $3, $4)`,
-		a.MessageID, cleanText(a.Filename), cleanText(a.MimeType), contentID)
-	return err
+	tag, err := tx.Exec(ctx, `insert into attachments (message_id, position, filename, mime_type, content_id) values ($1, $2, $3, $4, $5)
+		on conflict (message_id, position) do nothing`,
+		a.MessageID, a.Position, cleanText(a.Filename), cleanText(a.MimeType), contentID)
+	return tag.RowsAffected() == 1, err
+}
+
+// UpsertContent records bytes already in the blob store and returns their
+// contents row.
+func (s *Store) UpsertContent(ctx context.Context, d content.Digest, size int64) (int64, error) {
+	var id int64
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		var err error
+		id, err = upsertContent(ctx, tx, d, size)
+		return err
+	})
+	return id, err
 }
 
 // ArchivePlace is one place the archive holds a content: attached to

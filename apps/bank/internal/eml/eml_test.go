@@ -235,17 +235,6 @@ const stubHTML = "<p>Sehr geehrter Herr Breindl,</p>" +
 	"ausgefuehrt. Eine gesonderte Benachrichtigung erhalten Sie in diesem Fall nicht.</p>" +
 	"<p>Mit freundlichen Gruessen<br>Ihre Musterbank</p>"
 
-// stubMail is that mail with the headers an archived copy carries.
-func stubMail(messageID string) string {
-	return "From: bank@example.com\r\nTo: thomas@example.com\r\n" +
-		"Subject: Dauerauftrag\r\nMessage-ID: <" + messageID + ">\r\n" +
-		"Date: Mon, 13 May 2024 21:08:00 +0200\r\nMIME-Version: 1.0\r\n" +
-		"Content-Type: multipart/alternative; boundary=B\r\n\r\n" +
-		"--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n" + stubPlain + "\r\n" +
-		"--B\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" + stubHTML + "\r\n" +
-		"--B--\r\n"
-}
-
 // Some senders fill the text/plain alternative with a template — a "view this
 // in HTML" line and a legal footer — and put what they actually wrote only in
 // the HTML part. Preferring plain there archives the footer and loses the mail.

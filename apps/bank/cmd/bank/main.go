@@ -34,7 +34,6 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
@@ -44,10 +43,12 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 	"github.com/aquitano/aqt/apps/bank/internal/verify"
@@ -59,7 +60,7 @@ const description = `bank — personal message archive
 Environment:
   DATABASE_URL             default ` + db.DefaultURL + `
   BANK_QUERY_DATABASE_URL  separate restricted login for ad-hoc SQL
-  BANK_DATA_DIR            default ~/.local/share/aqt-bank (blobs/, archive/, inbox/)
+  BANK_DATA_DIR            default ~/.local/share/aqt-bank (blobs/, inbox/)
   BANK_URL                 talk to a remote 'bank serve' instead of Postgres
   BANK_TOKEN               bearer token for BANK_URL (see 'bank token new')`
 
@@ -73,10 +74,10 @@ type cli struct {
 	IMAP        imapCmd        `cmd:"" name:"imap" help:"Collect IMAP mail continuously, once, or check the login."`
 	Mail        mailCmd        `cmd:"" help:"Observed folders, metadata rebuilds and thread conflicts."`
 	Import      importCmd      `cmd:"" help:"Import exports into the archive."`
-	Reimport    reimportCmd    `cmd:"" help:"Replay archived inputs through the current importer."`
+	Reimport    reimportCmd    `cmd:"" help:"Replay stored raw inputs through today's sources."`
 	Extract     extractCmd     `cmd:"" help:"Read text out of attachments."`
 	Attachment  attachmentCmd  `cmd:"" help:"Attachment content and its text."`
-	Reports     reportsCmd     `cmd:"" help:"Saved import outcomes and gaps."`
+	Reports     reportsCmd     `cmd:"" help:"Stored raw inputs and the outcome of their latest import."`
 	Library     libraryCmd     `cmd:"" help:"Media, activity, collections, files and page indexing."`
 	Search      searchCmd      `cmd:"" help:"Grouped archive search, or filtered conversations without a query."`
 	Thread      threadCmd      `cmd:"" help:"One conversation page, oldest first."`
@@ -89,7 +90,7 @@ type cli struct {
 	Coverage    coverageCmd    `cmd:"" help:"Note what a source holds (empty text clears)."`
 	Query       queryCmd       `cmd:"" help:"Read-only ad-hoc SQL: READ ONLY tx, 15s timeout, row cap 100."`
 	Fetch       fetchCmd       `cmd:"" help:"Write an attachment to a file."`
-	Verify      verifyCmd      `cmd:"" help:"Check archive integrity, optionally repair."`
+	Verify      verifyCmd      `cmd:"" help:"Check that every stored blob is present and intact."`
 	Retire      retireCmd      `cmd:"" help:"Delete messages by external id prefix, keeping tombstones."`
 	Healthcheck healthcheckCmd `cmd:"" help:"Check server and database health."`
 	Migrate     migrateCmd     `cmd:"" help:"Bring the database schema up to this build; serve also does on start."`
@@ -120,6 +121,12 @@ func run(args []string) int {
 	return 1
 }
 
+// newCLI builds the command tree, with one import command per registered
+// kind.
+func newCLI() *cli {
+	return &cli{Import: importCmd{Kinds: sources.All.Commands(runImport)}}
+}
+
 func newParser(root *cli) *kong.Kong {
 	return kong.Must(root,
 		kong.Name("bank"),
@@ -131,7 +138,7 @@ func newParser(root *cli) *kong.Kong {
 }
 
 func execute(ctx context.Context, args []string) error {
-	kctx, err := newParser(&cli{}).Parse(args)
+	kctx, err := newParser(newCLI()).Parse(args)
 	if err != nil {
 		return err
 	}
@@ -140,7 +147,7 @@ func execute(ctx context.Context, args []string) error {
 }
 
 func printUsage(w io.Writer) {
-	parser := newParser(&cli{})
+	parser := newParser(newCLI())
 	parser.Stdout = w
 	if err := printHelp(parser, nil); err != nil {
 		fmt.Fprintln(os.Stderr, "bank:", err)
@@ -225,7 +232,7 @@ func openStore(ctx context.Context) (*localDB, error) {
 	return l, nil
 }
 
-// openLocal is openStore plus the blob store and the raw archive.
+// openLocal is openStore plus the blob store and the registered kinds.
 func openLocal(ctx context.Context) (*importer.Target, func(), error) {
 	st, err := openStore(ctx)
 	if err != nil {
@@ -236,7 +243,7 @@ func openLocal(ctx context.Context) (*importer.Target, func(), error) {
 		st.Close()
 		return nil, nil, err
 	}
-	return &importer.Target{Store: st.Store, Blobs: blobs, ArchiveDir: filepath.Join(dataDir(), "archive")}, st.Close, nil
+	return &importer.Target{Store: st.Store, Blobs: blobs, Kinds: sources.All}, st.Close, nil
 }
 
 type authCmd struct {
@@ -265,7 +272,7 @@ func (c *syncCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeStore()
-	res, err := gmail.Sync(ctx, d.Store, d.Blobs, dataDir(), d.ArchiveDir, c.Full)
+	res, err := gmail.Sync(ctx, *d, dataDir(), c.Full)
 	printSyncResult(res)
 	return err
 }
@@ -353,7 +360,7 @@ func (c *searchCmd) Run(ctx context.Context) error {
 			return printJSON(groups)
 		}
 		for _, group := range groups {
-			fmt.Printf("%s  %s  %-12s  %d matching messages  %s\n", group.LastRef, group.LastAt.Format("2006-01-02"), group.Source, group.Count, group.Subject)
+			fmt.Printf("%s  %s  %-12s  %d matching messages  %s\n", group.LastRef, formatSent(group.LastAt, "2006-01-02"), group.Source, group.Count, group.Subject)
 		}
 		printMorePages(len(groups), o.Limit, o.Offset)
 		return nil
@@ -439,7 +446,7 @@ func (c *threadCmd) Run(ctx context.Context) error {
 	}
 	fmt.Printf("source:  %s\nmessages: %d\n\n", thread.Source, len(thread.Messages))
 	for _, m := range thread.Messages {
-		fmt.Printf("[%s] %s  %s\n", m.Ref, m.SentAt.Format("2006-01-02 15:04"), m.Sender)
+		fmt.Printf("[%s] %s  %s\n", m.Ref, formatSent(m.SentAt, "2006-01-02 15:04"), m.Sender)
 		printReplyInfo(m.Message)
 		if m.Subject != "" && m.Subject != title {
 			fmt.Printf("    %s\n", m.Subject)
@@ -490,7 +497,7 @@ func (c *showCmd) Run(ctx context.Context) error {
 	m := d.Message
 	printReplyInfo(m)
 	fmt.Printf("ref:     %s\nsource:  %s\nthread:  %s\nfrom:    %s\ndate:    %s\n",
-		m.Ref, m.Source, m.ThreadID, m.Sender, m.SentAt.Format(time.RFC1123))
+		m.Ref, m.Source, m.ThreadID, m.Sender, formatSent(m.SentAt, time.RFC1123))
 	if len(m.Recipients) > 0 {
 		fmt.Printf("to:      %s\n", strings.Join(m.Recipients, ", "))
 	}
@@ -533,15 +540,35 @@ func printRetired(r store.RetiredMessage, asJSON bool) error {
 	if replacement == "" {
 		replacement = "none recorded"
 	}
-	fmt.Printf("retired: %s\nsource:  %s\nexternal ID: %s\ndate:    %s\n", r.Ref, r.Source, r.ExternalID, r.SentAt.Format(time.RFC1123))
+	fmt.Printf("retired: %s\nsource:  %s\nexternal ID: %s\ndate:    %s\n", r.Ref, r.Source, r.ExternalID, formatSent(r.SentAt, time.RFC1123))
 	if r.Subject != "" {
 		fmt.Printf("subject: %s\n", r.Subject)
 	}
 	fmt.Printf("retired at: %s\nreason:  %s\nreplacement: %s\n", r.RetiredAt.Format(time.RFC1123), r.Reason, replacement)
-	if r.RawRef != "" {
-		fmt.Printf("original archive input: %s\n", r.RawRef)
+	if r.RawInput != 0 {
+		fmt.Printf("raw input: %d\n", r.RawInput)
 	}
 	return nil
+}
+
+// rawInputLabel names a raw input and where in it a record was read, or
+// nothing when the record came from none.
+func rawInputLabel(id int64, locator string) string {
+	if id == 0 {
+		return ""
+	}
+	if locator == "" {
+		return strconv.FormatInt(id, 10)
+	}
+	return fmt.Sprintf("%d, at %s", id, locator)
+}
+
+// formatSent prints a message date, or says the source gave none.
+func formatSent(t time.Time, layout string) string {
+	if t.IsZero() {
+		return "undated"
+	}
+	return t.Format(layout)
 }
 
 func printProvenance(m store.Message) {
@@ -551,7 +578,7 @@ func printProvenance(m store.Message) {
 		}
 		return value
 	}
-	fmt.Printf("external ID: %s\noriginal archive input: %s\n", recorded(m.ExternalID), recorded(m.RawRef))
+	fmt.Printf("external ID: %s\nraw input: %s\n", recorded(m.ExternalID), recorded(rawInputLabel(m.RawInput, m.RawLocator)))
 	if len(m.Mailboxes) == 0 {
 		fmt.Println("observed folders: not recorded")
 	}
@@ -559,8 +586,8 @@ func printProvenance(m store.Message) {
 		fmt.Printf("observed folder: %s (%s, historical)\n", mailbox.Path, mailbox.Kind)
 	}
 	if mail := m.Mail; mail != nil {
-		fmt.Printf("header archive input: %s\nnormalized Message-ID: %s\nIn-Reply-To: %s\nReferences: %s\nprovider thread ID: %s\nreply links: %t\ngrouping incomplete: %t\nconflict key: %s\n",
-			recorded(mail.RawRef), recorded(mail.MessageID), recorded(strings.Join(mail.InReplyTo, ", ")), recorded(strings.Join(mail.References, ", ")), recorded(mail.NativeThreadID), mail.HasReplyLinks, mail.Incomplete, recorded(mail.ConflictKey))
+		fmt.Printf("header raw input: %s\nnormalized Message-ID: %s\nIn-Reply-To: %s\nReferences: %s\nprovider thread ID: %s\nreply links: %t\ngrouping incomplete: %t\nconflict key: %s\n",
+			recorded(rawInputLabel(mail.RawInput, "")), recorded(mail.MessageID), recorded(strings.Join(mail.InReplyTo, ", ")), recorded(strings.Join(mail.References, ", ")), recorded(mail.NativeThreadID), mail.HasReplyLinks, mail.Incomplete, recorded(mail.ConflictKey))
 	}
 }
 
@@ -571,7 +598,7 @@ type backend interface {
 	ListMailboxes(context.Context, string) ([]store.Mailbox, error)
 	BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error)
 	MailConflictMessages(context.Context, string, string, ref.Message, int) (store.Thread, error)
-	ImportReports(context.Context, int64, int) ([]store.ImportReport, error)
+	RawInputs(context.Context, int64, int) ([]store.RawInput, error)
 	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
 	AttachmentMessages(context.Context, content.Digest, int, int) ([]store.Message, error)
 	GetMessageDetailByRef(ctx context.Context, cited ref.Message) (store.MessageDetail, error)
@@ -625,8 +652,11 @@ func (c *statsCmd) Run(ctx context.Context) error {
 	var total int64
 	for _, s := range stats {
 		fmt.Printf("%-12s %8d messages  %s — %s  last import %s",
-			s.Source, s.Messages, s.Earliest.Format("2006-01-02"), s.Latest.Format("2006-01-02"),
+			s.Source, s.Messages, formatSent(s.Earliest, "2006-01-02"), formatSent(s.Latest, "2006-01-02"),
 			s.LastIngest.Format("2006-01-02"))
+		if s.Undated > 0 {
+			fmt.Printf("  %d undated", s.Undated)
+		}
 		if s.LastSync != nil {
 			fmt.Printf("  synced %s", s.LastSync.Format("2006-01-02 15:04"))
 		}
@@ -672,7 +702,7 @@ type coverageCmd struct {
 
 func (c *coverageCmd) Run(ctx context.Context) error {
 	text := strings.Join(c.Text, " ")
-	if err := archive.ValidSource(c.Source); err != nil {
+	if err := ingest.ValidSource(c.Source); err != nil {
 		return err
 	}
 	b, closeBackend, err := openBackend(ctx)
@@ -821,14 +851,12 @@ func (c *fetchCmd) Run(ctx context.Context) error {
 }
 
 type verifyCmd struct {
-	Heal   bool   `help:"Rebuild what the archived raw inputs still contain."`
-	Source string `help:"Only check this source."`
-	JSON   bool   `help:"JSON output."`
+	JSON bool `help:"JSON output."`
 }
 
 func (c *verifyCmd) Run(ctx context.Context) error {
 	if client.FromEnv() != nil {
-		return fmt.Errorf("verify reads the archive and blob store directly; run it on the server, not through BANK_URL")
+		return fmt.Errorf("verify reads the blob store directly; run it on the server, not through BANK_URL")
 	}
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
@@ -836,7 +864,7 @@ func (c *verifyCmd) Run(ctx context.Context) error {
 	}
 	defer closeStore()
 
-	rep, err := verify.Run(ctx, d.Store, d.Blobs, d.ArchiveDir, verify.Options{Source: c.Source, Heal: c.Heal})
+	rep, err := verify.Run(ctx, d.Store, d.Blobs)
 	if err != nil {
 		return err
 	}
@@ -844,27 +872,15 @@ func (c *verifyCmd) Run(ctx context.Context) error {
 		return printJSON(rep)
 	}
 	for _, f := range rep.Findings {
-		state := "damaged"
-		if f.Repaired {
-			state = "repaired"
-		}
-		if f.LibraryID != "" {
-			fmt.Printf("%-9s %s %s %-20s %s\n", state, f.LibraryKind, f.LibraryID, f.Kind, f.Detail)
-		} else {
-			fmt.Printf("%-9s message %s %-20s %s\n", state, f.MessageRef, f.Kind, f.Detail)
-		}
+		fmt.Printf("%-12s %s %s (held by %d: %s)\n", f.Kind, f.BLAKE3, f.Detail, f.Holders, strings.Join(f.Uses, ", "))
 	}
-	checked := fmt.Sprintf("%d messages, %d attachments, %d library records, %d library files checked", rep.MessagesChecked, rep.AttachmentsChecked, rep.LibraryRecordsChecked, rep.LibraryFilesChecked)
 	if rep.Damaged == 0 {
-		fmt.Printf("%s: no damage found\n", checked)
+		fmt.Printf("%d contents checked: no damage found\n", rep.ContentsChecked)
 		return nil
 	}
-	fmt.Printf("%s: %s (%d repaired, %d unrecoverable)\n", checked, plural(rep.Damaged, "problem"), rep.Repaired, rep.Unrecoverable)
+	fmt.Printf("%d contents checked: %s\n", rep.ContentsChecked, plural(rep.Damaged, "problem"))
 	if len(rep.Findings) < rep.Damaged {
 		fmt.Printf("(showing the first %d findings)\n", len(rep.Findings))
-	}
-	if !c.Heal {
-		fmt.Println("run 'bank verify --heal' to rebuild what the archived raw inputs still contain")
 	}
 	return nil
 }
@@ -907,7 +923,7 @@ func (c *serveCmd) Run(ctx context.Context) error {
 	if listed, err := server.Tokens(dataDir()).List(); err == nil && len(listed) == 0 {
 		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
-	srv := server.New(st.Store, st.catalogue, blobs, dataDir(), filepath.Join(dataDir(), "archive"))
+	srv := server.New(st.Store, st.catalogue, blobs, dataDir(), sources.All)
 	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
 	return srv.ListenAndServe(ctx, c.Listen)
 }

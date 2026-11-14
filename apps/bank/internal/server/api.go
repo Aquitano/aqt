@@ -17,6 +17,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -125,8 +126,8 @@ func list[T any](v []T, err error) (*httpapi.Body[[]T], error) {
 }
 
 // Spec is the OpenAPI document bank serve answers with, built without a database.
-func Spec() ([]byte, error) {
-	return json.MarshalIndent((&Server{catalogue: attic.New(nil, "")}).registerAPI(http.NewServeMux()).OpenAPI(), "", "  ")
+func Spec(kinds importer.Registry) ([]byte, error) {
+	return json.MarshalIndent((&Server{catalogue: attic.New(nil, ""), kinds: kinds}).registerAPI(http.NewServeMux()).OpenAPI(), "", "  ")
 }
 
 type resolveInput struct {

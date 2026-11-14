@@ -34,8 +34,8 @@ go build -o bank ./cmd/bank
                                                 #  watch-history.json/.html itself)
 ./bank import chatgpt chatgpt-export.zip        # ChatGPT data export (zip or unpacked
                                                 #  dir; uploaded/generated files come
-                                                #  along as attachments, and re-importing
-                                                #  heals an earlier text-only pass)
+                                                #  along as attachments, and a later full
+                                                #  export adds files a bare JSON lacked)
 ./bank import claude claude-export.zip          # Claude.ai data export
 ./bank import netflix NetflixViewingHistory.csv --account thomas
 ./bank import youtube-media takeout.zip --account thomas
@@ -63,7 +63,7 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank search "typo-tolerannt query" --json     # agents consume this
 ./bank search "invoice" --limit 50 --offset 50  # the next page
 ./bank show msg:9454d9440ade1088                # the ref a citation carries
-./bank show msg:9454d9440ade1088 --provenance   # archived input and mail grouping evidence
+./bank show msg:9454d9440ade1088 --provenance   # raw input and mail grouping evidence
 ./bank ref content:3f9a1c2b4d5e6f70             # what any ref names, and where its bytes are
 ./bank thread "Alice" --source whatsapp --around msg:9454d9440ade1088 --limit 100
                                                 # context centered on a search hit
@@ -75,16 +75,15 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank query "select source, count(*) from messages group by 1"
                                                 # read-only ad-hoc SQL: READ ONLY tx,
                                                 # 15s timeout, row cap — analytics only
-./bank verify --heal                            # check the archive, repair what the raw inputs allow
-./bank reimport chatgpt                         # replay archived exports through today's importer
-./bank reimport mbox --heal-bodies              # dry run: mail whose archived raw parses longer
-./bank reimport mbox --heal-bodies --apply      # write those bodies
+./bank verify                                   # hash every stored blob the database names
+./bank reimport chatgpt                         # replay stored ChatGPT inputs through today's importer
+./bank reimport                                 # replay every stored raw input
 ./bank retire --source youtube --external-prefix watch:  # dry run; --apply deletes, leaving tombstones
 ```
 
 ## Remote use
 
-When Postgres lives on a VPS, run the server there in a container (`COMPOSE_PROFILES=server docker compose up -d`, published on a Tailscale address — there is no TLS) and set two env vars on the laptop. `search`, `show`, `stats`, `import` and `fetch` then go over HTTP, so rows, blobs and raw archives always land on the same box.
+When Postgres lives on a VPS, run the server there in a container (`COMPOSE_PROFILES=server docker compose up -d`, published on a Tailscale address — there is no TLS) and set two env vars on the laptop. `search`, `show`, `stats`, `import` and `fetch` then go over HTTP, so rows, blobs and raw inputs always land on the same box.
 
 ```sh
 export BANK_URL=http://vps.tailnet.ts.net:8480
@@ -119,7 +118,7 @@ Attachment storage and text extraction have different coverage. Audio, video, ar
 
 Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at. `bank extract --ocr` reads them wherever tesseract is installed: on the deployed box that is a worker draining the queue on a timer, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <blake3> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no later pass overwrites it. `BANK_EXTRACT=off` or `bank import --no-extract` leaves attachment text alone entirely.
 
-Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, raw archives, inbox; default `~/.local/share/aqt-bank`), `BANK_EXTRACT`.
+Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, which include raw inputs, and the inbox; default `~/.local/share/aqt-bank`), `BANK_EXTRACT`.
 
 For automatic IMAP collection from Proton Bridge, Gmail or another provider,
 see [IMAP.md](IMAP.md) and [imap.example.json](imap.example.json). The collector
@@ -159,7 +158,7 @@ Every record that can be cited has one written form, `kind:value` in lowercase h
 
 `bank show`, `bank thread`, `bank ref`, `bank library get`, attic's commands and every route that takes a ref accept only this form. A bare value, an uppercase one or a message row number is rejected. Messages have no public row number; JSON names them by `ref` alone.
 
-LinkedIn conversations use the export's conversation ID. Run `bank reimport linkedin` on the server after upgrading to repair previously title-keyed conversations. It preserves message IDs and bodies.
+LinkedIn conversations use the export's conversation ID.
 
 ## Check database behavior
 
@@ -167,15 +166,31 @@ LinkedIn conversations use the export's conversation ID. Run `bank reimport link
 
 The retrieval cases in `internal/store/search_quality_integration_test.go` check exact and fuzzy ranking, all-word matches across fields, phrase order, and attachment-only matches. Run them with `go test ./internal/store -run TestSearchRetrievalCases`.
 
+## Raw inputs and replay
+
+Bank stores every input in the blob store and records it as a raw input before it parses it. That covers a file or directory given to `bank import`, an upload, an inbox file, each message Gmail sync or the IMAP collector fetches, and each `bank library index` publication. A directory is packed into one zip named `<dir>.zip`, so its media comes along. The same bytes under the same name and options are one raw input. Importing them again reruns that input and replaces its report.
+
+A kind's options are the flags of `bank import <kind>`, such as `--source`, `--account`, `--date-order` or `--mailbox`. They are stored with the raw input, so a replay reads the input the same way. An unknown option is an error. Over HTTP, `POST /v1/import/<kind>` takes a multipart upload with an optional `options` field holding the options as JSON, followed by the `file` field.
+
+When parsing fails, the raw input records status `failed` and the error, and its bytes stay stored. `bank reimport [kind...]` replays every stored raw input of those kinds, or of every kind, in id order through today's importers. It runs on the server. Imports skip messages that already exist, so a replay adds messages and attachments an earlier run missed and leaves stored messages as they were.
+
+## Undated messages
+
+A message whose source gives no date has no `sent_at`. It sorts before every dated message: first in a thread read oldest first, and last in newest-first lists such as browse, contact history and search ties. `--since`, `--until` and `bank timeline` leave undated messages out. `bank stats` counts them as `undated`, and JSON omits `sent_at` for them.
+
+## Import generic JSON
+
+`bank import json` reads a JSON array, a single object or NDJSON, from a file or from stdin with `-`. Each entry needs `body` or `subject` and can carry `source`, `external_id`, `thread`, `sender`, `recipients`, `sent_at` and `attachments`. An entry with an unknown field is rejected. An attachment is `{"filename": "report.pdf", "mime_type": "application/pdf", "data": "<base64>"}`, where `filename` is required and `data` holds the bytes as standard base64. The bytes travel inside the input, so the same file imports locally, over `BANK_URL` and on replay. `sent_at` takes RFC 3339, `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DD` or unix seconds. A time without a zone is read as UTC, and a missing or null `sent_at` leaves the message undated. Without `external_id`, the ID is a hash of the source, thread, sender, subject, body and `sent_at` as written in the file.
+
 ## Import reports, files, and branches
 
-The browser's **Imports** tab keeps every import attempt, including failures and
-unfinished runs. Reports record messages inserted, duplicates, newly preserved
-files counted by content hash, missing media, unsupported content, and parser
-diagnostics where the importer provides them. Unmeasured counters say
-"Not measured". Reports start with imports made after this update; earlier
-imports have no historical report. Reimporting creates a new report and keeps
-the previous one.
+The browser's **Imports** tab and `bank reports` list raw inputs newest first, each
+with the report of its latest import, including failures and unfinished runs. A
+report counts messages inserted, duplicates, retired messages, attachments and
+library records, and counts issues by kind: `missing_media`, `rejected`,
+`skipped`, `unsupported`, `damaged`, `incomplete` and `dropped`. It keeps the
+first 100 issue details. The status is `gaps` when any issue other than
+`dropped` occurred.
 
 ```sh
 bank reports --json
@@ -215,7 +230,6 @@ outside the loaded page. Claude imports retain explicit parent IDs when the
 export supplies them. `bank show`, `bank thread`, and their JSON output include
 the relationships.
 
-Reimport existing ChatGPT exports to fill in branch metadata. Reimporting keeps
-message IDs and existing bodies. A bare ChatGPT JSON export retains asset-only
+Reimporting keeps message IDs and existing bodies. A bare ChatGPT JSON export retains asset-only
 messages and reports their missing files; importing the full export later can
 restore those attachments.

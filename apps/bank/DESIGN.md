@@ -11,7 +11,7 @@ Bank stores correspondence, a personal media library, activity, collections, fil
 | Hosting       | VPS, LUKS-encrypted data volume, restic encrypted backups, everything in containers                                                     | Accepts that a running box is readable by the provider; protects disks at rest and backups. The server runs non-root on a read-only rootfs from a distroless image with no shell, so a bug in the process that serves the archive over a network port reaches as little as possible |
 | Sync model    | Pull-based: `bank sync` via cron; `bank imap` polls configured IMAP folders; manual sources land in an inbox dir swept by `bank import` | Gmail sync runs on the archive host. The optional IMAP daemon runs beside Proton Bridge or another IMAP endpoint, keeps local SQLite checkpoints, and uploads through the existing import API. The optional OCR worker drains attachment work on a timer.                           |
 | Interface     | CLI, `--json` on every read command                                                                                                     | Humans get text, agents get JSON; MCP wrapper can come later                                                                                                                                                                                                                        |
-| Remote access | `bank serve` in the same binary, CLI switches to HTTP when `BANK_URL` is set, bearer tokens hashed in `$BANK_DATA_DIR/tokens`, no TLS   | A laptop CLI against a remote `DATABASE_URL` writes blobs and archives locally while rows go to the VPS — split-brain. One binary means no second artifact to build or deploy; Tailscale is the transport security, so the server only needs authentication                         |
+| Remote access | `bank serve` in the same binary, CLI switches to HTTP when `BANK_URL` is set, bearer tokens hashed in `$BANK_DATA_DIR/tokens`, no TLS   | A laptop CLI against a remote `DATABASE_URL` writes blobs and raw inputs locally while rows go to the VPS, a split brain. One binary means no second artifact to build or deploy; Tailscale is the transport security, so the server only needs authentication                      |
 | Scope         | Full history, all attachments                                                                                                           | Attachments are content-addressed (BLAKE3) so duplicates are free                                                                                                                                                                                                                   |
 
 ## Source acquisition
@@ -32,21 +32,24 @@ Deliberately inside ToS everywhere. If WhatsApp manual export gets old, the esca
 
 ## Data model
 
-Correspondence normalizes to `messages`; source-specific richness stays in the raw archive. Media and personal tracking use separate typed tables. Their search projections do not change message identities or citations.
+Correspondence normalizes to `messages`. Source-specific detail stays in the stored raw inputs. Media and personal tracking use separate typed tables. Their search projections do not change message identities or citations.
 
-- `messages(id, ref, source, external_id, thread_id, sender, recipients[], subject, body, sent_at, raw_ref, ingested_at)`
+- `raw_inputs(id, kind, content_id, name, options, received_at, finished_at, status, report, error)`, unique on `(kind, content_id, name, options)`. Every input is stored in the blob store and recorded here before it is parsed: a CLI file or directory, an upload, an inbox file, a Gmail-synced or IMAP-collected message, and a `bank library index` publication. `options` holds the kind's typed options, which are the flags of `bank import <kind>`. `status` is `running`, `complete`, `gaps` or `failed`, and `report` holds the latest import's report. Importing the same input again reruns its row and replaces the report. `bank reimport [kind...]` reads this table in id order through today's sources.
+- `messages(id, ref, source, external_id, thread_id, sender, recipients[], subject, body, sent_at, sort_at, raw_input_id, raw_locator, ingested_at)`
+  - `raw_input_id` names the raw input the message was read from, and `raw_locator` says where inside it, such as `message 12`, `entry 4` or a conversation in `conversations.json`.
+  - `sent_at` is null when the source gives no date. The generated `sort_at = coalesce(sent_at, '-infinity')` drives every ordering and page cursor, so an undated message sorts before every dated one. Date filters and the timeline leave it out.
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.
   - Sources without stable IDs derive one: WhatsApp from `sha256(thread|sent_at|sender|body)`, YouTube from `sha256(video|second watched)`, falling back to the title for a record whose export names no video — overlapping Takeout exports of the same watch collapse, a second watch of the same video does not. Which URL forms yield a video id therefore decides identity, not just parsing.
   - Citations use `ref`, never `id`. `id` is a row serial that rebuilding the archive reassigns, so it stays inside the server for joins and no route, flag or JSON field exposes it. The ref is `msg:` and the first 16 hex characters of `sha256(source || 0x00 || field || 0x00 || value)`, where `field` is `message_id` and `value` the RFC 822 Message-ID when the message has one, and otherwise `external_id` and the source's external id. Hashing which field was used keeps an external id that spells some mail's Message-ID from sharing its ref. `ref.ForMessage` computes it once, at insert, into a `unique` column. A different message whose ref is already taken fails the import instead of being skipped as a duplicate, and a lookup by ref reads the unique index.
   - `thread_id` is the source's own conversation id wherever there is one — ChatGPT `conversation_id`, Claude.ai `uuid`, a Discord channel id — and the human title lives in `subject`. Titles repeat ("New chat", a #general on every server) and get renamed, so keying threads on them merged unrelated conversations and split renamed ones.
 - `contents(id, blake3, size_bytes)` — the one identity bytes have, shared with the catalogue of files on disks. A message attachment, a library file and a file on a disk with the same bytes point at one row.
-- `attachments(id, message_id, filename, mime_type, content_id)` — bytes live in the blob store, not the DB.
+- `attachments(message_id, position, filename, mime_type, content_id)`, keyed on `(message_id, position)`. `position` is the attachment's place in the record the source read, so a repeated or concurrent import writes each attachment once, and a later, fuller export adds the missing ones at their positions. The bytes live in the blob store, not the database.
 - `texts(content_id, status, extractor, detail, text, chars)` + a denormalized `messages.attachment_text` — text read out of attachments and disk files, keyed on content so a document attached to forty messages, or already read by a disk scan, is extracted once. Text longer than the cap is cut and stored as `truncated`; `manual` text is never overwritten by an extractor. The column is what the BM25 index sees; `store.RefreshAttachmentText` recomputes it in one idempotent statement, so there is no trigger and no bookkeeping to drift. `bank extract` and text edits recompute every message; the passes after an upload pass a cutoff and recompute only messages whose attachments were stored or extracted since the previous pass began. One index means one score and working snippets; two indexes would mean inventing a fusion rule.
 - `contacts(id, name, note)` + `contact_aliases(contact_id, source, value, value_norm)` — one person, many source-specific identities. Aliases are attached by hand and match everywhere unless scoped to a source; nothing merges automatically, so a wrong attachment is undone by detaching it and the identity each source recorded is never rewritten.
-- `message_tombstones(source, external_id, message_id, ref, …, replacement, retired_at)` — rows `bank retire` deleted. Imports skip a tombstoned `(source, external_id)` and, for mail, a tombstoned `(source, message_id)`: mail ingest matches a Message-ID before an external id, so a retired mail can come back from another export under a new external id. `bank show` resolves a tombstoned ref to the tombstone, whose `ref` is unique like the message's was.
-- BM25 index over `subject, body, sender, recipients, attachment_text` via `pg_search`; results are ordered by score, then `sent_at`, then `id` — the id is what makes it a total order, so a page means the same thing twice. Paging is `--offset`, capped at 10000: every offset re-ranks the whole match set, and past that narrowing the query beats paging through it. Search defaults to any-word matching; `--match all` requires each whitespace-separated term across the searchable fields, and `--match phrase` requires adjacent tokens in order within one field. Exact matches receive additional weight and subject matches receive three times the field weight. Fuzzy matching uses `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
+- `message_tombstones(source, external_id, message_id, ref, …, raw_input_id, replacement, retired_at)` holds the rows `bank retire` deleted. Imports skip a tombstoned `(source, external_id)` and, for mail, a tombstoned `(source, message_id)`: mail ingest matches a Message-ID before an external id, so a retired mail can come back from another export under a new external id. `bank show` resolves a tombstoned ref to the tombstone, whose `ref` is unique like the message's was.
+- BM25 index over `subject, body, sender, recipients, attachment_text` via `pg_search`; results are ordered by score, then `sort_at`, then `id`. The id is what makes it a total order, so a page means the same thing twice. Paging is `--offset`, capped at 10000: every offset re-ranks the whole match set, and past that narrowing the query beats paging through it. Search defaults to any-word matching; `--match all` requires each whitespace-separated term across the searchable fields, and `--match phrase` requires adjacent tokens in order within one field. Exact matches receive additional weight and subject matches receive three times the field weight. Fuzzy matching uses `paradedb.match(..., distance => n)`; match snippets from `paradedb.snippet`, with a locally cut window as the fallback (the engine produces no highlight for fuzzy matches).
 
-Thread pages are ordered by `(sent_at, id)` and take a message ref as the cursor, scoped by source and thread ID. `--around` centers a page on a search hit; `--before`, `--after`, and `--latest` reach the rest of the history. The browser uses `GET /v1/threads` for typed conversation summaries instead of assembling SQL.
+Thread pages are ordered by `(sort_at, id)` and take a message ref as the cursor, scoped by source and thread ID. `--around` centers a page on a search hit; `--before`, `--after`, and `--latest` reach the rest of the history. The browser uses `GET /v1/threads` for typed conversation summaries instead of assembling SQL.
 
 Email retrieval adds typed, rebuildable projections rather than a general metadata bag. `mailboxes` and `mailbox_messages` record exact historical folder observations. `mail_details`, source-scoped `mail_thread_nodes`, and message-owned `mail_thread_edges` retain bounded reply-header evidence. Multiple canonical rows can share a normalized RFC node without changing deduplication or citations. Metadata writes take a source advisory lock and commit membership, graph facts, thread IDs, and aliases together.
 
@@ -55,16 +58,14 @@ Provider thread IDs remain authoritative. Generic mail uses deterministic derive
 ## Filesystem layout (`$BANK_DATA_DIR`, default `~/.local/share/aqt-bank`)
 
 ```
-blobs/ab/abcdef…        content-addressed attachments (BLAKE3, two-char fan-out)
-archive/<source>/.mail-contexts/<sha256>.json  immutable mail provenance, included in backups
-archive/<source>/…      raw correspondence inputs (mbox, zips, CSV, EML)
-archive/library/<source>/…  raw library imports and Markdown publications
+blobs/ab/abcdef…        content-addressed attachments, library files and raw inputs (BLAKE3, two-char fan-out)
 inbox/<kind>/           drop zone for manual exports; `bank import inbox` sweeps supported import kinds
 inbox/.done/<kind>/     processed exports, including duplicates
 inbox/.rejected/<kind>/ exports the importer could not read; operational failures stay in the drop zone
+tmp/                    extraction staging
 ```
 
-The `youtube` correspondence importer archives only the Takeout history file. Library inputs stay separate from correspondence replay. Earlier raw references remain valid.
+The `youtube` and `youtube-media` importers store the whole Takeout they are given as the raw input, not only the history file, so a full Takeout can take gigabytes.
 
 ## CLI
 
@@ -90,7 +91,9 @@ bank ref <ref> [--json]                 # what any ref names, and where the same
 bank stats [--json]                     # counts, date ranges, last import, last sync, coverage
 bank coverage <source> <text>           # note what a source holds (empty text clears)
 bank fetch <blake3> [-o path]           # write an attachment to a file
-bank verify [--heal] [--source s]       # archive integrity; --heal rebuilds from archived raw inputs
+bank verify [--json]                    # hash every content the database names; repairs nothing
+bank reimport [kind...]                 # replay stored raw inputs through today's sources
+bank reports [--before id] [--json]     # raw inputs, newest first, with their latest report
 bank retire --source s --external-prefix p… [--replacement-map f] [--reason r] [--apply]
                                         # delete messages by prefix, leaving tombstones (dry run by default)
 bank serve [--listen addr]              # HTTP API for remote CLIs (default 127.0.0.1:8480)
@@ -110,7 +113,7 @@ Migrations are embedded in the binary. `bank migrate` and `bank serve` apply the
 5. ~~Generic JSON~~ — `bank import json` (array or NDJSON, stdin-friendly): the escape hatch for agents and one-off sources.
 6. ~~Client/server~~ — `bank serve` (stdlib HTTP, token auth), remote CLI via `BANK_URL`, `bank fetch` for attachment bytes.
 7. Deploy — see DEPLOY.md (LUKS volume, containerized server and CLI, headless Gmail auth, restic, cron). Pending: actually provisioning the VPS.
-8. ~~Integrity and retrieval~~ — `bank import inbox` sweep, `bank thread`, `bank verify --heal`, recipient search, match snippets, source freshness in stats.
+8. ~~Integrity and retrieval~~: `bank import inbox` sweep, `bank thread`, `bank verify`, recipient search, match snippets, source freshness in stats.
 9. ~~Identity~~ — `bank contact`: a canonical person with manually attached aliases, `--person` search, and an advisory `contact suggest`. Deliberately no automatic merging: mis-attributing someone's messages is worse than typing an alias, and every attachment is reversible because messages are never rewritten.
 10. ~~Attachment text~~ — `bank extract`, `bank attachment`: PDFs, Office and OpenDocument files, HTML and text become searchable inside. See below.
 11. Open, needing a design decision first: `bank mcp`, if an MCP wrapper ever beats the CLI. pgvector hybrid semantic search was considered and dropped (#30): remote embedding contradicts the threat model, local embedding needs cgo or a sidecar, and the lifecycle would be permanent upkeep in a system whose point is having no second search engine to sync.

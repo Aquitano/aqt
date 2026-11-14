@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/jackc/pgx/v5"
 )
@@ -50,15 +49,7 @@ func (s *Store) ImportLibrary(ctx context.Context, batch library.ImportBatch) (l
 	if err = tx.Commit(ctx); err != nil {
 		return library.ImportResult{}, err
 	}
-	countLibraryImported(ctx, result, batch.Files)
 	return result, nil
-}
-
-func countLibraryImported(ctx context.Context, r library.ImportResult, files []library.File) {
-	countImported(ctx, r.Items+r.Activity+r.Collections+r.Pages, content.Digest{})
-	for _, f := range files {
-		countImported(ctx, 0, f.BLAKE3)
-	}
 }
 
 func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (library.ImportResult, error) {
@@ -77,7 +68,7 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
    creators=case when cardinality(excluded.creators)>0 then excluded.creators else library_items.creators end,
    series=coalesce(nullif(excluded.series,''),library_items.series),album=coalesce(nullif(excluded.album,''),library_items.album),
    year=coalesce(excluded.year,library_items.year),season=coalesce(excluded.season,library_items.season),episode=coalesce(excluded.episode,library_items.episode),
-   duration_seconds=coalesce(excluded.duration_seconds,library_items.duration_seconds),provenance=case when coalesce(excluded.provenance->>'raw_ref','')<>'' then excluded.provenance else library_items.provenance end returning xmax=0`,
+   duration_seconds=coalesce(excluded.duration_seconds,library_items.duration_seconds),provenance=case when coalesce((excluded.provenance->>'raw_input')::bigint,0)<>0 then excluded.provenance else library_items.provenance end returning xmax=0`,
 			id, v.Source, v.Account, v.ExternalID, v.Kind, v.Title, v.Description, v.URL, v.Provider, v.ProviderID, libraryStrings(v.Creators), v.Series, v.Album, v.Year, v.Season, v.Episode, v.DurationSeconds, v.Provenance, strings.Join([]string{v.Title, v.Description, strings.Join(v.Creators, " "), v.Series, v.Album, v.Provider, v.ProviderID}, " ")).Scan(&inserted)
 		if err != nil {
 			return r, err
@@ -89,20 +80,20 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 		}
 	}
 	if len(b.Items) > 0 {
-		itemIDs, rawRefs, locators := []string{}, []string{}, []string{}
+		itemIDs, rawInputs, locators := []string{}, []int64{}, []string{}
 		for _, item := range b.Items {
 			evidence := append([]library.Provenance{item.Provenance}, item.Evidence...)
 			for _, reference := range evidence {
-				if reference.RawRef == "" {
+				if reference.RawInput == 0 {
 					continue
 				}
 				itemIDs = append(itemIDs, library.StableID("item", item.Identity))
-				rawRefs = append(rawRefs, reference.RawRef)
+				rawInputs = append(rawInputs, reference.RawInput)
 				locators = append(locators, reference.Locator)
 			}
 		}
 		if len(itemIDs) > 0 {
-			if _, err := tx.Exec(ctx, `insert into library_item_evidence(item_id,raw_ref,locator) select unnest($1::text[]),unnest($2::text[]),unnest($3::text[]) on conflict do nothing`, itemIDs, rawRefs, locators); err != nil {
+			if _, err := tx.Exec(ctx, `insert into library_item_evidence(item_id,raw_input_id,locator) select unnest($1::text[]),unnest($2::bigint[]),unnest($3::text[]) on conflict do nothing`, itemIDs, rawInputs, locators); err != nil {
 				return r, err
 			}
 		}
@@ -116,10 +107,6 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 	}
 	for _, v := range b.Activity {
 		id, err := libraryID("activity", v.Identity, v.ID)
-		if err != nil {
-			return r, err
-		}
-		id, err = reconcileNetflixActivity(ctx, tx, id, v)
 		if err != nil {
 			return r, err
 		}
@@ -150,10 +137,10 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 			r.Duplicates++
 		}
 		for _, reference := range append([]library.Provenance{v.Provenance}, v.Evidence...) {
-			if reference.RawRef == "" {
+			if reference.RawInput == 0 {
 				continue
 			}
-			if _, err = tx.Exec(ctx, `insert into library_activity_evidence(activity_id,raw_ref,locator) values($1,$2,$3) on conflict do nothing`, id, reference.RawRef, reference.Locator); err != nil {
+			if _, err = tx.Exec(ctx, `insert into library_activity_evidence(activity_id,raw_input_id,locator) values($1,$2,$3) on conflict do nothing`, id, reference.RawInput, reference.Locator); err != nil {
 				return r, err
 			}
 		}
@@ -328,7 +315,6 @@ func (s *Store) PublishLibraryPages(ctx context.Context, source, account string,
 	if err = tx.Commit(ctx); err != nil {
 		return library.ImportResult{}, err
 	}
-	countLibraryImported(ctx, result, nil)
 	return result, nil
 }
 

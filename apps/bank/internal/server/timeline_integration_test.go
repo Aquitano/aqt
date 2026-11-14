@@ -29,7 +29,7 @@ func TestTimelineMergesMessagesActivityAndFiles(t *testing.T) {
 	if _, err := s.db.InsertMessages(ctx, []store.Message{
 		{Source: "whatsapp", ExternalID: "in", Sender: "alice", Body: "lunch?", SentAt: sent},
 		{Source: "whatsapp", ExternalID: "out", Sender: "alice", Body: "next week", SentAt: sent.AddDate(0, 0, 7)},
-	}, store.InsertMessagesOpts{}); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 	day := time.Date(2026, 8, 14, 0, 0, 0, 0, time.Local)

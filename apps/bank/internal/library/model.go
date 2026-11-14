@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -29,9 +28,11 @@ type Date struct {
 	Precision string `json:"precision"`
 }
 
+// Provenance names the raw input a record was read from and where inside it.
+// RawInput is zero for a record nobody imported, such as a manual item.
 type Provenance struct {
-	RawRef  string `json:"raw_ref"`
-	Locator string `json:"locator"`
+	RawInput int64  `json:"raw_input"`
+	Locator  string `json:"locator"`
 }
 
 type Item struct {
@@ -457,18 +458,8 @@ func (b ImportBatch) Validate() error {
 }
 
 func (p Provenance) Validate() error {
-	if p.RawRef == "" {
-		return nil
-	}
-	reference := strings.ReplaceAll(p.RawRef, "\\", "/")
-	reference = strings.TrimPrefix(reference, "input:")
-	if !filepath.IsLocal(reference) || reference == "" || strings.HasPrefix(reference, "/") || strings.ContainsAny(reference, ":\x00") {
-		return fmt.Errorf("raw_ref must be a relative archive reference")
-	}
-	for _, part := range strings.Split(reference, "/") {
-		if part == ".." {
-			return fmt.Errorf("raw_ref cannot contain parent traversal")
-		}
+	if p.RawInput < 0 || len(p.Locator) > 4096 || strings.ContainsRune(p.Locator, 0) {
+		return fmt.Errorf("provenance needs a raw input id and a locator under 4096 bytes")
 	}
 	return nil
 }

@@ -110,15 +110,14 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 			       min(a.filename) as filename,
 			       min(a.mime_type) as mime_type,
 			       count(distinct a.message_id) as messages,
-			       max(a.newest) as newest,
-			       max(a.attachment_id) as attachment_id
+			       max(a.newest) as newest
 			from (
                 select a.content_id,a.filename,a.mime_type,a.message_id,
-                       coalesce(a.ingested_at,m.ingested_at) as newest,a.id as attachment_id,m.source
+                       a.ingested_at as newest,m.source
                 from attachments a join messages m on m.id=a.message_id
                 union all
                 select f.content_id,f.filename,f.mime_type,null::bigint,
-                       f.ingested_at,0::bigint,f.source
+                       f.ingested_at,f.source
                 from library_files f
             ) a` + where + `
 			group by a.content_id
@@ -130,7 +129,7 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 	}
 	order := "c.size_bytes desc"
 	if o.NewestFirst {
-		order = "b.newest desc, b.attachment_id desc"
+		order = "b.newest desc, b.content_id desc"
 	}
 	sql += " order by " + order + ", c.blake3 limit " + next(o.Limit)
 
@@ -255,7 +254,7 @@ func (s *Store) RefreshAttachmentText(ctx context.Context, since time.Time) (int
 		set attachment_text = c.txt
 		from (
 			select a.message_id,
-			       left(coalesce(string_agg(t.text, ' ' order by a.id), ''), $1) as txt
+			       left(coalesce(string_agg(t.text, ' ' order by a.position), ''), $1) as txt
 			from attachments a
 			left join texts t on t.content_id = a.content_id and t.text <> ''
 			`+scope+`

@@ -54,13 +54,9 @@ func TestMalformedIdentifiersDoNotBreakInsertion(t *testing.T) {
 	if err != nil || byMessageID != id {
 		t.Fatalf("FindByEmailMessageID = %d, %v; want %d", byMessageID, err, id)
 	}
-	has, err := st.HasMessage(ctx, "proton", badExternal)
-	if err != nil || !has {
-		t.Fatalf("HasMessage = %v, %v", has, err)
-	}
 }
 
-func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
+func TestInsertMessagesBatchesInOrder(t *testing.T) {
 	ctx := context.Background()
 	st, dsn := storetest.NewNamed(t)
 	const n = 1005 // crosses the store's protocol-batch boundary
@@ -74,7 +70,7 @@ func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
 	}
 	// A duplicate inside the same call must preserve result alignment.
 	messages = append(messages, messages[0])
-	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{})
+	ids, err := st.InsertMessages(ctx, messages)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +82,7 @@ func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
 		t.Fatalf("rows = %d, want %d", rows, n)
 	}
 
-	again, err := st.InsertMessages(ctx, messages[:n], store.InsertMessagesOpts{})
+	again, err := st.InsertMessages(ctx, messages[:n])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,28 +90,6 @@ func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
 		if id != 0 {
 			t.Fatalf("unchanged row %d returned id %d", i, id)
 		}
-	}
-
-	newAt := at.Add(time.Hour)
-	rethreaded, err := st.InsertMessages(ctx, []store.Message{
-		{Source: "batch", ExternalID: "m-0000", ThreadID: "new", Subject: "new subject", Body: "must not replace body", SentAt: newAt},
-		{Source: "batch", ExternalID: "fresh", ThreadID: "new", Subject: "fresh", Body: "fresh body", SentAt: newAt},
-	}, store.InsertMessagesOpts{Rethread: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rethreaded[0] != 0 || rethreaded[1] == 0 {
-		t.Fatalf("rethread results = %v, want duplicate then insert", rethreaded)
-	}
-	got, _, err := st.GetMessage(ctx, ids[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ThreadID != "new" || got.Subject != "new subject" || !got.SentAt.Equal(newAt) {
-		t.Errorf("derived fields were not updated: %+v", got)
-	}
-	if got.Body != "body 0" {
-		t.Errorf("rethread replaced body with %q", got.Body)
 	}
 }
 
@@ -125,15 +99,15 @@ func TestInsertMessagesCleansWholeBatchBeforeWriting(t *testing.T) {
 	_, err := st.InsertMessages(ctx, []store.Message{
 		{Source: "batch", ExternalID: "valid", Body: "would otherwise land", SentAt: time.Now()},
 		{Source: "batch", Body: "missing external id", SentAt: time.Now()},
-	}, store.InsertMessagesOpts{})
+	})
 	if err == nil {
 		t.Fatal("invalid message did not reject the batch")
 	}
-	has, err := st.HasMessage(ctx, "batch", "valid")
+	found, err := st.FindMessageID(ctx, "batch", "valid")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if has {
+	if found != 0 {
 		t.Fatal("valid prefix was written before the invalid message was rejected")
 	}
 }
@@ -401,50 +375,4 @@ func asAmbiguous(err error, target **store.AmbiguousThreadError) bool {
 	}
 	*target = amb
 	return true
-}
-
-// The body healer is the only write allowed past "a re-import never overwrites
-// a body", so the rule that keeps it safe — strictly more text wins, nothing
-// else moves — is what this pins down.
-func TestSetLongerMessageBodyOnlyGrows(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
-
-	const stub = "Diese Nachricht ist im HTML-Format."
-	const full = "Ihr Dauerauftrag ueber 450,00 EUR an Hausverwaltung Meier wurde eingerichtet."
-
-	id, err := st.InsertMessage(ctx, msg("gmail", "stub@example.com", store.Message{
-		MessageID: "stub@example.com", Sender: "bank@example.com", Subject: "Dauerauftrag", Body: stub,
-	}))
-	if err != nil || id == 0 {
-		t.Fatalf("seed: %d %v", id, err)
-	}
-
-	for _, tc := range []struct {
-		name string
-		body string
-		want bool
-	}{
-		{"longer wins", full, true},
-		{"equal is left alone", full, false},
-		{"shorter never shrinks the row", stub, false},
-		{"whitespace is not text", full + "\n\n\t  ", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			healed, err := st.SetLongerMessageBody(ctx, id, tc.body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if healed != tc.want {
-				t.Errorf("healed = %v, want %v", healed, tc.want)
-			}
-			_, body, err := st.MessageBody(ctx, id)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if body != full {
-				t.Errorf("body = %q, want %q", body, full)
-			}
-		})
-	}
 }

@@ -2,8 +2,6 @@ package store_test
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -15,44 +13,6 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
-func TestImportReportRetainsPartialFailureAndNestedCounts(t *testing.T) {
-	st := storetest.New(t)
-	ctx := context.Background()
-	failure := errors.New("unreadable asset")
-	_, err := store.RunImport(ctx, st, "chatgpt", "export.zip", func(ctx context.Context) (map[string]int, error) {
-		_, err := store.RunImport(ctx, st, "nested", "part", func(ctx context.Context) (int, error) {
-			_, err := st.InsertMessages(ctx, []store.Message{{Source: "chatgpt", ExternalID: "a", SentAt: time.Now()}, {Source: "chatgpt", ExternalID: "b", SentAt: time.Now()}}, store.InsertMessagesOpts{})
-			return 0, err
-		})
-		if err != nil {
-			return nil, err
-		}
-		store.ImportIssue(ctx, "Missing asset file-x")
-		return map[string]int{"missing_media": 1}, failure
-	})
-	if !errors.Is(err, failure) {
-		t.Fatal(err)
-	}
-	reports, err := st.ImportReports(ctx, 0, 50)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(reports) != 1 || reports[0].Status != "failed" || reports[0].FinishedAt == nil || reports[0].Error != failure.Error() {
-		t.Fatalf("reports: %+v", reports)
-	}
-	var result struct {
-		Inserted int      `json:"inserted"`
-		Missing  int      `json:"missing_media"`
-		Issues   []string `json:"issues"`
-	}
-	if err := json.Unmarshal(reports[0].Result, &result); err != nil {
-		t.Fatal(err)
-	}
-	if result.Inserted != 2 || result.Missing != 1 || len(result.Issues) != 1 {
-		t.Fatalf("result: %+v", result)
-	}
-}
-
 func TestAttachmentLibraryFiltersAndFindsEveryOccurrence(t *testing.T) {
 	st := storetest.New(t)
 	ctx := context.Background()
@@ -61,7 +21,7 @@ func TestAttachmentLibraryFiltersAndFindsEveryOccurrence(t *testing.T) {
 		{Source: "mail", ExternalID: "a", Sender: "alice@example.com", SentAt: at},
 		{Source: "mail", ExternalID: "b", Sender: "bob@example.com", Recipients: []string{"alice@example.com"}, SentAt: at.AddDate(0, 0, 1)},
 		{Source: "mail", ExternalID: "c", Sender: "carol@example.com", SentAt: at.AddDate(0, 0, 2)},
-	}, store.InsertMessagesOpts{})
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +36,7 @@ func TestAttachmentLibraryFiltersAndFindsEveryOccurrence(t *testing.T) {
 		}
 	}
 	// Two copies on one message still count as one occurrence.
-	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: ids[0], Filename: "copy.pdf", BLAKE3: sum}); err != nil {
+	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: ids[0], Position: 1, Filename: "copy.pdf", BLAKE3: sum}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.CreateContact(ctx, "alice", ""); err != nil {
@@ -118,7 +78,7 @@ func TestAttachmentLibraryMatchesEachFilesOwnText(t *testing.T) {
 	}
 	for i, contents := range []string{strings.Repeat("preface ", 60) + "Payment 100% due tomorrow", "Unrelated document", "payment 100% without valid extraction"} {
 		sum := content.Sum([]byte{byte('a' + i)})
-		if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: fmt.Sprintf("file%d.pdf", i), MimeType: "application/pdf", BLAKE3: sum}); err != nil {
+		if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Position: i, Filename: fmt.Sprintf("file%d.pdf", i), MimeType: "application/pdf", BLAKE3: sum}); err != nil {
 			t.Fatal(err)
 		}
 		status := "ok"
@@ -157,7 +117,7 @@ func TestBranchMissingParentAndCycleAreBounded(t *testing.T) {
 		{Source: "chatgpt", ExternalID: "a", ThreadID: "chat", ParentExternalID: "b", SentAt: time.Now()},
 		{Source: "chatgpt", ExternalID: "b", ThreadID: "chat", ParentExternalID: "a", SentAt: time.Now()},
 		{Source: "chatgpt", ExternalID: "c", ThreadID: "chat", ParentExternalID: "missing", SentAt: time.Now()},
-	}, store.InsertMessagesOpts{})
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,28 +133,5 @@ func TestBranchMissingParentAndCycleAreBounded(t *testing.T) {
 		if !branch.Incomplete || len(branch.Messages) != want {
 			t.Fatalf("branch: %+v", branch)
 		}
-	}
-}
-
-func TestReimportWithoutReplyMetadataKeepsKnownBranch(t *testing.T) {
-	st := storetest.New(t)
-	ctx := context.Background()
-	m := store.Message{Source: "chatgpt", ExternalID: "answer", ThreadID: "chat", ParentExternalID: "question", BranchID: "branch", AlternativeIndex: 2, SentAt: time.Now()}
-	id, err := st.InsertMessage(ctx, m)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m.ParentExternalID = ""
-	m.BranchID = ""
-	m.AlternativeIndex = 0
-	if _, err := st.InsertMessageRethreading(ctx, m); err != nil {
-		t.Fatal(err)
-	}
-	got, _, err := st.GetMessage(ctx, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ParentExternalID != "question" || got.BranchID != "branch" || got.AlternativeIndex != 2 {
-		t.Fatalf("lost metadata: %+v", got)
 	}
 }

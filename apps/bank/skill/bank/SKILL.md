@@ -36,7 +36,7 @@ bank search "query" [--kind message|item|activity|collection|file|page] [--sourc
 bank thread <thread_id> [--source s] [--around ref|--before ref|--after ref|--latest] [--limit n] [--json]
 bank contact list|show <name> [--json]               # who the owner has named, and their identities
 bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--before ref|--offset n] [--json]
-bank show <ref> [--json]         # full body, recipients, raw_ref, attachment list
+bank show <ref> [--json]         # full body, recipients, raw_input, attachment list
 bank ref <ref> [--json]          # what any ref names, and where the same bytes are
 bank stats [--json]              # sources, counts, date ranges, freshness, coverage notes
 bank fetch <blake3> -o <path>    # write attachment bytes to a file
@@ -57,9 +57,10 @@ Semantics that matter:
 - `youtube` rows are watch events, not correspondence: the sender is the channel, the subject the video title, the body only the watch URL, and the thread is the channel — so `--source youtube --from fireship` is everything watched from one channel, and `bank thread <channel id> --source youtube` reads it in order. Advertisements are not imported, and a video the export no longer names keeps its title with no URL.
 - `--person <contact>` is the better filter when you know who you mean: a contact ties one person's email addresses, WhatsApp display name and Discord handle together, so it catches them across sources where `--from alice` only catches one spelling. Run `bank contact list` to see which exist; an unknown name is an error, not an empty result.
 - `--until` is exclusive; both dates are plain `YYYY-MM-DD`.
+- A message whose source gave no date is undated: its JSON has no `sent_at`, and `--since`/`--until` leave it out. It sorts before every dated message, so it comes first in a thread and last in newest-first lists. `bank stats` counts undated messages separately.
 - `--limit` defaults to 100 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
 - `--offset` reaches past the first page: `--limit 100 --offset 100` is the second hundred in each selected result group. Check each group's array length separately. A short `.messages` page does not establish that `.items` or `.files` is exhausted. Use `--kind` to page one category. Each category keeps its own ordering. `--offset` is capped at 10000. Narrow the query if you need more. Contact message history retains its separate array pagination.
-- `.messages[]` contains message bodies already. Use `bank show <ref>` when you need recipients, `external_id`, `raw_ref`, or attachments.
+- `.messages[]` contains message bodies already. Use `bank show <ref>` when you need recipients, `external_id`, `raw_input`, or attachments.
 - `bank thread` takes a `.messages[]` hit's `thread_id` and `source`. Pass `--around <hit.ref> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.ref>` or `--after <last.ref>`. Use `--latest` for recent history. Positions are mutually exclusive, a page holds 100 messages by default and at most 500, and there is no total history cap.
 - Contact history can continue with `bank contact messages <name> --before <last.ref>`, beyond the offset limit. Results are newest-first. Use the cursor without `--offset`.
 - `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.
@@ -167,20 +168,20 @@ echo '{"body":"note text","thread":"decisions","sender":"claude","sent_at":"2026
   | bank import json --source agent-notes -
 ```
 
-Input is a JSON array, a single object, or NDJSON, on stdin (`-`) or a file path. Fields: `body` required (`subject` alone also passes); `thread`, `sender`, `recipients`, `subject`, `sent_at`, `external_id`, `attachments[].path` optional. `sent_at` takes RFC 3339, `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DD` or unix seconds, and defaults to import time.
+Input is a JSON array, a single object, or NDJSON, on stdin (`-`) or a file path. Fields: `body` required (`subject` alone also passes); `thread`, `sender`, `recipients`, `subject`, `sent_at`, `external_id`, `attachments` optional. An unknown field rejects the entry. Each attachment is `{"filename": "...", "mime_type": "...", "data": "<base64>"}`: `filename` is required and `data` holds the bytes as standard base64. `sent_at` takes RFC 3339, `YYYY-MM-DD HH:MM:SS`, `YYYY-MM-DD` or unix seconds. A time without a zone is read as UTC. Without `sent_at` the message is stored undated.
 
-Dedup is stable: with no `external_id`, the id is a hash of source, thread, `sent_at`, sender, subject and body, so re-importing an identical entry is a no-op — `json: 0 new, 1 already known`. Entries without `sent_at` hash to import-time-independent ids too, so re-running a file is safe.
+Dedup is stable: with no `external_id`, the id is a hash of source, thread, `sent_at` as written, sender, subject and body. Re-importing an identical entry is a no-op and prints `0 new, 1 already known`. An entry without `sent_at` hashes without a date, so re-running a file is safe.
 
 Rules:
 
 - Do not invent a source name. Check `bank stats` and reuse the existing agent-notes-style source if one is there; only create a new one when the owner asks.
-- Set an explicit `sent_at` for anything that describes a moment other than now.
+- Set an explicit `sent_at`. An entry without one is stored undated, not at the import time.
 - Every import is a write to the shared archive — say what you are about to store before storing it.
-- `attachments[].path` only works for local imports (the file is read into the blob store on this machine). Over `BANK_URL` any entry carrying attachments is rejected whole — `1 entries rejected`, nothing inserted — so strip attachments before remote imports, or run the import on the server.
+- Attachments travel inside the JSON as base64 `data`, so they import the same way locally and over `BANK_URL`. The old `attachments[].path` field is unknown now and rejects its entry.
 
 ## Cautions
 
 - `bank fetch` writes a file to disk; pick an explicit `-o` under a temp dir, and remember the bytes are personal data.
 - Message bodies are private correspondence. Read what the task needs, quote the minimum, and do not paste whole threads into summaries or commit messages.
 - `sync`, `token`, `verify`, `reimport` and `import inbox` are server-side commands: they need the archive, the blob store or the token file on the server itself. Run from a client machine they refuse with `BANK_URL` set, so they fail loudly rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse — `bank auth gmail` on a client and copying the resulting `gmail/` directory to the server is a supported route.
-- `bank reimport mbox --heal-bodies` re-reads archived mail and replaces bodies the parser now reads better — the fix for old mail stored as an "open this in an HTML viewer" stub. It reports without writing unless `--apply` is passed, and only ever replaces a body with a strictly longer one. Suggest it when a mail's stored body is visibly a template rather than the message; run it on the server.
+- `bank reimport [kind...]` replays the stored raw inputs through today's importers on the server. It adds messages and attachments an earlier run missed and leaves stored messages as they are. Suggest it to the owner rather than running it.

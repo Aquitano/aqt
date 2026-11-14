@@ -23,6 +23,8 @@ import (
 	gmailserver "github.com/emersion/go-imap/server"
 
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 type gmailItems map[uint32]map[gmailimap.FetchItem]any
@@ -143,38 +145,37 @@ func TestGmailThreadAndLabelsTravelWithUpload(t *testing.T) {
 	}
 
 	var mutex sync.Mutex
-	observed := map[string]eml.MailImportContext{}
+	observed := map[string]eml.EMLOptions{}
 	importer := func(available bool) Importer {
-		return func(_ context.Context, _, path string, observation eml.MailImportContext) (eml.Result, error) {
+		return func(_ context.Context, path string, opts eml.EMLOptions) (store.RawInput, error) {
 			raw, err := os.ReadFile(path)
 			if err != nil {
-				return eml.Result{}, err
+				return store.RawInput{}, err
 			}
 			message, err := eml.Parse(raw)
 			if err != nil {
-				return eml.Result{}, err
+				return store.RawInput{}, err
 			}
-			observation.RelativePath = ""
 			mutex.Lock()
-			observed[message.MessageID] = observation
+			observed[message.MessageID] = opts
 			mutex.Unlock()
 			if !available {
-				return eml.Result{}, fmt.Errorf("Bank unavailable")
+				return store.RawInput{}, fmt.Errorf("Bank unavailable")
 			}
-			return eml.Result{Inserted: 1, MailContextVersion: observation.Version}, nil
+			return imported(ingest.Report{Inserted: 1}), nil
 		}
 	}
-	base := eml.MailImportContext{Version: 2, Kind: "imap", Mailbox: "[Gmail]/All Mail", AccountID: "gmail"}
+	base := eml.EMLOptions{Source: "gmail", Mailbox: "[Gmail]/All Mail", MailboxKind: "imap"}
 	labelled, archived := base, base
 	labelled.ThreadID, labelled.Labels = "11bdfc5cae0c8191", []string{"INBOX", "[Gmail]/Sent Mail", "Work/Receipts", "Étiquette", `\Important`}
 	archived.ThreadID = "11bdfc5cae0c8192"
-	want := map[string]eml.MailImportContext{"labelled@example.com": labelled, "archived@example.com": archived}
+	want := map[string]eml.EMLOptions{"labelled@example.com": labelled, "archived@example.com": archived}
 
 	if _, err := runOnce(t, config, "bank-test", importer(false)); err == nil {
 		t.Fatal("unavailable Bank reported as success")
 	}
 	if !reflect.DeepEqual(observed, want) {
-		t.Fatalf("fresh upload contexts = %+v", observed)
+		t.Fatalf("fresh upload options = %+v", observed)
 	}
 	clear(observed)
 	result, err := runOnce(t, config, "bank-test", importer(true))
@@ -182,6 +183,6 @@ func TestGmailThreadAndLabelsTravelWithUpload(t *testing.T) {
 		t.Fatalf("queued retry = %+v, %v", result, err)
 	}
 	if !reflect.DeepEqual(observed, want) {
-		t.Fatalf("queued upload contexts = %+v", observed)
+		t.Fatalf("queued upload options = %+v", observed)
 	}
 }
