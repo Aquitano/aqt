@@ -547,7 +547,7 @@ func (c *showCmd) Run(ctx context.Context) error {
 		if c.JSON {
 			return printJSON(shown[view.Content]{resolved, found})
 		}
-		fmt.Printf("%s  %s, first seen %s\n  blake3  %s\n", found.Ref, humanBytes(found.Size), found.FirstSeen.Local().Format("2006-01-02"), found.BLAKE3)
+		fmt.Printf("%s  %s, first seen %s\n  blake3  %s\n", found.Ref, humanSize(found.Size), found.FirstSeen.Local().Format("2006-01-02"), found.BLAKE3)
 		printLinks(resolved, "on_disk")
 		if len(found.Occurrences) > 0 {
 			fmt.Println("on disks:")

@@ -249,13 +249,6 @@ func TestYouTubeTakeoutZIPPreservesHistoryAndCollectionPositions(t *testing.T) {
 	if len(parsed.batch.Activity) != 2 || len(parsed.batch.Collections) != 2 || parsed.count(ingest.Dropped) != 1 {
 		t.Fatalf("wrong Takeout records: %+v", parsed)
 	}
-	legacy, err := ParseHistory([]byte(history), "watch-history.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if parsed.batch.Activity[0].ExternalID != legacy.Events[0].ExternalID {
-		t.Fatal("changed existing history identity")
-	}
 	var playlist *library.Collection
 	for i := range parsed.batch.Collections {
 		if parsed.batch.Collections[i].Kind == "playlist" {

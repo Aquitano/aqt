@@ -113,10 +113,10 @@ func TestCLIRejectsInvalidSelections(t *testing.T) {
 	}
 }
 
-func TestHumanBytesHandlesLargeArchives(t *testing.T) {
-	for n, want := range map[int64]string{0: "0B", 1024: "1.0K", 1 << 40: "1.0T", 1 << 50: "1.0P", 1 << 60: "1.0E", math.MaxInt64: "8.0E"} {
-		if got := humanBytes(n); got != want {
-			t.Errorf("humanBytes(%d)=%s, want %s", n, got, want)
+func TestHumanSizeHandlesLargeArchives(t *testing.T) {
+	for n, want := range map[int64]string{0: "0 B", 1024: "1.0 KB", 1 << 40: "1.0 TB", 1 << 50: "1.0 PB", 1 << 60: "1.0 EB", math.MaxInt64: "8.0 EB"} {
+		if got := humanSize(n); got != want {
+			t.Errorf("humanSize(%d)=%s, want %s", n, got, want)
 		}
 	}
 }

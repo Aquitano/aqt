@@ -52,7 +52,7 @@ func (c *extractCmd) Run(ctx context.Context) error {
 	var progress func(store.BlobRef, extract.Result)
 	if !c.JSON {
 		progress = func(b store.BlobRef, r extract.Result) {
-			fmt.Fprintf(os.Stderr, "%-12s %8s  %s\n", r.Status, humanBytes(b.SizeBytes), excerpt(b.Filename, 60))
+			fmt.Fprintf(os.Stderr, "%-12s %8s  %s\n", r.Status, humanSize(b.SizeBytes), excerpt(b.Filename, 60))
 		}
 	}
 
@@ -238,13 +238,13 @@ func printExtractionStats(stats []store.ExtractionStat) {
 	var blobs, bytes, chars int64
 	for _, s := range stats {
 		fmt.Printf("%-12s %6d files  %8s  %8s searchable characters\n",
-			s.Status, s.Blobs, humanBytes(s.Bytes), humanCount(s.Chars))
+			s.Status, s.Blobs, humanSize(s.Bytes), humanCount(s.Chars))
 		blobs += s.Blobs
 		bytes += s.Bytes
 		chars += s.Chars
 	}
 	fmt.Printf("%-12s %6d files  %8s  %8s searchable characters\n",
-		"total", blobs, humanBytes(bytes), humanCount(chars))
+		"total", blobs, humanSize(bytes), humanCount(chars))
 }
 
 type attachmentListCmd struct {
@@ -273,7 +273,7 @@ func (c *attachmentListCmd) Run(ctx context.Context) error {
 		return nil
 	}
 	for _, b := range blobs {
-		fmt.Printf("%s  %-12s %8s  %s\n", b.BLAKE3.String()[:12], b.Status, humanBytes(b.SizeBytes), excerpt(b.Filename, 50))
+		fmt.Printf("%s  %-12s %8s  %s\n", b.BLAKE3.String()[:12], b.Status, humanSize(b.SizeBytes), excerpt(b.Filename, 50))
 	}
 	return nil
 }
@@ -336,19 +336,6 @@ func (c *attachmentTextCmd) Run(ctx context.Context) error {
 		bt.BLAKE3, bt.Status, bt.Extractor, bt.Chars, bt.ExtractedAt.Format(time.RFC1123))
 	fmt.Println(bt.Text)
 	return nil
-}
-
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%dB", n)
-	}
-	div, exp := int64(unit), 0
-	for m := n / unit; m >= unit; m /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f%c", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 func humanCount(n int64) string {

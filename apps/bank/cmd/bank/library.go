@@ -68,7 +68,7 @@ func (c *attachmentFindCmd) Run(ctx context.Context) error {
 		return printJSON(files)
 	}
 	for _, f := range files {
-		fmt.Printf("%s  %s  %s  %d messages\n", f.BLAKE3, f.Filename, humanBytes(f.SizeBytes), f.Messages)
+		fmt.Printf("%s  %s  %s  %d messages\n", f.BLAKE3, f.Filename, humanSize(f.SizeBytes), f.Messages)
 	}
 	return nil
 }
