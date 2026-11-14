@@ -13,10 +13,10 @@ require (
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/klauspost/compress v1.20.3
 	github.com/mholt/archives v0.1.5
-	github.com/nwaples/rardecode/v2 v2.4.5
+	github.com/nwaples/rardecode/v2 v2.4.6
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/peterldowns/pgtestdb v0.1.1
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.43.0
 	lukechampine.com/blake3 v1.4.1
 )
@@ -57,7 +57,7 @@ require (
 	go4.org v0.0.0-20260112195520-a5071408f32f // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
-	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 )
 
