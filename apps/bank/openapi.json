@@ -4623,6 +4623,10 @@
               "null"
             ]
           },
+          "partial": {
+            "description": "The record holds only some of the words. Best match lists these after every record that holds them all.",
+            "type": "boolean"
+          },
           "place_count": {
             "description": "Every place, also those past the first 20.",
             "format": "int64",
@@ -5837,18 +5841,28 @@
             }
           },
           {
-            "description": "For query: any word (the default), every word, or the words adjacent and in order.",
+            "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
             "explode": false,
             "in": "query",
             "name": "match",
             "schema": {
-              "description": "For query: any word (the default), every word, or the words adjacent and in order.",
+              "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
               "enum": [
-                "any",
+                "best",
                 "all",
-                "phrase"
+                "any"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+            "explode": false,
+            "in": "query",
+            "name": "exact",
+            "schema": {
+              "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+              "type": "boolean"
             }
           },
           {
@@ -10290,17 +10304,28 @@
             }
           },
           {
-            "description": "Every word (all, the default) or any word.",
+            "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
             "explode": false,
             "in": "query",
             "name": "match",
             "schema": {
-              "description": "Every word (all, the default) or any word.",
+              "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
               "enum": [
-                "any",
-                "all"
+                "best",
+                "all",
+                "any"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+            "explode": false,
+            "in": "query",
+            "name": "exact",
+            "schema": {
+              "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+              "type": "boolean"
             }
           },
           {
@@ -12079,17 +12104,28 @@
             }
           },
           {
-            "description": "Every word and quoted phrase in q (all, the default), or any of them.",
+            "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
             "explode": false,
             "in": "query",
             "name": "match",
             "schema": {
-              "description": "Every word and quoted phrase in q (all, the default), or any of them.",
+              "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
               "enum": [
+                "best",
                 "all",
                 "any"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+            "explode": false,
+            "in": "query",
+            "name": "exact",
+            "schema": {
+              "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+              "type": "boolean"
             }
           },
           {
@@ -12353,17 +12389,28 @@
             }
           },
           {
-            "description": "Every word and quoted phrase in q (all, the default), or any of them.",
+            "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
             "explode": false,
             "in": "query",
             "name": "match",
             "schema": {
-              "description": "Every word and quoted phrase in q (all, the default), or any of them.",
+              "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
               "enum": [
+                "best",
                 "all",
                 "any"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+            "explode": false,
+            "in": "query",
+            "name": "exact",
+            "schema": {
+              "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+              "type": "boolean"
             }
           },
           {
@@ -13116,17 +13163,28 @@
             }
           },
           {
-            "description": "Every word and quoted phrase in q (all, the default), or any of them.",
+            "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
             "explode": false,
             "in": "query",
             "name": "match",
             "schema": {
-              "description": "Every word and quoted phrase in q (all, the default), or any of them.",
+              "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
               "enum": [
+                "best",
                 "all",
                 "any"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+            "explode": false,
+            "in": "query",
+            "name": "exact",
+            "schema": {
+              "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+              "type": "boolean"
             }
           },
           {
@@ -13526,17 +13584,28 @@
             }
           },
           {
-            "description": "Every word and quoted phrase in q (all, the default), or any of them.",
+            "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
             "explode": false,
             "in": "query",
             "name": "match",
             "schema": {
-              "description": "Every word and quoted phrase in q (all, the default), or any of them.",
+              "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
               "enum": [
+                "best",
                 "all",
                 "any"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+            "explode": false,
+            "in": "query",
+            "name": "exact",
+            "schema": {
+              "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+              "type": "boolean"
             }
           },
           {
@@ -14865,32 +14934,43 @@
     },
     "/v1/search": {
       "get": {
-        "description": "q is words and \"quoted phrases\", read the same way for every kind of record. Every word and phrase must match (match all, the default) or any of them (match any). A word of five or more characters tolerates a typo, nine or more two; a shorter or quoted word must match exactly. Letters match with or without accents. Each kind ranks its own matches, and the hits are merged by reciprocal rank fusion into one list; limit and offset page that list. A file is one hit with its places, whether it is attached to messages, kept in the library or on a disk. A hit carries a snippet, never a whole body: open it by its ref. counts says how many records of each kind match. kind narrows the search to one kind (message, item, activity, collection, file, page) or to one kind of library record; file covers attachments, library files and files on disks. thread, from, to, person, subject, mailbox_id and has_attachment restrict the search to messages and the files attached to them, and cannot be combined with account or a kind other than message or file. coverage says what the result leaves out or does not prove.",
+        "description": "q is words and \"quoted phrases\", read the same way for every kind of record; a leading - excludes a word or phrase. By default (match best) records holding every word and phrase come first, then records holding only some of them, marked partial. match all returns only the first group, match any ranks every record holding any word. A word of five or more characters tolerates a typo, nine or more two; a shorter or quoted word, or every word with exact, must match exactly. Letters match with or without accents. Each kind ranks its own matches, and the hits are merged by reciprocal rank fusion into one list; limit and offset page that list. A file is one hit with its places, whether it is attached to messages, kept in the library or on a disk. A hit carries a snippet, never a whole body: open it by its ref. counts says how many records of each kind match. kind narrows the search to one kind (message, item, activity, collection, file, page) or to one kind of library record; file covers attachments, library files and files on disks. thread, from, to, person, subject, mailbox_id and has_attachment restrict the search to messages and the files attached to them, and cannot be combined with account or a kind other than message or file. coverage says what the result leaves out or does not prove.",
         "operationId": "search",
         "parameters": [
           {
-            "description": "Words and \"quoted phrases\", at most 4096 bytes.",
+            "description": "Words and \"quoted phrases\", at most 4096 bytes. A leading - excludes a word or phrase: -draft, -\"out of office\".",
             "explode": false,
             "in": "query",
             "name": "q",
             "required": true,
             "schema": {
-              "description": "Words and \"quoted phrases\", at most 4096 bytes.",
+              "description": "Words and \"quoted phrases\", at most 4096 bytes. A leading - excludes a word or phrase: -draft, -\"out of office\".",
               "type": "string"
             }
           },
           {
-            "description": "Every word and phrase (all, the default), or any of them.",
+            "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
             "explode": false,
             "in": "query",
             "name": "match",
             "schema": {
-              "description": "Every word and phrase (all, the default), or any of them.",
+              "description": "best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any.",
               "enum": [
+                "best",
                 "all",
                 "any"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+            "explode": false,
+            "in": "query",
+            "name": "exact",
+            "schema": {
+              "description": "Match every word exactly, without typo tolerance, as if each were quoted.",
+              "type": "boolean"
             }
           },
           {

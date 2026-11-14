@@ -75,7 +75,7 @@ bank import youtube-media <takeout.zip|dir> --account a   # YouTube history, pla
 bank import inbox                       # sweep the inbox drop zone
 bank sync                               # pull deltas from API sources (Gmail)
 bank search 'words "a phrase"' [--kind k] [--source s] [--thread id] [--from alice]
-                    [--to bob] [--person alice] [--since 2024-01-01] [--until d] [--any]
+                    [--to bob] [--person alice] [--since 2024-01-01] [--until d] [--match best|all|any] [--exact]
                     [--limit 1..500] [--offset 0..10000] [--json]
 bank search [--source s] [--person alice] [--after msg:ref]   # browse conversations
 bank contact add|rm|list|show <name>    # one person across their many identities

@@ -14,7 +14,7 @@ import { Skeleton } from "@aqt/ui/components/skeleton";
 import { cn } from "@aqt/ui/lib/utils";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Search as SearchIcon } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import type { Selection } from "@/components/detail-pane";
 import { MailboxSelect } from "@/components/mailbox-select";
@@ -44,7 +44,7 @@ function formFrom(params: SearchParams | null): SearchForm {
     since: params?.since ?? "",
     until: params?.until ?? "",
     subject: params?.subject ?? "",
-    match: params?.match ?? "all",
+    match: params?.match ?? "best",
     mailbox_id: params?.mailbox_id,
     has_attachment: params?.has_attachment,
   };
@@ -57,6 +57,7 @@ const ATTACHMENT_FILTERS = [
 ];
 
 const MATCH_MODES: { value: SearchForm["match"]; label: string }[] = [
+  { value: "best", label: "Best match" },
   { value: "all", label: "Every word" },
   { value: "any", label: "Any word" },
 ];
@@ -421,13 +422,19 @@ export function SearchView({
               </div>
             )}
             {hits.map((hit, index) => (
-              <HitRow
-                key={`${hit.kind}:${hit.ref ?? index}`}
-                hit={hit}
-                query={params?.q}
-                selected={isSelected(hit, selection)}
-                onClick={clickHandler(hit)}
-              />
+              <Fragment key={`${hit.kind}:${hit.ref ?? index}`}>
+                {hit.partial && !hits[index - 1]?.partial && (
+                  <p className="px-3 pt-3 pb-1 text-xs text-muted-foreground">
+                    Only some of the words
+                  </p>
+                )}
+                <HitRow
+                  hit={hit}
+                  query={params?.q}
+                  selected={isSelected(hit, selection)}
+                  onClick={clickHandler(hit)}
+                />
+              </Fragment>
             ))}
             {q.hasNextPage && (
               <Button

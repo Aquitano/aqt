@@ -20,6 +20,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/disks/config"
 	"github.com/aquitano/aqt/apps/bank/internal/disks/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/extract"
@@ -480,7 +481,7 @@ func testArchivesAreListedOncePerContent(t *testing.T, catalogue newCatalogue) {
 	if first.Counts.Archives != 2 || first.Counts.Members != 5 {
 		t.Fatalf("listed %d archives with %d members, want 2 with 5", first.Counts.Archives, first.Counts.Members)
 	}
-	hits, err := st.SearchMembers(ctx, store.SearchOptions{Query: "server properties"})
+	hits, err := st.SearchMembers(ctx, store.SearchOptions{Query: "server properties", Match: search.All})
 	if err != nil || len(hits) != 1 {
 		t.Fatalf("members %+v, %v", hits, err)
 	}
@@ -500,7 +501,7 @@ func testArchivesAreListedOncePerContent(t *testing.T, catalogue newCatalogue) {
 	write(t, root, "Backups/Minecraft.zip", rewritten)
 	write(t, root, "Old/Minecraft copy.zip", rewritten)
 	scanAt(t, st, root, testVolume, withArchives)
-	hits, err = st.SearchMembers(ctx, store.SearchOptions{Query: "server properties"})
+	hits, err = st.SearchMembers(ctx, store.SearchOptions{Query: "server properties", Match: search.All})
 	if err != nil || len(hits) != 1 || len(hits[0].Archive) != 2 || hits[0].Archive[0].Version != store.VersionPrevious {
 		t.Errorf("members of a rewritten archive: %+v, %v; want both copies as previous versions", hits, err)
 	}

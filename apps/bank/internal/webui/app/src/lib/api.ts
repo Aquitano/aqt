@@ -142,7 +142,7 @@ export interface SearchParams {
   since?: string;
   until?: string;
   offset?: number;
-  match?: "all" | "any";
+  match?: "best" | "all" | "any";
   to?: string;
   person?: string;
 }
@@ -177,6 +177,7 @@ const searchHit = type({
   "place_count?": "number",
   score: "number",
   matched: "string[]",
+  "partial?": "boolean",
 });
 export type SearchHit = typeof searchHit.infer;
 

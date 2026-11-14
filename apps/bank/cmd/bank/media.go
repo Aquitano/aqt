@@ -38,7 +38,7 @@ func readJSON(path string, dst json.Unmarshaler) error {
 // library command accepts them, and the listing commands are the ones that
 // read most of them.
 type libraryCmd struct {
-	Match             string `default:"any" help:"any, all words, or phrase."`
+	matchFlags        `embed:""`
 	Source            string `help:"Source identity."`
 	Account           string `help:"Source account."`
 	Kind              string `help:"Record kind."`
@@ -70,7 +70,7 @@ func (libraryCmd) Help() string {
 }
 
 func (l *libraryCmd) filters(query string) server.LibraryFilters {
-	return server.LibraryFilters{Q: query, Match: l.Match, Source: l.Source, Account: l.Account, Kind: l.Kind,
+	return server.LibraryFilters{Q: query, Matching: l.matching(), Source: l.Source, Account: l.Account, Kind: l.Kind,
 		ItemID: l.ItemID, Since: l.Since, Until: l.Until, Page: pageOf(l.Limit, l.Offset)}
 }
 
@@ -226,7 +226,10 @@ func (c *libraryIndexCmd) Run(ctx context.Context, lib *libraryCmd) error {
 }
 
 func printCatalog(result find.Result, limit, offset int) error {
-	for _, h := range result.Hits {
+	for i, h := range result.Hits {
+		if h.Partial && (i == 0 || !result.Hits[i-1].Partial) {
+			fmt.Println("-- only some of the words:")
+		}
 		cited := h.Ref
 		if cited == "" && len(h.Places) > 0 {
 			cited = fmt.Sprintf("entry %d", h.Places[0].EntryID)

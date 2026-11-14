@@ -337,18 +337,18 @@ func printSyncResult(res gmail.SyncResult) {
 }
 
 type searchCmd struct {
-	Query         []string    `arg:"" optional:"" help:"Words and \"quoted phrases\"; without them, browse filtered conversations."`
-	Kind          string      `help:"message, item, activity, collection, file, page, or media subtype."`
-	Account       string      `help:"Filter library records by source account."`
-	Source        string      `help:"Filter by source (whatsapp, gmail, ...)."`
-	Thread        string      `help:"Only messages in this thread."`
-	From          string      `help:"Sender has these words; when browsing, contains this text."`
-	To            string      `help:"A recipient has these words; when browsing, contains this text."`
-	Person        string      `help:"Filter by contact, across all their aliases."`
-	MailboxID     int64       `help:"Observed folder id from bank mail mailboxes; requires --source."`
-	Subject       string      `help:"Subject contains this literal text, case-insensitive."`
-	HasAttachment string      `help:"true or false."`
-	Any           bool        `help:"Match any word or phrase instead of every one."`
+	Query         []string `arg:"" optional:"" help:"Words and \"quoted phrases\"; without them, browse filtered conversations."`
+	Kind          string   `help:"message, item, activity, collection, file, page, or media subtype."`
+	Account       string   `help:"Filter library records by source account."`
+	Source        string   `help:"Filter by source (whatsapp, gmail, ...)."`
+	Thread        string   `help:"Only messages in this thread."`
+	From          string   `help:"Sender has these words; when browsing, contains this text."`
+	To            string   `help:"A recipient has these words; when browsing, contains this text."`
+	Person        string   `help:"Filter by contact, across all their aliases."`
+	MailboxID     int64    `help:"Observed folder id from bank mail mailboxes; requires --source."`
+	Subject       string   `help:"Subject contains this literal text, case-insensitive."`
+	HasAttachment string   `help:"true or false."`
+	matchFlags    `embed:""`
 	Since         string      `help:"YYYY-MM-DD or RFC 3339."`
 	Until         string      `help:"YYYY-MM-DD or RFC 3339 (exclusive)."`
 	Limit         int         `default:"${limit}" help:"Max results, 1-${max_limit}."`
@@ -388,11 +388,7 @@ func (c *searchCmd) Run(ctx context.Context) error {
 		}
 		return nil
 	}
-	match := ""
-	if c.Any {
-		match = "any"
-	}
-	result, err := client.Call(ctx, api, server.Search, server.SearchInput{Q: query, Match: match, Kind: c.Kind,
+	result, err := client.Call(ctx, api, server.Search, server.SearchInput{Q: query, Matching: c.matching(), Kind: c.Kind,
 		Source: c.Source, Account: c.Account, Since: c.Since, Until: c.Until, Thread: c.Thread, From: c.From, To: c.To,
 		Person: c.Person, Subject: c.Subject, MailboxID: c.MailboxID, HasAttachment: c.HasAttachment,
 		Page: pageOf(c.Limit, c.Offset)})
@@ -1274,4 +1270,15 @@ func (c *healthcheckCmd) Run(ctx context.Context) error {
 		return fmt.Errorf("healthcheck: %s", response.Status)
 	}
 	return nil
+}
+
+// matchFlags are how a command's words must match, the same for every
+// command that takes words.
+type matchFlags struct {
+	Match string `enum:"best,all,any" default:"best" help:"best: records with every word first, then those with only some, marked partial. all: only records with every word. any: records with any word."`
+	Exact bool   `help:"Match every word exactly, without typo tolerance, as if each were quoted."`
+}
+
+func (m matchFlags) matching() server.Matching {
+	return server.Matching{Match: m.Match, Exact: m.Exact}
 }

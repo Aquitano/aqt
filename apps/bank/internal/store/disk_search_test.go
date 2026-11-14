@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/jackc/pgx/v5"
@@ -54,17 +55,18 @@ func TestSearchPunctuationAcrossResults(t *testing.T) {
 	st, _ := searchFixture(t)
 	for _, tc := range []struct {
 		query   string
-		anyWord bool
+		match   search.Mode
 		matches int
 	}{
-		{"Tom Jerry", false, 1},
-		{"Tom & Jerry", false, 1},
-		{"Tom ++ Jerry", false, 1},
-		{"absent & Jerry", false, 0},
-		{"absent & Jerry", true, 1},
+		{"Tom Jerry", search.All, 1},
+		{"Tom & Jerry", search.All, 1},
+		{"Tom ++ Jerry", search.All, 1},
+		{"absent & Jerry", search.All, 0},
+		{"absent & Jerry", search.Any, 1},
+		{"absent & Jerry", search.Best, 1},
 	} {
-		t.Run(tc.query, func(t *testing.T) {
-			o := store.SearchOptions{Query: tc.query, Any: tc.anyWord}
+		t.Run(tc.query+" "+string(tc.match), func(t *testing.T) {
+			o := store.SearchOptions{Query: tc.query, Match: tc.match}
 			entries, err := st.Search(t.Context(), o)
 			if err != nil || len(entries) != tc.matches {
 				t.Errorf("entries: %+v, %v", entries, err)
@@ -87,9 +89,9 @@ func TestSearchPunctuationAcrossResults(t *testing.T) {
 			}
 		})
 	}
-	for _, anyWord := range []bool{false, true} {
+	for _, match := range []search.Mode{search.All, search.Any} {
 		for _, query := range []string{"&", "++"} {
-			o := store.SearchOptions{Query: query, Any: anyWord, VolumeID: "00000000-0000-0000-0000-000000000001"}
+			o := store.SearchOptions{Query: query, Match: match, VolumeID: "00000000-0000-0000-0000-000000000001"}
 			entries, err := st.Search(t.Context(), o)
 			if err != nil || len(entries) != 0 {
 				t.Errorf("punctuation entries: %+v, %v", entries, err)

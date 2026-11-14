@@ -1,6 +1,8 @@
 package store
 
 import (
+	"github.com/aquitano/aqt/apps/bank/internal/search"
+
 	"context"
 	"encoding/hex"
 	"errors"
@@ -168,9 +170,10 @@ func scanHit(row pgx.Row, extra ...any) (Hit, error) {
 
 type SearchOptions struct {
 	Query string
-	// Any matches entries containing any word; the default needs every word,
-	// each in the name, the path or as a fragment of the name.
-	Any      bool
+	// Match is how the words must match, each in the name, the path or as a
+	// fragment of the name: best match by default.
+	Match    search.Mode
+	Exact    bool
 	VolumeID string
 	Ext      string
 	Kind     string

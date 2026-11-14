@@ -26,10 +26,12 @@ var errRevisionConflict = httpapi.Kind{Tag: "LibraryRevisionConflict", Status: h
 
 var Search = httpapi.Op[SearchInput, find.Result]{Operation: httpapi.Operation{ID: "search", Method: http.MethodGet, Path: "/v1/search", Tag: "search",
 	Summary: "Search messages, the media library, attachments and files on disks at once, as one ranked list",
-	Description: "q is words and \"quoted phrases\", read the same way for every kind of record. Every word and " +
-		"phrase must match (match all, the default) or any of them (match any). A word of five or more " +
-		"characters tolerates a typo, nine or more two; a shorter or quoted word must match exactly. Letters " +
-		"match with or without accents. Each kind ranks its own matches, and the hits are merged by " +
+	Description: "q is words and \"quoted phrases\", read the same way for every kind of record; a leading - " +
+		"excludes a word or phrase. By default (match best) records holding every word and phrase come first, " +
+		"then records holding only some of them, marked partial. match all returns only the first group, match " +
+		"any ranks every record holding any word. A word of five or more characters tolerates a typo, nine or " +
+		"more two; a shorter or quoted word, or every word with exact, must match exactly. Letters match with " +
+		"or without accents. Each kind ranks its own matches, and the hits are merged by " +
 		"reciprocal rank fusion into one list; limit and offset page that list. A file is one hit with its " +
 		"places, whether it is attached to messages, kept in the library or on a disk. A hit carries a " +
 		"snippet, never a whole body: open it by its ref. counts says how many records of each kind match. " +
@@ -253,11 +255,19 @@ func libraryList[T any](v []T, err error) (*httpapi.Body[[]T], error) {
 	return list(v, nil)
 }
 
+// Matching is how a search's words must match, the same on every route that
+// takes words. It is exported because Huma reads parameters of an embedded
+// struct only when its type is.
+type Matching struct {
+	Match string `query:"match" enum:"best,all,any" doc:"best (the default) lists records holding every word and phrase first, then records holding only some, marked partial. all returns only records holding every one, any ranks records holding any."`
+	Exact bool   `query:"exact" doc:"Match every word exactly, without typo tolerance, as if each were quoted."`
+}
+
 // LibraryFilters is exported because Huma reads parameters of an embedded
 // struct only when its type is.
 type LibraryFilters struct {
-	Q       string `query:"q" doc:"Words to find, at most 4096 bytes."`
-	Match   string `query:"match" enum:"all,any" doc:"Every word and quoted phrase in q (all, the default), or any of them."`
+	Q string `query:"q" doc:"Words to find, at most 4096 bytes."`
+	Matching
 	Source  string `query:"source" doc:"Only records from this source, such as netflix, youtube-media or manual."`
 	Account string `query:"account" doc:"Only records of this account at the source."`
 	Kind    string `query:"kind" enum:"message,item,activity,collection,file,page,video,movie,series,episode,track,album,podcast,book,article,other,watch,listen,read,play,view,purchase,playlist,library,watchlist,list" doc:"Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search."`
@@ -268,7 +278,7 @@ type LibraryFilters struct {
 }
 
 func (f LibraryFilters) options() (library.ListOptions, error) {
-	o := library.ListOptions{Query: f.Q, Match: f.Match, Source: f.Source, Account: f.Account, Kind: f.Kind,
+	o := library.ListOptions{Query: f.Q, Match: f.Match, Exact: f.Exact, Source: f.Source, Account: f.Account, Kind: f.Kind,
 		ItemID: f.ItemID, Since: f.Since, Until: f.Until, Limit: f.Limit, Offset: f.Offset}
 	return o, o.Validate()
 }
@@ -278,8 +288,8 @@ type LibraryIDInput struct {
 }
 
 type SearchInput struct {
-	Q             string `query:"q" required:"true" doc:"Words and \"quoted phrases\", at most 4096 bytes."`
-	Match         string `query:"match" enum:"all,any" doc:"Every word and phrase (all, the default), or any of them."`
+	Q string `query:"q" required:"true" doc:"Words and \"quoted phrases\", at most 4096 bytes. A leading - excludes a word or phrase: -draft, -\"out of office\"."`
+	Matching
 	Kind          string `query:"kind" enum:"message,item,activity,collection,file,page,video,movie,series,episode,track,album,podcast,book,article,other,watch,listen,read,play,view,purchase,playlist,library,watchlist,list" doc:"Only this kind of hit, or this kind of library record."`
 	Source        string `query:"source" doc:"Only records from this source. Files on disks have none and are left out."`
 	Account       string `query:"account" doc:"Only library records of this account at the source."`
@@ -314,7 +324,12 @@ func (s *Server) search(ctx context.Context, in *SearchInput) (*httpapi.Body[fin
 			return nil, httpapi.Invalid.New(err.Error())
 		}
 	}
-	return libraryReply(find.Find(ctx, s.read, in.Q, search.Mode(in.Match), f, in.Limit, in.Offset))
+	q, err := search.Parse(in.Q, search.Mode(in.Match))
+	if err != nil {
+		return nil, failure(err)
+	}
+	q.Exact = in.Exact
+	return libraryReply(find.Find(ctx, s.read, q, f, in.Limit, in.Offset))
 }
 
 func (s *Server) libraryItems(ctx context.Context, in *LibraryFilters) (*httpapi.Body[[]library.Item], error) {

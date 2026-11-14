@@ -214,6 +214,7 @@ type ImportResult struct {
 
 type ListOptions struct {
 	Match   string
+	Exact   bool
 	Query   string
 	Source  string
 	Account string
@@ -261,8 +262,8 @@ func (d Date) Validate() error {
 }
 
 func (o ListOptions) Validate() error {
-	if !in(o.Match, "", "all", "any") {
-		return fail.Invalidf("match must be all or any")
+	if !in(o.Match, "", "best", "all", "any") {
+		return fail.Invalidf("match must be best, all or any")
 	}
 	if !in(o.Kind, "", "message", "item", "activity", "collection", "file", "page", "video", "movie", "series", "episode", "track", "album", "podcast", "book", "article", "other", "watch", "listen", "read", "play", "view", "purchase", "playlist", "library", "watchlist", "list") {
 		return fail.Invalidf("unsupported kind %q", o.Kind)

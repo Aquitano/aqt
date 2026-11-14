@@ -91,7 +91,11 @@ func TestSearchOffsetPastTheEnd(t *testing.T) {
 
 func findMessages(t *testing.T, st *store.Store, query string, limit, offset int) []search.SearchHit {
 	t.Helper()
-	found, err := find.Find(t.Context(), st, query, search.All, search.Filters{Kind: search.KindMessage}, limit, offset)
+	q, err := search.Parse(query, search.All)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found, err := find.Find(t.Context(), st, q, search.Filters{Kind: search.KindMessage}, limit, offset)
 	if err != nil {
 		t.Fatal(err)
 	}

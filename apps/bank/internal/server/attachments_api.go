@@ -112,8 +112,8 @@ type DigestInput struct {
 }
 
 type SearchAttachmentsInput struct {
-	Query  string `query:"query" doc:"Words to find in the filename or in the text read from the file. At most 4096 bytes."`
-	Match  string `query:"match" enum:"any,all,phrase" doc:"For query: any word (the default), every word, or the words adjacent and in order."`
+	Query string `query:"query" doc:"Words to find in the filename or in the text read from the file. At most 4096 bytes."`
+	Matching
 	Source string `query:"source" doc:"Only attachments of messages from this source, such as gmail or whatsapp."`
 	Q      string `query:"q" doc:"Filename contains this, ignoring case."`
 	Text   string `query:"text" doc:"Text read from the file contains this, ignoring case."`
@@ -125,7 +125,7 @@ type SearchAttachmentsInput struct {
 }
 
 func (s *Server) searchAttachments(ctx context.Context, in *SearchAttachmentsInput) (*httpapi.Body[[]store.LibraryFile], error) {
-	o := store.AttachmentFilter{Query: in.Query, Source: in.Source, Match: in.Match, Filename: in.Q, Text: in.Text,
+	o := store.AttachmentFilter{Query: in.Query, Source: in.Source, Match: in.Match, Exact: in.Exact, Filename: in.Q, Text: in.Text,
 		FileType: in.Type, Person: in.Person, Limit: in.Limit, Offset: in.Offset}
 	if err := (library.ListOptions{Query: o.Query, Match: o.Match}).Validate(); err != nil {
 		return nil, failure(err)

@@ -180,7 +180,7 @@ export function readSearch(params: URLSearchParams): SearchParams | null {
     since: params.get("since") || undefined,
     until: params.get("until") || undefined,
     subject: params.get("subject") || undefined,
-    match: match === "any" ? "any" : "all",
+    match: match === "any" || match === "all" ? match : "best",
     mailbox_id: Number.isSafeInteger(mailbox) && mailbox > 0 ? mailbox : undefined,
     has_attachment: attachment === "true" ? true : attachment === "false" ? false : undefined,
   };

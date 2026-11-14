@@ -45,9 +45,10 @@ const maxPlaces = 20
 // best offset+limit hits, the lists run concurrently, and reciprocal rank
 // fusion orders their union: a record found by several lists, such as a PDF
 // whose name and text both match, is one hit. A search makes one round trip
-// per list, each with a page and a count, and three statements to list the
-// places of the files on the page.
-func Find(ctx context.Context, st Lists, query string, mode search.Mode, f search.Filters, limit, offset int) (Result, error) {
+// per list, each with a page and a count, twice when best match runs out of
+// records with every word, and three statements to list the places of the
+// files on the page.
+func Find(ctx context.Context, st Lists, q search.Query, f search.Filters, limit, offset int) (Result, error) {
 	result := Result{Hits: []search.SearchHit{}, Counts: []search.KindCount{}, Coverage: []string{}}
 	limit = page.Limit(limit)
 	if err := page.Check(limit, offset); err != nil {
@@ -56,10 +57,7 @@ func Find(ctx context.Context, st Lists, query string, mode search.Mode, f searc
 	if err := f.Validate(); err != nil {
 		return result, err
 	}
-	q, err := search.Parse(query, mode)
-	if err != nil {
-		return result, err
-	}
+	var err error
 	if f.MessageScoped() && !f.Wants(search.KindMessage) && !f.Wants(search.KindFile) {
 		return result, fmt.Errorf("message filters cannot be combined with kind %s: %w", f.Kind, ErrFilters)
 	}
@@ -73,50 +71,55 @@ func Find(ctx context.Context, st Lists, query string, mode search.Mode, f searc
 	}
 
 	n := offset + limit
-	type run func(context.Context) (search.List, error)
-	var runs []run
-	archiveList := func(rank func(context.Context, search.Query, search.Filters, int) (search.List, error)) run {
-		return func(ctx context.Context) (search.List, error) { return rank(ctx, q, f, n) }
-	}
-	diskList := func(rank func(context.Context, search.Query, int) (search.List, error)) run {
-		return func(ctx context.Context) (search.List, error) { return rank(ctx, q, n) }
-	}
 	files := f.Wants(search.KindFile)
-	if f.Wants(search.KindMessage) && f.Account == "" {
-		runs = append(runs, archiveList(st.SearchMessages))
-	}
-	if files {
-		runs = append(runs, archiveList(st.SearchTexts))
-		if f.Account == "" {
-			runs = append(runs, archiveList(st.SearchAttachmentNames))
-		}
-	}
-	for _, l := range []store.LibraryList{store.ItemList, store.ActivityList, store.CollectionList, store.PageList, store.LibraryFileList} {
-		runs = append(runs, func(ctx context.Context) (search.List, error) { return st.SearchLibrary(ctx, l, q, f, n) })
-	}
 	onDisks := files && f.Source == "" && f.Account == "" && !f.Dated() && !f.MessageScoped()
-	if onDisks {
-		runs = append(runs, diskList(st.RankEntries), diskList(st.RankMembers), diskList(st.RankMetadata), diskList(st.RankAnalyses))
+	rank := func(q search.Query) ([]search.List, error) {
+		type run func(context.Context) (search.List, error)
+		var runs []run
+		archiveList := func(rank func(context.Context, search.Query, search.Filters, int) (search.List, error)) run {
+			return func(ctx context.Context) (search.List, error) { return rank(ctx, q, f, n) }
+		}
+		diskList := func(rank func(context.Context, search.Query, int) (search.List, error)) run {
+			return func(ctx context.Context) (search.List, error) { return rank(ctx, q, n) }
+		}
+		if f.Wants(search.KindMessage) && f.Account == "" {
+			runs = append(runs, archiveList(st.SearchMessages))
+		}
+		if files {
+			runs = append(runs, archiveList(st.SearchTexts))
+			if f.Account == "" {
+				runs = append(runs, archiveList(st.SearchAttachmentNames))
+			}
+		}
+		for _, l := range []store.LibraryList{store.ItemList, store.ActivityList, store.CollectionList, store.PageList, store.LibraryFileList} {
+			runs = append(runs, func(ctx context.Context) (search.List, error) { return st.SearchLibrary(ctx, l, q, f, n) })
+		}
+		if onDisks {
+			runs = append(runs, diskList(st.RankEntries), diskList(st.RankMembers), diskList(st.RankMetadata), diskList(st.RankAnalyses))
+		}
+		lists := make([]search.List, len(runs))
+		group, groupCtx := errgroup.WithContext(ctx)
+		for i, r := range runs {
+			group.Go(func() (err error) {
+				lists[i], err = r(groupCtx)
+				return err
+			})
+		}
+		return lists, group.Wait()
 	}
-
-	lists := make([]search.List, len(runs))
-	group, groupCtx := errgroup.WithContext(ctx)
-	for i, r := range runs {
-		group.Go(func() (err error) {
-			lists[i], err = r(groupCtx)
-			return err
-		})
-	}
-	if err := group.Wait(); err != nil {
+	hits, lists, err := search.Rank(q, offset, limit, rank)
+	if err != nil {
 		return result, err
 	}
-
-	result.Hits = search.Fuse(lists, offset, limit)
+	result.Hits = hits
 	if err := placeFiles(ctx, st, onDisks, result.Hits); err != nil {
 		return result, err
 	}
 	result.Counts = counts(lists)
 	result.Coverage = coverage(f, lists)
+	if slices.ContainsFunc(hits, func(h search.SearchHit) bool { return h.Partial }) {
+		result.Coverage = append(result.Coverage, "Hits marked partial hold only some of the words; every record holding them all comes first.")
+	}
 	return result, nil
 }
 

@@ -37,6 +37,7 @@ type SearchHit struct {
 	PlaceCount int         `json:"place_count,omitempty" doc:"Every place, also those past the first 20."`
 	Score      float64     `json:"score" doc:"Reciprocal rank fusion: the sum of 1/(60+rank) over the ranked lists the hit is in. It orders the list and means nothing on its own."`
 	Matched    []string    `json:"matched" doc:"The ranked lists that found the hit."`
+	Partial    bool        `json:"partial,omitempty" doc:"The record holds only some of the words. Best match lists these after every record that holds them all."`
 
 	// Key makes two hits the same record across lists: the content for a
 	// file, otherwise the ref, and the entry for a disk entry without one.

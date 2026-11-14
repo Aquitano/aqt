@@ -15,6 +15,7 @@ import (
 
 type AttachmentFilter struct {
 	Query, Source, Match             string
+	Exact                            bool
 	Filename, Text, FileType, Person string
 	Since, Until                     time.Time
 	Limit, Offset                    int
@@ -119,20 +120,23 @@ func (s *Store) rankAttachments(ctx context.Context, o AttachmentFilter, filter 
 	if err != nil {
 		return nil, err
 	}
+	q.Exact = o.Exact
 	n := o.Offset + o.Limit
-	names, err := s.searchAttachmentNames(ctx, q, n, func(a *args) string {
-		return " and exists (select 1 from messages m where m.id = a.message_id" + filter(a) + ")"
+	hits, _, err := search.Rank(q, o.Offset, o.Limit, func(q search.Query) ([]search.List, error) {
+		names, err := s.searchAttachmentNames(ctx, q, n, func(a *args) string {
+			return " and exists (select 1 from messages m where m.id = a.message_id" + filter(a) + ")"
+		})
+		if err != nil {
+			return nil, err
+		}
+		texts, err := s.searchTexts(ctx, q, search.Filters{}, n, func(a *args) string {
+			return " and exists (select 1 from attachments a join messages m on m.id = a.message_id where a.content_id = t.content_id" + filter(a) + ")"
+		})
+		return []search.List{names, texts}, err
 	})
 	if err != nil {
 		return nil, err
 	}
-	texts, err := s.searchTexts(ctx, q, search.Filters{}, n, func(a *args) string {
-		return " and exists (select 1 from attachments a join messages m on m.id = a.message_id where a.content_id = t.content_id" + filter(a) + ")"
-	})
-	if err != nil {
-		return nil, err
-	}
-	hits := search.Fuse([]search.List{names, texts}, o.Offset, o.Limit)
 	ids := make([]int64, len(hits))
 	for i, h := range hits {
 		ids[i] = h.ContentID

@@ -52,16 +52,16 @@ func printHits(hits []view.Place) error {
 }
 
 type diskSearchCmd struct {
-	Words   []string `arg:"" optional:"" help:"Words to find in names, paths and content."`
-	Any     bool     `help:"Match any word instead of every word."`
-	Volume  string   `help:"Volume label or ID."`
-	Ext     string   `help:"File extension, such as pdf."`
-	Kind    string   `enum:"file,dir,link," default:"" help:"Entry kind: file, dir or link."`
-	Under   string   `help:"Mounted path, or volume-relative path with --volume."`
-	Current bool     `help:"Leave out content that files held before they changed."`
-	Limit   int      `default:"${limit}" help:"Maximum results per result type, 1-${max_limit}."`
-	Offset  int      `help:"Skip this many ranked results, at most ${max_offset}."`
-	JSON    bool     `help:"Print JSON."`
+	Words      []string `arg:"" optional:"" help:"Words to find in names, paths and content."`
+	matchFlags `embed:""`
+	Volume     string `help:"Volume label or ID."`
+	Ext        string `help:"File extension, such as pdf."`
+	Kind       string `enum:"file,dir,link," default:"" help:"Entry kind: file, dir or link."`
+	Under      string `help:"Mounted path, or volume-relative path with --volume."`
+	Current    bool   `help:"Leave out content that files held before they changed."`
+	Limit      int    `default:"${limit}" help:"Maximum results per result type, 1-${max_limit}."`
+	Offset     int    `help:"Skip this many ranked results, at most ${max_offset}."`
+	JSON       bool   `help:"Print JSON."`
 }
 
 func (cmd *diskSearchCmd) Run(ctx context.Context, connect connector) error {
@@ -74,11 +74,8 @@ func (cmd *diskSearchCmd) Run(ctx context.Context, connect connector) error {
 	if err != nil {
 		return err
 	}
-	in := server.DiskSearchInput{Q: strings.Join(cmd.Words, " "), Ext: cmd.Ext, Kind: cmd.Kind, Current: cmd.Current,
+	in := server.DiskSearchInput{Q: strings.Join(cmd.Words, " "), Matching: cmd.matching(), Ext: cmd.Ext, Kind: cmd.Kind, Current: cmd.Current,
 		Page: httpapi.Page{PageSize: httpapi.PageSize{Limit: cmd.Limit}, Offset: cmd.Offset}}
-	if cmd.Any {
-		in.Match = "any"
-	}
 	if in.Volume, err = volumeID(vols, cmd.Volume); err != nil {
 		return err
 	}

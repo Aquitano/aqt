@@ -164,38 +164,40 @@ func (s *Store) rankLibrary(ctx context.Context, table string, o library.ListOpt
 	if err != nil {
 		return nil, err
 	}
+	q.Exact = o.Exact
 	f.Kind = f.Subkind()
 	n := o.Offset + o.Limit
-	var lists []search.List
-	add := func(list search.List, err error) error {
-		lists = append(lists, list)
-		return err
-	}
 	item := func(a *args) string {
 		if o.ItemID == "" {
 			return ""
 		}
 		return " and " + libraryItemFilter(table, a.next(o.ItemID))
 	}
-	switch table {
-	case "library_items":
-		err = add(s.searchLibrary(ctx, ItemList, q, f, n, item))
-	case "library_activity":
-		err = add(s.searchLibrary(ctx, ActivityList, q, f, n, item))
-	case "library_collections":
-		err = add(s.searchLibrary(ctx, CollectionList, q, f, n, item))
-	case "library_pages":
-		err = add(s.searchLibrary(ctx, PageList, q, f, n, item))
-	case "library_files":
-		err = errors.Join(add(s.searchLibrary(ctx, LibraryFileList, q, f, n, item)), add(s.searchTexts(ctx, q, search.Filters{}, n, func(a *args) string {
-			where, _ := LibraryFileList.filters(f, a)
-			return " and exists (select 1 from library_files r where r.content_id = t.content_id" + where + item(a) + ")"
-		})))
-	}
+	hits, _, err := search.Rank(q, o.Offset, o.Limit, func(q search.Query) (lists []search.List, err error) {
+		add := func(list search.List, err error) error {
+			lists = append(lists, list)
+			return err
+		}
+		switch table {
+		case "library_items":
+			err = add(s.searchLibrary(ctx, ItemList, q, f, n, item))
+		case "library_activity":
+			err = add(s.searchLibrary(ctx, ActivityList, q, f, n, item))
+		case "library_collections":
+			err = add(s.searchLibrary(ctx, CollectionList, q, f, n, item))
+		case "library_pages":
+			err = add(s.searchLibrary(ctx, PageList, q, f, n, item))
+		case "library_files":
+			err = errors.Join(add(s.searchLibrary(ctx, LibraryFileList, q, f, n, item)), add(s.searchTexts(ctx, q, search.Filters{}, n, func(a *args) string {
+				where, _ := LibraryFileList.filters(f, a)
+				return " and exists (select 1 from library_files r where r.content_id = t.content_id" + where + item(a) + ")"
+			})))
+		}
+		return lists, err
+	})
 	if err != nil {
 		return nil, err
 	}
-	hits := search.Fuse(lists, o.Offset, o.Limit)
 	if table == "library_files" {
 		ids := make([]int64, len(hits))
 		for i, h := range hits {

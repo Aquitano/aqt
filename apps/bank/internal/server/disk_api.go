@@ -15,6 +15,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/disks/view"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -234,8 +235,8 @@ func (s *diskAPI) register(api huma.API) {
 }
 
 type DiskSearchInput struct {
-	Q       string `query:"q" doc:"Words to find. Empty lists whatever the filters select, in path order."`
-	Match   string `query:"match" enum:"any,all" doc:"Every word (all, the default) or any word."`
+	Q string `query:"q" doc:"Words to find. Empty lists whatever the filters select, in path order."`
+	Matching
 	Volume  string `query:"volume" doc:"Volume label or ID."`
 	Ext     string `query:"ext" doc:"File extension without the dot, such as pdf."`
 	Kind    string `query:"kind" enum:"file,dir,link" doc:"Entry kind."`
@@ -245,7 +246,7 @@ type DiskSearchInput struct {
 }
 
 func (s *diskAPI) search(ctx context.Context, in *DiskSearchInput) (*body[view.SearchResult], error) {
-	o := store.SearchOptions{Query: in.Q, Any: in.Match == "any", Ext: in.Ext, Kind: in.Kind, Current: in.Current, Limit: in.Limit, Offset: in.Offset}
+	o := store.SearchOptions{Query: in.Q, Match: search.Mode(in.Match), Exact: in.Exact, Ext: in.Ext, Kind: in.Kind, Current: in.Current, Limit: in.Limit, Offset: in.Offset}
 	var err error
 	if o.VolumeID, o.Under, err = s.folder(ctx, in.Volume, in.Under); err != nil {
 		return nil, err

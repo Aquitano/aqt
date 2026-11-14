@@ -47,7 +47,7 @@ bank disk scan --help
 
 To keep the catalogue current, run scans from a nightly task: [Scheduled scans](#scheduled-scans).
 
-`bank disk search` reads its words like `bank search`: every word and `"quoted phrase"` by default, `--any` for any of them, typo tolerance for long words and none for short or quoted ones. Words can match names, paths or name fragments. Archive members, document text, metadata and enrichment results appear in separate ranked groups. `--volume` accepts a label or ID. `--under` accepts a mounted path, or a volume-relative path with `--volume`. All read commands support `--json`. `bank search` ranks files on disks in one list with messages and the library, a file once with all its places, and `--kind file` keeps only files; `bank disk search` adds the filters only the catalogue has: volume, folder, extension, entry kind and current versions, and lists what they select without words.
+`bank disk search` reads its words like `bank search`: best match by default, which ranks entries with every word and `"quoted phrase"` first, `--match all` or `--match any` to change that, `-word` to exclude, and typo tolerance for long words unless `--exact` is set. Words can match names, paths or name fragments. Archive members, document text, metadata and enrichment results appear in separate ranked groups. `--volume` accepts a label or ID. `--under` accepts a mounted path, or a volume-relative path with `--volume`. All read commands support `--json`. `bank search` ranks files on disks in one list with messages and the library, a file once with all its places, and `--kind file` keeps only files; `bank disk search` adds the filters only the catalogue has: volume, folder, extension, entry kind and current versions, and lists what they select without words.
 
 Argument errors exit with code 2 and print the usage, as for every `bank` command. Command failures, including `bank disk enrich --task ocr` without targets or `--under`, exit with code 1.
 
@@ -429,7 +429,7 @@ The session holds the volume's advisory lock, and the database connection that h
 
 ### Search groups preserve their own ranking
 
-Filename, archive-member, document-text, metadata and enrichment indexes rank separately because their BM25 scores are not comparable; `bank search` merges them with the archive's lists by rank instead. Content results include earlier versions unless `--current` is set; filename results describe entries as they are now. Every word must match within one result unless `--any` is set. Query pieces without a letter or digit are dropped by the parser, and a query of nothing else matches nothing.
+Filename, archive-member, document-text, metadata and enrichment indexes rank separately because their BM25 scores are not comparable; `bank search` merges them with the archive's lists by rank instead. Content results include earlier versions unless `--current` is set; filename results describe entries as they are now. With best match, an entry holding every word within one result ranks above one holding some. Query pieces without a letter or digit are dropped by the parser, and a query of nothing else matches nothing.
 
 Entry extensions describe files; archive-member extensions describe members. Volume and folder filters identify where the enclosing file lives. An archive named by `--under` includes its members. Copy lists retain the same filters as the search result.
 

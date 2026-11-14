@@ -55,9 +55,11 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank contact self thomas                      # the owner, whom browse leaves out of members
 
 ./bank search "that invoice" --from alice --since 2024-01-01
-./bank search "alice retainer"                  # every word, each in any field
+./bank search "alice retainer"                  # records with both words first, then with one
 ./bank search '"quarterly review" deck'         # quoted words are adjacent and in order
-./bank search "retainer invoice" --any          # any of the words, fuller matches first
+./bank search "invoice -draft"                  # a leading - excludes a word or "a phrase"
+./bank search "retainer invoice" --match all    # only records with every word
+./bank search "hetzner invoice" --exact         # no typo tolerance
 ./bank search "retainer"                        # also text inside PDFs and Office files
 ./bank search "the deck" --to bob               # by recipient
 ./bank search "that invoice" --person alice     # every identity she uses
@@ -149,7 +151,8 @@ happened. Other read commands work without this setting.
 
 `bank search` and `GET /v1/search` search every kind of record at once and return one ranked list of hits.
 
-- **Grammar.** A query is words and `"quoted phrases"`, parsed once in `internal/search` for every kind. By default every word and phrase must match, each in any of a record's fields; `--any` (`match=any`) needs one of them. A word of up to four characters must match exactly, one of five to eight characters tolerates one typo, a longer one two. A quoted word or phrase is exact. A piece with no letter or digit is ignored.
+- **Grammar.** A query is words, `"quoted phrases"` and exclusions (`-draft`, `-"out of office"`), parsed once in `internal/search` for every kind. A word matches in any of a record's fields. A word of up to four characters must match exactly, one of five to eight characters tolerates one typo, a longer one two; `--exact` (`exact=true`) turns that off, and a quoted word or phrase is always exact. A piece with no letter or digit is ignored.
+- **Best match.** By default (`match=best`) the lists first require every word and phrase. When fewer records than the page reaches hold them all, the lists run again requiring any word, and those records follow, marked `partial`. Fusing the two groups apart keeps a record with one word, first in a short list, from outranking a record with all of them. `--match all` stops after the first group, `--match any` ranks every record with any word. Within one list, as in `bank disk search`, best match ranks a record with every word ten times higher instead.
 - **Tokenizers.** Prose (subjects, bodies, document text, titles, notes, descriptions) uses pg_search's Unicode word tokenizer with ASCII folding, so `fur` finds `für`. Names, filenames, paths, senders and recipients use its source code tokenizer with folding, which also splits `MinecraftServer` and `pingpong_final`; filenames and disk names add a trigram field, so `werkstudent` finds `Werkstudentenvertrag.pdf`.
 - **One engine.** Every kind is ranked by BM25 in a pg_search index: messages, document text, attachment and library filenames, media items with their notes and tags, activity, collections, published pages, and the catalogue's names, archive members, metadata and image analyses. Filters people use (source, account, kind, dates, thread, participants, volume, extension) are fields of those indexes, so a filtered page is selected inside the index.
 - **One list.** Each kind's index returns its best `offset + limit` hits, equal scores in a fixed order (messages newest first), and the lists run concurrently. Reciprocal rank fusion merges them: a hit's score is the sum of `1 / (60 + rank)` over the lists that found it, so a record found by two lists, such as a PDF whose name and text both match, ranks above one found by either. `limit` and `offset` page the fused list. An unfiltered search runs twelve lists, each one round trip with a page and a count, then three statements for the places of the files on the page; a filter that a kind cannot apply skips its list.

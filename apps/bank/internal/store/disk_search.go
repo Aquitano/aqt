@@ -17,13 +17,10 @@ func parseQuery(o SearchOptions) (q search.Query, ok bool, err error) {
 	if !strings.ContainsFunc(o.Query, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
 		return q, false, nil
 	}
-	mode := search.All
-	if o.Any {
-		mode = search.Any
-	}
-	if q, err = search.Parse(o.Query, mode); err != nil {
+	if q, err = search.Parse(o.Query, o.Match); err != nil {
 		return q, false, &InvalidSearchError{err.Error()}
 	}
+	q.Exact = o.Exact
 	return q, true, nil
 }
 

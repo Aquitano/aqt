@@ -14,16 +14,19 @@ func TestParse(t *testing.T) {
 		want  Mode
 		err   string
 	}{
-		{in: "invoice alice", terms: []Term{{Text: "invoice"}, {Text: "alice"}}, want: All},
+		{in: "invoice alice", terms: []Term{{Text: "invoice"}, {Text: "alice"}}, want: Best},
 		{in: "  invoice\talice ", mode: Any, terms: []Term{{Text: "invoice"}, {Text: "alice"}}, want: Any},
-		{in: `"quarterly  review" deck`, terms: []Term{{Text: "quarterly review", Phrase: true}, {Text: "deck"}}, want: All},
-		{in: `deck "quarterly review`, terms: []Term{{Text: "deck"}, {Text: "quarterly review", Phrase: true}}, want: All},
-		{in: `"cat"`, terms: []Term{{Text: "cat", Phrase: true}}, want: All},
-		{in: `- invoice ""`, terms: []Term{{Text: "invoice"}}, want: All},
-		{in: "für", terms: []Term{{Text: "für"}}, want: All},
+		{in: "invoice alice", mode: All, terms: []Term{{Text: "invoice"}, {Text: "alice"}}, want: All},
+		{in: `invoice -draft -"out of office"`, terms: []Term{{Text: "invoice"}, {Text: "draft", Exclude: true}, {Text: "out of office", Phrase: true, Exclude: true}}, want: Best},
+		{in: "-draft", err: "only ones to exclude"},
+		{in: `"quarterly  review" deck`, terms: []Term{{Text: "quarterly review", Phrase: true}, {Text: "deck"}}, want: Best},
+		{in: `deck "quarterly review`, terms: []Term{{Text: "deck"}, {Text: "quarterly review", Phrase: true}}, want: Best},
+		{in: `"cat"`, terms: []Term{{Text: "cat", Phrase: true}}, want: Best},
+		{in: `- invoice ""`, terms: []Term{{Text: "invoice"}}, want: Best},
+		{in: "für", terms: []Term{{Text: "für"}}, want: Best},
 		{in: "   ", err: "must not be empty"},
 		{in: "-- ...", err: "no letters or digits"},
-		{in: "a", mode: "phrase", err: "match must be all or any"},
+		{in: "a", mode: "phrase", err: "match must be best, all or any"},
 		{in: strings.Repeat("w ", MaxTerms+1), err: "at most"},
 	} {
 		q, err := Parse(tc.in, tc.mode)

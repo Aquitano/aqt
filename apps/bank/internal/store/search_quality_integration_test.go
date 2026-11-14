@@ -17,7 +17,11 @@ import (
 // combined runs the combined search over st.
 func combined(t *testing.T, st *store.Store, query string, mode search.Mode, f search.Filters, limit, offset int) find.Result {
 	t.Helper()
-	found, err := find.Find(t.Context(), st, query, mode, f, limit, offset)
+	q, err := search.Parse(query, mode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found, err := find.Find(t.Context(), st, q, f, limit, offset)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,25 +75,48 @@ func TestSearchRetrievalCases(t *testing.T) {
 	for _, tc := range []struct {
 		name, query string
 		mode        search.Mode
+		exact       bool
 		first       string
 		absent      []string
+		partial     []string
 	}{
-		{"an umlaut is found without it", "uberweisung", search.All, "umlaut", nil},
-		{"a filename fragment finds the file", "werkstudent", search.All, "Werkstudentenvertrag_2024.pdf", nil},
-		{"a typo in a long word is tolerated", "hetzner invoicce", search.All, "invoice", []string{"typo", "noise"}},
-		{"a short word matches exactly", "cat", search.All, "cat", []string{"car"}},
-		{"a phrase keeps its order", `"quarterly review"`, search.All, "phrase", []string{"reversed"}},
-		{"every word, across fields", "alice retainer", search.All, "cross-field", []string{"phrase", "reversed"}},
-		{"any word ranks the fuller match first", "hetzner invoice", search.Any, "invoice", nil},
-		{"a file found by name and text outranks a message", "orbital contract", search.All, "orbital-contract.pdf", nil},
+		{name: "an umlaut is found without it", query: "uberweisung", mode: search.All, first: "umlaut"},
+		{name: "a filename fragment finds the file", query: "werkstudent", mode: search.All, first: "Werkstudentenvertrag_2024.pdf"},
+		{name: "a typo in a long word is tolerated", query: "hetzner invoicce", mode: search.All, first: "invoice", absent: []string{"typo", "noise"}},
+		{name: "a short word matches exactly", query: "cat", mode: search.All, first: "cat", absent: []string{"car"}},
+		{name: "a phrase keeps its order", query: `"quarterly review"`, mode: search.All, first: "phrase", absent: []string{"reversed"}},
+		{name: "every word, across fields", query: "alice retainer", mode: search.All, first: "cross-field", absent: []string{"phrase", "reversed"}},
+		{name: "any word ranks the fuller match first", query: "hetzner invoice", mode: search.Any, first: "invoice"},
+		{name: "a file found by name and text outranks a message", query: "orbital contract", mode: search.All, first: "orbital-contract.pdf"},
+		{name: "best match lists every word first, then some", query: "monthly invoice", mode: search.Best, first: "invoice", partial: []string{"noise"}},
+		{name: "a leading minus excludes", query: "invoice -weekend", mode: search.Best, first: "invoice", absent: []string{"noise"}},
+		{name: "exact turns typo tolerance off", query: "hetzner invoicce", mode: search.All, exact: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			found := combined(t, st, tc.query, tc.mode, search.Filters{}, 20, 0)
+			q, err := search.Parse(tc.query, tc.mode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			q.Exact = tc.exact
+			found, err := find.Find(t.Context(), st, q, search.Filters{}, 20, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
 			var got []string
+			partial := map[string]bool{}
 			for _, h := range found.Hits {
 				got = append(got, labelOf(h))
+				partial[labelOf(h)] = h.Partial
 			}
-			if len(got) == 0 || got[0] != tc.first {
+			for _, want := range tc.partial {
+				if !partial[want] {
+					t.Errorf("hits %q: %s is not a partial match", got, want)
+				}
+			}
+			if tc.first == "" && len(got) > 0 {
+				t.Fatalf("hits %q, want none", got)
+			}
+			if tc.first != "" && (len(got) == 0 || got[0] != tc.first) {
 				t.Fatalf("hits %q, want %s first", got, tc.first)
 			}
 			for _, absent := range tc.absent {
