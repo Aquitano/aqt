@@ -1,13 +1,15 @@
-// Package httpapi is how every domain describes its HTTP operations, so one
-// OpenAPI document per API is generated from the Go types and failures look
-// the same everywhere. Agents are the callers: code-mode hosts turn the
-// document into typed functions, and branch on a failure's _tag.
+// Package httpapi is how every route describes its HTTP operation, so the one
+// OpenAPI document is generated from the Go types, failures look the same
+// everywhere, and a token's scope is checked in one place. Agents are the
+// callers: code-mode hosts turn the document into typed functions, and branch
+// on a failure's _tag.
 package httpapi
 
 import (
 	"bytes"
-	"cmp"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"maps"
 	"net/http"
 	"reflect"
@@ -16,6 +18,8 @@ import (
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 // Error is every error body. _tag names the failure so agent code can branch
@@ -77,9 +81,9 @@ var (
 	Unauthorized = Kind{Tag: "Unauthorized", Status: http.StatusUnauthorized,
 		Doc: "The bearer token is missing or unknown."}
 	Forbidden = Kind{Tag: "Forbidden", Status: http.StatusForbidden,
-		Doc: "The token is valid, and its scope does not allow the request."}
+		Doc: "The token is valid and only reads; this operation writes."}
 	Invalid = Kind{Tag: "InvalidRequest", Status: http.StatusUnprocessableEntity,
-		Doc: "A parameter is malformed, out of range or contradicts another."}
+		Doc: "A parameter or the body is malformed, too large, out of range or contradicts another."}
 	NotFound = Kind{Tag: "NotFound", Status: http.StatusNotFound,
 		Doc: "Nothing matches."}
 	Internal = Kind{Tag: "Internal", Status: http.StatusInternalServerError,
@@ -87,8 +91,8 @@ var (
 )
 
 // EveryOperation can fail on any route: authentication, parameter validation
-// or the server itself.
-var EveryOperation = []Kind{Unauthorized, Forbidden, Invalid, Internal}
+// or the server itself. An operation that writes can also be Forbidden.
+var EveryOperation = []Kind{Unauthorized, Invalid, Internal}
 
 func (k Kind) New(message string) *Error {
 	return &Error{status: k.Status, Tag: k.Tag, Message: message}
@@ -154,16 +158,58 @@ func (k Kind) schema(registry huma.Registry) *huma.Schema {
 }
 
 // Operation is one route. Its error responses are Errors plus EveryOperation.
+// Writes marks an operation that changes the archive, which a read token may
+// not call; an operation that takes a body and only reads, such as a search
+// by POST, leaves it false.
 type Operation struct {
 	ID, Method, Path, Tag, Summary, Description string
 	Errors                                      []Kind
+	Writes                                      bool
 }
 
+// writeRole is the role an operation that writes requires of the bearer
+// token. OpenAPI 3.1 lets a security requirement name roles for any scheme.
+const writeRole = "write"
+
 func (o Operation) For(api huma.API) huma.Operation {
-	return huma.Operation{
+	op := huma.Operation{
 		OperationID: o.ID, Method: o.Method, Path: o.Path, Tags: []string{o.Tag},
 		Summary: o.Summary, Description: o.Description,
-		Responses: Responses(api.OpenAPI().Components.Schemas, o.Errors...),
+	}
+	errs := o.Errors
+	if o.Writes {
+		op.Security = []map[string][]string{{"bearer": {writeRole}}}
+		errs = append([]Kind{Forbidden}, errs...)
+	}
+	op.Responses = Responses(api.OpenAPI().Components.Schemas, errs...)
+	return op
+}
+
+func writes(op *huma.Operation) bool {
+	return slices.ContainsFunc(op.Security, func(requirement map[string][]string) bool {
+		return slices.Contains(requirement["bearer"], writeRole)
+	})
+}
+
+// RequireToken is the one check of every operation: the bearer token must be
+// in store, and a read token may not call an operation that writes. A token
+// file that cannot be read is the server's failure, not the caller's.
+func RequireToken(api huma.API, store tokens.Store, mintCommand string) func(huma.Context, func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
+		token, _ := bearerToken(ctx.Header("Authorization"))
+		scope, ok, err := store.Verify(token)
+		switch {
+		case err != nil:
+			slog.Error("read tokens", "error", err)
+			_ = huma.WriteErr(api, ctx, http.StatusInternalServerError, "the server could not read its token file")
+		case !ok:
+			ctx.SetHeader("WWW-Authenticate", "Bearer")
+			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "send Authorization: Bearer <token>; the owner mints one with `"+mintCommand+"`")
+		case !scope.Allows(writes(ctx.Operation())):
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "this token only reads, and "+ctx.Operation().OperationID+" writes")
+		default:
+			next(ctx)
+		}
 	}
 }
 
@@ -178,10 +224,9 @@ type Body[T any] struct {
 	Body T
 }
 
-// Config is the Huma configuration every API shares. mintCommand is what the
-// owner runs for a token; basePath precedes every route when a host mounts
-// the API below its root.
-func Config(title, description, mintCommand, basePath string) huma.Config {
+// Config is the Huma configuration of the API. mintCommand is what the owner
+// runs for a token.
+func Config(title, description, mintCommand string) huma.Config {
 	cfg := huma.DefaultConfig(title, "1")
 	cfg.Info.Description = description
 	cfg.DocsPath = ""
@@ -192,20 +237,30 @@ func Config(title, description, mintCommand, basePath string) huma.Config {
 		"bearer": {Type: "http", Scheme: "bearer", Description: "A token from `" + mintCommand + "`."},
 	}
 	cfg.Security = []map[string][]string{{"bearer": {}}}
-	if basePath != "" {
-		cfg.Servers = []*huma.Server{{URL: basePath}}
-	}
 	return cfg
 }
 
-// BearerToken is the token in r's Authorization header. The scheme is
+// bearerToken is the token in an Authorization header. The scheme is
 // case-insensitive, as RFC 7235 says.
-func BearerToken(r *http.Request) (string, bool) {
-	scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+func bearerToken(header string) (string, bool) {
+	scheme, token, ok := strings.Cut(header, " ")
 	return token, ok && strings.EqualFold(scheme, "bearer") && token != ""
 }
 
-// Write sends e outside a Huma handler, such as from authentication.
+// PageSize is the limit every list and search takes. Struct tags cannot name
+// constants, so a test keeps these equal to the page package's.
+type PageSize struct {
+	Limit int `query:"limit" default:"100" minimum:"1" maximum:"500" doc:"How many results, at most."`
+}
+
+// Page is PageSize with an offset, for lists that page by position.
+type Page struct {
+	PageSize
+	Offset int `query:"offset" default:"0" minimum:"0" maximum:"10000" doc:"Skip this many results. Past the maximum, narrow the request instead of paging deeper."`
+}
+
+// Write sends e outside a Huma operation: from /healthz, or for a path no
+// operation serves.
 func Write(w http.ResponseWriter, e *Error) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(e.status)
@@ -214,9 +269,12 @@ func Write(w http.ResponseWriter, e *Error) {
 	_ = enc.Encode(e)
 }
 
-// Huma reports parameter validation and its own failures through NewError.
-// The hook is process-wide by Huma's design, which is why every API in this
-// module shares this package.
+// Huma reports parameter validation and its own failures through NewError,
+// and the hook is process-wide by Huma's design. Each status Huma chooses is
+// normalised to a documented kind and that kind's status: a malformed, too
+// large or too slow body is an InvalidRequest at 422 like any rejected
+// parameter, so the document lists every status a caller can see. A server
+// failure is logged and its cause is not sent.
 func init() {
 	huma.NewError = func(status int, msg string, errs ...error) huma.StatusError {
 		kind := Internal
@@ -232,10 +290,19 @@ func init() {
 		}
 		details := []string{msg}
 		for _, err := range errs {
-			if err != nil {
+			// A detail's value can be the whole body the caller sent.
+			if detail, ok := errors.AsType[*huma.ErrorDetail](err); ok && detail.Location != "" {
+				details = append(details, detail.Location+": "+detail.Message)
+			} else if err != nil {
 				details = append(details, err.Error())
 			}
 		}
-		return &Error{status: cmp.Or(status, kind.Status), Tag: kind.Tag, Message: strings.Join(details, ": ")}
+		message := strings.Join(details, ": ")
+		// Huma also calls this with status 0 while it builds the document.
+		if status >= http.StatusInternalServerError {
+			slog.Error("HTTP request failed", "status", status, "error", message)
+			message = http.StatusText(http.StatusInternalServerError)
+		}
+		return kind.New(message)
 	}
 }

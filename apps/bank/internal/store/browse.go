@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
 )
 
 type BrowseOpts struct {
@@ -21,13 +23,7 @@ func (o BrowseOpts) Validate() error {
 		return err
 	}
 	if o.Order != "" && o.Order != "asc" && o.Order != "desc" {
-		return fmt.Errorf("order must be asc or desc")
-	}
-	if o.Limit < 1 || o.Limit > MaxSearchLimit {
-		return fmt.Errorf("limit must be 1-%d", MaxSearchLimit)
-	}
-	if o.Offset < 0 || o.Offset > MaxSearchOffset {
-		return fmt.Errorf("offset must be 0-%d", MaxSearchOffset)
+		return fail.Invalidf("order must be asc or desc")
 	}
 	return nil
 }

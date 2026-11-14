@@ -2,22 +2,22 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/retrieve"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 )
 
-func TestUnavailableKeepsAnEmptyVolumeList(t *testing.T) {
-	body, err := json.Marshal(fail(&retrieve.UnavailableError{}))
+func TestInternalFailuresKeepTheirCause(t *testing.T) {
+	body, err := json.Marshal(failure(errors.New("dial tcp 10.0.0.5:5432: connection refused")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), `"volumes":[]`) {
-		t.Fatalf("body = %s, want the documented empty volumes list", body)
+	if strings.Contains(string(body), "10.0.0.5") || !strings.Contains(string(body), `"_tag":"Internal"`) {
+		t.Fatalf("body = %s, want Internal without the cause", body)
 	}
-	other, err := json.Marshal(errNotFound.New("gone"))
-	if err != nil || strings.Contains(string(other), "volumes") {
-		t.Fatalf("a NotFound error carries volumes: %s %v", other, err)
+	if body, _ = json.Marshal(failure(store.ErrNotFound)); !strings.Contains(string(body), `"_tag":"NotFound"`) {
+		t.Fatalf("not found answered %s", body)
 	}
 }

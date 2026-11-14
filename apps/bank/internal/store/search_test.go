@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 )
 
 func TestSearchOptsValidate(t *testing.T) {
@@ -12,7 +14,7 @@ func TestSearchOptsValidate(t *testing.T) {
 	bad := map[string]SearchOpts{
 		"zero limit":     {Limit: 0, Fuzzy: 1},
 		"negative limit": {Limit: -1, Fuzzy: 1},
-		"limit over cap": {Limit: MaxSearchLimit + 1, Fuzzy: 1},
+		"limit over cap": {Limit: page.MaxLimit + 1, Fuzzy: 1},
 		"negative fuzzy": {Limit: 20, Fuzzy: -1},
 		"fuzzy over cap": {Limit: 20, Fuzzy: MaxFuzzyDistance + 1},
 		"until before since": {Limit: 20, Fuzzy: 1,
@@ -27,7 +29,7 @@ func TestSearchOptsValidate(t *testing.T) {
 	for _, o := range []SearchOpts{
 		base,
 		{Limit: 1, Fuzzy: 0},
-		{Limit: MaxSearchLimit, Fuzzy: MaxFuzzyDistance},
+		{Limit: page.MaxLimit, Fuzzy: MaxFuzzyDistance},
 	} {
 		if err := o.Validate(); err != nil {
 			t.Errorf("rejected %+v: %v", o, err)

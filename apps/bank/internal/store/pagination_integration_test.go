@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -111,12 +112,12 @@ func TestSearchOffsetBounds(t *testing.T) {
 	if err := bad.Validate(); err == nil {
 		t.Error("a negative offset should be a usage error")
 	}
-	bad.Offset = store.MaxSearchOffset + 1
+	bad.Offset = page.MaxOffset + 1
 	if err := bad.Validate(); err == nil {
 		t.Error("an offset past the cap should be a usage error")
 	}
 	ok := valid
-	ok.Offset = store.MaxSearchOffset
+	ok.Offset = page.MaxOffset
 	if err := ok.Validate(); err != nil {
 		t.Errorf("the cap itself should be allowed: %v", err)
 	}

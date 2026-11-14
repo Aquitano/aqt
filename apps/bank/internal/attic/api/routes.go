@@ -2,17 +2,11 @@ package api
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
-	"mime"
 	"net/http"
-	"path"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/retrieve"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
@@ -23,128 +17,111 @@ type body[T any] = httpapi.Body[T]
 
 func reply[T any](v T, err error) (*body[T], error) {
 	if err != nil {
-		return nil, fail(err)
+		return nil, failure(err)
 	}
 	return &body[T]{Body: v}, nil
 }
 
 type operation = httpapi.Operation
 
-func (s *Server) register(api huma.API) {
-	op := func(o operation) huma.Operation { return o.For(api) }
+func (s *server) register(api huma.API) {
+	op := func(o operation) huma.Operation {
+		o.Tag = Tag
+		return o.For(api)
+	}
 
-	huma.Register(api, op(operation{ID: "search", Method: http.MethodGet, Path: "/v1/search", Tag: "catalogue",
-		Summary: "Find files by name, path, text, tags or OCR",
-		Description: "Each index ranks on its own scale, so entries, archive members, document text, embedded tags " +
-			"and OCR or image descriptions come back as separate lists, each up to limit long. By default every " +
-			"word has to match. Results include places that held a content before the file changed; current=true " +
-			"leaves those out.",
+	huma.Register(api, op(operation{ID: "searchDisks", Method: http.MethodGet, Path: "/v1/disk/search",
+		Summary: "Find files on disks by name, path, text, tags or OCR, with filters by volume, folder and type",
+		Description: "The combined search also finds files on disks; this one adds filters it does not have: volume, " +
+			"under, ext, kind and current, and it lists what the filters select when q is empty. Each index ranks " +
+			"on its own scale, so entries, archive members, document text, embedded tags and OCR or image " +
+			"descriptions come back as separate lists, each up to limit long. Results include places that held a " +
+			"content before the file changed; current=true leaves those out.",
 		Errors: []httpapi.Kind{errNotFound}}), s.search)
 
-	huma.Register(api, op(operation{ID: "getStats", Method: http.MethodGet, Path: "/v1/stats", Tag: "catalogue",
+	huma.Register(api, op(operation{ID: "getDiskStats", Method: http.MethodGet, Path: "/v1/disk/stats",
 		Summary: "Count volumes, files, contents, documents and enrichment results"}), s.stats)
 
-	huma.Register(api, op(operation{ID: "listDupes", Method: http.MethodGet, Path: "/v1/dupes", Tag: "catalogue",
+	huma.Register(api, op(operation{ID: "listDiskDupes", Method: http.MethodGet, Path: "/v1/disk/dupes",
 		Summary:     "List contents stored more than once, largest waste first",
 		Description: "Copies on two backup disks are usually intended; same_volume=true counts only copies that share a volume."}), s.dupes)
 
-	huma.Register(api, op(operation{ID: "getCoverage", Method: http.MethodGet, Path: "/v1/coverage", Tag: "catalogue",
+	huma.Register(api, op(operation{ID: "getDiskCoverage", Method: http.MethodGet, Path: "/v1/disk/coverage",
 		Summary: "Report content recorded on fewer than two volumes",
 		Description: "What would be lost with one disk: contents with a single recorded volume, and unhashed files " +
 			"whose content is unknown. Filter by volume, and by a volume-relative folder with under.",
 		Errors: []httpapi.Kind{errNotFound}}), s.coverage)
 
-	huma.Register(api, op(operation{ID: "getContent", Method: http.MethodGet, Path: "/v1/contents/{ref}", Tag: "contents",
-		Summary:     "Show one content and every place it lives or lived",
+	huma.Register(api, op(operation{ID: "getDiskContent", Method: http.MethodGet, Path: "/v1/disk/contents/{ref}",
+		Summary:     "Show one content and every place on disks it lives or lived",
 		Description: "Occurrences list current places first, then places that held this content before their bytes changed.",
 		Errors:      []httpapi.Kind{errNotFound, AmbiguousRef}}), s.content)
 
-	huma.Register(api, op(operation{ID: "getContentText", Method: http.MethodGet, Path: "/v1/contents/{ref}/text", Tag: "contents",
+	huma.Register(api, op(operation{ID: "getDiskContentText", Method: http.MethodGet, Path: "/v1/disk/contents/{ref}/text",
 		Summary:     "Read a document's extracted text",
 		Description: "Text is extracted once per content, by a scan or by bank, up to the first 4 MB; status says whether it was cut.",
 		Errors:      []httpapi.Kind{errNotFound, AmbiguousRef}}), s.text)
 
-	huma.Register(api, op(operation{ID: "getContentMetadata", Method: http.MethodGet, Path: "/v1/contents/{ref}/metadata", Tag: "contents",
+	huma.Register(api, op(operation{ID: "getDiskContentMetadata", Method: http.MethodGet, Path: "/v1/disk/contents/{ref}/metadata",
 		Summary: "Read embedded image, document, audio and video tags",
 		Errors:  []httpapi.Kind{errNotFound, AmbiguousRef}}), s.metadata)
 
-	huma.Register(api, op(operation{ID: "listContentAnalyses", Method: http.MethodGet, Path: "/v1/contents/{ref}/analyses", Tag: "contents",
+	huma.Register(api, op(operation{ID: "listDiskContentAnalyses", Method: http.MethodGet, Path: "/v1/disk/contents/{ref}/analyses",
 		Summary: "List OCR and image descriptions, one per task, provider, model and prompt version",
 		Errors:  []httpapi.Kind{errNotFound, AmbiguousRef}}), s.analyses)
 
-	download := op(operation{ID: "downloadContent", Method: http.MethodGet, Path: "/v1/contents/{ref}/file", Tag: "contents",
-		Summary: "Download a file's bytes from an attached disk",
-		Description: "Streams the first present copy on an attached disk that the server's content rules allow, " +
-			"and checks it against the catalogued BLAKE3 digest while streaming. A copy that changed since its scan " +
-			"ends the response short of Content-Length rather than delivering wrong bytes. While no copy is attached, " +
-			"the error lists the disks that hold one.",
-		Errors: []httpapi.Kind{errNotFound, AmbiguousRef, errUnavailable}})
-	download.Responses["200"] = &huma.Response{
-		Description: "The file's bytes. ETag is its BLAKE3 digest.",
-		Content:     map[string]*huma.MediaType{"application/octet-stream": {Schema: &huma.Schema{Type: "string", Format: "binary"}}},
-	}
-	huma.Register(api, download, s.download)
-
-	huma.Register(api, op(operation{ID: "getEntry", Method: http.MethodGet, Path: "/v1/entries/{id}", Tag: "entries",
+	huma.Register(api, op(operation{ID: "getDiskEntry", Method: http.MethodGet, Path: "/v1/disk/entries/{id}",
 		Summary:     "Show one entry: its file, folder or link, its versions and its other copies",
 		Description: "Versions list every content the entry held, newest first, with the scans that saw each one arrive and change.",
 		Errors:      []httpapi.Kind{errNotFound}}), s.entry)
 
-	huma.Register(api, op(operation{ID: "listVolumes", Method: http.MethodGet, Path: "/v1/volumes", Tag: "volumes",
-		Summary:     "List known volumes, their totals, last scans and where they are attached",
-		Description: "mounted_at is set while a volume is attached to the machine serving the catalogue."}), s.volumes)
+	huma.Register(api, op(operation{ID: "listDiskVolumes", Method: http.MethodGet, Path: "/v1/disk/volumes",
+		Summary: "List known volumes, their totals and last scans"}), s.volumes)
 
-	huma.Register(api, op(operation{ID: "listScans", Method: http.MethodGet, Path: "/v1/scans", Tag: "scans",
+	huma.Register(api, op(operation{ID: "listDiskScans", Method: http.MethodGet, Path: "/v1/disk/scans",
 		Summary: "List scans, newest first, with their phase times and counts",
 		Errors:  []httpapi.Kind{errNotFound}}), s.scans)
 
-	huma.Register(api, op(operation{ID: "getScan", Method: http.MethodGet, Path: "/v1/scans/{id}", Tag: "scans",
+	huma.Register(api, op(operation{ID: "getDiskScan", Method: http.MethodGet, Path: "/v1/disk/scans/{id}",
 		Summary: "Show one scan",
 		Errors:  []httpapi.Kind{errNotFound}}), s.scan)
 
-	huma.Register(api, op(operation{ID: "listScanSkipGroups", Method: http.MethodGet, Path: "/v1/scans/{id}/skip-groups", Tag: "scans",
+	huma.Register(api, op(operation{ID: "listDiskScanSkipGroups", Method: http.MethodGet, Path: "/v1/disk/scans/{id}/skip-groups",
 		Summary: "Count what a scan left out, by reason and rule",
 		Errors:  []httpapi.Kind{errNotFound}}), s.skipGroups)
 
-	huma.Register(api, op(operation{ID: "listScanSkips", Method: http.MethodGet, Path: "/v1/scans/{id}/skips", Tag: "scans",
+	huma.Register(api, op(operation{ID: "listDiskScanSkips", Method: http.MethodGet, Path: "/v1/disk/scans/{id}/skips",
 		Summary: "List the paths a scan left out, by reason or rule",
 		Errors:  []httpapi.Kind{errNotFound}}), s.skips)
-
-	httpapi.Finish(api)
 }
 
 type searchInput struct {
 	Q       string `query:"q" doc:"Words to find. Empty lists whatever the filters select, in path order."`
-	Any     bool   `query:"any" doc:"Match any word instead of every word."`
+	Match   string `query:"match" enum:"any,all" doc:"Every word (all, the default) or any word."`
 	Volume  string `query:"volume" doc:"Volume label or ID."`
 	Ext     string `query:"ext" doc:"File extension without the dot, such as pdf."`
 	Kind    string `query:"kind" enum:"file,dir,link" doc:"Entry kind."`
 	Under   string `query:"under" doc:"Volume-relative folder, such as /Projects/2017. Needs volume."`
 	Current bool   `query:"current" doc:"Leave out places that held a content before their file changed."`
-	Limit   int    `query:"limit" default:"20" minimum:"1" maximum:"200" doc:"Maximum results per list."`
-	Offset  int    `query:"offset" minimum:"0" doc:"Skip this many ranked results in each list."`
+	httpapi.Page
 }
 
-func (s *Server) search(ctx context.Context, in *searchInput) (*body[view.SearchResult], error) {
-	o := store.SearchOptions{Query: in.Q, Any: in.Any, Ext: in.Ext, Kind: in.Kind, Current: in.Current, Limit: in.Limit, Offset: in.Offset}
+func (s *server) search(ctx context.Context, in *searchInput) (*body[view.SearchResult], error) {
+	o := store.SearchOptions{Query: in.Q, Any: in.Match == "any", Ext: in.Ext, Kind: in.Kind, Current: in.Current, Limit: in.Limit, Offset: in.Offset}
 	var err error
 	if o.VolumeID, o.Under, err = s.folder(ctx, in.Volume, in.Under); err != nil {
 		return nil, err
 	}
-	vols, err := s.store.KnownVolumes(ctx)
-	if err != nil {
-		return nil, fail(err)
-	}
-	return reply(view.Search(ctx, s.store, o, view.OnlineRoots(vols)))
+	return reply(view.Search(ctx, s.store, o, nil))
 }
 
 // folder resolves the volume and volume-relative folder filters. A mounted
 // path would name a folder on the client, not on this machine.
-func (s *Server) folder(ctx context.Context, volume, under string) (volumeID, folder string, err error) {
+func (s *server) folder(ctx context.Context, volume, under string) (volumeID, folder string, err error) {
 	if volume != "" {
 		v, err := s.store.FindVolume(ctx, volume)
 		if err != nil {
-			return "", "", fail(err)
+			return "", "", failure(err)
 		}
 		volumeID = v.ID
 	}
@@ -157,10 +134,10 @@ func (s *Server) folder(ctx context.Context, volume, under string) (volumeID, fo
 	return volumeID, strings.TrimSuffix(under, "/"), nil
 }
 
-func (s *Server) stats(ctx context.Context, _ *struct{}) (*body[view.Stats], error) {
+func (s *server) stats(ctx context.Context, _ *struct{}) (*body[view.Stats], error) {
 	t, err := s.store.Totals(ctx)
 	if err != nil {
-		return nil, fail(err)
+		return nil, failure(err)
 	}
 	analyses, err := s.store.AITotals(ctx)
 	return reply(view.Stats{Totals: t, Analyses: analyses}, err)
@@ -169,29 +146,21 @@ func (s *Server) stats(ctx context.Context, _ *struct{}) (*body[view.Stats], err
 type dupesInput struct {
 	MinSize    int64 `query:"min_size" default:"1048576" minimum:"0" doc:"Ignore contents smaller than this many bytes."`
 	SameVolume bool  `query:"same_volume" doc:"Count only copies that share a volume."`
-	Limit      int   `query:"limit" default:"20" minimum:"1" maximum:"200" doc:"Maximum duplicate groups."`
+	httpapi.PageSize
 }
 
-func (s *Server) dupes(ctx context.Context, in *dupesInput) (*body[view.DupeReport], error) {
+func (s *server) dupes(ctx context.Context, in *dupesInput) (*body[view.DupeReport], error) {
 	dupes, wasted, err := s.store.Dupes(ctx, in.MinSize, in.SameVolume, in.Limit)
-	if err != nil {
-		return nil, fail(err)
-	}
-	vols, err := s.store.KnownVolumes(ctx)
-	if err != nil {
-		return nil, fail(err)
-	}
-	return reply(view.NewDupeReport(dupes, wasted, view.OnlineRoots(vols)), nil)
+	return reply(view.NewDupeReport(dupes, wasted, nil), err)
 }
 
 type coverageInput struct {
 	Volume string `query:"volume" doc:"Volume label or ID."`
 	Under  string `query:"under" doc:"Volume-relative folder, such as /Photos. Needs volume."`
-	Limit  int    `query:"limit" default:"20" minimum:"1" maximum:"1000" doc:"Maximum contents and unknown files per page."`
-	Offset int    `query:"offset" minimum:"0" doc:"Skip this many contents and unknown files."`
+	httpapi.Page
 }
 
-func (s *Server) coverage(ctx context.Context, in *coverageInput) (*body[store.CoverageReport], error) {
+func (s *server) coverage(ctx context.Context, in *coverageInput) (*body[store.CoverageReport], error) {
 	o := store.CoverageOptions{Limit: in.Limit, Offset: in.Offset}
 	var err error
 	if o.VolumeID, o.Under, err = s.folder(ctx, in.Volume, in.Under); err != nil {
@@ -204,96 +173,45 @@ type refInput struct {
 	Ref ref.Content `path:"ref" doc:"Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest."`
 }
 
-func (s *Server) content(ctx context.Context, in *refInput) (*body[view.Content], error) {
+func (s *server) content(ctx context.Context, in *refInput) (*body[view.Content], error) {
 	c, err := s.store.Content(ctx, in.Ref)
-	if err != nil {
-		return nil, fail(err)
-	}
-	vols, err := s.store.KnownVolumes(ctx)
-	if err != nil {
-		return nil, fail(err)
-	}
-	return reply(view.NewContent(c, view.OnlineRoots(vols)), nil)
+	return reply(view.NewContent(c, nil), err)
 }
 
-func (s *Server) text(ctx context.Context, in *refInput) (*body[store.TextDetail], error) {
+func (s *server) text(ctx context.Context, in *refInput) (*body[store.TextDetail], error) {
 	return reply(s.store.Text(ctx, 0, in.Ref))
 }
 
-func (s *Server) metadata(ctx context.Context, in *refInput) (*body[store.MetadataDetail], error) {
+func (s *server) metadata(ctx context.Context, in *refInput) (*body[store.MetadataDetail], error) {
 	return reply(s.store.Metadata(ctx, 0, in.Ref))
 }
 
-func (s *Server) analyses(ctx context.Context, in *refInput) (*body[[]store.Analysis], error) {
+func (s *server) analyses(ctx context.Context, in *refInput) (*body[[]store.Analysis], error) {
 	return reply(s.store.Analyses(ctx, 0, in.Ref))
-}
-
-func (s *Server) download(ctx context.Context, in *refInput) (*huma.StreamResponse, error) {
-	content, err := s.store.Retrieval(ctx, 0, in.Ref)
-	if err != nil {
-		return nil, fail(err)
-	}
-	vols, err := s.store.KnownVolumes(ctx)
-	if err != nil {
-		return nil, fail(err)
-	}
-	src, err := retrieve.Open(ctx, content, vols, disk.Mounted(), s.config)
-	if err != nil {
-		return nil, fail(err)
-	}
-	return &huma.StreamResponse{Body: func(hctx huma.Context) {
-		name := path.Base(src.Source)
-		hctx.SetHeader("Content-Type", contentType(name))
-		hctx.SetHeader("Content-Length", fmt.Sprint(src.Size))
-		hctx.SetHeader("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
-		hctx.SetHeader("ETag", `"`+src.Blake3+`"`)
-		hctx.SetStatus(http.StatusOK)
-		if err := src.Copy(hctx.BodyWriter()); err != nil {
-			slog.Warn("download cut short", "ref", src.Ref, "source", src.Source, "err", err)
-			// The status and some bytes are already sent; only dropping the
-			// connection tells the client the body is incomplete.
-			panic(http.ErrAbortHandler)
-		}
-	}}, nil
-}
-
-func contentType(name string) string {
-	if t := mime.TypeByExtension(path.Ext(name)); t != "" {
-		return t
-	}
-	return "application/octet-stream"
 }
 
 type idInput struct {
 	ID int64 `path:"id" minimum:"1"`
 }
 
-func (s *Server) entry(ctx context.Context, in *idInput) (*body[view.Entry], error) {
+// Schemas are named after their Go type, and the library has an Entry too.
+type diskEntry view.Entry
+
+func (s *server) entry(ctx context.Context, in *idInput) (*body[diskEntry], error) {
 	d, err := s.store.Entry(ctx, in.ID)
-	if err != nil {
-		return nil, fail(err)
-	}
-	vols, err := s.store.KnownVolumes(ctx)
-	if err != nil {
-		return nil, fail(err)
-	}
-	return reply(view.NewEntry(d, view.OnlineRoots(vols)), nil)
+	return reply(diskEntry(view.NewEntry(d, nil)), err)
 }
 
-func (s *Server) volumes(ctx context.Context, _ *struct{}) (*body[[]view.VolumeStatus], error) {
-	vols, err := s.store.Volumes(ctx)
-	if err != nil {
-		return nil, fail(err)
-	}
-	return reply(view.VolumeStatuses(vols), nil)
+func (s *server) volumes(ctx context.Context, _ *struct{}) (*body[[]store.VolumeSummary], error) {
+	return reply(s.store.Volumes(ctx))
 }
 
 type scansInput struct {
 	Volume string `query:"volume" doc:"Volume label or ID."`
-	Limit  int    `query:"limit" default:"20" minimum:"1" maximum:"200"`
+	httpapi.PageSize
 }
 
-func (s *Server) scans(ctx context.Context, in *scansInput) (*body[[]store.ScanInfo], error) {
+func (s *server) scans(ctx context.Context, in *scansInput) (*body[[]store.ScanInfo], error) {
 	volumeID, _, err := s.folder(ctx, in.Volume, "")
 	if err != nil {
 		return nil, err
@@ -301,14 +219,14 @@ func (s *Server) scans(ctx context.Context, in *scansInput) (*body[[]store.ScanI
 	return reply(s.store.Scans(ctx, volumeID, in.Limit))
 }
 
-func (s *Server) scan(ctx context.Context, in *idInput) (*body[store.ScanInfo], error) {
+func (s *server) scan(ctx context.Context, in *idInput) (*body[store.ScanInfo], error) {
 	return reply(s.store.ScanByID(ctx, in.ID))
 }
 
-func (s *Server) skipGroups(ctx context.Context, in *idInput) (*body[view.SkipReport], error) {
+func (s *server) skipGroups(ctx context.Context, in *idInput) (*body[view.SkipReport], error) {
 	sc, err := s.store.ScanByID(ctx, in.ID)
 	if err != nil {
-		return nil, fail(err)
+		return nil, failure(err)
 	}
 	groups, err := s.store.SkipGroups(ctx, sc.ID)
 	return reply(view.SkipReport{Scan: sc, Groups: groups}, err)
@@ -316,14 +234,14 @@ func (s *Server) skipGroups(ctx context.Context, in *idInput) (*body[view.SkipRe
 
 type skipsInput struct {
 	ID     int64  `path:"id" minimum:"1"`
-	Reason string `query:"reason" doc:"A reason from listScanSkipGroups, such as excluded, too_big or unreadable."`
-	Rule   string `query:"rule" doc:"A rule from listScanSkipGroups."`
-	Limit  int    `query:"limit" default:"100" minimum:"1" maximum:"1000"`
+	Reason string `query:"reason" doc:"A reason from listDiskScanSkipGroups, such as excluded, too_big or unreadable."`
+	Rule   string `query:"rule" doc:"A rule from listDiskScanSkipGroups."`
+	httpapi.PageSize
 }
 
-func (s *Server) skips(ctx context.Context, in *skipsInput) (*body[[]store.Skip], error) {
+func (s *server) skips(ctx context.Context, in *skipsInput) (*body[[]store.Skip], error) {
 	if _, err := s.store.ScanByID(ctx, in.ID); err != nil {
-		return nil, fail(err)
+		return nil, failure(err)
 	}
 	return reply(s.store.Skips(ctx, in.ID, in.Reason, in.Rule, in.Limit))
 }

@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,7 +21,7 @@ import (
 
 func TestHealthChecksDatabase(t *testing.T) {
 	pool := storetest.Pool(t, storetest.Migrated(t))
-	server := New(store.New(pool), nil, nil, t.TempDir(), t.TempDir())
+	server := New(store.New(pool), noDisks{}, nil, t.TempDir(), t.TempDir())
 	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
 		if status == http.StatusServiceUnavailable {
 			pool.Close()
@@ -30,25 +31,30 @@ func TestHealthChecksDatabase(t *testing.T) {
 		if response.Code != status {
 			t.Fatalf("status %d, want %d", response.Code, status)
 		}
+		if status == http.StatusOK && !strings.Contains(response.Body.String(), `"schema_version":1`) {
+			t.Fatalf("health does not report the schema version: %s", response.Body)
+		}
 	}
 }
 
 func TestInternalErrorsDoNotExposeDetails(t *testing.T) {
-	response := httptest.NewRecorder()
-	writeErr(response, 500, "connection failed: postgres://private:password@db")
-	if strings.Contains(response.Body.String(), "password") || !strings.Contains(response.Body.String(), "Internal Server Error") {
-		t.Fatal(response.Body.String())
+	body, err := json.Marshal(failure(errors.New("connection failed: postgres://private:password@db")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "password") || !strings.Contains(string(body), "Internal Server Error") {
+		t.Fatal(string(body))
 	}
 }
 
 func newJSONTestServer(t *testing.T, timeout time.Duration) (*httptest.Server, string) {
 	t.Helper()
 	dir := t.TempDir()
-	token, err := Tokens(dir).New("test", tokens.Scope{})
+	token, err := Tokens(dir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{dataDir: dir, jsonReadTimeout: timeout}
+	s := &Server{dataDir: dir, jsonReadTimeout: timeout, catalogue: noDisks{}}
 	srv := httptest.NewServer(s.Handler())
 	t.Cleanup(srv.Close)
 	srv.Client().Timeout = 5 * time.Second
@@ -68,8 +74,9 @@ func postOversizedJSON(t *testing.T, srv *httptest.Server, token string, content
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusRequestEntityTooLarge {
-		t.Fatalf("status %d, want 413", response.StatusCode)
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(body), "16 MiB") && !strings.Contains(string(body), "larger than") {
+		t.Fatalf("status %d (%s), want an InvalidRequest about the size", response.StatusCode, body)
 	}
 }
 
@@ -115,7 +122,7 @@ func TestStalledJSONUploadsReleaseImportSlots(t *testing.T) {
 		}
 		body, err := io.ReadAll(response.Body)
 		response.Body.Close()
-		if err != nil || response.StatusCode != http.StatusRequestTimeout {
+		if err != nil || response.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(body), "in time") {
 			t.Fatalf("stalled upload response: status=%d body=%q err=%v", response.StatusCode, body, err)
 		}
 	}

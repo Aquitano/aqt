@@ -76,9 +76,6 @@ func (c *Client) LibraryFile(ctx context.Context, id string) (library.File, erro
 func (c *Client) LibraryPage(ctx context.Context, id string) (library.Page, error) {
 	return getJSON[library.Page](ctx, c, "/v1/library/pages/"+url.PathEscape(id), nil)
 }
-func (c *Client) SearchLibrary(ctx context.Context, o library.ListOptions) (library.SearchResult, error) {
-	return getJSON[library.SearchResult](ctx, c, "/v1/library/search", libraryQuery(o))
-}
 func (c *Client) CreateLibraryItem(ctx context.Context, item library.Item) (library.Item, error) {
 	return postJSON[library.Item](ctx, c, "/v1/library/items", nil, item)
 }
@@ -128,7 +125,7 @@ func (c *Client) Find(ctx context.Context, query string, messages store.SearchOp
 	if !messages.Until.IsZero() {
 		q.Set("until", messages.Until.Format(time.DateOnly))
 	}
-	return getJSON[catalog.Result](ctx, c, "/v1/find", q)
+	return getJSON[catalog.Result](ctx, c, "/v1/search", q)
 }
 
 func (c *Client) UploadLibraryFiles(ctx context.Context, paths []string, source, account, itemID string) ([]library.File, error) {
@@ -178,20 +175,11 @@ func (c *Client) UploadLibraryFiles(ctx context.Context, paths []string, source,
 		writer.CloseWithError(uploadErr)
 	}()
 	q := url.Values{"source": {source}, "account": {account}, "item_id": {itemID}}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/v1/library/files?"+q.Encode(), reader)
+	response, err := c.send(ctx, http.MethodPost, "/v1/library/files", q, multipartWriter.FormDataContentType(), reader)
 	if err != nil {
-		return result, err
-	}
-	request.Header.Set("Authorization", "Bearer "+c.token)
-	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-	response, err := c.hc.Do(request)
-	if err != nil {
-		return result, err
+		return result, fmt.Errorf("upload library files: %w", err)
 	}
 	defer response.Body.Close()
-	if response.StatusCode/100 != 2 {
-		return result, fmt.Errorf("upload library files: %s", errorMessage(response))
-	}
 	return result, json.NewDecoder(response.Body).Decode(&result)
 }
 

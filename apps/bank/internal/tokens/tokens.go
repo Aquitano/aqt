@@ -1,9 +1,8 @@
 // Package tokens keeps the bearer tokens of an app's HTTP API.
 //
-// Tokens live in one line-oriented file, "<name>:<sha256 of the token>" with
-// an optional ":<scope>", so a plaintext token exists only on its client. The
-// file is read per request: it is tiny, and revocation then takes effect at
-// once.
+// Tokens live in one line-oriented file, "<name>:<sha256 of the token>:<scope>",
+// so a plaintext token exists only on its client. The file is read per
+// request: it is tiny, and revocation then takes effect at once.
 package tokens
 
 import (
@@ -29,53 +28,16 @@ type Store struct {
 	Prefix string
 }
 
-// Scope limits what a token opens. The zero value opens everything, which is
-// what a line without a scope means.
-type Scope struct {
-	ReadOnly bool
-	// Domains names the APIs the token reaches, such as bank or attic. Empty
-	// means every domain.
-	Domains []string
-}
+// Scope is what a token may do: read, or read and write.
+type Scope string
 
-const readOnly = "read"
+const (
+	Read  Scope = "read"
+	Write Scope = "write"
+)
 
-func (s Scope) Allows(domain string, write bool) bool {
-	return (!write || !s.ReadOnly) && (len(s.Domains) == 0 || slices.Contains(s.Domains, domain))
-}
-
-// String is the scope as the file stores it: "read" and the domains, comma
-// separated, and empty for a token that opens everything.
-func (s Scope) String() string {
-	grants := slices.Clone(s.Domains)
-	if s.ReadOnly {
-		grants = append([]string{readOnly}, grants...)
-	}
-	return strings.Join(grants, ",")
-}
-
-func parseScope(field string) Scope {
-	var s Scope
-	for grant := range strings.SplitSeq(field, ",") {
-		switch grant {
-		case "":
-		case readOnly:
-			s.ReadOnly = true
-		default:
-			s.Domains = append(s.Domains, grant)
-		}
-	}
-	return s
-}
-
-func (s Scope) validate() error {
-	for _, domain := range s.Domains {
-		if domain == "" || domain == readOnly || strings.ContainsAny(domain, ":,\r\n ") {
-			return fmt.Errorf("invalid token domain %q", domain)
-		}
-	}
-	return nil
-}
+// Allows reports whether the scope permits an operation that writes or not.
+func (s Scope) Allows(writes bool) bool { return s == Write || !writes }
 
 type Token struct {
 	Name  string
@@ -93,10 +55,11 @@ func (s Store) read() ([]Token, error) {
 	}
 	var out []Token
 	for line := range strings.Lines(string(data)) {
-		name, rest, ok := strings.Cut(strings.TrimSpace(line), ":")
+		// A line without a known scope opens nothing.
+		name, rest, _ := strings.Cut(strings.TrimSpace(line), ":")
 		hash, scope, _ := strings.Cut(rest, ":")
-		if ok && name != "" && hash != "" {
-			out = append(out, Token{Name: name, Scope: parseScope(scope), hash: hash})
+		if name != "" && hash != "" && (Scope(scope) == Read || Scope(scope) == Write) {
+			out = append(out, Token{Name: name, Scope: Scope(scope), hash: hash})
 		}
 	}
 	return out, nil
@@ -124,11 +87,7 @@ func (s Store) update(change func([]Token) ([]Token, error)) (err error) {
 	}
 	var b strings.Builder
 	for _, e := range entries {
-		b.WriteString(e.Name + ":" + e.hash)
-		if scope := e.Scope.String(); scope != "" {
-			b.WriteString(":" + scope)
-		}
-		b.WriteByte('\n')
+		b.WriteString(e.Name + ":" + e.hash + ":" + string(e.Scope) + "\n")
 	}
 	return atomicfile.Write(s.Path, strings.NewReader(b.String()))
 }
@@ -139,8 +98,8 @@ func (s Store) New(name string, scope Scope) (string, error) {
 	if name == "" || strings.ContainsAny(name, ":\r\n") {
 		return "", fmt.Errorf("invalid token name %q", name)
 	}
-	if err := scope.validate(); err != nil {
-		return "", err
+	if scope != Read && scope != Write {
+		return "", fmt.Errorf("invalid token scope %q", scope)
 	}
 	token := s.Prefix + rand.Text()
 	err := s.update(func(entries []Token) ([]Token, error) {
@@ -173,7 +132,7 @@ func (s Store) Revoke(name string) error {
 func (s Store) Verify(presented string) (Scope, bool, error) {
 	entries, err := s.read()
 	if err != nil || presented == "" {
-		return Scope{}, false, err
+		return "", false, err
 	}
 	want := []byte(hashToken(presented))
 	var scope Scope

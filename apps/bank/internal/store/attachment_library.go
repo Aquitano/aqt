@@ -9,6 +9,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
 )
@@ -34,12 +35,7 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 	if err := (library.ListOptions{Query: o.Query, Match: o.Match, Limit: o.Limit, Offset: o.Offset}).Validate(); err != nil {
 		return nil, err
 	}
-	if o.Limit == 0 {
-		o.Limit = 50
-	}
-	if o.Offset < 0 || o.Offset > MaxSearchOffset {
-		return nil, fmt.Errorf("invalid offset")
-	}
+	o.Limit = page.Limit(o.Limit)
 	where := "true"
 	ctes := ""
 	args := []any{}
@@ -109,11 +105,9 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 }
 
 func (s *Store) AttachmentMessages(ctx context.Context, d content.Digest, offset, limit int) ([]Message, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 50
-	}
-	if offset < 0 || offset > MaxSearchOffset {
-		return nil, fmt.Errorf("invalid offset")
+	limit = page.Limit(limit)
+	if err := page.Check(limit, offset); err != nil {
+		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `select `+messageColumns+` from messages m where exists
  (select 1 from attachments a join contents c on c.id=a.content_id where a.message_id=m.id and c.blake3=$1)

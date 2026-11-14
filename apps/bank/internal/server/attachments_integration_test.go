@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -49,35 +48,12 @@ func attachmentServer(t *testing.T) (*Server, *store.Store) {
 	return s, st
 }
 
-func do(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	var r *http.Request
-	if body == "" {
-		r = httptest.NewRequest(method, path, nil)
-	} else {
-		r = httptest.NewRequest(method, path, strings.NewReader(body))
-	}
-	w := httptest.NewRecorder()
-	// The mux is exercised rather than the handler directly, so a route that
-	// is registered wrong fails here instead of in production.
-	handlerFor(s).ServeHTTP(w, r)
-	return w
-}
-
-// handlerFor is Handler without the token middleware, which has its own tests.
-func handlerFor(s *Server) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("PUT /v1/attachments/{blake3}/text", s.handleAttachmentTextPut)
-	s.registerAPI(mux)
-	return mux
-}
-
 // The whole point of the write route: a model running on a laptop lists the
 // work, posts text back, and the archive becomes searchable inside that file.
 func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 	s, st := attachmentServer(t)
 
-	w := do(t, s, http.MethodGet, "/v1/attachments?status=pending", "")
+	w := authed(t, s, http.MethodGet, "/v1/attachments?status=pending", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("list: %d %s", w.Code, w.Body)
 	}
@@ -89,10 +65,10 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 		t.Fatalf("listed = %+v", listed)
 	}
 
-	if w = do(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text", "chatsworth deed of sale"); w.Code != http.StatusOK {
+	if w = authed(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text", "chatsworth deed of sale"); w.Code != http.StatusOK {
 		t.Fatalf("put: %d %s", w.Code, w.Body)
 	}
-	if w = do(t, s, http.MethodPost, "/v1/attachments/refresh", ""); w.Code != http.StatusOK {
+	if w = authed(t, s, http.MethodPost, "/v1/attachments/refresh", ""); w.Code != http.StatusOK {
 		t.Fatalf("refresh: %d %s", w.Code, w.Body)
 	}
 
@@ -104,7 +80,7 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 		t.Fatalf("found %d messages by text posted over HTTP, want 1", len(msgs))
 	}
 
-	w = do(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", "")
+	w = authed(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", "")
 	var bt store.BlobText
 	if err := json.Unmarshal(w.Body.Bytes(), &bt); err != nil {
 		t.Fatal(err)
@@ -115,10 +91,10 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 		t.Fatalf("status = %q, want manual", bt.Status)
 	}
 
-	if w = do(t, s, http.MethodDelete, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusOK {
+	if w = authed(t, s, http.MethodDelete, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusOK {
 		t.Fatalf("delete: %d %s", w.Code, w.Body)
 	}
-	if w = do(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusNotFound {
+	if w = authed(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusNotFound {
 		t.Fatalf("get after delete: %d, want 404", w.Code)
 	}
 }
@@ -127,10 +103,10 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 // from a laptop stays needs_ocr rather than becoming a manual transcription.
 func TestAttachmentTextKeepsAStatedStatus(t *testing.T) {
 	s, _ := attachmentServer(t)
-	if w := do(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text?status=needs_ocr&extractor=pdf", ""); w.Code != http.StatusOK {
+	if w := authed(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text?status=needs_ocr&extractor=pdf", ""); w.Code != http.StatusOK {
 		t.Fatalf("put: %d %s", w.Code, w.Body)
 	}
-	w := do(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", "")
+	w := authed(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", "")
 	var bt store.BlobText
 	if err := json.Unmarshal(w.Body.Bytes(), &bt); err != nil {
 		t.Fatal(err)
@@ -147,12 +123,12 @@ func TestAttachmentTextRejectsAnInvalidStatus(t *testing.T) {
 	// "pending" spells the same mistake correctly: it means the absence of a
 	// row, so a row saying it is a contradiction.
 	for _, status := range []string{"needsocr", "done", "pending"} {
-		w := do(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text?status="+status, "text")
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("put ?status=%s: %d, want 400", status, w.Code)
+		w := authed(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text?status="+status, "text")
+		if w.Code != http.StatusUnprocessableEntity {
+			t.Errorf("put ?status=%s: %d, want 422", status, w.Code)
 		}
 	}
-	if w := do(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusNotFound {
+	if w := authed(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusNotFound {
 		t.Fatalf("a rejected status stored a row anyway: %d", w.Code)
 	}
 }
@@ -162,8 +138,8 @@ func TestAttachmentTextRejectsAnInvalidStatus(t *testing.T) {
 func TestAttachmentTextRejectsOversizedBody(t *testing.T) {
 	s, _ := attachmentServer(t)
 	body := strings.Repeat("a", store.MaxAttachmentTextChars+1)
-	if w := do(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text", body); w.Code != http.StatusBadRequest {
-		t.Fatalf("put oversized text: %d, want 400", w.Code)
+	if w := authed(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text", body); w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("put oversized text: %d, want 422", w.Code)
 	}
 }
 
@@ -172,20 +148,20 @@ func TestAttachmentTextRejectsUnknownDigest(t *testing.T) {
 	unknown := strings.Repeat("c", 64)
 	// Text for content no message carries would be unreachable by any search
 	// and invisible to every refresh: better a 404 than a silent no-op.
-	if w := do(t, s, http.MethodPut, "/v1/attachments/"+unknown+"/text", "orphan"); w.Code != http.StatusNotFound {
+	if w := authed(t, s, http.MethodPut, "/v1/attachments/"+unknown+"/text", "orphan"); w.Code != http.StatusNotFound {
 		t.Fatalf("put unknown digest: %d, want 404", w.Code)
 	}
-	if w := do(t, s, http.MethodPut, "/v1/attachments/not-a-digest/text", "x"); w.Code != http.StatusBadRequest {
-		t.Fatalf("put bad digest: %d, want 400", w.Code)
+	if w := authed(t, s, http.MethodPut, "/v1/attachments/not-a-digest/text", "x"); w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("put bad digest: %d, want 422", w.Code)
 	}
-	if w := do(t, s, http.MethodGet, "/v1/attachments/not-a-digest/text", ""); w.Code != http.StatusUnprocessableEntity {
+	if w := authed(t, s, http.MethodGet, "/v1/attachments/not-a-digest/text", ""); w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("get bad digest: %d, want 422", w.Code)
 	}
 }
 
 func TestAttachmentStatsOverHTTP(t *testing.T) {
 	s, _ := attachmentServer(t)
-	w := do(t, s, http.MethodGet, "/v1/attachments/stats", "")
+	w := authed(t, s, http.MethodGet, "/v1/attachments/stats", "")
 	if w.Code != http.StatusOK {
 		t.Fatalf("stats: %d %s", w.Code, w.Body)
 	}

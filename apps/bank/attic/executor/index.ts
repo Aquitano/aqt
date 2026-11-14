@@ -4,12 +4,12 @@ import { always } from "apps/operations/approval";
 
 import { attic, origin } from "./provider.js";
 
-const instructions = `attic catalogues every file on the owner's disks, attached or not, and keeps no file bytes.
+const instructions = `bank holds the owner's archive and, below /v1/disk, the catalogue of every file on the owner's disks, attached or not. The catalogue keeps no file bytes.
 
-- Find files with catalogue.search. Entries, archive members, document text, tags and OCR come back as separate lists, each ranked on its own scale.
-- A place is online when its disk is attached now, missing when the last scan no longer found it, and version "previous" when the file held this content before it changed.
+- Find files with disk.searchDisks, or search the archive and the disks together with search.search. Entries, archive members, document text, tags and OCR come back as separate lists, each ranked on its own scale.
+- A place is missing when the last scan no longer found it, and has version "previous" when the file held this content before it changed.
 - Cite a file by its content ref, content:<hex>, as the API returns it. Entry IDs only name a location in this catalogue.
-- contents.downloadContent returns the bytes from an attached disk. Unavailable means no copy can be read now: tell the owner which of the error's volumes to connect, or, when it lists none, pass on its recovery, such as rescanning the volume.
+- The server cannot read a disk. To get a file's bytes, ask the owner to run attic get on the machine the disk attaches to.
 - AmbiguousRef lists candidates; retry with one candidate's longer ref.`;
 
 const requirements = { app: { accounts: { attic } } };
@@ -33,7 +33,7 @@ export default defineApp(requirements, async ({ app, cache, fetch, signal }) => 
     ),
     {
       title: "attic",
-      description: "Search the owner's file catalogue and fetch files from attached disks.",
+      description: "Search the owner's archive and the catalogue of files on disks.",
       instructions,
     },
   ),

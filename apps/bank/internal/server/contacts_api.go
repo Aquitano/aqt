@@ -4,17 +4,18 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 var errAliasTaken = httpapi.Kind{Tag: "AliasTaken", Status: http.StatusConflict,
-	Doc: "Another contact already has the alias; message names that contact."}
+	Doc:   "Another contact already has the alias. alias is its normalized form and owner the contact that has it.",
+	Extra: map[string]reflect.Type{"alias": reflect.TypeFor[string](), "owner": reflect.TypeFor[string]()}}
 
 // maxContactImport bounds one import. A contact book is names and handles;
 // anything past this is not one.
@@ -31,11 +32,13 @@ func (s *Server) registerContactsAPI(api huma.API) {
 	huma.Register(api, httpapi.Operation{ID: "createContact", Method: http.MethodPost, Path: "/v1/contacts", Tag: "contacts",
 		Summary:     "Create a contact without aliases",
 		Description: "A name that is empty or already taken is an InvalidRequest.",
+		Writes:      true,
 	}.For(api), s.contactCreate)
 	importContacts := httpapi.Operation{ID: "importContacts", Method: http.MethodPost, Path: "/v1/contacts/import", Tag: "contacts",
 		Summary: "Create or extend several contacts at once",
 		Description: "An existing contact is kept and gains the aliases that are new. A conflict does not fail the " +
 			"request: each entry's result lists its own errors, and the rest is applied.",
+		Writes: true,
 	}.For(api)
 	importContacts.MaxBodyBytes, importContacts.BodyReadTimeout = maxContactImport, bulkBodyReadTimeout
 	huma.Register(api, importContacts, s.contactImport)
@@ -49,6 +52,7 @@ func (s *Server) registerContactsAPI(api huma.API) {
 	huma.Register(api, httpapi.Operation{ID: "deleteContact", Method: http.MethodDelete, Path: "/v1/contacts/{name}", Tag: "contacts",
 		Summary: "Delete a contact and its aliases, leaving its messages in place",
 		Errors:  []httpapi.Kind{httpapi.NotFound},
+		Writes:  true,
 	}.For(api), s.contactDelete)
 	huma.Register(api, httpapi.Operation{ID: "listContactMessages", Method: http.MethodGet, Path: "/v1/contacts/{name}/messages", Tag: "contacts",
 		Summary: "List the messages a contact sent or received, across every source, newest first",
@@ -59,26 +63,24 @@ func (s *Server) registerContactsAPI(api huma.API) {
 	huma.Register(api, httpapi.Operation{ID: "addContactAlias", Method: http.MethodPost, Path: "/v1/contacts/{name}/aliases", Tag: "contacts",
 		Summary: "Attach an identity, such as an address or a handle, to a contact",
 		Errors:  []httpapi.Kind{httpapi.NotFound, errAliasTaken},
+		Writes:  true,
 	}.For(api), s.aliasAdd)
 	huma.Register(api, httpapi.Operation{ID: "removeContactAlias", Method: http.MethodDelete, Path: "/v1/contacts/{name}/aliases", Tag: "contacts",
 		Summary:     "Detach an identity from a contact",
 		Description: "The alias is named in the query string. An alias the contact does not have is an InvalidRequest.",
 		Errors:      []httpapi.Kind{httpapi.NotFound},
+		Writes:      true,
 	}.For(api), s.aliasRemove)
 }
 
-// contactFailure sorts a store error the way the untyped routes did: an
-// unknown contact is 404, a failing database or disk is the server's fault,
-// and whatever is left is input the store refused.
+// contactFailure names the contact when there is none, and otherwise is
+// failure: input the store marked as invalid is the caller's, anything else
+// the server's.
 func contactFailure(name string, err error) error {
-	switch {
-	case errors.Is(err, store.ErrNotFound):
+	if errors.Is(err, store.ErrNotFound) {
 		return httpapi.NotFound.New("no contact " + name)
-	case fail.IsOp(err):
-		return internal(err)
-	default:
-		return invalid(err)
 	}
+	return failure(err)
 }
 
 type contactInput struct {
@@ -95,7 +97,7 @@ func (s *Server) contactShow(ctx context.Context, in *contactInput) (*httpapi.Bo
 		return nil, httpapi.NotFound.New("no contact " + in.Name)
 	}
 	if err != nil {
-		return nil, internal(err)
+		return nil, failure(err)
 	}
 	counts, err := s.read.ContactSourceCounts(ctx, c.ID)
 	return reply(store.ContactDetail{Contact: c, Sources: counts}, err)
@@ -106,19 +108,18 @@ type contactMessagesInput struct {
 	Source string      `query:"source" doc:"Only this source, such as gmail or whatsapp."`
 	Since  string      `query:"since" format:"date" doc:"Sent on or after this day, YYYY-MM-DD."`
 	Until  string      `query:"until" format:"date" doc:"Sent before this day, YYYY-MM-DD."`
-	Limit  int         `query:"limit" default:"50" minimum:"1" maximum:"500"`
-	Offset int         `query:"offset" default:"0" minimum:"0" maximum:"10000" doc:"Past 10000, narrow with source or since instead."`
 	Before ref.Message `query:"before" doc:"Only messages older than the message with this ref, which must be one of the contact's."`
+	httpapi.Page
 }
 
 func (s *Server) contactMessages(ctx context.Context, in *contactMessagesInput) (*httpapi.Body[[]store.MessageDetail], error) {
 	o := store.ContactMessagesOpts{Source: in.Source, Limit: in.Limit, Offset: in.Offset, Before: in.Before}
 	var err error
 	if o.Since, err = parseDate(in.Since); err != nil {
-		return nil, invalid(err)
+		return nil, failure(err)
 	}
 	if o.Until, err = parseDate(in.Until); err != nil {
-		return nil, invalid(err)
+		return nil, failure(err)
 	}
 	msgs, err := s.read.ContactMessages(ctx, in.Name, o)
 	if err != nil {
@@ -128,15 +129,11 @@ func (s *Server) contactMessages(ctx context.Context, in *contactMessagesInput) 
 }
 
 type contactSuggestInput struct {
-	Limit int `query:"limit" default:"20" minimum:"1" maximum:"500"`
+	httpapi.PageSize
 }
 
 func (s *Server) contactSuggest(ctx context.Context, in *contactSuggestInput) (*httpapi.Body[[]store.IdentitySuggestion], error) {
-	out, err := s.read.SuggestIdentities(ctx, in.Limit)
-	if err != nil {
-		return nil, contactFailure("", err)
-	}
-	return list(out, nil)
+	return list(s.read.SuggestIdentities(ctx, in.Limit))
 }
 
 type contactCreateInput struct {
@@ -159,11 +156,7 @@ type contactImportInput struct {
 }
 
 func (s *Server) contactImport(ctx context.Context, in *contactImportInput) (*httpapi.Body[[]store.ContactImportResult], error) {
-	res, err := s.db.ImportContacts(ctx, in.Body)
-	if err != nil {
-		return nil, contactFailure("", err)
-	}
-	return list(res, nil)
+	return list(s.db.ImportContacts(ctx, in.Body))
 }
 
 type contactDeleted struct {
@@ -187,9 +180,6 @@ type aliasAddInput struct {
 
 func (s *Server) aliasAdd(ctx context.Context, in *aliasAddInput) (*httpapi.Body[store.ContactAlias], error) {
 	a, err := s.db.AddAlias(ctx, in.Name, in.Body.Source, in.Body.Value)
-	if _, taken := errors.AsType[*store.ErrConflict](err); taken {
-		return nil, errAliasTaken.New(err.Error())
-	}
 	if err != nil {
 		return nil, contactFailure(in.Name, err)
 	}

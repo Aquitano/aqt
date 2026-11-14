@@ -98,8 +98,8 @@ type libraryCmd struct {
 	ItemID            string `help:"Item a file belongs to."`
 	Since             string `help:"YYYY-MM-DD or RFC 3339."`
 	Until             string `help:"YYYY-MM-DD or RFC 3339."`
-	Limit             int    `default:"50" help:"Page size, 0-500."`
-	Offset            int    `help:"Skip this many records."`
+	Limit             int    `default:"${limit}" help:"Page size, 1-${max_limit}."`
+	Offset            int    `help:"Skip this many records, at most ${max_offset}."`
 	JSON              bool   `help:"Accepted for symmetry; library output is always JSON."`
 	MaxSensitivity    string `default:"normal" help:"Maximum Markdown sensitivity for index: normal, personal or confidential."`
 	AllowConfidential bool   `help:"Explicitly publish confidential Markdown pages."`

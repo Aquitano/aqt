@@ -18,6 +18,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
@@ -299,11 +300,14 @@ func printExtractionStats(stats []store.ExtractionStat) {
 type attachmentListCmd struct {
 	Status []string `sep:"none" help:"Only this text status (repeatable)."`
 	Source string   `help:"Only content carried by this source."`
-	Limit  int      `default:"50" help:"How many files."`
+	Limit  int      `default:"${limit}" help:"How many files, 1-${max_limit}."`
 	JSON   bool     `help:"JSON output."`
 }
 
 func (c *attachmentListCmd) Run(ctx context.Context) error {
+	if err := page.Check(c.Limit, 0); err != nil {
+		return err
+	}
 	// The same check `bank extract --source` makes: a malformed source names
 	// nothing, and an empty listing reads as an archive with no attachments.
 	if c.Source != "" {

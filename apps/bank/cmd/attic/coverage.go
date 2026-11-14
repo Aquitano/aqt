@@ -4,26 +4,26 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 )
 
 type coverageCmd struct {
 	Volume string `help:"Volume label or ID."`
 	Under  string `help:"Mounted path, or volume-relative path with --volume."`
-	Limit  int    `default:"20" help:"Maximum contents and unknown files per page (1 to 1000)."`
-	Offset int    `help:"Skip this many contents and unknown files."`
+	Limit  int    `default:"${limit}" help:"Maximum contents and unknown files per page, 1-${max_limit}."`
+	Offset int    `help:"Skip this many contents and unknown files, at most ${max_offset}."`
 	JSON   bool   `help:"Print JSON."`
 }
 
 func (cmd *coverageCmd) Run(ctx context.Context) error {
-	if cmd.Limit < 1 || cmd.Limit > 1000 || cmd.Offset < 0 {
-		return errors.New("coverage needs a limit from 1 to 1000 and a non-negative offset")
+	if err := page.Check(cmd.Limit, cmd.Offset); err != nil {
+		return err
 	}
 	st, closeStore, err := openReadOnlyStore(ctx)
 	if err != nil {

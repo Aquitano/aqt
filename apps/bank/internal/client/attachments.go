@@ -1,6 +1,7 @@
 package client
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -28,9 +30,9 @@ func (c *Client) ListBlobs(ctx context.Context, o store.ListBlobsOpts) ([]store.
 	if o.Source != "" {
 		q.Set("source", o.Source)
 	}
-	if o.Limit > 0 {
-		q.Set("limit", strconv.Itoa(o.Limit))
-	}
+	// A run without a limit locally takes store.MaxBlobList; over HTTP it takes
+	// the largest page, and the next run takes the rest.
+	q.Set("limit", strconv.Itoa(cmp.Or(o.Limit, page.MaxLimit)))
 	return getJSON[[]store.BlobRef](ctx, c, "/v1/attachments", q)
 }
 
@@ -47,8 +49,8 @@ func (c *Client) PutBlobText(ctx context.Context, bt store.BlobText) error {
 	if bt.Extractor != "" {
 		q.Set("extractor", bt.Extractor)
 	}
-	resp, err := c.request(ctx, http.MethodPut, "/v1/attachments/"+bt.BLAKE3.String()+"/text", q,
-		strings.NewReader(bt.Text))
+	resp, err := c.send(ctx, http.MethodPut, "/v1/attachments/"+bt.BLAKE3.String()+"/text", q,
+		"text/plain; charset=utf-8", strings.NewReader(bt.Text))
 	if err != nil {
 		return err
 	}

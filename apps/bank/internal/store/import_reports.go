@@ -9,6 +9,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 )
 
 type ImportReport struct {
@@ -128,8 +129,9 @@ func RunImport[T any](ctx context.Context, st *Store, kind, input string, run fu
 }
 
 func (s *Store) ImportReports(ctx context.Context, before int64, limit int) ([]ImportReport, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 50
+	limit = page.Limit(limit)
+	if err := page.Check(limit, 0); err != nil {
+		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `select id,kind,input,started_at,finished_at,status,result,error from import_reports where ($1::bigint=0 or id<$1) order by id desc limit $2`, before, limit)
 	if err != nil {

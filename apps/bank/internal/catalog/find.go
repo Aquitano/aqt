@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -20,7 +21,7 @@ type Reader interface {
 
 // Disks is the catalogue of files that live on disks, not in the archive.
 type Disks interface {
-	SearchDisks(ctx context.Context, query string, limit, offset int) (view.SearchResult, error)
+	SearchDisks(ctx context.Context, o atticstore.SearchOptions) (view.SearchResult, error)
 }
 
 type Result struct {
@@ -83,12 +84,17 @@ func Find(ctx context.Context, reader Reader, disks Disks, query string, message
 		}
 	}
 	dated := options.Since != "" || options.Until != "" || !messages.Since.IsZero() || !messages.Until.IsZero()
-	if !mailOnly && !dated && options.Account == "" && messages.Source == "" && (options.Kind == "" || options.Kind == "file") {
-		found, err := disks.SearchDisks(ctx, query, messages.Limit, messages.Offset)
+	phrase := messages.Match == "phrase"
+	if !mailOnly && !dated && !phrase && options.Account == "" && messages.Source == "" && (options.Kind == "" || options.Kind == "file") {
+		found, err := disks.SearchDisks(ctx, atticstore.SearchOptions{Query: query, Any: messages.Match != "all",
+			Limit: messages.Limit, Offset: messages.Offset})
 		if err != nil {
 			return result, err
 		}
 		result.Disks = found
+	}
+	if phrase && !mailOnly && (options.Kind == "" || options.Kind == "file") {
+		result.Coverage = append(result.Coverage, "Files on disks are matched by words, not phrases, so a phrase search leaves them out.")
 	}
 	if options.Account != "" {
 		result.Coverage = append(result.Coverage, "Account filters apply to the library. Correspondence is excluded because its account model differs.")

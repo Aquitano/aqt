@@ -142,7 +142,7 @@ func resolveContent(ctx context.Context, archive *store.Store, contents Contents
 	if err != nil {
 		return Resolved{}, err
 	}
-	out := Resolved{Ref: found.Ref, Kind: "content", Href: "/attic/v1/contents/" + found.Ref, Links: []Link{}}
+	out := Resolved{Ref: found.Ref, Kind: "content", Href: "/v1/disk/contents/" + found.Ref, Links: []Link{}}
 	if len(held) > 0 {
 		out.Title = held[0].Filename
 	} else if len(found.Occurrences) > 0 {
@@ -169,7 +169,7 @@ func resolveContent(ctx context.Context, archive *store.Store, contents Contents
 func onDisk(places []view.Place) []Link {
 	links := []Link{}
 	for _, place := range places {
-		links = append(links, Link{Relation: "on_disk", Ref: place.Ref, Title: place.Display, Href: "/attic/v1/contents/" + place.Ref})
+		links = append(links, Link{Relation: "on_disk", Ref: place.Ref, Title: place.Display, Href: "/v1/disk/contents/" + place.Ref})
 	}
 	return links
 }

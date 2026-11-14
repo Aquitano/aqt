@@ -204,8 +204,8 @@ export function getMediaFiles(filters: LibraryFilters = {}, offset = 0) {
 export function uploadFiles(files: File[], itemId?: string) {
   const body = new FormData();
   for (const file of files) body.append("file", file);
-  if (itemId) body.append("item_id", itemId);
-  return api("/v1/library/files", mediaFileSchema.array(), { method: "POST", body });
+  const params = itemId ? `?${new URLSearchParams({ item_id: itemId })}` : "";
+  return api(`/v1/library/files${params}`, mediaFileSchema.array(), { method: "POST", body });
 }
 export function getPage(id: string) {
   return api(`/v1/library/pages/${encodeURIComponent(id)}`, page);
@@ -215,7 +215,7 @@ export function find(params: SearchParams, offset = 0) {
   for (const [key, value] of Object.entries(params))
     if (value !== undefined) search.set(key, String(value));
   return api(
-    `/v1/find?${search}`,
+    `/v1/search?${search}`,
     type({ messages: message.array(), attachments: libraryFile.array(), ...groups }),
   );
 }

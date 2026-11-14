@@ -10,6 +10,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -73,24 +74,24 @@ func (mailMailboxesCmd) Run(ctx context.Context, mail *mailCmd) error {
 type mailConflictCmd struct {
 	Key    string      `arg:""`
 	Before ref.Message `help:"Page backward from this message, by ref."`
-	Limit  int         `default:"100" help:"Page size."`
+	Limit  int         `default:"${limit}" help:"Page size, 1-${max_limit}."`
 }
 
 func (c *mailConflictCmd) Run(ctx context.Context, mail *mailCmd) error {
 	if err := archive.ValidSource(mail.Source); err != nil {
 		return err
 	}
-	if c.Limit < 1 || c.Limit > store.MaxThreadMessages {
-		return fmt.Errorf("usage: bank mail conflict <key> --source <source> [--before msg:<ref>] [--limit n]")
+	if err := page.Check(c.Limit, 0); err != nil {
+		return err
 	}
 	backend, closeBackend, err := openBackend(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeBackend()
-	page, err := backend.MailConflictMessages(ctx, mail.Source, c.Key, c.Before, c.Limit)
+	messages, err := backend.MailConflictMessages(ctx, mail.Source, c.Key, c.Before, c.Limit)
 	if err != nil {
 		return err
 	}
-	return printJSON(page)
+	return printJSON(messages)
 }

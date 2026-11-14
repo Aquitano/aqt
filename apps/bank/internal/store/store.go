@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -137,7 +138,13 @@ func (s *Store) CloseQuery() {
 	}
 }
 
-func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
+// SchemaVersion is the migration the database is at, read from the database
+// itself, so it also says the database answers.
+func (s *Store) SchemaVersion(ctx context.Context) (int32, error) {
+	var version int32
+	err := s.pool.QueryRow(ctx, `select version from public.schema_version`).Scan(&version)
+	return version, err
+}
 
 // InsertMessages inserts a batch atomically and returns one id per input, in
 // input order. An id of zero means that row was already present or its key was
@@ -518,7 +525,7 @@ func (s *Store) SetSyncState(ctx context.Context, source string, state []byte) e
 func (s *Store) SetCoverage(ctx context.Context, source, text string) error {
 	source = strings.TrimSpace(cleanText(source))
 	if source == "" {
-		return fmt.Errorf("coverage needs a source")
+		return fail.Invalidf("coverage needs a source")
 	}
 	_, err := s.pool.Exec(ctx, `
 		insert into sync_state (source, state)

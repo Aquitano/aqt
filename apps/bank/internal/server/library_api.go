@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,34 +23,37 @@ var errRevisionConflict = httpapi.Kind{Tag: "LibraryRevisionConflict", Status: h
 	Doc:   "The record changed since expected_revision was read. Read it again and repeat the edit on its current revision.",
 	Extra: map[string]reflect.Type{"code": reflect.TypeFor[string]()}}
 
-// registerLibraryAPI describes the routes over combined search and the media library.
+// registerSearchAPI describes the one search over every kind of record.
+func (s *Server) registerSearchAPI(api huma.API) {
+	huma.Register(api, httpapi.Operation{ID: "search", Method: http.MethodGet, Path: "/v1/search", Tag: "search",
+		Summary: "Search messages, the media library, attachments and files on disks at once",
+		Description: "q is required, and match means the same for every kind of record: any word (the default), " +
+			"every word, or a phrase. Files on disks have no phrase match and are left out of a phrase search. " +
+			"Messages are ranked by relevance; library groups are sorted by title or date. kind narrows the search " +
+			"to one group (message, item, activity, collection, file, page) or to one kind inside a group; file " +
+			"covers library files, attachments and files on disks. from, to, person, subject, mailbox_id and " +
+			"has_attachment restrict the search to messages, and cannot be combined with a kind other than message " +
+			"or with account. since and until take YYYY-MM-DD here. limit and offset apply to each group on its " +
+			"own. coverage says what the result does not prove: an absent activity, for one, is not evidence that " +
+			"something was not watched, because only imported records are searched.",
+	}.For(api), s.search)
+}
+
+// registerLibraryAPI describes the routes over the media library.
 func (s *Server) registerLibraryAPI(api huma.API) {
 	notFound := []httpapi.Kind{httpapi.NotFound}
 	edit := []httpapi.Kind{httpapi.NotFound, errRevisionConflict}
 
-	huma.Register(api, httpapi.Operation{ID: "findRecords", Method: http.MethodGet, Path: "/v1/find", Tag: "search",
-		Summary: "Search messages, the media library, files and files on disks at once",
-		Description: "q is required. Messages are ranked by relevance; library groups are sorted by title or date. " +
-			"from, to, person, subject, mailbox_id and has_attachment restrict the search to messages, and cannot " +
-			"be combined with a kind other than message or with account. since and until take YYYY-MM-DD here. " +
-			"limit and offset apply to each group on its own. coverage says what the result does not prove.",
-	}.For(api), s.find)
-	huma.Register(api, httpapi.Operation{ID: "searchLibrary", Method: http.MethodGet, Path: "/v1/library/search", Tag: "library",
-		Summary: "Search items, activity, collections, files and pages of the media library",
-		Description: "kind narrows to one group (item, activity, collection, file, page) or to one kind inside a " +
-			"group. limit and offset apply to each group on its own. An absent activity is not evidence that " +
-			"something was not watched: only imported records are searched.",
-	}.For(api), s.librarySearch)
-
 	huma.Register(api, httpapi.Operation{ID: "listLibraryItems", Method: http.MethodGet, Path: "/v1/library/items", Tag: "library",
 		Summary: "List media items (films, episodes, tracks, books and more), sorted by title",
 	}.For(api), s.libraryItems)
-	huma.Register(api, libraryWrite(httpapi.Operation{ID: "createLibraryItem", Method: http.MethodPost, Path: "/v1/library/items", Tag: "library",
+	huma.Register(api, libraryBody(httpapi.Operation{ID: "createLibraryItem", Method: http.MethodPost, Path: "/v1/library/items", Tag: "library",
 		Summary: "Add a media item by hand",
 		Description: "kind and title are required. The server assigns id, source (manual), account and external_id; " +
 			"what the body says for them is ignored.",
+		Writes: true,
 	}.For(api), http.StatusCreated), s.createLibraryItem)
-	huma.Register(api, libraryWrite(httpapi.Operation{ID: "summarizeLibraryItems", Method: http.MethodPost, Path: "/v1/library/items/summaries", Tag: "library",
+	huma.Register(api, libraryBody(httpapi.Operation{ID: "summarizeLibraryItems", Method: http.MethodPost, Path: "/v1/library/items/summaries", Tag: "library",
 		Summary:     "Look up the title, kind and source of up to 50 items by ID",
 		Description: "Answers in the order the IDs were given, each item once. Unknown IDs are left out.",
 	}.For(api), http.StatusOK), s.libraryItemSummaries)
@@ -59,11 +61,12 @@ func (s *Server) registerLibraryAPI(api huma.API) {
 		Summary: "Return one media item with its state, evidence and linked files",
 		Errors:  notFound,
 	}.For(api), s.libraryItem)
-	huma.Register(api, libraryWrite(httpapi.Operation{ID: "setLibraryItemState", Method: http.MethodPut, Path: "/v1/library/items/{id}/state", Tag: "library",
+	huma.Register(api, libraryBody(httpapi.Operation{ID: "setLibraryItemState", Method: http.MethodPut, Path: "/v1/library/items/{id}/state", Tag: "library",
 		Summary: "Replace an item's personal state: status, rating, progress, notes and tags",
 		Description: "The body replaces the whole state, so send every field that should stay. expected_revision is " +
 			"the state's revision as last read, 0 for an item whose state was never set.",
 		Errors: edit,
+		Writes: true,
 	}.For(api), http.StatusOK), s.setLibraryState)
 	huma.Register(api, httpapi.Operation{ID: "listLibraryItemStateHistory", Method: http.MethodGet, Path: "/v1/library/items/{id}/state-history", Tag: "library",
 		Summary: "List every revision of an item's personal state",
@@ -83,20 +86,22 @@ func (s *Server) registerLibraryAPI(api huma.API) {
 		Description: "Each collection carries its current snapshot: with its entry count by default, with the " +
 			"entries themselves when projection is full.",
 	}.For(api)), s.libraryCollections)
-	huma.Register(api, libraryWrite(httpapi.Operation{ID: "createLibraryCollection", Method: http.MethodPost, Path: "/v1/library/collections", Tag: "library",
+	huma.Register(api, libraryBody(httpapi.Operation{ID: "createLibraryCollection", Method: http.MethodPost, Path: "/v1/library/collections", Tag: "library",
 		Summary: "Create a personal collection",
 		Description: "title and kind (playlist, watchlist, library or list) are required. snapshot.entries are the " +
 			"first entries. The server assigns id, source (manual), account and external_id.",
+		Writes: true,
 	}.For(api), http.StatusCreated), s.createLibraryCollection)
 	huma.Register(api, httpapi.Operation{ID: "getLibraryCollection", Method: http.MethodGet, Path: "/v1/library/collections/{id}", Tag: "library",
 		Summary: "Return one collection with the entries of its current snapshot",
 		Errors:  notFound,
 	}.For(api), s.libraryCollection)
-	huma.Register(api, libraryWrite(httpapi.Operation{ID: "editLibraryCollection", Method: http.MethodPut, Path: "/v1/library/collections/{id}", Tag: "library",
+	huma.Register(api, libraryBody(httpapi.Operation{ID: "editLibraryCollection", Method: http.MethodPut, Path: "/v1/library/collections/{id}", Tag: "library",
 		Summary: "Replace a personal collection's title, description and entries",
 		Description: "Only collections created here can be edited; imported ones are read-only. The body replaces " +
 			"all entries. expected_revision is the collection's revision as last read.",
 		Errors: edit,
+		Writes: true,
 	}.For(api), http.StatusOK), s.editLibraryCollection)
 	huma.Register(api, eitherList[library.SnapshotSummary, library.Snapshot](api, httpapi.Operation{ID: "listLibraryCollectionSnapshots", Method: http.MethodGet, Path: "/v1/library/collections/{id}/snapshots", Tag: "library",
 		Summary: "List the recorded states of a collection, newest first",
@@ -128,8 +133,8 @@ func (s *Server) registerLibraryAPI(api huma.API) {
 const bulkBodyReadTimeout = 2 * time.Minute
 
 // The older library routes took 32 MiB of JSON, required no field and
-// refused unknown ones. libraryWrite and strictJSON keep all three.
-func libraryWrite(op huma.Operation, status int) huma.Operation {
+// refused unknown ones. libraryBody and strictJSON keep all three.
+func libraryBody(op huma.Operation, status int) huma.Operation {
 	op.DefaultStatus, op.MaxBodyBytes, op.SkipValidateBody = status, 32<<20, true
 	op.BodyReadTimeout = bulkBodyReadTimeout
 	return op
@@ -161,6 +166,8 @@ func eitherList[Summary, Full any](api huma.API, op huma.Operation) huma.Operati
 	return op
 }
 
+// libraryError is failure for the library's records, whose values reach
+// Postgres as given: a value it refuses is the caller's.
 func libraryError(err error) error {
 	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 		switch {
@@ -170,15 +177,10 @@ func libraryError(err error) error {
 			return httpapi.Invalid.New("invalid library record or missing linked item")
 		}
 	}
-	switch {
-	case errors.Is(err, library.ErrConflict):
-		return errRevisionConflict.New("This record changed. Reload it before saving again.").With("code", "library_revision_conflict")
-	case errors.Is(err, catalog.ErrFilters), errors.Is(err, library.ErrReadOnly), errors.Is(err, library.ErrInvalid):
-		return invalid(err)
-	case errors.Is(err, store.ErrNotFound):
+	if errors.Is(err, store.ErrNotFound) {
 		return httpapi.NotFound.New("library record not found")
 	}
-	return internal(err)
+	return failure(err)
 }
 
 func libraryReply[T any](v T, err error) (*httpapi.Body[T], error) {
@@ -206,8 +208,7 @@ type LibraryFilters struct {
 	ItemID  string `query:"item_id" doc:"Only activity for this item, or files linked to it."`
 	Since   string `query:"since" doc:"Only activity on or after this day (YYYY-MM-DD) or instant (RFC 3339)."`
 	Until   string `query:"until" doc:"Only activity before this day (YYYY-MM-DD) or instant (RFC 3339)."`
-	Limit   int    `query:"limit" default:"50" minimum:"0" maximum:"500" doc:"0 means 50."`
-	Offset  int    `query:"offset" default:"0" minimum:"0" maximum:"100000"`
+	httpapi.Page
 }
 
 func (f LibraryFilters) options() (library.ListOptions, error) {
@@ -220,7 +221,7 @@ type libraryIDInput struct {
 	ID string `path:"id" doc:"The record's ID, which is also its ref, such as item:<32 hex>."`
 }
 
-type findInput struct {
+type searchInput struct {
 	LibraryFilters
 	From          string `query:"from" doc:"Message sender contains this, ignoring case."`
 	To            string `query:"to" doc:"A message recipient contains this, ignoring case."`
@@ -231,53 +232,30 @@ type findInput struct {
 	HasAttachment string `query:"has_attachment" enum:"true,false" doc:"Only messages with, or without, attachments."`
 }
 
-func (s *Server) find(ctx context.Context, in *findInput) (*httpapi.Body[catalog.Result], error) {
+func (s *Server) search(ctx context.Context, in *searchInput) (*httpapi.Body[catalog.Result], error) {
 	o, err := in.options()
 	if err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	messages := store.SearchOpts{Source: o.Source, From: in.From, To: in.To, Person: in.Person, Subject: in.Subject,
-		Match: in.Match, Fuzzy: in.Fuzzy, Limit: cmp.Or(o.Limit, 50), Offset: o.Offset, MailboxID: in.MailboxID}
-	if in.MailboxID != 0 && in.Source == "" {
-		return nil, httpapi.Invalid.New("mailbox_id requires a source")
-	}
+		Match: in.Match, Fuzzy: in.Fuzzy, Limit: o.Limit, Offset: o.Offset, MailboxID: in.MailboxID}
 	if in.HasAttachment != "" {
 		has := in.HasAttachment == "true"
 		messages.HasAttachment = &has
 	}
 	if messages.Since, err = parseDate(in.Since); err != nil {
-		return nil, invalid(err)
+		return nil, failure(err)
 	}
 	if messages.Until, err = parseDate(in.Until); err != nil {
-		return nil, invalid(err)
+		return nil, failure(err)
 	}
-	if err = messages.ValidateQuery(o.Query); err != nil {
-		return nil, invalid(err)
-	}
-	result, err := catalog.Find(ctx, s.db, s.catalogue, o.Query, messages, o)
-	if _, noContact := errors.AsType[*store.ErrNoContact](err); noContact || errors.Is(err, store.ErrMailboxSource) {
-		return nil, invalid(err)
-	}
-	return libraryReply(result, err)
-}
-
-// Schemas are named after their Go type, and the result of a search over disks
-// is a SearchResult too.
-type librarySearchResult library.SearchResult
-
-func (s *Server) librarySearch(ctx context.Context, in *LibraryFilters) (*httpapi.Body[librarySearchResult], error) {
-	o, err := in.options()
-	if err != nil {
-		return nil, invalid(err)
-	}
-	result, err := s.db.SearchLibrary(ctx, o)
-	return libraryReply(librarySearchResult(result), err)
+	return libraryReply(catalog.Find(ctx, s.read, s.catalogue, o.Query, messages, o))
 }
 
 func (s *Server) libraryItems(ctx context.Context, in *LibraryFilters) (*httpapi.Body[[]library.Item], error) {
 	o, err := in.options()
 	if err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return libraryList(s.db.ListLibraryItems(ctx, o))
 }
@@ -290,7 +268,7 @@ func (s *Server) createLibraryItem(ctx context.Context, in *struct {
 	item.ID = library.StableID("item", item.Identity)
 	batch := library.ImportBatch{Version: 1, Items: []library.Item{item}}
 	if err := batch.Validate(); err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	if _, err := s.db.ImportLibrary(ctx, batch); err != nil {
 		return nil, libraryError(err)
@@ -302,7 +280,7 @@ func (s *Server) libraryItemSummaries(ctx context.Context, in *struct {
 	Body strictJSON[library.ItemSummaryRequest]
 }) (*httpapi.Body[[]library.ItemSummary], error) {
 	if err := in.Body.Value.Validate(); err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return libraryList(s.db.LibraryItemSummaries(ctx, in.Body.Value.IDs))
 }
@@ -316,7 +294,7 @@ func (s *Server) setLibraryState(ctx context.Context, in *struct {
 	Body strictJSON[library.StateEdit]
 }) (*httpapi.Body[library.State], error) {
 	if err := in.Body.Value.Validate(); err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return libraryReply(s.db.SetLibraryState(ctx, in.ID, in.Body.Value))
 }
@@ -328,7 +306,7 @@ func (s *Server) libraryStateHistory(ctx context.Context, in *libraryIDInput) (*
 func (s *Server) libraryActivity(ctx context.Context, in *LibraryFilters) (*httpapi.Body[[]library.Activity], error) {
 	o, err := in.options()
 	if err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return libraryList(s.db.ListLibraryActivity(ctx, o))
 }
@@ -343,7 +321,7 @@ func (s *Server) libraryCollections(ctx context.Context, in *struct {
 }) (*httpapi.Body[any], error) {
 	o, err := in.options()
 	if err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	if in.Projection == "full" {
 		return libraryReply[any](s.db.ListLibraryCollections(ctx, o))
@@ -369,7 +347,7 @@ func (s *Server) createLibraryCollection(ctx context.Context, in *struct {
 		entries = collection.Snapshot.Entries
 	}
 	if err := (library.CollectionEdit{Title: collection.Title, Entries: entries}).Validate(); err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return libraryReply(s.db.CreateLibraryCollection(ctx, collection))
 }
@@ -383,7 +361,7 @@ func (s *Server) editLibraryCollection(ctx context.Context, in *struct {
 	Body strictJSON[library.CollectionEdit]
 }) (*httpapi.Body[library.Collection], error) {
 	if err := in.Body.Value.Validate(); err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return libraryReply(s.db.EditLibraryCollection(ctx, in.ID, in.Body.Value))
 }
@@ -391,8 +369,7 @@ func (s *Server) editLibraryCollection(ctx context.Context, in *struct {
 func (s *Server) libraryCollectionSnapshots(ctx context.Context, in *struct {
 	ID         string `path:"id" doc:"The collection's ID."`
 	Projection string `query:"projection" enum:"summary,full" doc:"full answers with every snapshot's entries, where the default has their count."`
-	Limit      int    `query:"limit" default:"50" minimum:"0" maximum:"500" doc:"0 means 50."`
-	Offset     int    `query:"offset" default:"0" minimum:"0" maximum:"100000"`
+	httpapi.Page
 }) (*httpapi.Body[any], error) {
 	if in.Projection == "full" {
 		return libraryReply[any](s.db.LibraryCollectionSnapshots(ctx, in.ID))
@@ -410,7 +387,7 @@ func (s *Server) libraryCollectionSnapshot(ctx context.Context, in *struct {
 func (s *Server) libraryFiles(ctx context.Context, in *LibraryFilters) (*httpapi.Body[[]library.File], error) {
 	o, err := in.options()
 	if err != nil {
-		return nil, invalid(err)
+		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return libraryList(s.db.ListLibraryFiles(ctx, o))
 }

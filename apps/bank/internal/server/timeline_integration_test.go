@@ -6,27 +6,13 @@ import (
 	"testing"
 	"time"
 
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
-	"github.com/aquitano/aqt/apps/bank/internal/content"
-	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 type modifiedFiles struct {
+	noDisks
 	at time.Time
-}
-
-func (modifiedFiles) Content(context.Context, ref.Content) (view.Content, error) {
-	return view.Content{}, atticstore.ErrNotFound
-}
-
-func (modifiedFiles) Places(context.Context, []content.Digest) (map[content.Digest][]view.Place, error) {
-	return nil, nil
-}
-
-func (modifiedFiles) SearchDisks(context.Context, string, int, int) (view.SearchResult, error) {
-	return view.SearchResult{}, nil
 }
 
 func (m modifiedFiles) ModifiedFiles(context.Context, time.Time, time.Time, int) ([]view.Place, error) {

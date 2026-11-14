@@ -7,12 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
@@ -42,7 +43,7 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
    (4,'`+volume+`',1,'file','b.txt','b.txt'::bytea,'/b.txt',7,3,'done',null,1,1)`); err != nil {
 		t.Fatal(err)
 	}
-	// attic serve reads through a read-only store; so does the test.
+	// The catalogue's routes only read, so the test reads through a read-only store.
 	pool, err := db.OpenReadOnly(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -50,11 +51,15 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
 	defer pool.Close()
 	st := store.New(pool)
 	issued := tokens.Store{Path: filepath.Join(t.TempDir(), "tokens")}
-	token, err := issued.New("test", tokens.Scope{})
+	token, err := issued.New("test", tokens.Read)
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(api.New(st, config.Default(), api.Standalone(issued)))
+	mux := http.NewServeMux()
+	humaAPI := humago.New(mux, httpapi.Config("test", "", "bank token new <name>"))
+	humaAPI.UseMiddleware(httpapi.RequireToken(humaAPI, issued, "bank token new <name>"))
+	api.Register(humaAPI, st)
+	server := httptest.NewServer(mux)
 	defer server.Close()
 	get := func(t *testing.T, path, token string, out any) int {
 		t.Helper()
@@ -81,65 +86,61 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
 		status      int
 		tag         string
 	}{
-		{"/v1/stats", "", http.StatusUnauthorized, "Unauthorized"},
-		{"/v1/stats", "attic_wrong", http.StatusUnauthorized, "Unauthorized"},
-		{"/v1/contents/content:ffffffffffffffff", token, http.StatusNotFound, "NotFound"},
-		{"/v1/contents/content:1111111111111111", token, http.StatusConflict, "AmbiguousRef"},
-		{"/v1/contents/xyz", token, http.StatusUnprocessableEntity, "InvalidRequest"},
-		{"/v1/contents/1111111111111111", token, http.StatusUnprocessableEntity, "InvalidRequest"},
-		{"/v1/contents/msg:1111111111111111", token, http.StatusUnprocessableEntity, "InvalidRequest"},
-		{"/v1/search?q=minecraft&limit=0", token, http.StatusUnprocessableEntity, "InvalidRequest"},
-		{"/v1/search?q=minecraft&under=/x", token, http.StatusUnprocessableEntity, "InvalidRequest"},
-		{"/v1/search", token, http.StatusUnprocessableEntity, "InvalidRequest"},
-		{"/v1/search?q=%20", token, http.StatusUnprocessableEntity, "InvalidRequest"},
-		{"/v1/contents/content:abababababababab/file", token, http.StatusConflict, "Unavailable"},
+		{"/v1/disk/stats", "", http.StatusUnauthorized, "Unauthorized"},
+		{"/v1/disk/stats", "bank_wrong", http.StatusUnauthorized, "Unauthorized"},
+		{"/v1/disk/contents/content:ffffffffffffffff", token, http.StatusNotFound, "NotFound"},
+		{"/v1/disk/contents/content:1111111111111111", token, http.StatusConflict, "AmbiguousRef"},
+		{"/v1/disk/contents/xyz", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/disk/contents/1111111111111111", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/disk/contents/msg:1111111111111111", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/disk/search?q=minecraft&limit=0", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/disk/search?q=minecraft&offset=10001", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/disk/search?q=minecraft&under=/x", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/disk/search", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/disk/search?q=%20", token, http.StatusUnprocessableEntity, "InvalidRequest"},
+		{"/v1/disk/scans?limit=501", token, http.StatusUnprocessableEntity, "InvalidRequest"},
 	} {
 		var failure struct {
 			Tag        string            `json:"_tag"`
 			Message    string            `json:"message"`
-			Recovery   *json.RawMessage  `json:"recovery"`
+			Ref        string            `json:"ref"`
 			Candidates []json.RawMessage `json:"candidates"`
-			Volumes    []struct {
-				ID    string `json:"id"`
-				Label string `json:"label"`
-			} `json:"volumes"`
 		}
 		if status := get(t, tc.path, tc.token, &failure); status != tc.status || failure.Tag != tc.tag || failure.Message == "" {
 			t.Errorf("%s: %d %+v, want %d %s with a message", tc.path, status, failure, tc.status, tc.tag)
 		}
-		switch tc.tag {
-		case "AmbiguousRef":
-			if len(failure.Candidates) != 2 {
-				t.Errorf("ambiguous ref lists %d candidates, want 2", len(failure.Candidates))
-			}
-		case "Unavailable":
-			if len(failure.Volumes) != 1 || failure.Volumes[0].Label != "Archive" || failure.Recovery == nil {
-				t.Errorf("unavailable download names %+v and recovery %v, want the Archive volume", failure.Volumes, failure.Recovery)
-			}
+		if tc.tag == "AmbiguousRef" && (len(failure.Candidates) != 2 || failure.Ref != "content:1111111111111111") {
+			t.Errorf("ambiguous ref %q lists %d candidates, want 2", failure.Ref, len(failure.Candidates))
 		}
 	}
 
 	var found struct {
-		Entries []struct {
-			Path    string `json:"path"`
-			Ref     string `json:"ref"`
-			Display string `json:"display"`
-			Online  bool   `json:"online"`
-		} `json:"entries"`
+		Entries []json.RawMessage `json:"entries"`
 	}
-	if status := get(t, "/v1/search?q=minecraft", token, &found); status != http.StatusOK || len(found.Entries) != 1 {
+	if status := get(t, "/v1/disk/search?q=minecraft", token, &found); status != http.StatusOK || len(found.Entries) != 1 {
 		t.Fatalf("search: %d %+v", status, found)
 	}
-	hit := found.Entries[0]
-	if hit.Path != "/minecraft-server.zip" || hit.Ref != "content:abababababababab" || hit.Online || hit.Display != "Archive:"+string(filepath.Separator)+"minecraft-server.zip" {
-		t.Errorf("search hit = %+v", hit)
+	var hit struct {
+		Path    string `json:"path"`
+		Ref     string `json:"ref"`
+		Display string `json:"display"`
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(found.Entries[0], &hit); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(found.Entries[0], &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, online := fields["online"]; online || hit.Path != "/minecraft-server.zip" || hit.Ref != "content:abababababababab" || hit.Display != "Archive:"+string(filepath.Separator)+"minecraft-server.zip" {
+		t.Errorf("search hit = %s, want no online field", found.Entries[0])
 	}
 	var content struct {
 		Occurrences []struct {
 			ID int64 `json:"id"`
 		} `json:"occurrences"`
 	}
-	if status := get(t, "/v1/contents/"+hit.Ref, token, &content); status != http.StatusOK || len(content.Occurrences) != 1 || content.Occurrences[0].ID != 2 {
+	if status := get(t, "/v1/disk/contents/"+hit.Ref, token, &content); status != http.StatusOK || len(content.Occurrences) != 1 || content.Occurrences[0].ID != 2 {
 		t.Errorf("content: %d %+v", status, content)
 	}
 }

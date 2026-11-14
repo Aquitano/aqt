@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 )
 
 func TestCLIParsesArguments(t *testing.T) {
@@ -13,7 +15,7 @@ func TestCLIParsesArguments(t *testing.T) {
 		check func(cli) bool
 	}{
 		{[]string{"search", "minecraft", "--ext", "rar", "server", "--json"}, func(c cli) bool {
-			return reflect.DeepEqual(c.Search.Words, []string{"minecraft", "server"}) && c.Search.Ext == "rar" && c.Search.JSON && c.Search.Limit == 20
+			return reflect.DeepEqual(c.Search.Words, []string{"minecraft", "server"}) && c.Search.Ext == "rar" && c.Search.JSON && c.Search.Limit == page.DefaultLimit
 		}},
 		{[]string{"search", "--json", "--", "-foo", "--ext"}, func(c cli) bool {
 			return reflect.DeepEqual(c.Search.Words, []string{"-foo", "--ext"}) && c.Search.JSON && c.Search.Ext == ""
@@ -73,10 +75,10 @@ func TestCLIParsesArguments(t *testing.T) {
 			return c.Metadata.Target == "123" && c.Metadata.JSON
 		}},
 		{[]string{"dupes"}, func(c cli) bool {
-			return c.Dupes.MinSize == "1M" && c.Dupes.Limit == 20
+			return c.Dupes.MinSize == "1M" && c.Dupes.Limit == page.DefaultLimit
 		}},
 		{[]string{"skips", "--reason", "bad_name"}, func(c cli) bool {
-			return c.Skips.Reason == "bad_name" && c.Skips.Limit == 100
+			return c.Skips.Reason == "bad_name" && c.Skips.Limit == page.DefaultLimit
 		}},
 	} {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {

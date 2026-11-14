@@ -14,7 +14,7 @@ import (
 type timelineCmd struct {
 	Period string   `arg:"" help:"A year (2019), a month (2019-03) or a day (2019-03-14)."`
 	Group  []string `help:"Only these groups: message, activity, file." enum:"message,activity,file"`
-	Limit  int      `default:"200" help:"Maximum events per group."`
+	Limit  int      `default:"${limit}" help:"Maximum events per group, 1-${max_limit}."`
 	JSON   bool     `help:"JSON output."`
 }
 

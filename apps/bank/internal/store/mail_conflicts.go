@@ -10,6 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
@@ -55,11 +57,12 @@ func (s *Store) resolveMailThread(ctx context.Context, source, threadID string) 
 
 func (s *Store) MailConflictMessages(ctx context.Context, source, key string, before ref.Message, limit int) (Thread, error) {
 	result := Thread{ThreadID: key, Source: source, Messages: []MessageDetail{}}
-	if source == "" || key == "" || limit < 0 || limit > MaxThreadMessages {
-		return result, fmt.Errorf("source, conflict key and valid page bounds are required")
+	if source == "" || key == "" {
+		return result, fail.Invalidf("source and conflict key are required")
 	}
-	if limit == 0 {
-		limit = 100
+	limit = page.Limit(limit)
+	if err := page.Check(limit, 0); err != nil {
+		return result, err
 	}
 	var exists bool
 	if err := s.pool.QueryRow(ctx, `select exists(select 1 from mail_thread_conflicts where source=$1 and conflict_key=$2)`, source, key).Scan(&exists); err != nil {

@@ -9,19 +9,18 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
-	"strconv"
 	"time"
+
+	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
@@ -33,6 +32,8 @@ type reader interface {
 	ListMailboxes(context.Context, string) ([]store.Mailbox, error)
 	BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error)
 	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
+	SearchLibrary(context.Context, library.ListOptions) (library.SearchResult, error)
+	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
 	GetMessageByRef(ctx context.Context, cited ref.Message) (store.Message, []store.Attachment, error)
 	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
 	MailConflictMessages(context.Context, string, string, ref.Message, int) (store.Thread, error)
@@ -45,6 +46,13 @@ type reader interface {
 	Query(ctx context.Context, query string, limit int) (store.QueryResult, error)
 }
 
+// Catalogue is the file catalogue: its share of combined search, the timeline
+// and refs, and its own operations below /v1/disk.
+type Catalogue interface {
+	catalog.Catalogue
+	Register(huma.API)
+}
+
 type Server struct {
 	db              *store.Store // importers need the concrete store
 	read            reader
@@ -53,22 +61,11 @@ type Server struct {
 	dataDir         string
 	jsonReadTimeout time.Duration
 	extraction      extraction
-	mounts          map[string]http.Handler
-	catalogue       catalog.Catalogue
+	catalogue       Catalogue
 }
 
-// Mount serves another domain's API below prefix, such as /attic. The handler
-// sees the full path and does its own authentication.
-func (s *Server) Mount(prefix string, h http.Handler) {
-	if s.mounts == nil {
-		s.mounts = map[string]http.Handler{}
-	}
-	s.mounts[prefix] = h
-}
-
-// New serves the archive in db, with the files on disks in catalogue joining
-// combined search, the timeline and ref resolution.
-func New(db *store.Store, catalogue catalog.Catalogue, blobs *blob.Store, dataDir, archiveDir string) *Server {
+// New serves the archive in db and the files on disks in catalogue.
+func New(db *store.Store, catalogue Catalogue, blobs *blob.Store, dataDir, archiveDir string) *Server {
 	s := &Server{db: db, read: db, catalogue: catalogue, blobs: blobs, archiveDir: archiveDir, dataDir: dataDir}
 	// Uploads staged by a process that died are nobody's to clean up later.
 	if err := pruneUploads(dataDir, uploadMaxAge); err != nil {
@@ -77,47 +74,57 @@ func New(db *store.Store, catalogue catalog.Catalogue, blobs *blob.Store, dataDi
 	return s
 }
 
-// TokenDomain is the domain a token needs for bank's own routes.
-const TokenDomain = "bank"
-
 func Tokens(dataDir string) tokens.Store {
 	return tokens.Store{Path: filepath.Join(dataDir, "tokens"), Prefix: "bank_"}
 }
 
+const mintCommand = "bank token new <name>"
+
 // Sized for Gmail Takeout mboxes, which routinely exceed 1 GiB.
 const maxUpload = 16 << 30
 
-func (s *Server) Handler() http.Handler {
-	v1 := http.NewServeMux()
-	s.registerLibraryRoutes(v1)
-	v1.HandleFunc("GET /v1/blobs/{blake3}", s.handleBlob)
-	v1.HandleFunc("GET /v1/attachments/{blake3}/preview", s.handleAttachmentPreview)
-	v1.HandleFunc("PUT /v1/attachments/{blake3}/text", s.handleAttachmentTextPut)
-	v1.HandleFunc("POST /v1/import/{kind}", s.handleImport)
+var errUnavailable = httpapi.Kind{Tag: "Unavailable", Status: http.StatusServiceUnavailable,
+	Doc: "The server cannot reach its database."}
 
+// Handler serves every operation, the OpenAPI document at /openapi.json and
+// an unauthenticated /healthz.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-		defer cancel()
-		if s.db == nil {
-			writeErr(w, http.StatusServiceUnavailable, "database unavailable")
-			return
-		}
-		if err := s.db.Ping(ctx); err != nil {
-			writeErr(w, http.StatusServiceUnavailable, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	mux.HandleFunc("GET /healthz", s.health)
+	s.registerAPI(mux)
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		httpapi.Write(w, httpapi.NotFound.New("no route for "+r.Method+" "+r.URL.Path))
 	})
-	s.registerAPI(v1)
-	mux.Handle("GET /openapi.json", v1)
-	mux.Handle("/v1/", s.requireToken(v1))
-	for prefix, h := range s.mounts {
-		mux.Handle(prefix+"/", h)
-	}
 	return mux
 }
 
+type healthReport struct {
+	OK            bool  `json:"ok"`
+	SchemaVersion int32 `json:"schema_version"`
+}
+
+// health checks the database with a short deadline and says which schema
+// version the server runs on.
+func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	if s.db == nil {
+		httpapi.Write(w, errUnavailable.New("no database is configured"))
+		return
+	}
+	version, err := s.db.SchemaVersion(ctx)
+	if err != nil {
+		slog.Error("health check", "error", err)
+		httpapi.Write(w, errUnavailable.New("the database does not answer"))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(healthReport{OK: true, SchemaVersion: version})
+}
+
+// ListenAndServe serves until ctx ends, then drains: the listener stops,
+// requests in flight get their time, background extraction stops, and only
+// then does the caller close the database pools.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	workCtx, cancelWork := context.WithCancel(context.Background())
 	s.extraction.ctx = workCtx
@@ -136,87 +143,13 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 	return Run(ctx, srv)
 }
 
-// readOnlyPosts take a POST body and only read: ad-hoc SQL runs in read-only
-// sessions, and summaries looks up a list of item IDs.
-var readOnlyPosts = map[string]bool{"/v1/query": true, "/v1/library/items/summaries": true}
-
-func (s *Server) requireToken(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, ok := httpapi.BearerToken(r)
-		var scope tokens.Scope
-		if ok {
-			var err error
-			if scope, ok, err = Tokens(s.dataDir).Verify(token); err != nil {
-				slog.Error("read tokens", "error", err)
-			}
-		}
-		if !ok {
-			httpapi.Write(w, httpapi.Unauthorized.New("invalid or missing bearer token"))
-			return
-		}
-		write := r.Method != http.MethodGet && r.Method != http.MethodHead && !readOnlyPosts[r.URL.Path]
-		if !scope.Allows(TokenDomain, write) {
-			httpapi.Write(w, httpapi.Forbidden.New("this token's scope ("+scope.String()+") does not allow the request"))
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
-	sum, ok := pathDigest(w, r)
-	if !ok {
-		return
-	}
-	f, err := os.Open(s.blobs.Path(sum))
-	if os.IsNotExist(err) {
-		writeErr(w, http.StatusNotFound, "no such blob")
-		return
-	}
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	defer f.Close()
-	if info, err := f.Stat(); err == nil {
-		w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
-	}
-	w.Header().Set("Content-Type", "application/octet-stream")
-	_, _ = io.Copy(w, f)
-}
-
 func parseDate(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, nil
 	}
 	t, err := time.ParseInLocation("2006-01-02", s, time.Local)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid date %q, want YYYY-MM-DD", s)
+		return time.Time{}, fail.Invalidf("invalid date %q, want YYYY-MM-DD", s)
 	}
 	return t, nil
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func writeErr(w http.ResponseWriter, status int, msg string) {
-	if status >= 500 {
-		slog.Error("HTTP request failed", "status", status, "error", msg)
-		msg = http.StatusText(status)
-	}
-	writeJSON(w, status, map[string]string{"error": msg})
-}
-
-// writeCause splits "the client sent something we cannot use" from "this
-// server is broken". Collapsing both into 400 tells a caller to fix its input
-// when the real answer is that the database or the disk failed.
-func writeCause(w http.ResponseWriter, err error) {
-	if fail.IsOp(err) {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeErr(w, http.StatusBadRequest, err.Error())
 }

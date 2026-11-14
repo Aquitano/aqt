@@ -55,8 +55,8 @@ type searchCmd struct {
 	Kind    string   `enum:"file,dir,link," default:"" help:"Entry kind: file, dir or link."`
 	Under   string   `help:"Mounted path, or volume-relative path with --volume."`
 	Current bool     `help:"Leave out content that files held before they changed."`
-	Limit   int      `default:"20" help:"Maximum results per result type."`
-	Offset  int      `help:"Skip this many ranked results."`
+	Limit   int      `default:"${limit}" help:"Maximum results per result type, 1-${max_limit}."`
+	Offset  int      `help:"Skip this many ranked results, at most ${max_offset}."`
 	JSON    bool     `help:"Print JSON."`
 }
 
@@ -387,7 +387,7 @@ func (cmd *volumesCmd) Run(ctx context.Context) error {
 type dupesCmd struct {
 	MinSize    string `default:"1M" help:"Ignore smaller contents, such as 10M."`
 	SameVolume bool   `help:"Count only copies that share a volume."`
-	Limit      int    `default:"20" help:"Maximum duplicate groups."`
+	Limit      int    `default:"${limit}" help:"Maximum duplicate groups, 1-${max_limit}."`
 	JSON       bool   `help:"Print JSON."`
 }
 
@@ -432,7 +432,7 @@ type skipsCmd struct {
 	Volume string `help:"Select the newest scan of this volume."`
 	Reason string `help:"Filter by reason: excluded, name_only, too_big, link, remote, bad_name, unreadable, changed, too_deep, encrypted, damaged, not_archive, split, text_failed, metadata_failed, metadata_unavailable."`
 	Rule   string `help:"Filter by the rule printed in the scan summary."`
-	Limit  int    `default:"100" help:"Maximum paths."`
+	Limit  int    `default:"${limit}" help:"Maximum paths, 1-${max_limit}."`
 	JSON   bool   `help:"Print JSON."`
 }
 
@@ -635,7 +635,7 @@ func (cmd *configCmd) Run(ctx context.Context) error {
 
 type scansCmd struct {
 	Volume string `help:"Volume label or ID."`
-	Limit  int    `default:"20" help:"Maximum scans."`
+	Limit  int    `default:"${limit}" help:"Maximum scans, 1-${max_limit}."`
 	JSON   bool   `help:"Print JSON."`
 }
 

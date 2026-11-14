@@ -1,7 +1,7 @@
 {
   "name": "attic",
   "private": true,
-  "description": "Search attic's file catalogue and fetch files from attached disks.",
+  "description": "Search the owner's archive and the catalogue of files on disks through bank serve.",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit"

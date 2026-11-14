@@ -18,7 +18,7 @@ import (
 
 func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 	s, st := attachmentServer(t)
-	token, err := Tokens(s.dataDir).New("test", tokens.Scope{})
+	token, err := Tokens(s.dataDir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
 	if _, err := st.ImportLibrary(context.Background(), library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
 		t.Fatal(err)
 	}
-	token, err := Tokens(s.dataDir).New("test", tokens.Scope{})
+	token, err := Tokens(s.dataDir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
 
 func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 	s, st := attachmentServer(t)
-	token, err := Tokens(s.dataDir).New("test", tokens.Scope{})
+	token, err := Tokens(s.dataDir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestLibraryRemoteNetflixDateOrder(t *testing.T) {
 		r.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
-		if w.Code != 400 || !strings.Contains(w.Body.String(), "date_order") {
+		if w.Code != 422 || !strings.Contains(w.Body.String(), "date_order") {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}

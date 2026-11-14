@@ -56,8 +56,8 @@ func TestLibraryClientUploadAndConflict(t *testing.T) {
 			json.NewEncoder(w).Encode([]library.File{{Filename: "one.txt"}, {Filename: "two.txt"}})
 		case "/v1/library/items/item:test/state":
 			w.WriteHeader(http.StatusConflict)
-			io.WriteString(w, `{"code":"library_revision_conflict","error":"Reload"}`)
-		case "/v1/find":
+			io.WriteString(w, `{"_tag":"LibraryRevisionConflict","message":"Reload","code":"library_revision_conflict"}`)
+		case "/v1/search":
 			if r.URL.Query().Get("kind") != "movie" || r.URL.Query().Get("match") != "phrase" || r.URL.Query().Get("from") != "alice" {
 				t.Errorf("filters: %s", r.URL.RawQuery)
 			}

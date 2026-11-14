@@ -2,11 +2,12 @@ package catalog
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -63,11 +64,14 @@ type TimelineOptions struct {
 func BuildTimeline(ctx context.Context, dated Dated, files Files, o TimelineOptions) (Timeline, error) {
 	out := Timeline{Events: []Event{}, Truncated: []string{}, Coverage: []string{}}
 	if o.Since.IsZero() || !o.Until.After(o.Since) {
-		return out, fmt.Errorf("the timeline needs since and a later until")
+		return out, fail.Invalidf("the timeline needs since and a later until")
+	}
+	if err := page.Check(o.Limit, 0); err != nil {
+		return out, err
 	}
 	for _, group := range o.Groups {
 		if !slices.Contains(TimelineGroups, group) {
-			return out, fmt.Errorf("unknown timeline group %q", group)
+			return out, fail.Invalidf("unknown timeline group %q", group)
 		}
 	}
 	wants := func(group string) bool { return len(o.Groups) == 0 || slices.Contains(o.Groups, group) }

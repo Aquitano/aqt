@@ -14,8 +14,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
+
+	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/catalog"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
@@ -98,10 +107,39 @@ func (f *fakeReader) Query(_ context.Context, sql string, limit int) (store.Quer
 	return f.queryRes, f.queryErr
 }
 
+func (f *fakeReader) SearchLibrary(context.Context, library.ListOptions) (library.SearchResult, error) {
+	return library.SearchResult{}, nil
+}
+
+func (f *fakeReader) AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error) {
+	return nil, nil
+}
+
+// noDisks is a file catalogue with nothing in it.
+type noDisks struct{}
+
+func (noDisks) Register(huma.API) {}
+
+func (noDisks) Content(context.Context, ref.Content) (view.Content, error) {
+	return view.Content{}, atticstore.ErrNotFound
+}
+
+func (noDisks) Places(context.Context, []content.Digest) (map[content.Digest][]view.Place, error) {
+	return nil, nil
+}
+
+func (noDisks) SearchDisks(context.Context, atticstore.SearchOptions) (view.SearchResult, error) {
+	return view.SearchResult{}, nil
+}
+
+func (noDisks) ModifiedFiles(context.Context, time.Time, time.Time, int) ([]view.Place, error) {
+	return nil, nil
+}
+
 func testServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	dir := t.TempDir()
-	token, err := Tokens(dir).New("test", tokens.Scope{})
+	token, err := Tokens(dir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +152,7 @@ func testServer(t *testing.T) (*Server, string) {
 		blobs:      blobs,
 		dataDir:    dir,
 		archiveDir: filepath.Join(dir, "archive"),
+		catalogue:  noDisks{},
 	}, token
 }
 
@@ -219,14 +258,14 @@ func TestSearchRequiresToken(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("with token: status %d, want 200", resp.StatusCode)
 	}
-	var msgs []store.Message
-	if err := json.NewDecoder(resp.Body).Decode(&msgs); err != nil {
+	var found catalog.Result
+	if err := json.NewDecoder(resp.Body).Decode(&found); err != nil {
 		t.Fatal(err)
 	}
-	if len(msgs) != 1 || msgs[0].Ref != "msg:0123456789abcdef" {
-		t.Fatalf("unexpected search payload %+v", msgs)
+	if len(found.Messages) != 1 || found.Messages[0].Ref != "msg:0123456789abcdef" {
+		t.Fatalf("unexpected search payload %+v", found)
 	}
-	if o := s.read.(*fakeReader).opts; o.Fuzzy != 1 || o.Limit != 20 {
+	if o := s.read.(*fakeReader).opts; o.Fuzzy != 1 || o.Limit != page.DefaultLimit {
 		t.Fatalf("defaults not applied: %+v", o)
 	}
 }
@@ -247,9 +286,9 @@ func TestBlobHandlerValidatesDigest(t *testing.T) {
 		want       int
 	}{
 		// Escaped so the path stays one segment and reaches the handler intact.
-		{"traversal", "/v1/blobs/%2e%2e%2f%2e%2e%2fetc%2fpasswd", http.StatusBadRequest},
-		{"uppercase", "/v1/blobs/" + strings.ToUpper(sum), http.StatusBadRequest},
-		{"too short", "/v1/blobs/abc123", http.StatusBadRequest},
+		{"traversal", "/v1/blobs/%2e%2e%2f%2e%2e%2fetc%2fpasswd", http.StatusUnprocessableEntity},
+		{"uppercase", "/v1/blobs/" + strings.ToUpper(sum), http.StatusUnprocessableEntity},
+		{"too short", "/v1/blobs/abc123", http.StatusUnprocessableEntity},
 		{"absent", "/v1/blobs/" + sum[:63] + "f", http.StatusNotFound},
 		{"present", "/v1/blobs/" + sum, http.StatusOK},
 	}
@@ -408,7 +447,10 @@ func TestSearchValidatesBounds(t *testing.T) {
 			t.Errorf("%s: status %d, want 422 (%s)", path, status, body)
 		}
 	}
-	if status, _ := authedGet(t, srv, token, "/v1/search?q=hi&limit=500&fuzzy=2"); status != http.StatusOK {
+	if status, body := authedGet(t, srv, token, "/v1/search?q=hi&offset=10001"); status != http.StatusUnprocessableEntity {
+		t.Errorf("offset past the maximum: status %d (%s)", status, body)
+	}
+	if status, _ := authedGet(t, srv, token, "/v1/search?q=hi&limit=500&offset=10000&fuzzy=2"); status != http.StatusOK {
 		t.Errorf("boundary values rejected: %d", status)
 	}
 }
@@ -418,7 +460,7 @@ func TestEmptyListsSerializeAsArrays(t *testing.T) {
 	s.read.(*fakeReader).msgs = []store.Message{}
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
-	for _, path := range []string{"/v1/search?q=nothing", "/v1/stats"} {
+	for _, path := range []string{"/v1/stats", "/v1/contacts/suggest"} {
 		status, body := authedGet(t, srv, token, path)
 		if status != http.StatusOK {
 			t.Fatalf("%s: status %d", path, status)
@@ -443,8 +485,8 @@ func TestImportRejectsUnsafeSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422", resp.StatusCode)
 	}
 	// The traversal must not have created anything next to the archive root.
 	if _, err := os.Stat(filepath.Join(filepath.Dir(filepath.Dir(s.archiveDir)), "escape")); err == nil {
@@ -452,20 +494,19 @@ func TestImportRejectsUnsafeSource(t *testing.T) {
 	}
 }
 
-func TestWriteCauseSeparatesInputFromInfrastructure(t *testing.T) {
+func TestImportFailureSeparatesInputFromInfrastructure(t *testing.T) {
 	for _, tc := range []struct {
 		err  error
 		want int
 	}{
-		{errors.New("no chat .txt inside zip"), http.StatusBadRequest},
+		{errors.New("no chat .txt inside zip"), http.StatusUnprocessableEntity},
 		{fail.Opf("insert message: %w", errors.New("connection refused")), http.StatusInternalServerError},
 		{fmt.Errorf("wrapped: %w", fail.Op(errors.New("disk full"))), http.StatusInternalServerError},
 		{context.Canceled, http.StatusInternalServerError},
 	} {
-		rec := httptest.NewRecorder()
-		writeCause(rec, tc.err)
-		if rec.Code != tc.want {
-			t.Errorf("%v: status %d, want %d", tc.err, rec.Code, tc.want)
+		var failed *httpapi.Error
+		if !errors.As(importFailure(tc.err), &failed) || failed.GetStatus() != tc.want {
+			t.Errorf("%v: %v, want status %d", tc.err, failed, tc.want)
 		}
 	}
 }
@@ -524,34 +565,33 @@ func (f *fakeReader) BrowseThreads(context.Context, store.BrowseOpts) ([]store.T
 	return []store.ThreadGroup{}, nil
 }
 
-func TestScopedTokensAreHeldToTheirScope(t *testing.T) {
-	s, _ := testServer(t)
+func TestReadTokensReadAndOnlyWriteTokensWrite(t *testing.T) {
+	s, writer := testServer(t)
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
-	mint := func(name string, scope tokens.Scope) string {
-		t.Helper()
-		token, err := Tokens(s.dataDir).New(name, scope)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return token
+	reader, err := Tokens(s.dataDir).New("reader", tokens.Read)
+	if err != nil {
+		t.Fatal(err)
 	}
-	reader := mint("reader", tokens.Scope{ReadOnly: true})
-	catalogueOnly := mint("catalogue", tokens.Scope{Domains: []string{"attic"}})
 	for _, tc := range []struct {
 		name, token, method, path, body string
 		want                            int
 	}{
-		{"read-only token reads", reader, http.MethodGet, "/v1/search?q=hi", "", http.StatusOK},
-		{"read-only token runs read-only SQL", reader, http.MethodPost, "/v1/query", `{"sql": "select 1"}`, http.StatusOK},
-		{"read-only token cannot write", reader, http.MethodPost, "/v1/attachments/refresh", "", http.StatusForbidden},
-		{"another domain's token is refused", catalogueOnly, http.MethodGet, "/v1/search?q=hi", "", http.StatusForbidden},
+		{"a read token reads", reader, http.MethodGet, "/v1/search?q=hi", "", http.StatusOK},
+		{"a read token runs read-only SQL", reader, http.MethodPost, "/v1/query", `{"sql": "select 1"}`, http.StatusOK},
+		// The handler refuses the empty ID, which shows the token was let through.
+		{"a read token looks items up by POST", reader, http.MethodPost, "/v1/library/items/summaries", `{"ids": [""]}`, http.StatusUnprocessableEntity},
+		{"a read token cannot write", reader, http.MethodPost, "/v1/attachments/refresh", "", http.StatusForbidden},
+		{"a read token cannot import", reader, http.MethodPost, "/v1/import/json", "[]", http.StatusForbidden},
+		{"a read token cannot record coverage", reader, http.MethodPut, "/v1/sources/gmail/coverage", `{"text": "x"}`, http.StatusForbidden},
+		{"a write token may write", writer, http.MethodPut, "/v1/sources/gmail/coverage", `{"text": 5}`, http.StatusUnprocessableEntity},
 	} {
 		req, err := http.NewRequestWithContext(t.Context(), tc.method, srv.URL+tc.path, strings.NewReader(tc.body))
 		if err != nil {
 			t.Fatal(err)
 		}
 		req.Header.Set("Authorization", "Bearer "+tc.token)
+		req.Header.Set("Content-Type", "application/json")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -560,5 +600,20 @@ func TestScopedTokensAreHeldToTheirScope(t *testing.T) {
 		if resp.StatusCode != tc.want {
 			t.Errorf("%s: status %d, want %d", tc.name, resp.StatusCode, tc.want)
 		}
+	}
+}
+
+func TestUnreadableTokenFileIsTheServersFault(t *testing.T) {
+	s, token := testServer(t)
+	if err := os.Remove(Tokens(s.dataDir).Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(Tokens(s.dataDir).Path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	if status, body := authedGet(t, srv, token, "/v1/stats"); status != http.StatusInternalServerError || !strings.Contains(body, `"Internal"`) {
+		t.Fatalf("status %d, want 500 (%s)", status, body)
 	}
 }

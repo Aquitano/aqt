@@ -2,11 +2,13 @@ package store
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 )
 
 type CoverageOptions struct {
@@ -48,11 +50,11 @@ type CoverageReport struct {
 func (s *Store) Coverage(ctx context.Context, o CoverageOptions) (CoverageReport, error) {
 	r := CoverageReport{Limit: o.Limit, Offset: o.Offset, LocationLimit: 100,
 		Content: []CoverageContent{}, Unknown: []CoverageLocation{}}
-	if o.Limit < 1 || o.Limit > 1000 || o.Offset < 0 {
-		return r, errors.New("coverage needs a limit from 1 to 1000 and a non-negative offset")
+	if err := page.Check(o.Limit, o.Offset); err != nil {
+		return r, err
 	}
 	if o.Under != "" && o.VolumeID == "" {
-		return r, errors.New("--under needs a volume")
+		return r, fail.Invalidf("--under needs a volume")
 	}
 	q := &search{}
 	where := append([]string{"e.kind = 'file'", "e.missing_scan is null"},

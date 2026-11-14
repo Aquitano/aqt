@@ -71,7 +71,7 @@ Start the server:
 ```sh
 BANK_VERSION=$(git rev-parse HEAD) docker compose up -d --build
 docker compose ps
-curl -s http://100.x.y.z:8480/healthz     # {"ok":true}
+curl -s http://100.x.y.z:8480/healthz     # {"ok":true,"schema_version":1}
 ```
 
 `COMPOSE_PROFILES` decides what that starts. Unset it and `docker compose up` starts only Postgres, which is what local development wants.
@@ -142,8 +142,8 @@ last good backup or reach the migration.
 
 ### Health and shutdown
 
-`/healthz` checks the database with a three-second deadline and returns 503 when
-it cannot connect. The image runs `bank healthcheck` itself, so Compose can probe
+`/healthz` checks the database with a three-second deadline, reports the schema
+version it runs on, and returns 503 when it cannot connect. The image runs `bank healthcheck` itself, so Compose can probe
 the distroless server. `bank version` reports the build revision supplied through
 `GIT_SHA`, which `ops/deploy.sh` sets, or else `BANK_VERSION`. SIGTERM and Ctrl-C
 stop new requests and allow active requests up to 30 seconds before the database
@@ -264,7 +264,7 @@ export BANK_TOKEN=$(ssh vps 'cd /opt/aqt/apps/bank && docker compose run --rm -T
 
 `bank token new` and `bank token list` print the resolved token file to stderr (`token stored in /data/tokens`), which is what to check first when a token is rejected — the digests themselves are never shown. Command substitution captures stdout only, so the token still assigns cleanly; `-T` keeps Docker from allocating a TTY that would corrupt it.
 
-A token opens everything unless it is scoped. `--read-only` mints one that searches and reads but cannot import, edit or delete; ad-hoc SQL still works, because its sessions are read-only. `--domain bank` or `--domain attic` limits it to the archive or to the file catalogue below `/attic`. Give agents `bank token new <agent> --read-only`. `bank token list` shows each token's scope, and a request outside it answers 403.
+A token reads, or reads and writes. `--read-only` mints one that searches and reads, including the file catalogue below `/v1/disk`, but cannot import, edit or delete; ad-hoc SQL still works, because its sessions are read-only. Each operation in `/openapi.json` that writes names the `write` role in its security requirement, and a read token calling one gets 403. Give agents `bank token new <agent> --read-only`. `bank token list` shows each token's scope. A token file the server cannot read answers 500, not 401, and the log says why.
 
 On the laptop:
 

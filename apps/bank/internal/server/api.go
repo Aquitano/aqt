@@ -11,34 +11,44 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 const apiDescription = `bank is one person's archive: messages (mail, chats, AI conversations), a media
-library with what was watched, listened to and read, files, and published notes. The
-file catalogue of disks that come and go is served below /attic, with a document of
-its own at /attic/openapi.json.
+library with what was watched, listened to and read, files, published notes, and a
+catalogue of the files on disks that come and go, below /v1/disk.
 
-Every record is cited by one ref, kind:value: msg:<16 hex> for a message,
+GET /v1/search searches all of it at once; kind narrows the search to one kind of
+record. Every record is cited by one ref, kind:value: msg:<16 hex> for a message,
 content:<16 to 64 hex> for bytes, and the ID for a library record, such as
 item:<32 hex>. GET /v1/refs/{ref} says what any of them names.
 
-Uploads, imports and byte downloads are not in this document yet.`
+A token reads, or reads and writes. An operation that changes the archive names the
+write role in its security requirement, and answers Forbidden to a read token.
 
-// registerAPI adds the operations that are described in /openapi.json. New
-// routes belong here: their document is generated from the Go types, and
-// their failures carry a _tag.
+Lists and searches take limit, 100 by default and at most 500, and those that page by
+position take offset, at most 10000. Every failure is JSON with a _tag.`
+
+// registerAPI adds every operation to mux. Their document is generated from
+// the Go types, and their failures carry a _tag.
 func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
-	api := humago.New(mux, httpapi.Config("bank", apiDescription, "bank token new <name>", ""))
+	api := humago.New(mux, httpapi.Config("bank", apiDescription, mintCommand))
+	api.UseMiddleware(httpapi.RequireToken(api, Tokens(s.dataDir), mintCommand))
+	s.registerSearchAPI(api)
 	s.registerArchiveAPI(api)
 	s.registerMessagesAPI(api)
 	s.registerContactsAPI(api)
 	s.registerAttachmentsAPI(api)
 	s.registerLibraryAPI(api)
+	s.registerUploadsAPI(api)
 	huma.Register(api, httpapi.Operation{ID: "getTimeline", Method: http.MethodGet, Path: "/v1/timeline", Tag: "timeline",
 		Summary: "List what happened between two days, across messages, activity and files",
 		Description: "Messages by when they were sent, activity (watching, listening, reading) by when it happened, " +
@@ -53,6 +63,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 			"bytes, the messages and library files that hold them as well as the places on disks.",
 		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef},
 	}.For(api), s.resolve)
+	s.catalogue.Register(api)
 	httpapi.Finish(api)
 	return api
 }
@@ -64,11 +75,43 @@ func internal(err error) error {
 	return httpapi.Internal.New(http.StatusText(http.StatusInternalServerError))
 }
 
-func invalid(err error) error { return httpapi.Invalid.New(err.Error()) }
+// failure is the documented answer for err. An error reaches the caller as
+// itself only when its type or a sentinel says what it is; anything else is
+// the server's failure, whatever its message.
+func failure(err error) error {
+	if e, ok := errors.AsType[*httpapi.Error](err); ok {
+		return e
+	}
+	if retired, ok := errors.AsType[*store.RetiredError](err); ok {
+		return errRetired.New(retired.Error()).With("retired", retired.Retired)
+	}
+	if ambiguous, ok := errors.AsType[*atticstore.AmbiguousRefError](err); ok {
+		return atticapi.Ambiguous(ambiguous)
+	}
+	if conflict, ok := errors.AsType[*store.MailThreadConflictError](err); ok {
+		return mailThreadConflict(conflict)
+	}
+	if taken, ok := errors.AsType[*store.ErrConflict](err); ok {
+		return errAliasTaken.New(taken.Error()).With("alias", taken.Alias).With("owner", taken.Owner)
+	}
+	_, noContact := errors.AsType[*store.ErrNoContact](err)
+	_, badQuery := errors.AsType[*store.BadQueryError](err)
+	_, ambiguousThread := errors.AsType[*store.AmbiguousThreadError](err)
+	switch {
+	case errors.Is(err, library.ErrConflict):
+		return errRevisionConflict.New("This record changed. Reload it before saving again.").With("code", "library_revision_conflict")
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, atticstore.ErrNotFound), errors.Is(err, catalog.ErrNoRecord):
+		return httpapi.NotFound.New(err.Error())
+	case noContact, badQuery, ambiguousThread, errors.Is(err, fail.ErrInvalid), errors.Is(err, library.ErrInvalid),
+		errors.Is(err, library.ErrReadOnly), errors.Is(err, catalog.ErrFilters), errors.Is(err, store.ErrMailboxSource):
+		return httpapi.Invalid.New(err.Error())
+	}
+	return internal(err)
+}
 
 func reply[T any](v T, err error) (*httpapi.Body[T], error) {
 	if err != nil {
-		return nil, internal(err)
+		return nil, failure(err)
 	}
 	return &httpapi.Body[T]{Body: v}, nil
 }
@@ -83,7 +126,7 @@ func list[T any](v []T, err error) (*httpapi.Body[[]T], error) {
 
 // Spec is the OpenAPI document bank serve answers with, built without a database.
 func Spec() ([]byte, error) {
-	return json.MarshalIndent((&Server{}).registerAPI(http.NewServeMux()).OpenAPI(), "", "  ")
+	return json.MarshalIndent((&Server{catalogue: attic.New(nil)}).registerAPI(http.NewServeMux()).OpenAPI(), "", "  ")
 }
 
 type resolveInput struct {
@@ -91,24 +134,14 @@ type resolveInput struct {
 }
 
 func (s *Server) resolve(ctx context.Context, in *resolveInput) (*httpapi.Body[catalog.Resolved], error) {
-	resolved, err := catalog.Resolve(ctx, s.db, s.catalogue, in.Ref)
-	if ambiguous, ok := errors.AsType[*atticstore.AmbiguousRefError](err); ok {
-		return nil, atticapi.AmbiguousRef.New(err.Error()).With("candidates", ambiguous.Candidates)
-	}
-	switch {
-	case errors.Is(err, catalog.ErrNoRecord):
-		return nil, httpapi.NotFound.New(err.Error())
-	case err != nil:
-		return nil, internal(err)
-	}
-	return &httpapi.Body[catalog.Resolved]{Body: resolved}, nil
+	return reply(catalog.Resolve(ctx, s.db, s.catalogue, in.Ref))
 }
 
 type timelineInput struct {
 	Since string   `query:"since" required:"true" format:"date" doc:"First day, as YYYY-MM-DD in the server's time zone."`
 	Until string   `query:"until" format:"date" doc:"The day after the last day. Default: the day after since."`
 	Group []string `query:"group" enum:"message,activity,file" doc:"Only these groups. Default: all three."`
-	Limit int      `query:"limit" default:"200" minimum:"1" maximum:"2000" doc:"Maximum events per group."`
+	httpapi.PageSize
 }
 
 func (s *Server) timeline(ctx context.Context, in *timelineInput) (*httpapi.Body[catalog.Timeline], error) {
@@ -122,9 +155,5 @@ func (s *Server) timeline(ctx context.Context, in *timelineInput) (*httpapi.Body
 			return nil, httpapi.Invalid.New("until is a YYYY-MM-DD date after since")
 		}
 	}
-	result, err := catalog.BuildTimeline(ctx, s.db, s.catalogue, catalog.TimelineOptions{Since: since, Until: until, Groups: in.Group, Limit: in.Limit})
-	if err != nil {
-		return nil, internal(err)
-	}
-	return &httpapi.Body[catalog.Timeline]{Body: result}, nil
+	return reply(catalog.BuildTimeline(ctx, s.db, s.catalogue, catalog.TimelineOptions{Since: since, Until: until, Groups: in.Group, Limit: in.Limit}))
 }

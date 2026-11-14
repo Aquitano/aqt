@@ -5,7 +5,6 @@ package client
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,10 +19,12 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
+	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
-
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -51,6 +52,12 @@ func FromEnv() *Client {
 }
 
 func (c *Client) request(ctx context.Context, method, path string, q url.Values, body io.Reader) (*http.Response, error) {
+	return c.send(ctx, method, path, q, "application/json", body)
+}
+
+// send is every request's one path: the token goes on, and an answer that is
+// not 2xx comes back as the error it stands for.
+func (c *Client) send(ctx context.Context, method, path string, q url.Values, contentType string, body io.Reader) (*http.Response, error) {
 	u := c.base + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
@@ -59,6 +66,9 @@ func (c *Client) request(ctx context.Context, method, path string, q url.Values,
 	if err != nil {
 		return nil, err
 	}
+	if body != nil {
+		req.Header.Set("Content-Type", contentType)
+	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -66,44 +76,77 @@ func (c *Client) request(ctx context.Context, method, path string, q url.Values,
 	}
 	if resp.StatusCode/100 != 2 {
 		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusGone && strings.HasPrefix(path, "/v1/messages/") {
-			var retired store.RetiredError
-			if err := json.NewDecoder(io.LimitReader(resp.Body, 65536)).Decode(&retired); err == nil && retired.Retired.Ref != "" {
-				return nil, &retired
-			}
-		}
-		if resp.StatusCode == http.StatusNotFound && strings.HasPrefix(path, "/v1/library/") {
-			return nil, fmt.Errorf("%s: %w", path, store.ErrNotFound)
-		}
-		if resp.StatusCode == http.StatusConflict {
-			if strings.HasPrefix(path, "/v1/library/") {
-				return nil, fmt.Errorf("%s: %w", errorMessage(resp), library.ErrConflict)
-			}
-			var conflict store.MailThreadConflictError
-			if err := json.NewDecoder(io.LimitReader(resp.Body, 65536)).Decode(&conflict); err == nil && conflict.Code == "mail_thread_conflict" {
-				return nil, &conflict
-			}
-			return nil, fmt.Errorf("%s %s: conflicting mail conversation", method, path)
-		}
-		return nil, fmt.Errorf("%s %s: %s", method, path, errorMessage(resp))
+		return nil, decodeFailure(resp)
 	}
 	return resp, nil
 }
 
-func errorMessage(resp *http.Response) string {
-	// Typed routes answer with message, the ones not converted yet with error.
-	var payload struct {
-		Error   string `json:"error"`
-		Message string `json:"message"`
+// Error is a failure the server answered with, decoded from its tagged body.
+// It unwraps to the sentinel error the store returns for the same failure, so
+// a caller tests a remote failure the way it tests a local one.
+type Error struct {
+	Status   int
+	Tag      string
+	Message  string
+	Recovery *httpapi.Recovery
+	cause    error
+}
+
+func (e *Error) Error() string { return e.Message }
+func (e *Error) Unwrap() error { return e.cause }
+
+// failures maps each tag the server documents to the error the store returns
+// for the same failure: a typed error is decoded from the body whole, so an
+// ambiguous ref keeps its candidates, and a sentinel is what Error unwraps to.
+// A tag without an entry stays an Error.
+var failures = map[string]func(e *Error, body []byte) error{
+	"NotFound":                is(store.ErrNotFound),
+	"InvalidRequest":          is(fail.ErrInvalid),
+	"LibraryRevisionConflict": is(library.ErrConflict),
+	"AmbiguousRef":            as[atticstore.AmbiguousRefError],
+	"MessageRetired":          as[store.RetiredError],
+	"MailThreadConflict":      as[store.MailThreadConflictError],
+	"AliasTaken":              as[store.ErrConflict],
+}
+
+func is(sentinel error) func(*Error, []byte) error {
+	return func(e *Error, _ []byte) error {
+		e.cause = sentinel
+		return e
 	}
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
-	if json.Unmarshal(body, &payload) == nil && payload.Error+payload.Message != "" {
-		return cmp.Or(payload.Message, payload.Error)
+}
+
+func as[T any, P interface {
+	*T
+	error
+}](e *Error, body []byte) error {
+	var v T
+	if json.Unmarshal(body, &v) != nil {
+		return e
 	}
-	if len(body) == 0 {
-		return resp.Status
+	return P(&v)
+}
+
+func decodeFailure(resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	e := &Error{Status: resp.StatusCode, Message: resp.Status}
+	var tagged struct {
+		Tag      string            `json:"_tag"`
+		Message  string            `json:"message"`
+		Recovery *httpapi.Recovery `json:"recovery"`
 	}
-	return fmt.Sprintf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
+	if json.Unmarshal(body, &tagged) != nil || tagged.Tag == "" {
+		// Something between the client and bank serve answered, such as a proxy.
+		if text := strings.TrimSpace(string(body)); text != "" {
+			e.Message += ": " + text
+		}
+		return e
+	}
+	e.Tag, e.Message, e.Recovery = tagged.Tag, tagged.Message, tagged.Recovery
+	if decode, ok := failures[e.Tag]; ok {
+		return decode(e, body)
+	}
+	return e
 }
 
 func getJSON[T any](ctx context.Context, c *Client, path string, q url.Values) (T, error) {
@@ -114,39 +157,6 @@ func getJSON[T any](ctx context.Context, c *Client, path string, q url.Values) (
 	}
 	defer resp.Body.Close()
 	return out, json.NewDecoder(resp.Body).Decode(&out)
-}
-
-func (c *Client) Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error) {
-	q := url.Values{"q": {query}}
-	set := func(key, value string) {
-		if value != "" {
-			q.Set(key, value)
-		}
-	}
-	set("source", o.Source)
-	set("subject", o.Subject)
-	if o.MailboxID != 0 {
-		set("mailbox_id", strconv.FormatInt(o.MailboxID, 10))
-	}
-	if o.HasAttachment != nil {
-		set("has_attachment", strconv.FormatBool(*o.HasAttachment))
-	}
-	set("from", o.From)
-	set("to", o.To)
-	set("person", o.Person)
-	set("match", o.Match)
-	if !o.Since.IsZero() {
-		q.Set("since", o.Since.Format("2006-01-02"))
-	}
-	if !o.Until.IsZero() {
-		q.Set("until", o.Until.Format("2006-01-02"))
-	}
-	q.Set("fuzzy", strconv.Itoa(o.Fuzzy))
-	q.Set("limit", strconv.Itoa(o.Limit))
-	if o.Offset > 0 {
-		q.Set("offset", strconv.Itoa(o.Offset))
-	}
-	return getJSON[[]store.Message](ctx, c, "/v1/search", q)
 }
 
 func (c *Client) GetMessageDetailByRef(ctx context.Context, cited ref.Message) (store.MessageDetail, error) {
@@ -195,7 +205,9 @@ func (c *Client) GetThreadPage(ctx context.Context, source, threadID string, o s
 	if err := o.Validate(); err != nil {
 		return store.Thread{}, err
 	}
-	q.Set("limit", strconv.Itoa(o.Limit))
+	if o.Limit > 0 {
+		q.Set("limit", strconv.Itoa(o.Limit))
+	}
 	for name, cursor := range map[string]ref.Message{"before": o.Before, "after": o.After, "around": o.Around} {
 		if !cursor.IsZero() {
 			q.Set(name, cursor.String())
@@ -317,7 +329,7 @@ func (c *Client) ImportJSON(ctx context.Context, source string, body []byte) (ge
 	if source != "" {
 		q.Set("source", source)
 	}
-	resp, err := c.request(ctx, http.MethodPost, "/v1/import/json", q, bytes.NewReader(body))
+	resp, err := c.send(ctx, http.MethodPost, "/v1/import/json", q, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return generic.Result{}, err
 	}
@@ -380,24 +392,11 @@ func ImportFile[T any](ctx context.Context, c *Client, kind, source, path string
 	if source != "" {
 		q.Set("source", source)
 	}
-	u := c.base + "/v1/import/" + kind
-	if len(q) > 0 {
-		u += "?" + q.Encode()
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, pr)
+	resp, err := c.send(ctx, http.MethodPost, "/v1/import/"+kind, q, mw.FormDataContentType(), pr)
 	if err != nil {
-		return res, err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := c.hc.Do(req)
-	if err != nil {
-		return res, err
+		return res, fmt.Errorf("import %s: %w", kind, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		return res, fmt.Errorf("import %s: %s", kind, errorMessage(resp))
-	}
 	var raw json.RawMessage
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return res, err

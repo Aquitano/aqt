@@ -80,7 +80,7 @@ Volume, kind and extension are entry BM25 fields, so ParadeDB can apply those fi
 
 ## The CLI and the API return one shape
 
-`internal/view` turns catalogue records into what readers receive: every place says whether its disk is attached to this machine and how to open it. `--json` and the HTTP API both return those types, and the API's OpenAPI document is generated from them, so a field added for one reader reaches the other. Errors differ on purpose: the API gives each failure a `_tag` and its own schema so agent code can branch on it, while the CLI prints the message.
+`internal/view` turns catalogue records into what readers receive: every place says how to open it and, on the machine the disks attach to, whether its disk is attached now. `--json` and bank serve's `/v1/disk` routes both return those types, and bank's OpenAPI document is generated from them, so a field added for one reader reaches the other. The server is not that machine, so it passes no mounts: `online` and `mounted_at` are left out of its answers and hidden from the document, rather than always false. Errors differ on purpose: the API gives each failure a `_tag` and its own schema so agent code can branch on it, while the CLI prints the message.
 
 ## Dedupe sets copies aside and never deletes
 

@@ -1,8 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
+	"io"
+	"io/fs"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +24,7 @@ import (
 func libraryClient(t *testing.T) (*client.Client, *Server) {
 	t.Helper()
 	s, _ := attachmentServer(t)
-	token, err := Tokens(s.dataDir).New("library-test", tokens.Scope{})
+	token, err := Tokens(s.dataDir).New("library-test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,5 +157,46 @@ func TestLibraryRejectsUnauthenticatedWrites(t *testing.T) {
 	s.Handler().ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/library/files", nil))
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("got %d", w.Code)
+	}
+}
+
+// Every field the upload names is checked before the first part is read, so
+// a refused upload leaves no blob that no row refers to.
+func TestLibraryUploadWithABadFieldStoresNoBlob(t *testing.T) {
+	_, s := libraryClient(t)
+	for _, query := range []string{"source=../escape", "item_id=item:00000000000000000000000000000000"} {
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		part, err := form.CreateFormFile("file", "notes.txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(part, "bytes nothing should keep"); err != nil {
+			t.Fatal(err)
+		}
+		if err := form.Close(); err != nil {
+			t.Fatal(err)
+		}
+		token, err := Tokens(s.dataDir).New("upload-"+rand.Text(), tokens.Write)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := httptest.NewRequest(http.MethodPost, "/v1/library/files?"+query, &body)
+		r.Header.Set("Authorization", "Bearer "+token)
+		r.Header.Set("Content-Type", form.FormDataContentType())
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		if w.Code != http.StatusUnprocessableEntity && w.Code != http.StatusNotFound {
+			t.Fatalf("%s: %d %s", query, w.Code, w.Body)
+		}
+	}
+	err := filepath.WalkDir(filepath.Join(s.dataDir, "blobs"), func(path string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			t.Errorf("a refused upload stored %s", path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

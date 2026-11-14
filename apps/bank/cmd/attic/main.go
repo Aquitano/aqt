@@ -19,6 +19,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 )
 
 var errMissingFlagValue = errors.New("expected a value")
@@ -42,9 +43,6 @@ type cli struct {
 	Skips    skipsCmd    `cmd:"" help:"Show what a scan left out and why."`
 	Stats    statsCmd    `cmd:"" help:"Show catalogue totals."`
 	Config   configCmd   `cmd:"" help:"Show the configuration and effective rules."`
-	Serve    serveCmd    `cmd:"" help:"Serve the catalogue over HTTP for agents."`
-	Token    tokenCmd    `cmd:"" help:"Manage the API tokens serve accepts."`
-	OpenAPI  openapiCmd  `cmd:"" name:"openapi" help:"Print the API's OpenAPI document."`
 	Help     helpCmd     `cmd:"" help:"Show help for a command."`
 }
 
@@ -79,6 +77,7 @@ func newParser(root *cli) *kong.Kong {
 	return kong.Must(root,
 		kong.Name("attic"),
 		kong.Description("Search files on disks that come and go."),
+		kong.Vars{"limit": strconv.Itoa(page.DefaultLimit), "max_limit": strconv.Itoa(page.MaxLimit), "max_offset": strconv.Itoa(page.MaxOffset)},
 		kong.WithHyphenPrefixedParameters(true),
 	)
 }

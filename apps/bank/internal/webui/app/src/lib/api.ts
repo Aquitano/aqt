@@ -100,18 +100,20 @@ const threadGroup = type({
 });
 export type ThreadGroup = typeof threadGroup.infer;
 
-// Failed /v1 requests answer with `{"message": "..."}`; the upload and
-// download routes answer with `{"error": "..."}`.
-const errorBody = type({ "error?": "string", "message?": "string" });
+// Every failed /v1 request answers with a `_tag` naming the failure and a
+// `message`; some tags carry fields of their own.
+const errorBody = type({ _tag: "string", message: "string" });
 export class RequestError extends Error {
   readonly status: number;
-  constructor(status: number, description: string) {
+  readonly tag: string;
+  constructor(status: number, tag: string, description: string) {
     super(description);
     this.status = status;
+    this.tag = tag;
   }
 }
 const mailConflict = type({
-  code: "'mail_thread_conflict'",
+  _tag: "'MailThreadConflict'",
   source: "string",
   conflict_key: "string",
   choices: "string[]",
@@ -129,17 +131,11 @@ async function send(path: string, init?: RequestInit) {
   const r = await fetch(path, init);
   const body: unknown = await r.json().catch(() => undefined);
   if (r.ok) return body;
-  if (r.status === 409) {
-    const conflict = mailConflict(body);
-    if (!(conflict instanceof type.errors)) throw new MailConflictError(conflict);
-  }
+  const conflict = mailConflict(body);
+  if (!(conflict instanceof type.errors)) throw new MailConflictError(conflict);
   const failure = errorBody(body);
-  throw new RequestError(
-    r.status,
-    failure instanceof type.errors
-      ? r.statusText
-      : failure.message || failure.error || r.statusText,
-  );
+  if (failure instanceof type.errors) throw new RequestError(r.status, "", r.statusText);
+  throw new RequestError(r.status, failure._tag, failure.message || r.statusText);
 }
 
 export async function api<T extends Type>(
@@ -201,8 +197,11 @@ export function search({
   if (person) p.set("person", person);
   if (since) p.set("since", since);
   if (until) p.set("until", until);
-  return api(`/v1/search?${p}`, message.array());
+  p.set("kind", "message");
+  return api(`/v1/search?${p}`, messageResults).then((result) => result.messages);
 }
+
+const messageResults = type({ messages: message.array() });
 
 export function getMessage(ref: string) {
   return api(`/v1/messages/${ref}`, message);

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 )
 
 var ErrConflict = errors.New("library revision conflict")
@@ -261,25 +263,25 @@ func (d Date) Validate() error {
 
 func (o ListOptions) Validate() error {
 	if !in(o.Match, "", "any", "all", "phrase") {
-		return fmt.Errorf("match must be any, all or phrase")
+		return fail.Invalidf("match must be any, all or phrase")
 	}
 	if !in(o.Kind, "", "message", "item", "activity", "collection", "file", "page", "video", "movie", "series", "episode", "track", "album", "podcast", "book", "article", "other", "watch", "listen", "read", "play", "view", "purchase", "playlist", "library", "watchlist", "list") {
-		return fmt.Errorf("unsupported kind %q", o.Kind)
+		return fail.Invalidf("unsupported kind %q", o.Kind)
 	}
-	if o.Limit < 0 || o.Limit > 500 || o.Offset < 0 || o.Offset > 100000 {
-		return fmt.Errorf("limit must be 0-500 and offset 0-100000")
+	if err := page.Check(page.Limit(o.Limit), o.Offset); err != nil {
+		return err
 	}
 	for _, v := range []string{o.Since, o.Until} {
 		if v != "" {
 			if _, err := time.Parse("2006-01-02", v); err != nil {
 				if _, err = time.Parse(time.RFC3339Nano, v); err != nil {
-					return fmt.Errorf("date filters require YYYY-MM-DD or RFC3339")
+					return fail.Invalidf("date filters require YYYY-MM-DD or RFC3339")
 				}
 			}
 		}
 	}
 	if len(o.Query) > 4096 {
-		return fmt.Errorf("query exceeds 4096 bytes")
+		return fail.Invalidf("query exceeds 4096 bytes")
 	}
 	return nil
 }

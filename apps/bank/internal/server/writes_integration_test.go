@@ -27,11 +27,11 @@ func TestContactImportAndCoverageRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := Tokens(dir).New("test", tokens.Scope{})
+	token, err := Tokens(dir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{db: st, read: st, blobs: blobs, dataDir: dir, archiveDir: filepath.Join(dir, "archive")}
+	s := &Server{db: st, read: st, blobs: blobs, dataDir: dir, archiveDir: filepath.Join(dir, "archive"), catalogue: noDisks{}}
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 
@@ -135,4 +135,37 @@ func TestContactImportAndCoverageRoutes(t *testing.T) {
 			t.Error("a coverage note must not read as a sync checkpoint")
 		}
 	})
+}
+
+// A write that fails because the database is gone is the server's failure. An
+// InvalidRequest would tell the caller to change input that was fine.
+func TestWritesDuringAnOutageAreTheServersFault(t *testing.T) {
+	pool := storetest.Pool(t, storetest.Migrated(t))
+	s, token := testServer(t)
+	st := store.New(pool)
+	s.db, s.read = st, st
+	pool.Close()
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, "/v1/contacts", `{"name":"erin"}`},
+		{http.MethodPost, "/v1/contacts/erin/aliases", `{"value":"erin@example.com"}`},
+		{http.MethodDelete, "/v1/contacts/erin/aliases?value=erin%40example.com", ""},
+		{http.MethodPut, "/v1/sources/gmail/coverage", `{"text":"all of it"}`},
+	} {
+		req, err := http.NewRequestWithContext(t.Context(), tc.method, srv.URL+tc.path, strings.NewReader(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusInternalServerError || !strings.Contains(string(body), `"_tag":"Internal"`) || strings.Contains(string(body), "closed") {
+			t.Errorf("%s %s: %d %s, want 500 without the cause", tc.method, tc.path, resp.StatusCode, body)
+		}
+	}
 }

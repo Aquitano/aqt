@@ -2,7 +2,7 @@
 
 Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It changes source files only when `attic dedupe apply` moves duplicate copies into a quarantine folder, or `attic organize apply` and `undo` rename files and folders that a reviewed plan lists. Scanning runs on Windows; search runs wherever the database is reachable.
 
-Attic is part of bank's Go module: `cmd/attic` is the CLI that scans, the packages are under `internal/attic`, and this directory holds its documents and its Executor app. `bank serve` also answers the catalogue's read API, below `/attic` ([Served by bank](#served-by-bank)).
+Attic is part of bank's Go module: `cmd/attic` is the CLI that scans, the packages are under `internal/attic`, and this directory holds its documents and its Executor app. `bank serve` answers the catalogue's read routes below `/v1/disk` ([Serve the catalogue to agents](#serve-the-catalogue-to-agents)).
 
 ## Setup
 
@@ -180,38 +180,23 @@ Vision providers accept PNG, JPEG, GIF and WebP up to 20 MiB. Tesseract also acc
 
 ## Serve the catalogue to agents
 
-`attic serve` answers the read commands over HTTP. Like them, it opens the catalogue read-only.
+`bank serve` answers the catalogue's read commands over HTTP below `/v1/disk`: `/v1/disk/search`, `/v1/disk/contents/{ref}`, `/v1/disk/entries/{id}`, `/v1/disk/volumes`, `/v1/disk/scans` and so on. They are in bank's one OpenAPI document at `/openapi.json`, take bank's tokens (`bank token new <name> --read-only` is enough), and answer failures with bank's tagged errors, such as `NotFound`, `AmbiguousRef` with its candidates, or `InvalidRequest`. Responses have the shapes of `--json`, without `online` and `mounted_at`: the server is not the machine the disks attach to, so it cannot say which are attached, and it does not serve a file's bytes. To copy a file, run `attic get` on the machine with the disk.
 
-```powershell
-attic token new executor
-attic serve --listen 127.0.0.1:8490
-```
-
-`token new` prints the token once. Every `/v1` route needs it as `Authorization: Bearer <token>`. Tokens are kept as SHA-256 digests in `%APPDATA%\attic\tokens`; `attic token list` and `attic token revoke <name>` manage them, and a revocation applies to the next request. There is no TLS, so listen on localhost, or on a Tailscale address to reach the API from the tailnet. `ATTIC_LISTEN` also sets the address. A database at another schema version stops `serve` from starting; run `bank migrate` or upgrade attic first.
-
-`/openapi.json` describes every operation and needs no token. `openapi.json` in this directory is the committed copy; regenerate it from `apps/bank` with `go run ./cmd/attic openapi > attic/openapi.json` after changing the API, because a test fails while it is stale. Responses have the same shapes as `--json`. An error is JSON with a `_tag` naming the failure (`Unauthorized`, `InvalidRequest`, `NotFound`, `AmbiguousRef`, `Unavailable` or `Internal`), a `message`, and a `recovery` with what to do where the caller can act. Each tag has its own schema, so code generated from the document can branch on it.
-
-`GET /v1/contents/{ref}/file` streams a file from an attached disk and checks its BLAKE3 digest on the way. The last 64 KiB wait until the digest matches, so a copy that changed since its scan ends short of `Content-Length` instead of delivering wrong bytes. Without an attached copy the answer is `Unavailable`, with the disks to connect. Like `attic get`, downloads need Windows volume discovery.
-
-### Served by bank
-
-`bank serve` answers the same routes below `/attic`: `/attic/v1/search`, `/attic/openapi.json` and so on. It migrates the database before it starts listening. Those routes take bank's tokens (`bank token new <name>`), so one token reads both the archive and the catalogue. That server has no disks attached, so a download answers `Unavailable` and names the disks that hold a copy. To fetch a file, ask an `attic serve` on the machine with the disk.
-
-`bank search` includes the catalogue: a search without sender, source, account or date filters also returns files on disks, under `disks` in `--json`.
+`bank search` and `GET /v1/search` include the catalogue: a search without sender, source, account or date filters also returns files on disks, under `disks`, and `match` means the same for them as for messages. `/v1/disk/search` adds the filters only the catalogue has: volume, folder, extension, entry kind and current versions.
 
 Scans still write through `DATABASE_URL`, so the catalogue bank serves is whatever was scanned into bank's database.
 
 ### Code mode through Executor
 
-`executor/` is an [Executor](https://executor.sh) app that turns the live `/openapi.json` into typed tools, so an agent writes code such as `await tools.attic.catalogue.search({ q: "minecraft server" })` instead of calling one tool per endpoint. It needs a local or self-hosted Executor: Executor Cloud cannot reach a tailnet or loopback address. The token travels only to the host in `executor/provider.ts`, and any future write operation asks for approval.
+`executor/` is an [Executor](https://executor.sh) app that turns bank serve's live `/openapi.json` into typed tools, so an agent writes code such as `await tools.attic.disk.searchDisks({ q: "minecraft server" })` instead of calling one tool per endpoint. The document covers the whole archive, so the app offers bank's other operations too. It needs a local or self-hosted Executor: Executor Cloud cannot reach a tailnet or loopback address. The token travels only to the host in `executor/provider.ts`, and every operation that writes asks for approval.
 
-```powershell
-attic token new executor
+```sh
+bank token new executor --read-only                 # where bank serve runs
 executor apps create --name attic --files apps/bank/attic/executor
 executor apps deploy --app <app-id> --files apps/bank/attic/executor
 ```
 
-Then connect the app's attic account in the Executor dashboard and paste the token there. The app reaches attic at `origin` in `executor/provider.ts`, `http://127.0.0.1:8490` for an Executor on the same PC. For a self-hosted Executor on another machine, such as the VPS, set `origin` to the PC's tailnet address before deploying, run `attic serve --listen <tailnet address>:8490`, and start that Executor with `EXECUTOR_APPS_ALLOW_PRIVATE_FETCH=true`, because it refuses private addresses otherwise. `mise run bank:ts` type-checks and lints it; the `apps` version in `package.json` must match `executor apps framework`.
+Then connect the app's attic account in the Executor dashboard and paste the token there. The app reaches bank serve at `origin` in `executor/provider.ts`, `http://127.0.0.1:8480` for an Executor on the same machine. For a self-hosted Executor elsewhere, set `origin` to bank serve's tailnet address before deploying, and start that Executor with `EXECUTOR_APPS_ALLOW_PRIVATE_FETCH=true`, because it refuses private addresses otherwise. `mise run bank:ts` type-checks and lints it; the `apps` version in `package.json` must match `executor apps framework`.
 
 ## Configuration
 

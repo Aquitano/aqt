@@ -36,7 +36,6 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
-	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
@@ -46,6 +45,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -124,7 +124,8 @@ func newParser(root *cli) *kong.Kong {
 	return kong.Must(root,
 		kong.Name("bank"),
 		kong.Description(description),
-		kong.Vars{"version": buildVersion()},
+		kong.Vars{"version": buildVersion(), "limit": strconv.Itoa(page.DefaultLimit),
+			"max_limit": strconv.Itoa(page.MaxLimit), "max_offset": strconv.Itoa(page.MaxOffset)},
 		kong.WithHyphenPrefixedParameters(true),
 	)
 }
@@ -301,8 +302,8 @@ type searchCmd struct {
 	Since         string   `help:"YYYY-MM-DD."`
 	Until         string   `help:"YYYY-MM-DD (exclusive)."`
 	Fuzzy         int      `default:"1" help:"Typo tolerance 0-2 (ignored for phrase)."`
-	Limit         int      `default:"20" help:"Max results, 1-500."`
-	Offset        int      `help:"Skip this many ranked results, for the next page (max 10000)."`
+	Limit         int      `default:"${limit}" help:"Max results, 1-${max_limit}."`
+	Offset        int      `help:"Skip this many ranked results, for the next page (max ${max_offset})."`
 	JSON          bool     `help:"JSON output."`
 }
 
@@ -382,8 +383,8 @@ func printMorePages(got, limit, offset int) {
 		return
 	}
 	next := offset + limit
-	if next > store.MaxSearchOffset {
-		fmt.Printf("\n… possibly more, but past the --offset %d cap; narrow the query instead\n", store.MaxSearchOffset)
+	if next > page.MaxOffset {
+		fmt.Printf("\n… possibly more, but past the --offset %d cap; narrow the query instead\n", page.MaxOffset)
 		return
 	}
 	fmt.Printf("\n… possibly more: repeat with --offset %d\n", next)
@@ -392,7 +393,7 @@ func printMorePages(got, limit, offset int) {
 type threadCmd struct {
 	ID      []string    `arg:"" help:"Thread id; several words are joined with spaces."`
 	Source  string      `help:"Source the thread belongs to."`
-	Limit   int         `help:"Page size, 1-2000 (default 2000)."`
+	Limit   int         `default:"${limit}" help:"Page size, 1-${max_limit}."`
 	Before  ref.Message `help:"Page backward from this message, by ref."`
 	After   ref.Message `help:"Page forward from this message, by ref."`
 	Around  ref.Message `help:"Center context on this message, by ref."`
@@ -573,8 +574,6 @@ type backend interface {
 	ImportReports(context.Context, int64, int) ([]store.ImportReport, error)
 	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
 	AttachmentMessages(context.Context, content.Digest, int, int) ([]store.Message, error)
-	Search(ctx context.Context, query string, o store.SearchOpts) ([]store.Message, error)
-	SearchLibrary(context.Context, library.ListOptions) (library.SearchResult, error)
 	GetMessageDetailByRef(ctx context.Context, cited ref.Message) (store.MessageDetail, error)
 	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
@@ -909,14 +908,9 @@ func (c *serveCmd) Run(ctx context.Context) error {
 		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
 	srv := server.New(st.Store, st.catalogue, blobs, dataDir(), filepath.Join(dataDir(), "archive"))
-	srv.Mount(atticBasePath, st.catalogue.Handler(atticapi.Host{
-		Tokens: server.Tokens(dataDir()), MintCommand: "bank token new <name>", BasePath: atticBasePath,
-	}))
 	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
 	return srv.ListenAndServe(ctx, c.Listen)
 }
-
-const atticBasePath = "/attic"
 
 // uiCmd starts the local archive browser: the embedded page plus a proxy that
 // signs /v1 requests with BANK_TOKEN, so the token stays out of the browser.
@@ -985,16 +979,19 @@ func refuseRemoteToken() error {
 }
 
 type tokenNewCmd struct {
-	Name     string   `arg:""`
-	ReadOnly bool     `help:"The token reads and searches but cannot import, edit or delete."`
-	Domain   []string `help:"Limit the token to these APIs: bank (the archive and library) or attic (the file catalogue). Default: both." enum:"bank,attic"`
+	Name     string `arg:""`
+	ReadOnly bool   `help:"The token reads and searches but cannot import, edit or delete."`
 }
 
 func (c *tokenNewCmd) Run() error {
 	if err := refuseRemoteToken(); err != nil {
 		return err
 	}
-	token, err := server.Tokens(dataDir()).New(c.Name, tokens.Scope{ReadOnly: c.ReadOnly, Domains: c.Domain})
+	scope := tokens.Write
+	if c.ReadOnly {
+		scope = tokens.Read
+	}
+	token, err := server.Tokens(dataDir()).New(c.Name, scope)
 	if err != nil {
 		return err
 	}
@@ -1018,11 +1015,7 @@ func (tokenListCmd) Run() error {
 	}
 	fmt.Fprintf(os.Stderr, "tokens in %s\n", server.Tokens(dataDir()).Path)
 	for _, token := range listed {
-		if scope := token.Scope.String(); scope != "" {
-			fmt.Printf("%s\t%s\n", token.Name, scope)
-		} else {
-			fmt.Println(token.Name)
-		}
+		fmt.Printf("%s\t%s\n", token.Name, token.Scope)
 	}
 	return nil
 }

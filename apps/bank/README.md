@@ -5,9 +5,9 @@ Personal archive and library: messages, media, viewing activity, playlists, file
 Bank imports personal ChatGPT and Claude.ai exports. Turnstash owns coding-session
 ingestion. Removing an importer does not delete previously archived records.
 
-The same Go module holds [attic](attic/README.md), the catalogue of files on disks that come and go. Its tables are in this database beside the archive's, and both name bytes by one BLAKE3 `contents` row and share the text read from them. `cmd/attic` scans, and `bank serve` answers its read API below `/attic` with bank's tokens, and `bank search` returns its files beside messages and media.
+The same Go module holds [attic](attic/README.md), the catalogue of files on disks that come and go. Its tables are in this database beside the archive's, and both name bytes by one BLAKE3 `contents` row and share the text read from them. `cmd/attic` scans, `bank serve` answers the catalogue's read routes below `/v1/disk`, and `bank search` returns its files beside messages and media.
 
-Routes are typed Go handlers in `internal/server/*_api.go`, on the operation and error types in `internal/httpapi` that attic's API also uses: parameters and bodies are declared on structs, so their parsing and bounds checks are generated. `GET /openapi.json` describes them, and a failure is JSON with a `_tag`, a `message` and, where the caller can act, a `recovery`. A rejected parameter answers 422. `openapi.json` is the committed copy: regenerate it with `go run ./cmd/bank openapi > openapi.json`, because a test fails while it is stale. Six routes that stream bytes or take uploads are still plain handlers that answer errors as `{"error": "..."}` and are not in the document: blob and preview downloads, imports, library file and page uploads, and replacing an attachment's text.
+Every route is a typed Go handler in `internal/server/*_api.go` or, for the catalogue, `internal/attic/api`, on the operation and error types in `internal/httpapi`: parameters and bodies are declared on structs, so their parsing and bounds checks are generated, and uploads and downloads stream. `GET /openapi.json` is the one document that describes them all, and a failure is always JSON with a `_tag`, a `message` and, where the caller can act, a `recovery`. A rejected parameter or body answers 422, including a body that is too large or too slow, which Huma would otherwise answer with 400, 408 or 413. A failure is the server's, a 500 whose cause stays in the log, unless a typed or sentinel error says it is invalid input, missing or a conflict. `openapi.json` is the committed copy: regenerate it with `go run ./cmd/bank openapi > openapi.json`, because a test fails while it is stale.
 
 See [MAIL.md](MAIL.md) for folder-preserving imports, mail filters, conversation grouping, and metadata recovery. See [IMAP.md](IMAP.md) for the Proton Bridge and Gmail collector.
 
@@ -135,12 +135,15 @@ Ad-hoc SQL requires `BANK_QUERY_DATABASE_URL`, a separate restricted login creat
 with [deploy/query-role.sql](deploy/query-role.sql). It never falls back to the
 import connection. The login has SELECT on public tables and sequences, schema USAGE, and no write,
 server-file, program-execution, or administrative grants. READ ONLY transactions,
-a 15-second timeout and a row cap provide additional limits. Other read commands
-work without this setting.
+a 15-second timeout, and the role's `work_mem` and `temp_file_limit` provide
+additional limits. The query runs as a cursor, which accepts one SELECT, VALUES or
+TABLE statement, and reading stops at the row cap or at 8 MiB of values; a value
+over 64 KiB is cut. `truncated` and `cut_values` in `--json` say when either
+happened. Other read commands work without this setting.
 
 ## Retrieve conversation history
 
-`bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <ref>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with the refs of a page's first and last messages. These positions are mutually exclusive. Each page contains up to 2,000 messages and includes attachment metadata.
+`bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <ref>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with the refs of a page's first and last messages. These positions are mutually exclusive. Each page contains 100 messages unless `--limit` asks for up to 500, and includes attachment metadata.
 
 The browser opens search results around the matching message and provides **Load earlier** and **Load later** controls. Browse opens the newest page. Contact history also has **Load earlier**; CLI callers can use `bank contact messages <name> --before <ref>` to continue beyond the offset limit.
 

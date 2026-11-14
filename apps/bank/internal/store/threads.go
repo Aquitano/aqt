@@ -10,10 +10,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
-
-const MaxThreadMessages = 2000
 
 type Thread struct {
 	ThreadID  string          `json:"thread_id"`
@@ -36,8 +36,8 @@ type ThreadOpts struct {
 }
 
 func (o ThreadOpts) Validate() error {
-	if o.Limit < 0 || o.Limit > MaxThreadMessages {
-		return fmt.Errorf("limit must be 0-%d", MaxThreadMessages)
+	if err := page.Check(page.Limit(o.Limit), 0); err != nil {
+		return err
 	}
 	positions := 0
 	for _, cursor := range []ref.Message{o.Before, o.After, o.Around} {
@@ -49,7 +49,7 @@ func (o ThreadOpts) Validate() error {
 		positions++
 	}
 	if positions > 1 {
-		return fmt.Errorf("use only one of before, after, around, or latest")
+		return fail.Invalidf("use only one of before, after, around, or latest")
 	}
 	return nil
 }
@@ -83,11 +83,9 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 		return out, err
 	}
 	if out.ThreadID == "" {
-		return out, fmt.Errorf("thread id must not be empty")
+		return out, fail.Invalidf("thread id must not be empty")
 	}
-	if o.Limit == 0 {
-		o.Limit = MaxThreadMessages
-	}
+	o.Limit = page.Limit(o.Limit)
 	if source == "" {
 		sources, err := s.threadSources(ctx, out.ThreadID)
 		if err != nil {

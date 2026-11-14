@@ -6,18 +6,22 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 type reportsCmd struct {
 	Before int64 `help:"Page backward from this report id."`
-	Limit  int   `default:"50" help:"Page size, 1-100."`
+	Limit  int   `default:"${limit}" help:"Page size, 1-${max_limit}."`
 	JSON   bool  `help:"JSON output."`
 }
 
 func (c *reportsCmd) Run(ctx context.Context) error {
-	if c.Before < 0 || c.Limit < 1 || c.Limit > 100 {
-		return fmt.Errorf("before must be nonnegative and limit must be 1-100")
+	if c.Before < 0 {
+		return fmt.Errorf("before must be nonnegative")
+	}
+	if err := page.Check(c.Limit, 0); err != nil {
+		return err
 	}
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {
@@ -47,15 +51,15 @@ type attachmentFindCmd struct {
 	Person   string `help:"Contact name."`
 	Since    string `help:"YYYY-MM-DD."`
 	Until    string `help:"YYYY-MM-DD (exclusive)."`
-	Offset   int    `help:"Skip this many files."`
-	Limit    int    `default:"50" help:"Page size, 1-100."`
+	Offset   int    `help:"Skip this many files, at most ${max_offset}."`
+	Limit    int    `default:"${limit}" help:"Page size, 1-${max_limit}."`
 	JSON     bool   `help:"JSON output."`
 }
 
 func (c *attachmentFindCmd) Run(ctx context.Context) error {
 	o := store.AttachmentFilter{Filename: c.Filename, Text: c.Text, FileType: c.Type, Person: c.Person, Offset: c.Offset, Limit: c.Limit}
-	if o.Offset < 0 || o.Offset > store.MaxSearchOffset || o.Limit < 1 || o.Limit > 100 {
-		return fmt.Errorf("invalid pagination")
+	if err := page.Check(o.Limit, o.Offset); err != nil {
+		return err
 	}
 	var err error
 	if c.Since != "" {
@@ -90,13 +94,13 @@ func (c *attachmentFindCmd) Run(ctx context.Context) error {
 
 type attachmentMessagesCmd struct {
 	BLAKE3 content.Digest `arg:"" name:"blake3" help:"The content's BLAKE3 digest, 64 lowercase hex characters."`
-	Offset int            `help:"Skip this many messages."`
-	Limit  int            `default:"50" help:"Page size, 1-100."`
+	Offset int            `help:"Skip this many messages, at most ${max_offset}."`
+	Limit  int            `default:"${limit}" help:"Page size, 1-${max_limit}."`
 }
 
 func (c *attachmentMessagesCmd) Run(ctx context.Context) error {
-	if c.Offset < 0 || c.Offset > store.MaxSearchOffset || c.Limit < 1 || c.Limit > 100 {
-		return fmt.Errorf("invalid pagination")
+	if err := page.Check(c.Limit, c.Offset); err != nil {
+		return err
 	}
 	b, closeBackend, err := openBackend(ctx)
 	if err != nil {

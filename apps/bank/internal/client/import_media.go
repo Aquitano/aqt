@@ -51,20 +51,11 @@ func (c *Client) ImportMediaFile(ctx context.Context, kind, source, account, pat
 	if dateOrder != "" {
 		query.Set("date_order", dateOrder)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+"/v1/import/"+kind+"?"+query.Encode(), reader)
+	resp, err := c.send(ctx, http.MethodPost, "/v1/import/"+kind, query, multipartWriter.FormDataContentType(), reader)
 	if err != nil {
-		return result, err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-	resp, err := c.hc.Do(req)
-	if err != nil {
-		return result, err
+		return result, fmt.Errorf("import %s: %w", kind, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		return result, fmt.Errorf("import %s: %s", kind, errorMessage(resp))
-	}
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	return result, err
 }

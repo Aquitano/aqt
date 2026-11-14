@@ -120,7 +120,7 @@ func TestLibraryItemSummaryBatchIsBoundedAndOrdered(t *testing.T) {
 
 func authed(t *testing.T, s *Server, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	token, err := Tokens(s.dataDir).New("raw-"+rand.Text(), tokens.Scope{})
+	token, err := Tokens(s.dataDir).New("raw-"+rand.Text(), tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}

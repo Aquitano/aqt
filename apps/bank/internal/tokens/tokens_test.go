@@ -12,7 +12,7 @@ import (
 
 func TestTokensVerifyUntilRevoked(t *testing.T) {
 	tokens := Store{Path: filepath.Join(t.TempDir(), "app", "tokens"), Prefix: "app_"}
-	token, err := tokens.New("executor", Scope{})
+	token, err := tokens.New("executor", Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestTokensVerifyUntilRevoked(t *testing.T) {
 	} else if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("file mode = %v, want 0600", info.Mode().Perm())
 	}
-	if _, err := tokens.New("executor", Scope{}); err == nil {
+	if _, err := tokens.New("executor", Write); err == nil {
 		t.Fatal("a second token with the same name was minted")
 	}
 	for presented, want := range map[string]bool{token: true, token + "x": false, "": false} {
@@ -48,35 +48,30 @@ func TestTokensVerifyUntilRevoked(t *testing.T) {
 	}
 }
 
-func TestScopeLimitsWritesAndDomains(t *testing.T) {
+func TestScopeLimitsWrites(t *testing.T) {
 	tokens := Store{Path: filepath.Join(t.TempDir(), "tokens")}
-	// A line written before scopes existed opens everything.
-	if err := os.WriteFile(tokens.Path, []byte("old:"+hashToken("legacy")+"\n"), 0o600); err != nil {
+	// A line without a known scope opens nothing.
+	if err := os.WriteFile(tokens.Path, []byte("old:"+hashToken("legacy")+"\nodd:"+hashToken("odd")+":read,attic\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	reader, err := tokens.New("agent", Scope{ReadOnly: true, Domains: []string{"attic"}})
+	for _, presented := range []string{"legacy", "odd"} {
+		if _, ok, err := tokens.Verify(presented); err != nil || ok {
+			t.Fatalf("a line without a known scope verified %q: %v, %v", presented, ok, err)
+		}
+	}
+	reader, err := tokens.New("agent", Read)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := tokens.New("bad", Scope{Domains: []string{"read"}}); err == nil {
-		t.Fatal("a domain named like the read-only grant was accepted")
+	if _, err := tokens.New("bad", "attic"); err == nil {
+		t.Fatal("an unknown scope was accepted")
 	}
-	for _, tc := range []struct {
-		token, domain string
-		write, want   bool
-	}{
-		{"legacy", "bank", true, true},
-		{reader, "attic", false, true},
-		{reader, "attic", true, false},
-		{reader, "bank", false, false},
-	} {
-		scope, ok, err := tokens.Verify(tc.token)
-		if err != nil || !ok {
-			t.Fatalf("Verify: %v, %v", ok, err)
-		}
-		if got := scope.Allows(tc.domain, tc.write); got != tc.want {
-			t.Errorf("scope %q allows %s write=%v: %v, want %v", scope, tc.domain, tc.write, got, tc.want)
-		}
+	scope, ok, err := tokens.Verify(reader)
+	if err != nil || !ok || scope != Read {
+		t.Fatalf("Verify = %q, %v, %v", scope, ok, err)
+	}
+	if !Read.Allows(false) || Read.Allows(true) || !Write.Allows(true) {
+		t.Fatal("a read token may write, or a write token may not")
 	}
 }
 
@@ -92,7 +87,7 @@ func TestConcurrentTokenCommandsKeepEveryChange(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := range 20 {
 		wg.Go(func() {
-			if _, err := tokens.New(fmt.Sprintf("client-%d", i), Scope{}); err != nil {
+			if _, err := tokens.New(fmt.Sprintf("client-%d", i), Read); err != nil {
 				t.Error(err)
 			}
 		})

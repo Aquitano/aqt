@@ -25,7 +25,7 @@ func TestThreadContextIncludesLateSearchHit(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := ref.ForMessage("whatsapp", "", "2002").String()
-	token, err := Tokens(s.dataDir).New("test", tokens.Scope{})
+	token, err := Tokens(s.dataDir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}

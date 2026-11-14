@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 )
 
 func TestCLIParsesDocumentedForms(t *testing.T) {
@@ -18,7 +20,7 @@ func TestCLIParsesDocumentedForms(t *testing.T) {
 		check func(cli) bool
 	}{
 		{[]string{"search", "words", "--json", "--source", "gmail"}, func(c cli) bool {
-			return reflect.DeepEqual(c.Search.Query, []string{"words"}) && c.Search.JSON && c.Search.Source == "gmail" && c.Search.Limit == 20
+			return reflect.DeepEqual(c.Search.Query, []string{"words"}) && c.Search.JSON && c.Search.Source == "gmail" && c.Search.Limit == page.DefaultLimit
 		}},
 		{[]string{"search", "--json", "--", "-foo", "--source"}, func(c cli) bool {
 			return reflect.DeepEqual(c.Search.Query, []string{"-foo", "--source"}) && c.Search.JSON && c.Search.Source == ""
@@ -42,7 +44,7 @@ func TestCLIParsesDocumentedForms(t *testing.T) {
 			return c.Retire.Source == "youtube" && reflect.DeepEqual(c.Retire.ExternalPrefix, []string{"watch:", "playlist:"}) && !c.Retire.Apply
 		}},
 		{[]string{"mail", "conflict", "key", "--source", "gmail", "--json"}, func(c cli) bool {
-			return c.Mail.Conflict.Key == "key" && c.Mail.Source == "gmail" && c.Mail.Conflict.Limit == 100
+			return c.Mail.Conflict.Key == "key" && c.Mail.Source == "gmail" && c.Mail.Conflict.Limit == page.DefaultLimit
 		}},
 	} {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {

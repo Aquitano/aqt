@@ -8,7 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"net/http"
+	"mime/multipart"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +20,6 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/generic"
-	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
@@ -30,98 +29,6 @@ import (
 const maxJSONUpload = 16 << 20
 
 var jsonImports = make(chan struct{}, 2)
-
-// Uploads are always single files: directory inputs stay a client concern, the
-// CLI walks them and posts one file per request.
-func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
-	received := time.Now()
-	r.Body = http.MaxBytesReader(w, r.Body, maxUpload)
-	kind := r.PathValue("kind")
-	source := r.URL.Query().Get("source")
-	dateOrder := r.URL.Query().Get("date_order")
-	if dateOrder != "" && (kind != "netflix" || dateOrder != "mdy" && dateOrder != "dmy") {
-		writeErr(w, http.StatusBadRequest, "date_order requires a Netflix import and must be mdy or dmy")
-		return
-	}
-	// The source names a directory under the archive root and arrives here
-	// straight from a query string, so it is checked before any bytes are
-	// written rather than deep inside an importer.
-	if source != "" {
-		if err := archive.ValidSource(source); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-	}
-
-	if kind == "json" {
-		if r.ContentLength > maxJSONUpload {
-			writeErr(w, http.StatusRequestEntityTooLarge, "JSON import exceeds 16 MiB")
-			return
-		}
-		select {
-		case jsonImports <- struct{}{}:
-			defer func() { <-jsonImports }()
-		case <-r.Context().Done():
-			return
-		}
-		timeout := s.jsonReadTimeout
-		if timeout <= 0 {
-			timeout = time.Minute
-		}
-		controller := http.NewResponseController(w)
-		if err := controller.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSONUpload))
-		if err != nil {
-			var tooLarge *http.MaxBytesError
-			if errors.As(err, &tooLarge) {
-				writeErr(w, http.StatusRequestEntityTooLarge, "JSON import exceeds 16 MiB")
-				return
-			}
-			if os.IsTimeout(err) {
-				writeErr(w, http.StatusRequestTimeout, "JSON upload body timed out")
-				return
-			}
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		// Keep a failed body's deadline in place for net/http's cleanup reads.
-		// Successful uploads may spend longer importing after the body is read.
-		if err := controller.SetReadDeadline(time.Time{}); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		res, err := s.importJSON(r.Context(), source, body)
-		if err != nil {
-			writeCause(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, res)
-		return
-	}
-
-	var observation *eml.MailImportContext
-	path, cleanup, err := saveUpload(r, s.dataDir, &observation)
-	if err != nil {
-		writeCause(w, err)
-		return
-	}
-	defer cleanup()
-	if observation != nil && kind != "eml" && kind != "mbox" {
-		writeErr(w, http.StatusBadRequest, "mail context requires an EML or MBOX import")
-		return
-	}
-
-	res, err := importer.Run(r.Context(), importer.Target{Store: s.db, Blobs: s.blobs, ArchiveDir: s.archiveDir}, kind, importer.Input{Path: path, Source: source, Account: r.URL.Query().Get("account"), DateOrder: dateOrder, Mail: observation})
-	if err != nil {
-		writeCause(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, res)
-	s.extractAfterImport(received)
-}
 
 // extractAfterImport reads text out of newly stored attachments so an upload
 // becomes searchable inside its documents shortly after it lands. Newest first
@@ -279,11 +186,7 @@ func pruneUploads(dataDir string, maxAge time.Duration) error {
 // saveUpload writes the multipart "file" part into a fresh temp dir, keeping the
 // original basename — importers derive thread names and sources from it. Staged
 // under the data dir, not /tmp: uploads can be Takeout-sized and tmpfs is small.
-func saveUpload(r *http.Request, dataDir string, observation **eml.MailImportContext) (string, func(), error) {
-	mr, err := r.MultipartReader()
-	if err != nil {
-		return "", nil, fmt.Errorf("expected multipart/form-data with a file field: %w", err)
-	}
+func saveUpload(mr *multipart.Reader, dataDir string, observation **eml.MailImportContext) (string, func(), error) {
 	for {
 		part, err := mr.NextPart()
 		if errors.Is(err, io.EOF) {

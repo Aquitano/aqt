@@ -16,6 +16,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE bank IN SCHEMA public
     GRANT SELECT ON SEQUENCES TO bank_query;
 ALTER ROLE bank_query SET default_transaction_read_only = on;
 ALTER ROLE bank_query SET statement_timeout = '15s';
+-- A sort or hash that outgrows work_mem spills to temporary files; the limit
+-- stops one query from filling the data volume with them.
+ALTER ROLE bank_query SET work_mem = '16MB';
+ALTER ROLE bank_query SET temp_file_limit = '1GB';
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 REVOKE CREATE, TEMPORARY ON DATABASE bank FROM PUBLIC;
 GRANT CONNECT ON DATABASE bank TO bank_query;

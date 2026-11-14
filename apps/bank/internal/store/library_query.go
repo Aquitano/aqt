@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -57,9 +58,7 @@ func listLibrary[T any](ctx context.Context, s *Store, table string, o library.L
 	if err := o.Validate(); err != nil {
 		return out, err
 	}
-	if o.Limit == 0 {
-		o.Limit = 50
-	}
+	o.Limit = page.Limit(o.Limit)
 	args := []any{}
 	next := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
 	clauses := []string{"true"}
@@ -227,9 +226,7 @@ func collectionSnapshots[T any](ctx context.Context, s *Store, id, projection st
 	query := `select ` + projection + ` from library_snapshots s where collection_id=$1 order by id desc`
 	args := []any{id}
 	if paginated {
-		if o.Limit == 0 {
-			o.Limit = 50
-		}
+		o.Limit = page.Limit(o.Limit)
 		query += ` limit $2 offset $3`
 		args = append(args, o.Limit, o.Offset)
 	}

@@ -242,9 +242,9 @@ type contactMessagesCmd struct {
 	Source string      `help:"Only this source."`
 	Since  string      `help:"YYYY-MM-DD."`
 	Until  string      `help:"YYYY-MM-DD (exclusive)."`
-	Limit  int         `default:"50" help:"Page size."`
+	Limit  int         `default:"${limit}" help:"Page size, 1-${max_limit}."`
 	Before ref.Message `help:"Continue before this message, by ref (without --offset)."`
-	Offset int         `help:"Skip this many messages."`
+	Offset int         `help:"Skip this many messages, at most ${max_offset}."`
 	JSON   bool        `help:"JSON output."`
 }
 
@@ -288,7 +288,7 @@ func (c *contactMessagesCmd) Run(ctx context.Context) error {
 }
 
 type contactSuggestCmd struct {
-	Limit int  `default:"20" help:"How many identities."`
+	Limit int  `default:"${limit}" help:"How many identities, 1-${max_limit}."`
 	JSON  bool `help:"JSON output."`
 }
 

@@ -22,7 +22,7 @@ bank stats
 
 - `command -v bank` prints nothing — the binary is not installed on this machine. Report that; do not try to build or download it.
 - `bank: migrate: failed to connect to ...: connection refused` — no `BANK_URL`, so the CLI fell back to a local Postgres that is not there. On a client machine that means `BANK_URL`/`BANK_TOKEN` are not exported into this shell; ask the owner to set them (see `skill/README.md` in the aqt-bank repo).
-- `bank: GET /v1/stats: invalid or missing bearer token` — HTTP 401. `BANK_TOKEN` is unset, wrong or revoked. The owner has to run `bank token new <machine-name>` on the server and re-export the printed value; it is shown once.
+- `bank: send Authorization: Bearer <token>; the owner mints one with ...` — HTTP 401. `BANK_TOKEN` is unset, wrong or revoked. The owner has to run `bank token new <machine-name>` on the server and re-export the printed value; it is shown once.
 - `dial tcp ...: connect: connection refused`, or a hang ending in an i/o timeout — the server is down or Tailscale is disconnected. Report; retrying will not help.
 
 Calling the HTTP API directly instead of the CLI: `GET /openapi.json` describes the routes, a failure is JSON with `_tag` and `message`, and a route that takes a JSON body needs `Content-Type: application/json` or no Content-Type at all; anything else is refused.
@@ -57,10 +57,10 @@ Semantics that matter:
 - `youtube` rows are watch events, not correspondence: the sender is the channel, the subject the video title, the body only the watch URL, and the thread is the channel — so `--source youtube --from fireship` is everything watched from one channel, and `bank thread <channel id> --source youtube` reads it in order. Advertisements are not imported, and a video the export no longer names keeps its title with no URL.
 - `--person <contact>` is the better filter when you know who you mean: a contact ties one person's email addresses, WhatsApp display name and Discord handle together, so it catches them across sources where `--from alice` only catches one spelling. Run `bank contact list` to see which exist; an unknown name is an error, not an empty result.
 - `--until` is exclusive; both dates are plain `YYYY-MM-DD`.
-- `--limit` defaults to 20 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
+- `--limit` defaults to 100 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
 - `--offset` reaches past the first page: `--limit 100 --offset 100` is the second hundred in each selected result group. Check each group's array length separately. A short `.messages` page does not establish that `.items` or `.files` is exhausted. Use `--kind` to page one category. Each category keeps its own ordering. `--offset` is capped at 10000. Narrow the query if you need more. Contact message history retains its separate array pagination.
 - `.messages[]` contains message bodies already. Use `bank show <ref>` when you need recipients, `external_id`, `raw_ref`, or attachments.
-- `bank thread` takes a `.messages[]` hit's `thread_id` and `source`. Pass `--around <hit.ref> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.ref>` or `--after <last.ref>`. Use `--latest` for recent history. Positions are mutually exclusive, page size is capped at 2000, and there is no total history cap.
+- `bank thread` takes a `.messages[]` hit's `thread_id` and `source`. Pass `--around <hit.ref> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.ref>` or `--after <last.ref>`. Use `--latest` for recent history. Positions are mutually exclusive, a page holds 100 messages by default and at most 500, and there is no total history cap.
 - Contact history can continue with `bank contact messages <name> --before <last.ref>`, beyond the offset limit. Results are newest-first. Use the cursor without `--offset`.
 - `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.
 - `bank stats --json` includes `last_ingest` per source, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.
@@ -101,7 +101,7 @@ bank stats --json
 ## Ad-hoc SQL (`bank query`)
 
 For questions search cannot answer — counts, trends, group-bys, joins — `bank query`
-runs one SQL statement against the archive and returns `{columns, rows, truncated}`.
+runs one SQL query against the archive and returns `{columns, rows, truncated, cut_values}`.
 The server authenticates SQL with a separate restricted PostgreSQL login. It
 requires `BANK_QUERY_DATABASE_URL`; missing configuration disables ad-hoc queries.
 The login has SELECT on public tables and sequences, with schema USAGE. It
@@ -110,14 +110,17 @@ server-file, or program-execution privileges. A READ ONLY transaction, 15s timeo
 100-row default cap and single-statement protocol add limits. `--limit` can raise
 the cap to 10000. This depends on the documented database role configuration;
 a READ ONLY transaction alone does not prevent a privileged login from running
-server-side programs or reading server files. Queries work locally and over `BANK_URL`.
+server-side programs or reading server files. The statement runs as a cursor, so it
+must be one SELECT, VALUES or TABLE, and reading stops at the row cap or at 8 MiB of
+values; a value over 64 KiB comes back cut and is counted in `cut_values`. Queries
+work locally and over `BANK_URL`.
 
 - **The row cap is silent in the text form.** 100 rows is the default and the text table gives no visible sign it was hit (the warning goes to stderr). Always `--json` and check `truncated`, or pass an explicit `--limit`; treating a capped page as the whole answer is how a count comes out wrong.
 - Start with `bank query --schema` to see the tables and columns; do not guess names.
 - Aggregate on the server; do not `select body from messages` to summarize client-side —
   that is what `bank search` and `bank show` are for, and bodies are private
   correspondence (the same quote-the-minimum rule applies to query results).
-- `truncated: true` means the row cap cut the result — aggregate harder or raise
+- `truncated: true` means the row cap or the size cap cut the result — aggregate harder or raise
   `--limit`, don't silently treat the page as complete.
 - A SQL error comes back verbatim (422, `_tag: InvalidRequest`); fix the query rather than retrying it unchanged.
 - Pass the statement as one shell-quoted argument, or `-` to read it from stdin

@@ -6,21 +6,13 @@ import (
 	"fmt"
 	"strings"
 	"time"
-)
 
-// MaxSearchLimit caps how many rows one search may return. Large enough for
-// "give me everything about X", small enough that a typo can't ask Postgres
-// for the whole archive.
-const MaxSearchLimit = 500
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
+)
 
 // MaxFuzzyDistance is pg_search's supported Levenshtein range.
 const MaxFuzzyDistance = 2
-
-// MaxSearchOffset bounds how deep paging may go. Every offset re-ranks the
-// whole match set before discarding the skipped rows, so page 500 costs what
-// page 1 cost plus everything between. Twenty pages of 500 is far past the
-// point where narrowing the query beats paging through it.
-const MaxSearchOffset = 10000
 
 type SearchOpts struct {
 	MailboxID     int64
@@ -47,30 +39,21 @@ type SearchOpts struct {
 // so local and remote modes fail the same way.
 func (o SearchOpts) Validate() error {
 	if o.MailboxID < 0 || (o.MailboxID != 0 && o.Source == "") {
-		return fmt.Errorf("mailbox_id must be positive and requires a source")
+		return fail.Invalidf("mailbox_id must be positive and requires a source")
 	}
 	switch o.Match {
 	case "", "any", "all", "phrase":
 	default:
-		return fmt.Errorf("match must be any, all, or phrase")
+		return fail.Invalidf("match must be any, all, or phrase")
 	}
-	if o.Limit <= 0 {
-		return fmt.Errorf("limit must be at least 1")
-	}
-	if o.Limit > MaxSearchLimit {
-		return fmt.Errorf("limit must be at most %d", MaxSearchLimit)
+	if err := page.Check(o.Limit, o.Offset); err != nil {
+		return err
 	}
 	if o.Fuzzy < 0 || o.Fuzzy > MaxFuzzyDistance {
-		return fmt.Errorf("fuzzy must be between 0 and %d", MaxFuzzyDistance)
-	}
-	if o.Offset < 0 {
-		return fmt.Errorf("offset must not be negative")
-	}
-	if o.Offset > MaxSearchOffset {
-		return fmt.Errorf("offset must be at most %d; narrow the query instead of paging deeper", MaxSearchOffset)
+		return fail.Invalidf("fuzzy must be between 0 and %d", MaxFuzzyDistance)
 	}
 	if !o.Since.IsZero() && !o.Until.IsZero() && !o.Until.After(o.Since) {
-		return fmt.Errorf("--until must be after --since")
+		return fail.Invalidf("--until must be after --since")
 	}
 	return nil
 }
@@ -80,10 +63,10 @@ func (o SearchOpts) ValidateQuery(query string) error {
 		return err
 	}
 	if strings.TrimSpace(query) == "" {
-		return fmt.Errorf("search query must not be empty")
+		return fail.Invalidf("search query must not be empty")
 	}
 	if o.Match == "all" && len(strings.Fields(query)) > 32 {
-		return fmt.Errorf("all-words search supports at most 32 terms")
+		return fail.Invalidf("all-words search supports at most 32 terms")
 	}
 	return nil
 }

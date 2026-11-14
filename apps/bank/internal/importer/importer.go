@@ -120,6 +120,12 @@ func lookup(name string) (kind, error) {
 	return kinds[i], nil
 }
 
+// Check refuses a name that is not an import kind, and lists the kinds.
+func Check(name string) error {
+	_, err := lookup(name)
+	return err
+}
+
 // DefaultSource is the source a kind files messages under when none is given.
 func DefaultSource(name string) string {
 	k, _ := lookup(name)

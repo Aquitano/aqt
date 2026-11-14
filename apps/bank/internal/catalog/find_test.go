@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -43,10 +44,12 @@ func TestFindRejectsConflictingScopeAndExplainsDates(t *testing.T) {
 type disks struct {
 	err   error
 	calls int
+	got   atticstore.SearchOptions
 }
 
-func (d *disks) SearchDisks(context.Context, string, int, int) (view.SearchResult, error) {
+func (d *disks) SearchDisks(_ context.Context, o atticstore.SearchOptions) (view.SearchResult, error) {
 	d.calls++
+	d.got = o
 	return view.SearchResult{Entries: []view.Place{{Display: `E:\Backups\minecraft.zip`}}}, d.err
 }
 
@@ -79,5 +82,25 @@ func TestFindAddsFilesOnDisksUnlessTheSearchIsScopedElsewhere(t *testing.T) {
 	failure := errors.New("connection reset")
 	if _, err = Find(ctx, emptyReader{}, &disks{err: failure}, "minecraft", store.SearchOpts{Limit: 20}, library.ListOptions{}); !errors.Is(err, failure) {
 		t.Fatalf("a failing catalogue answered %v", err)
+	}
+}
+
+// One request has one meaning: the match mode that applies to messages and the
+// library applies to files on disks too.
+func TestFindPassesTheMatchModeToTheDisks(t *testing.T) {
+	ctx := context.Background()
+	for match, wantAny := range map[string]bool{"": true, "any": true, "all": false} {
+		found := &disks{}
+		if _, err := Find(ctx, emptyReader{}, found, "minecraft server", store.SearchOpts{Match: match, Limit: 20, Offset: 40}, library.ListOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		if found.got.Any != wantAny || found.got.Query != "minecraft server" || found.got.Limit != 20 || found.got.Offset != 40 {
+			t.Errorf("match %q reached the disks as %+v", match, found.got)
+		}
+	}
+	found := &disks{}
+	result, err := Find(ctx, emptyReader{}, found, "minecraft server", store.SearchOpts{Match: "phrase", Limit: 20}, library.ListOptions{})
+	if err != nil || found.calls != 0 || !strings.Contains(strings.Join(result.Coverage, " "), "phrase") {
+		t.Fatalf("a phrase search searched the disks %d times, coverage %v, %v", found.calls, result.Coverage, err)
 	}
 }

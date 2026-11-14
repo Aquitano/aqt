@@ -1,6 +1,8 @@
-// Package view shapes catalogue records for readers: every place says whether
-// its disk is attached on this machine and how to open it. The CLI's --json
-// output and the HTTP API both return these types, so the two never drift.
+// Package view shapes catalogue records for readers: every place says how to
+// open it, and on the machine the disks attach to, whether its disk is attached
+// now. The CLI's --json output and the HTTP API both return these types, so
+// the two never drift. The server knows no mounts, so it passes no roots:
+// online is then always false and left out, and the document does not list it.
 package view
 
 import (
@@ -59,8 +61,8 @@ func DisplayPath(volumeID, label, p string, roots map[string]string) string {
 // Place is one entry, with the path spelled for opening.
 type Place struct {
 	store.Hit
-	Display string `json:"display" doc:"Path to open on the machine serving the catalogue, or label:\\path while the disk is detached."`
-	Online  bool   `json:"online" doc:"Whether the entry's disk is attached to that machine now."`
+	Display string `json:"display" doc:"The volume's label and the path on it, as label:\\path."`
+	Online  bool   `json:"online,omitempty" hidden:"true"`
 }
 
 func Places(hits []store.Hit, roots map[string]string) []Place {
@@ -86,8 +88,8 @@ func BestCopy(copies []Place) Place {
 // TextMatch is a document hit, shown at its best copy.
 type TextMatch struct {
 	store.TextHit
-	Display string  `json:"display" doc:"Path of the best copy: attached, present and current where possible."`
-	Online  bool    `json:"online"`
+	Display string  `json:"display" doc:"Path of the best copy: present and current where possible."`
+	Online  bool    `json:"online,omitempty" hidden:"true"`
 	Places  []Place `json:"places" doc:"Every place the content lives or lived, present copies first."`
 	Shown   Place   `json:"-"`
 }
@@ -107,7 +109,7 @@ func TextMatches(texts []store.TextHit, roots map[string]string) []TextMatch {
 type MemberMatch struct {
 	store.MemberHit
 	Display string  `json:"display" doc:"Path of the archive's best copy, then the member's path inside it."`
-	Online  bool    `json:"online"`
+	Online  bool    `json:"online,omitempty" hidden:"true"`
 	Archive []Place `json:"archive" doc:"Every place the archive lives, present copies first."`
 	Shown   Place   `json:"-"`
 }
@@ -194,7 +196,7 @@ func NewContent(c store.ContentDetail, roots map[string]string) Content {
 type Entry struct {
 	store.EntryDetail
 	Display string  `json:"display"`
-	Online  bool    `json:"online"`
+	Online  bool    `json:"online,omitempty" hidden:"true"`
 	Copies  []Place `json:"copies,omitempty" doc:"Other places that hold the same content."`
 }
 
@@ -203,10 +205,10 @@ func NewEntry(d store.EntryDetail, roots map[string]string) Entry {
 	return Entry{EntryDetail: d, Display: DisplayPath(d.VolumeID, d.Volume, d.Path, roots), Online: online, Copies: Places(d.Copies, roots)}
 }
 
-// VolumeStatus is a volume's totals and where it is attached now.
+// VolumeStatus is a volume's totals and where it is attached on this machine.
 type VolumeStatus struct {
 	store.VolumeSummary
-	MountedAt string `json:"mounted_at,omitempty" doc:"Where the volume is attached on the machine serving the catalogue; empty while detached."`
+	MountedAt string `json:"mounted_at,omitempty"`
 }
 
 func VolumeStatuses(vols []store.VolumeSummary) []VolumeStatus {

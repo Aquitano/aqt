@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
 )
@@ -232,6 +233,9 @@ func (s *Store) newSearch(ctx context.Context, o SearchOptions, alias string) (*
 	case o.Under != "" && o.VolumeID == "":
 		return nil, &InvalidSearchError{"--under needs a volume"}
 	}
+	if err := page.Check(page.Limit(o.Limit), o.Offset); err != nil {
+		return nil, err
+	}
 	words, err := s.searchWords(ctx, words, true)
 	if err != nil {
 		return nil, err
@@ -260,12 +264,8 @@ func (q *search) next(v any) string {
 }
 
 func (q *search) tail(o SearchOptions) string {
-	limit := o.Limit
-	if limit <= 0 {
-		limit = 20
-	}
 	return ` where ` + strings.Join(q.where, " and ") + ` order by ` + q.order +
-		` limit ` + q.next(limit) + ` offset ` + q.next(o.Offset)
+		` limit ` + q.next(page.Limit(o.Limit)) + ` offset ` + q.next(o.Offset)
 }
 
 // MemberHit is a file or folder inside an archive, with the places the
@@ -623,6 +623,9 @@ func scanScanInfo(row pgx.Row) (ScanInfo, error) {
 
 // Scans is the scan history, newest first, of one volume when volumeID is set.
 func (s *Store) Scans(ctx context.Context, volumeID string, limit int) ([]ScanInfo, error) {
+	if err := page.Check(limit, 0); err != nil {
+		return nil, err
+	}
 	rows, err := s.pool.Query(ctx, `select `+scanColumns+` from scans
 		where $1 = '' or volume_id::text = $1 order by id desc limit $2`, volumeID, limit)
 	if err != nil {
@@ -732,6 +735,9 @@ type Dupe struct {
 // sameVolume counts only copies that share a volume: copies on two backup
 // disks are usually the point, copies on one disk rarely are.
 func (s *Store) Dupes(ctx context.Context, minSize int64, sameVolume bool, limit int) ([]Dupe, int64, error) {
+	if err := page.Check(limit, 0); err != nil {
+		return nil, 0, err
+	}
 	group, volume := `c.id`, `null::text`
 	if sameVolume {
 		group, volume = `c.id, e.volume_id`, `e.volume_id::text`
@@ -808,6 +814,9 @@ func (s *Store) SkipGroups(ctx context.Context, scanID int64) ([]SkipGroup, erro
 }
 
 func (s *Store) Skips(ctx context.Context, scanID int64, reason, rule string, limit int) ([]Skip, error) {
+	if err := page.Check(limit, 0); err != nil {
+		return nil, err
+	}
 	rows, err := s.pool.Query(ctx, `
 		select path, reason, rule, detail from skips
 		where scan_id = $1 and ($2 = '' or reason = $2) and ($3 = '' or rule = $3)

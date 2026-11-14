@@ -9,6 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
@@ -87,7 +89,7 @@ func aliasMatch(contactPlaceholder string) string {
 func (s *Store) CreateContact(ctx context.Context, name, note string) (Contact, error) {
 	name = strings.TrimSpace(cleanText(name))
 	if name == "" {
-		return Contact{}, fmt.Errorf("contact name must not be empty")
+		return Contact{}, fail.Invalidf("contact name must not be empty")
 	}
 	c := Contact{Name: name, Note: cleanText(note), Aliases: []ContactAlias{}}
 	err := s.pool.QueryRow(ctx,
@@ -95,7 +97,7 @@ func (s *Store) CreateContact(ctx context.Context, name, note string) (Contact, 
 		 on conflict (name) do nothing
 		 returning id, created_at`, name, c.Note).Scan(&c.ID, &c.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Contact{}, fmt.Errorf("contact %q already exists", name)
+		return Contact{}, fail.Invalidf("contact %q already exists", name)
 	}
 	return c, err
 }
@@ -264,7 +266,7 @@ func (s *Store) AddAlias(ctx context.Context, name, source, value string) (Conta
 	var a ContactAlias
 	value = strings.TrimSpace(cleanText(value))
 	if value == "" {
-		return a, fmt.Errorf("alias must not be empty")
+		return a, fail.Invalidf("alias must not be empty")
 	}
 	c, err := s.GetContact(ctx, name)
 	if err != nil {
@@ -275,7 +277,7 @@ func (s *Store) AddAlias(ctx context.Context, name, source, value string) (Conta
 		return a, err
 	}
 	if norm == "" {
-		return a, fmt.Errorf("alias %q normalizes to nothing", value)
+		return a, fail.Invalidf("alias %q normalizes to nothing", value)
 	}
 	// An overlap would make one identity resolve to two people, silently. Refuse
 	// it here rather than at the unique index, so the error can say who has it.
@@ -325,7 +327,7 @@ func (s *Store) RemoveAlias(ctx context.Context, name, source, value string) err
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("contact %q has no alias %q in scope %q", name, value, scopeName(source))
+		return fail.Invalidf("contact %q has no alias %q in scope %q", name, value, scopeName(source))
 	}
 	return nil
 }
@@ -380,20 +382,12 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 	if err != nil {
 		return nil, err
 	}
-	if o.Limit <= 0 {
-		o.Limit = 50
-	}
-	if o.Limit > MaxSearchLimit {
-		return nil, fmt.Errorf("limit must be at most %d", MaxSearchLimit)
-	}
-	if o.Offset < 0 {
-		return nil, fmt.Errorf("offset must not be negative")
-	}
-	if o.Offset > MaxSearchOffset {
-		return nil, fmt.Errorf("offset must be at most %d; narrow with --source or --since instead", MaxSearchOffset)
+	o.Limit = page.Limit(o.Limit)
+	if err := page.Check(o.Limit, o.Offset); err != nil {
+		return nil, err
 	}
 	if !o.Before.IsZero() && o.Offset > 0 {
-		return nil, fmt.Errorf("use a before cursor without offset")
+		return nil, fail.Invalidf("use a before cursor without offset")
 	}
 	sql := `select ` + messageColumns + ` from messages m where` + aliasMatch("$1")
 	args := []any{c.ID}
@@ -463,11 +457,9 @@ var (
 // mail they account for, so attaching the people who actually matter does not
 // start with guessing what the archive calls them.
 func (s *Store) SuggestIdentities(ctx context.Context, limit int) ([]IdentitySuggestion, error) {
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > MaxSearchLimit {
-		return nil, fmt.Errorf("limit must be at most %d", MaxSearchLimit)
+	limit = page.Limit(limit)
+	if err := page.Check(limit, 0); err != nil {
+		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `
 		with seen as (
