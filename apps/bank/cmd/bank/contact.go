@@ -33,6 +33,7 @@ type contactCmd struct {
 	Messages contactMessagesCmd `cmd:"" help:"Everything a contact sent or received, newest first."`
 	Suggest  contactSuggestCmd  `cmd:"" help:"Identities no contact claims yet."`
 	Import   contactImportCmd   `cmd:"" help:"Apply a whole contact book at once."`
+	Self     contactSelfCmd     `cmd:"" help:"Mark the contact that is you, whom browse leaves out of thread members."`
 }
 
 func (contactCmd) Help() string {
@@ -78,6 +79,23 @@ func (c *contactRmCmd) Run(ctx context.Context) error {
 	}
 	// Worth saying plainly: this is a lens, not the data.
 	fmt.Printf("contact %s removed; its messages are untouched\n", c.Name)
+	return nil
+}
+
+type contactSelfCmd struct {
+	Name string `arg:""`
+}
+
+func (c *contactSelfCmd) Run(ctx context.Context) error {
+	api, closeAPI, err := connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeAPI()
+	if _, err := client.Call(ctx, api, server.SetSelfContact, server.ContactInput{Name: c.Name}); err != nil {
+		return contactErr(c.Name, err)
+	}
+	fmt.Printf("contact %s is the archive's owner\n", c.Name)
 	return nil
 }
 

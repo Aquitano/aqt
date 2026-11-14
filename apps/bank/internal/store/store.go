@@ -45,19 +45,6 @@ type Message struct {
 	SentAt     time.Time `json:"sent_at,omitzero"`
 	RawInput   int64     `json:"raw_input,omitempty"`
 	RawLocator string    `json:"raw_locator,omitempty"`
-	Score      float64   `json:"score,omitempty"`
-	// Snippet is a bounded window of the body around the match, plain text so
-	// it is safe to print anywhere. Empty when nothing matched in the body.
-	Snippet string `json:"snippet,omitempty"`
-	// AttachmentSnippet is the same window cut from the text extracted out of
-	// the message's attachments, so a hit inside a PDF says which words
-	// matched instead of looking like a body match with no visible reason.
-	//
-	// Unlike Snippet there is no local fallback: the extracted text is not
-	// selected — it can be megabytes per row — so a fuzzy-only attachment
-	// match leaves this empty rather than showing an unrelated head of the
-	// document.
-	AttachmentSnippet string `json:"attachment_snippet,omitempty"`
 }
 
 // messageBatchSize bounds one PostgreSQL protocol batch. The whole call still
@@ -219,7 +206,7 @@ func insertMessages(ctx context.Context, tx pgx.Tx, messages []Message, out []Wr
 }
 
 func insertAttachments(ctx context.Context, tx pgx.Tx, records []Record, out []Written) error {
-	var messageIDs, contentIDs []int64
+	var contentIDs []int64
 	for i, r := range records {
 		if out[i].ID == 0 {
 			continue
@@ -232,24 +219,11 @@ func insertAttachments(ctx context.Context, tx pgx.Tx, records []Record, out []W
 			}
 			if added {
 				out[i].Attachments++
-				messageIDs = append(messageIDs, a.MessageID)
 				contentIDs = append(contentIDs, contentID)
 			}
 		}
 	}
-	return attachmentsWritten(ctx, tx, messageIDs, contentIDs)
-}
-
-// attachmentsWritten queues text work for the contents that new attachment
-// rows name and copies the text already known onto their messages.
-func attachmentsWritten(ctx context.Context, tx pgx.Tx, messageIDs, contentIDs []int64) error {
-	if len(messageIDs) == 0 {
-		return nil
-	}
-	if err := queueText(ctx, tx, contentIDs); err != nil {
-		return err
-	}
-	return refreshAttachmentText(ctx, tx, messagesIn, messageIDs)
+	return queueText(ctx, tx, contentIDs)
 }
 
 // InsertMessages writes messages without attachments and returns one id per
@@ -288,7 +262,7 @@ func (s *Store) InsertAttachment(ctx context.Context, a Attachment) error {
 		if err != nil || !added {
 			return err
 		}
-		return attachmentsWritten(ctx, tx, []int64{a.MessageID}, []int64{contentID})
+		return queueText(ctx, tx, []int64{contentID})
 	})
 }
 

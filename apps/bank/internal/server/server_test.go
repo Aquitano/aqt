@@ -26,9 +26,9 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
-	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
@@ -37,7 +37,8 @@ import (
 // fakeReader stands in for the database so handler tests need no Postgres.
 type fakeReader struct {
 	msgs       []store.Message
-	opts       store.SearchOpts
+	filters    search.Filters
+	n          int
 	thread     store.Thread
 	contacts   []store.Contact
 	contactErr error
@@ -51,9 +52,36 @@ type fakeReader struct {
 	queryLimit int
 }
 
-func (f *fakeReader) Search(_ context.Context, _ string, o store.SearchOpts) ([]store.Message, error) {
-	f.opts = o
-	return f.msgs, f.searchErr
+func (f *fakeReader) SearchMessages(_ context.Context, _ search.Query, o search.Filters, n int) (search.List, error) {
+	f.filters, f.n = o, n
+	list := search.List{Name: "messages", Kind: search.KindMessage}
+	for _, m := range f.msgs {
+		list.Hits = append(list.Hits, search.SearchHit{Kind: search.KindMessage, Ref: m.Ref, Key: m.Ref, Source: m.Source})
+	}
+	return list, nil
+}
+
+func (f *fakeReader) SearchTexts(context.Context, search.Query, search.Filters, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (f *fakeReader) SearchAttachmentNames(context.Context, search.Query, search.Filters, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (f *fakeReader) SearchLibrary(context.Context, store.LibraryList, search.Query, search.Filters, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (f *fakeReader) ContentPlaces(context.Context, []int64) (map[int64]store.ContentPlaces, error) {
+	return map[int64]store.ContentPlaces{}, nil
+}
+
+func (f *fakeReader) ContactKeys(_ context.Context, name string) ([]string, error) {
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
+	return []string{name}, nil
 }
 
 func (f *fakeReader) GetMessageByRef(_ context.Context, cited ref.Message) (store.Message, []store.Attachment, error) {
@@ -111,10 +139,6 @@ func (f *fakeReader) Query(_ context.Context, sql string, limit int) (store.Quer
 	return f.queryRes, f.queryErr
 }
 
-func (f *fakeReader) SearchLibrary(context.Context, library.ListOptions) (library.SearchResult, error) {
-	return library.SearchResult{}, nil
-}
-
 func (f *fakeReader) AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error) {
 	return nil, nil
 }
@@ -134,8 +158,24 @@ func (noDisks) Places(context.Context, []content.Digest) (map[content.Digest][]v
 	return nil, nil
 }
 
-func (noDisks) SearchDisks(context.Context, atticstore.SearchOptions) (view.SearchResult, error) {
-	return view.SearchResult{}, nil
+func (noDisks) RankEntries(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (noDisks) RankMembers(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (noDisks) RankMetadata(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (noDisks) RankAnalyses(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (noDisks) DiskPlaces(context.Context, []int64, int) (map[int64][]search.FilePlace, map[int64]int, error) {
+	return nil, nil, nil
 }
 
 func (noDisks) ModifiedFiles(context.Context, time.Time, time.Time, int) ([]view.Place, error) {
@@ -268,11 +308,11 @@ func TestSearchRequiresToken(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&found); err != nil {
 		t.Fatal(err)
 	}
-	if len(found.Messages) != 1 || found.Messages[0].Ref != "msg:0123456789abcdef" {
+	if len(found.Hits) != 1 || found.Hits[0].Ref != "msg:0123456789abcdef" {
 		t.Fatalf("unexpected search payload %+v", found)
 	}
-	if o := s.read.(*fakeReader).opts; o.Fuzzy != 1 || o.Limit != page.DefaultLimit {
-		t.Fatalf("defaults not applied: %+v", o)
+	if n := s.read.(*fakeReader).n; n != page.DefaultLimit {
+		t.Fatalf("defaults not applied: each list was asked for %d hits", n)
 	}
 }
 
@@ -446,8 +486,8 @@ func TestSearchValidatesBounds(t *testing.T) {
 		"/v1/search?q=hi&limit=0",
 		"/v1/search?q=hi&limit=-3",
 		"/v1/search?q=hi&limit=100000",
-		"/v1/search?q=hi&fuzzy=5",
-		"/v1/search?q=hi&fuzzy=-1",
+		"/v1/search?q=hi&match=phrase",
+		"/v1/search?q=%21%21%21",
 	} {
 		if status, body := authedGet(t, srv, token, path); status != http.StatusUnprocessableEntity {
 			t.Errorf("%s: status %d, want 422 (%s)", path, status, body)
@@ -456,7 +496,7 @@ func TestSearchValidatesBounds(t *testing.T) {
 	if status, body := authedGet(t, srv, token, "/v1/search?q=hi&offset=10001"); status != http.StatusUnprocessableEntity {
 		t.Errorf("offset past the maximum: status %d (%s)", status, body)
 	}
-	if status, _ := authedGet(t, srv, token, "/v1/search?q=hi&limit=500&offset=10000&fuzzy=2"); status != http.StatusOK {
+	if status, _ := authedGet(t, srv, token, "/v1/search?q=hi&limit=500&offset=10000&match=any"); status != http.StatusOK {
 		t.Errorf("boundary values rejected: %d", status)
 	}
 }

@@ -61,7 +61,6 @@ const searchKeys = [
   "until",
   "subject",
   "match",
-  "fuzzy",
   "mailbox_id",
   "has_attachment",
 ];
@@ -186,7 +185,6 @@ export function messageLink(ref: string) {
 export function readSearch(params: URLSearchParams): SearchParams | null {
   if (!params.has("q")) return null;
   const match = params.get("match");
-  const fuzzy = Number(params.get("fuzzy") ?? 1);
   const mailbox = Number(params.get("mailbox_id"));
   const attachment = params.get("has_attachment");
   return {
@@ -198,8 +196,7 @@ export function readSearch(params: URLSearchParams): SearchParams | null {
     since: params.get("since") || undefined,
     until: params.get("until") || undefined,
     subject: params.get("subject") || undefined,
-    match: match === "all" || match === "phrase" ? match : "any",
-    fuzzy: Number.isInteger(fuzzy) && fuzzy >= 0 && fuzzy <= 2 ? fuzzy : 1,
+    match: match === "any" ? "any" : "all",
     mailbox_id: Number.isSafeInteger(mailbox) && mailbox > 0 ? mailbox : undefined,
     has_attachment: attachment === "true" ? true : attachment === "false" ? false : undefined,
   };

@@ -55,14 +55,16 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank contact alias add alice alice@example.com "whatsapp:Alice" discord:alice_x
 ./bank contact messages alice                   # everything she sent or received
 ./bank contact import contacts.json             # a whole contact book at once
+./bank contact self thomas                      # the owner, whom browse leaves out of members
 
 ./bank search "that invoice" --from alice --since 2024-01-01
-./bank search "alice retainer" --match all        # every word, across searchable fields
-./bank search "quarterly review" --match phrase   # adjacent words in this order
-./bank search "retainer"                        # matches text inside PDFs and Office files
+./bank search "alice retainer"                  # every word, each in any field
+./bank search '"quarterly review" deck'         # quoted words are adjacent and in order
+./bank search "retainer invoice" --any          # any of the words, fuller matches first
+./bank search "retainer"                        # also text inside PDFs and Office files
 ./bank search "the deck" --to bob               # by recipient
 ./bank search "that invoice" --person alice     # every identity she uses
-./bank search "typo-tolerannt query" --json     # agents consume this
+./bank search "quarterlly reprot" --json        # long words tolerate typos; agents consume this
 ./bank search "invoice" --limit 50 --offset 50  # the next page
 ./bank show msg:9454d9440ade1088                # the ref a citation carries
 ./bank show msg:9454d9440ade1088 --provenance   # raw input and mail grouping evidence
@@ -119,7 +121,7 @@ ChatGPT imports preserve referenced assets included in the full export ZIP or di
 
 Not every stored attachment is searchable inside. Audio, video, archives, and other binary files can be stored and downloaded without searchable contents. Supported document attachments are searchable inside. A text job reads PDFs, Office and OpenDocument files, HTML and plain text, keyed on the content so a document attached to forty messages, or already read by a disk scan, is read once.
 
-Background work runs as jobs in a [River](https://riverqueue.com) queue in the same database. Storing an attachment or a library file whose bytes have no text yet queues a text job in the same transaction, so the job exists exactly when the row does, and the content is queued once however many messages carry it. `bank serve` works the default queue, four jobs at a time, and schedules the Gmail sync every hour and the inbox sweep every 15 minutes. A tick that finds the previous run still going is skipped, and a failed run is retried by the next tick. A text job stores the text and updates the messages that carry the content. A text or OCR job that fails or panics is tried three times and then recorded as `failed`; `bank extract --status failed` reads those again by hand. Imports on a machine without a running `bank serve` queue their text jobs until one starts. `/healthz` reports how many jobs wait, run and have failed in each queue.
+Background work runs as jobs in a [River](https://riverqueue.com) queue in the same database. Storing an attachment or a library file whose bytes have no text yet queues a text job in the same transaction, so the job exists exactly when the row does, and the content is queued once however many messages carry it. `bank serve` works the default queue, four jobs at a time, and schedules the Gmail sync every hour and the inbox sweep every 15 minutes. A tick that finds the previous run still going is skipped, and a failed run is retried by the next tick. A text job stores the text against the content, where search finds it for every message, library file and disk that holds those bytes. A text or OCR job that fails or panics is tried three times and then recorded as `failed`; `bank extract --status failed` reads those again by hand. Imports on a machine without a running `bank serve` queue their text jobs until one starts. `/healthz` reports how many jobs wait, run and have failed in each queue.
 
 Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at, which queues an OCR job on the `ocr` queue. Only `bank worker --queue ocr` works that queue, wherever tesseract is installed: on the deployed box that is the `bank-ocr` service, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <blake3> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no job overwrites it. `--clear` drops the text and queues the content to be read again.
 
@@ -146,9 +148,22 @@ TABLE statement, and reading stops at the row cap or at 8 MiB of values; a value
 over 64 KiB is cut. `truncated` and `cut_values` in `--json` say when either
 happened. Other read commands work without this setting.
 
+## Search
+
+`bank search` and `GET /v1/search` search every kind of record at once and return one ranked list of hits.
+
+- **Grammar.** A query is words and `"quoted phrases"`, parsed once in `internal/search` for every kind. By default every word and phrase must match, each in any of a record's fields; `--any` (`match=any`) needs one of them. A word of up to four characters must match exactly, one of five to eight characters tolerates one typo, a longer one two. A quoted word or phrase is exact. A piece with no letter or digit is ignored.
+- **Tokenizers.** Prose (subjects, bodies, document text, titles, notes, descriptions) uses pg_search's Unicode word tokenizer with ASCII folding, so `fur` finds `für`. Names, filenames, paths, senders and recipients use its source code tokenizer with folding, which also splits `MinecraftServer` and `pingpong_final`; filenames and disk names add a trigram field, so `werkstudent` finds `Werkstudentenvertrag.pdf`.
+- **One engine.** Every kind is ranked by BM25 in a pg_search index: messages, document text, attachment and library filenames, media items with their notes and tags, activity, collections, published pages, and the catalogue's names, archive members, metadata and image analyses. Filters people use (source, account, kind, dates, thread, participants, volume, extension) are fields of those indexes, so a filtered page is selected inside the index.
+- **One list.** Each kind's index returns its best `offset + limit` hits, equal scores in a fixed order (messages newest first), and the lists run concurrently. Reciprocal rank fusion merges them: a hit's score is the sum of `1 / (60 + rank)` over the lists that found it, so a record found by two lists, such as a PDF whose name and text both match, ranks above one found by either. `limit` and `offset` page the fused list. An unfiltered search runs twelve lists, each one round trip with a page and a count, then three statements for the places of the files on the page; a filter that a kind cannot apply skips its list.
+- **Hits.** A hit has its kind, ref, title, a plain-text snippet, a date for messages and activity, and what opens it: a message's source and thread, a file's places. Search never returns a body. A file is one hit whatever holds it: its places list the messages it is attached to, the library files and the copies on disks. `counts` says how many records of each kind match, `coverage` what a filter left out. Every word of an all-words query must be in one list's fields: a file matches by its name or by its text, not by a word from each.
+- **Filters.** `--from`, `--to`, `--person`, `--thread`, `--subject`, `--mailbox-id` and `--has-attachment` keep messages and the files attached to them. `--account` keeps library records. A date keeps messages, activity and files attached to messages sent then. `--source` leaves files on disks out. `--person` matches a message whose sender or recipients carry any of the contact's aliases, through the indexed `messages.participants`.
+
+`bank search` without words browses conversations by their latest matching message, newest first, and continues with `--after <ref>` from the last row's ref. Browse leaves the owner, the contact `bank contact self` marks, out of a thread's members.
+
 ## Files on disks
 
-The catalogue of files on disks lives in the same database: volumes, entries, scans and what was read from each file. A file on a disk, a message attachment and a library file with the same bytes share one `contents` row and the text read from it. `bank search` returns files on disks beside messages and the library, `bank show content:<hex>` lists where a content lives, and `bank stats` counts them.
+The catalogue of files on disks lives in the same database: volumes, entries, scans and what was read from each file. A file on a disk, a message attachment and a library file with the same bytes share one `contents` row and the text read from it. `bank search` ranks files on disks in the same list as messages and the library, `bank show content:<hex>` lists where a content lives, and `bank stats` counts them.
 
 `bank disk` holds the commands that run on the machine the disks attach to: `scan`, `search`, `entry`, `get`, `verify`, `enrich`, `analysis`, `volumes`, `scans`, `skips`, `dupes`, `redundancy`, `dedupe plan|apply`, `organize prepare|apply|undo` and `config`. They reach the catalogue only through the API, like every other command, so the Windows PC the disks attach to needs `BANK_URL` and a token and never a database connection. [DISKS.md](DISKS.md) has setup, use, configuration and the catalogue's design.
 
@@ -163,7 +178,7 @@ bank disk redundancy --volume Data
 
 `bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <ref>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with the refs of a page's first and last messages. These positions are mutually exclusive. Each page contains 100 messages unless `--limit` asks for up to 500, and includes attachment metadata.
 
-The browser opens search results around the matching message and provides **Load earlier** and **Load later** controls. Browse opens the newest page. Contact history also has **Load earlier**; CLI callers can use `bank contact messages <name> --before <ref>` to continue beyond the offset limit.
+The browser opens search results around the matching message and provides **Load earlier** and **Load later** controls. Browse opens the newest page and loads older conversations after the last one shown. Contact history also has **Load earlier**; CLI callers can use `bank contact messages <name> --before <ref>` to continue beyond the offset limit.
 
 ## Refs
 
@@ -183,7 +198,7 @@ LinkedIn conversations use the export's conversation ID.
 
 `go test -race ./...` uses pgtestdb to clone a private database per test on the disposable ParadeDB server in `BANK_TEST_DATABASE_URL`. The tests never read `DATABASE_URL`, so exporting it for the CLI cannot point them at the archive. The configured login must be a superuser so it can create databases, install the search extension and provision a restricted query-test login. Local tests skip database cases when `BANK_TEST_DATABASE_URL` is unset or no server is listening, unless `CI` is set. CI always requires the database and starts the same pinned ParadeDB image as Compose. `mise run bank:check` also runs the shared `packages/go/pgschema` tests, which read `PGSCHEMA_TEST_DATABASE_URL`; it can name the same disposable server.
 
-The retrieval cases in `internal/store/search_quality_integration_test.go` check exact and fuzzy ranking, all-word matches across fields, phrase order, and attachment-only matches. Run them with `go test ./internal/store -run TestSearchRetrievalCases`.
+The retrieval cases in `internal/store/search_quality_integration_test.go` check folding, filename fragments, typo tolerance, exact short words, phrase order, all-word matches across fields and ranking across kinds through the combined search. Run them with `go test ./internal/store -run TestSearchRetrievalCases`.
 
 ## Raw inputs and replay
 

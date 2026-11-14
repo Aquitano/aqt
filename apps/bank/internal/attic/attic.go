@@ -16,6 +16,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 )
 
 // Catalogue is the file catalogue as bank's server sees it.
@@ -69,7 +70,23 @@ func (c *Catalogue) ModifiedFiles(ctx context.Context, since, until time.Time, l
 	return view.Places(hits, nil), err
 }
 
-// SearchDisks finds files by name, path, archive listing, text, tags and OCR.
-func (c *Catalogue) SearchDisks(ctx context.Context, o store.SearchOptions) (view.SearchResult, error) {
-	return view.Search(ctx, c.store, o, nil)
+// The catalogue's ranked lists and places for the archive's combined search.
+func (c *Catalogue) RankEntries(ctx context.Context, q search.Query, n int) (search.List, error) {
+	return c.store.RankEntries(ctx, q, n)
+}
+
+func (c *Catalogue) RankMembers(ctx context.Context, q search.Query, n int) (search.List, error) {
+	return c.store.RankMembers(ctx, q, n)
+}
+
+func (c *Catalogue) RankMetadata(ctx context.Context, q search.Query, n int) (search.List, error) {
+	return c.store.RankMetadata(ctx, q, n)
+}
+
+func (c *Catalogue) RankAnalyses(ctx context.Context, q search.Query, n int) (search.List, error) {
+	return c.store.RankAnalyses(ctx, q, n)
+}
+
+func (c *Catalogue) DiskPlaces(ctx context.Context, ids []int64, max int) (map[int64][]search.FilePlace, map[int64]int, error) {
+	return c.store.DiskPlaces(ctx, ids, max)
 }

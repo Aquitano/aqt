@@ -177,20 +177,22 @@ func TestSearchUsesIndexedTerms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A query without a letter or digit matches nothing, as for every
+	// other kind of record.
 	for _, tc := range []struct {
-		query       string
-		textMatches int
+		query              string
+		names, textMatches int
 	}{
-		{"東京 &", 1}, {"C++", 1}, {"a+", 1}, {"oo-b", 0}, {"werkstudent", 0}, {"!!!", 0},
+		{"東京 &", 1, 1}, {"C++", 1, 1}, {"a+", 1, 1}, {"oo-b", 1, 0}, {"werkstudent", 1, 0}, {"!!!", 0, 0},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
 			o := store.SearchOptions{Query: tc.query}
 			entries, err := st.Search(t.Context(), o)
-			if err != nil || len(entries) != 1 {
+			if err != nil || len(entries) != tc.names {
 				t.Errorf("entries: %+v, %v", entries, err)
 			}
 			members, err := st.SearchMembers(t.Context(), o)
-			if err != nil || len(members) != 1 {
+			if err != nil || len(members) != tc.names {
 				t.Errorf("members: %+v, %v", members, err)
 			}
 			texts, err := st.SearchTexts(t.Context(), o)

@@ -3,177 +3,296 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/page"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 )
 
-// MaxFuzzyDistance is pg_search's supported Levenshtein range.
-const MaxFuzzyDistance = 2
+// args collects a statement's values and names their placeholders.
+type args []any
 
-type SearchOpts struct {
-	MailboxID     int64
-	Subject       string
-	HasAttachment *bool
-	Match         string // any (default), all, or phrase
-	Source        string
-	From          string
-	To            string
-	// Person is a contact name: the filter resolves through that contact's
-	// aliases, so one query covers every source the person appears in.
-	Person string
-	Since  time.Time
-	Until  time.Time
-	Fuzzy  int
-	Limit  int
-	// Offset skips this many ranked results, so a query with more matches
-	// than Limit is reachable past the first page.
-	Offset int
+func (a *args) next(v any) string {
+	*a = append(*a, v)
+	return "$" + strconv.Itoa(len(*a))
 }
 
-// Validate rejects options that would otherwise return misleading empty
-// results or a raw database error. Both the CLI and the HTTP handler call it,
-// so local and remote modes fail the same way.
-func (o SearchOpts) Validate() error {
-	if o.MailboxID < 0 || (o.MailboxID != 0 && o.Source == "") {
-		return fail.Invalidf("mailbox_id must be positive and requires a source")
+func must(clauses []string) string {
+	if len(clauses) == 1 {
+		return clauses[0]
 	}
-	switch o.Match {
-	case "", "any", "all", "phrase":
-	default:
-		return fail.Invalidf("match must be any, all, or phrase")
-	}
-	if err := page.Check(o.Limit, o.Offset); err != nil {
-		return err
-	}
-	if o.Fuzzy < 0 || o.Fuzzy > MaxFuzzyDistance {
-		return fail.Invalidf("fuzzy must be between 0 and %d", MaxFuzzyDistance)
-	}
-	if !o.Since.IsZero() && !o.Until.IsZero() && !o.Until.After(o.Since) {
-		return fail.Invalidf("--until must be after --since")
-	}
-	return nil
+	return "paradedb.boolean(must => array[" + strings.Join(clauses, ", ") + "])"
 }
 
-func (o SearchOpts) ValidateQuery(query string) error {
-	if err := o.Validate(); err != nil {
-		return err
+var (
+	messageFields = []search.Field{{Name: "subject", Boost: 3}, {Name: "body"}, {Name: "sender"}, {Name: "recipients"}}
+	textFields    = []search.Field{{Name: "text"}}
+	filenameField = []search.Field{{Name: "filename", Boost: 3}, {Name: "filename_ngram", Fragment: true}}
+)
+
+// messageFilters turns f into clauses a messages BM25 query must also match
+// and predicates over m, each starting with " and ". Source, thread and dates
+// stay predicates: pg_search applies them inside its scan because the index
+// holds those fields. Participants, sender and recipients are clauses,
+// because pg_search leaves an array overlap or a pattern match to the heap.
+func messageFilters(f search.Filters, a *args) (clauses []string, where string) {
+	if f.Source != "" {
+		where += " and m.source = " + a.next(f.Source)
 	}
-	if strings.TrimSpace(query) == "" {
-		return fail.Invalidf("search query must not be empty")
+	if f.Thread != "" {
+		where += " and m.thread_id = " + a.next(f.Thread)
 	}
-	if o.Match == "all" && len(strings.Fields(query)) > 32 {
-		return fail.Invalidf("all-words search supports at most 32 terms")
+	if !f.Since.IsZero() {
+		where += " and m.sent_at >= " + a.next(f.Since)
 	}
-	return nil
+	if !f.Until.IsZero() {
+		where += " and m.sent_at < " + a.next(f.Until)
+	}
+	if f.Person != "" {
+		clauses = append(clauses, "paradedb.term_set('participants', "+a.next(nonNil(f.Participants))+"::text[])")
+	}
+	if f.From != "" {
+		clauses = append(clauses, "paradedb.match('sender', "+a.next(f.From)+", conjunction_mode => true)")
+	}
+	if f.To != "" {
+		clauses = append(clauses, "paradedb.match('recipients', "+a.next(f.To)+", conjunction_mode => true)")
+	}
+	where += mailPredicates("m", f.MailboxID, f.Subject, f.HasAttachment, a.next)
+	return clauses, where
 }
 
-// Search runs a BM25-ranked query over subject, body, sender and recipients
-// via pg_search. Fuzzy is the Levenshtein distance for typo tolerance
-// (0 = exact tokens).
-func (s *Store) Search(ctx context.Context, query string, o SearchOpts) ([]Message, error) {
-	if err := o.ValidateQuery(query); err != nil {
-		return nil, err
+func nonNil(s []string) []string {
+	if s == nil {
+		return []string{}
 	}
-	query = strings.TrimSpace(query)
-	if err := s.validateMailbox(ctx, o.Source, o.MailboxID); err != nil {
-		return nil, err
+	return s
+}
+
+// ranked runs a list's page and its match count as one round trip.
+func (s *Store) ranked(ctx context.Context, page, count string, a args, scan func(pgx.CollectableRow) (search.SearchHit, error)) ([]search.SearchHit, int64, error) {
+	batch := &pgx.Batch{}
+	batch.Queue(page, a...)
+	batch.Queue(count, a...)
+	results := s.pool.SendBatch(ctx, batch)
+	defer results.Close()
+	rows, err := results.Query()
+	if err != nil {
+		return nil, 0, err
 	}
-	args := []any{query}
-	if o.Match != "phrase" {
-		args = append(args, o.Fuzzy)
+	hits, err := pgx.CollectRows(rows, scan)
+	if err != nil {
+		return nil, 0, err
 	}
-	next := func(v any) string {
-		args = append(args, v)
-		return fmt.Sprintf("$%d", len(args))
+	var n int64
+	err = results.QueryRow().Scan(&n)
+	return hits, n, err
+}
+
+// SearchMessages ranks messages by their subject, body, sender and
+// recipients: score, then newest, then id, so a page means the same thing
+// twice. It returns n hits.
+func (s *Store) SearchMessages(ctx context.Context, q search.Query, f search.Filters, n int) (search.List, error) {
+	list := search.List{Name: "messages", Kind: search.KindMessage}
+	if err := s.validateMailbox(ctx, f.Source, f.MailboxID); err != nil {
+		return list, err
 	}
-	predicate := searchFields("$1", o.Match == "phrase", false)
-	if o.Match == "all" {
-		terms := strings.Fields(query)
-		var required []string
-		for _, term := range terms {
-			required = append(required, searchFields(next(term), false, true))
-		}
-		predicate = "paradedb.boolean(must => array[" + strings.Join(required, ",") + "], should => array[" + predicate + "])"
-	}
-	sql := fmt.Sprintf(`select m.id, m.ref, m.source, m.thread_id, m.sender, m.subject, m.body, m.sent_at,
-		paradedb.score(m.id), coalesce(paradedb.snippet(m.body, '', '', %d), ''),
-		coalesce(paradedb.snippet(m.attachment_text, '', '', %d), '')
-		from messages m where m.id @@@ `+predicate, snippetChars, snippetChars)
-	if o.Source != "" {
-		sql += " and m.source = " + next(o.Source)
-	}
-	sql += mailPredicates(o.MailboxID, o.Subject, o.HasAttachment, next)
-	if o.From != "" {
-		sql += " and m.sender ilike " + next("%"+o.From+"%")
-	}
-	if o.To != "" {
-		sql += " and exists (select 1 from unnest(m.recipients) r where r ilike " + next("%"+o.To+"%") + ")"
-	}
-	if o.Person != "" {
-		c, err := s.GetContact(ctx, o.Person)
-		if err != nil {
-			if errors.Is(err, ErrNotFound) {
-				return nil, &ErrNoContact{Name: o.Person}
+	var a args
+	clauses, where := messageFilters(f, &a)
+	cond := "m.id @@@ " + must(append([]string{q.Clause(messageFields, a.next)}, clauses...)) + where
+	words := strings.Join(q.Words(), " ")
+	var err error
+	list.Hits, list.Matches, err = s.ranked(ctx,
+		`select m.ref, m.source, m.thread_id, m.subject, m.sent_at,
+			coalesce(paradedb.snippet(m.body, '', '', `+strconv.Itoa(snippetChars)+`), ''), left(m.body, 4000)
+		from messages m where `+cond+`
+		order by paradedb.score(m.id) desc, m.sort_at desc, m.id desc limit `+strconv.Itoa(n),
+		`select count(*) from messages m where `+cond, a,
+		func(row pgx.CollectableRow) (search.SearchHit, error) {
+			h := search.SearchHit{Kind: search.KindMessage}
+			var sent *time.Time
+			var engine, body string
+			err := row.Scan(&h.Ref, &h.Source, &h.ThreadID, &h.Title, &sent, &engine, &body)
+			h.Key, h.At = h.Ref, sent
+			h.Snippet = Snippet(engine, body, words)
+			if h.Title == "" {
+				h.Title, _ = headRunes(collapse(body), 100)
 			}
-			return nil, err
-		}
-		sql += " and" + aliasMatch(next(c.ID))
-	}
-	if !o.Since.IsZero() {
-		sql += " and m.sent_at >= " + next(o.Since)
-	}
-	if !o.Until.IsZero() {
-		sql += " and m.sent_at < " + next(o.Until)
-	}
-	// m.id breaks the remaining ties. Score ties are ordinary — two messages
-	// matching the same words the same way — and two messages can share a
-	// sent_at to the second, so without it the sort is only a partial order:
-	// the same query can return the same rows in a different arrangement, and
-	// paging would then duplicate some and skip others.
-	sql += " order by paradedb.score(m.id) desc, m.sort_at desc, m.id desc limit " + next(o.Limit)
-	if o.Offset > 0 {
-		sql += " offset " + next(o.Offset)
-	}
+			return h, err
+		})
+	return list, err
+}
 
-	rows, err := s.pool.Query(ctx, sql, args...)
+// owners restricts a content to those held by an owner f admits: a message
+// that passes the message filters or a library file of the source and
+// account. Without such filters every content passes. The owners' contents
+// are collected first and compared with the index's key, which pg_search
+// applies inside its top-N scan; as an EXISTS per match it scored and
+// snippeted every match before filtering them.
+func owners(contentID string, f search.Filters, a *args) string {
+	if f.Source == "" && f.Account == "" && !f.Dated() && !f.MessageScoped() {
+		return ""
+	}
+	var held []string
+	if f.Account == "" {
+		clauses, where := messageFilters(f, a)
+		if len(clauses) > 0 {
+			where = " and m.id @@@ " + must(clauses) + where
+		}
+		held = append(held, "select a.content_id from attachments a join messages m on m.id = a.message_id where true"+where)
+	}
+	if !f.Dated() && !f.MessageScoped() {
+		where := ""
+		if f.Source != "" {
+			where += " and lf.source = " + a.next(f.Source)
+		}
+		if f.Account != "" {
+			where += " and lf.account = " + a.next(f.Account)
+		}
+		held = append(held, "select lf.content_id from library_files lf where true"+where)
+	}
+	if len(held) == 0 {
+		return " and false"
+	}
+	return " and " + contentID + " = any(array(" + strings.Join(held, " union ") + "))"
+}
+
+func scanContent(row pgx.CollectableRow) (search.SearchHit, error) {
+	h := search.SearchHit{Kind: search.KindFile}
+	var snippet string
+	err := row.Scan(&h.ContentID, &h.Title, &snippet)
+	h.Key = search.ContentKey(h.ContentID)
+	h.Snippet = Snippet(snippet, "", "")
+	return h, err
+}
+
+// SearchTexts ranks contents by the text read from them, which is indexed
+// once per content whichever messages, library files and disks hold it.
+func (s *Store) SearchTexts(ctx context.Context, q search.Query, f search.Filters, n int) (search.List, error) {
+	return s.searchTexts(ctx, q, f, n, nil)
+}
+
+// searchTexts takes held, when it is set, to restrict the contents instead of
+// the owners f admits.
+func (s *Store) searchTexts(ctx context.Context, q search.Query, f search.Filters, n int, held func(*args) string) (search.List, error) {
+	list := search.List{Name: "text", Kind: search.KindFile}
+	var a args
+	cond := "t.content_id @@@ " + q.Clause(textFields, a.next) + " and t.status in ('ok', 'truncated', 'manual')"
+	if held != nil {
+		cond += held(&a)
+	} else {
+		cond += owners("t.content_id", f, &a)
+	}
+	var err error
+	list.Hits, list.Matches, err = s.ranked(ctx,
+		`select t.content_id, '', coalesce(paradedb.snippet(t.text, '', '', `+strconv.Itoa(snippetChars)+`), '')
+		from texts t where `+cond+` order by paradedb.score(t.content_id) desc, t.content_id limit `+strconv.Itoa(n),
+		`select count(*) from texts t where `+cond, a, scanContent)
+	return list, err
+}
+
+// SearchAttachmentNames ranks attachments by filename. A content attached to
+// many messages comes once per attachment, and fusion keeps its best rank.
+func (s *Store) SearchAttachmentNames(ctx context.Context, q search.Query, f search.Filters, n int) (search.List, error) {
+	return s.searchAttachmentNames(ctx, q, n, func(a *args) string {
+		if f.Source == "" && !f.Dated() && !f.MessageScoped() {
+			return ""
+		}
+		clauses, where := messageFilters(f, a)
+		if len(clauses) > 0 {
+			where = " and m.id @@@ " + must(clauses) + where
+		}
+		return " and exists (select 1 from messages m where m.id = a.message_id" + where + ")"
+	})
+}
+
+func (s *Store) searchAttachmentNames(ctx context.Context, q search.Query, n int, held func(*args) string) (search.List, error) {
+	list := search.List{Name: "attachment name", Kind: search.KindFile}
+	var a args
+	cond := "a.content_id @@@ " + q.Clause(filenameField, a.next) + held(&a)
+	var err error
+	list.Hits, list.Matches, err = s.ranked(ctx,
+		`select a.content_id, a.filename, '' from attachments a where `+cond+`
+		order by paradedb.score(a.content_id) desc, a.content_id limit `+strconv.Itoa(n),
+		`select count(*) from attachments a where `+cond, a, scanContent)
+	return list, err
+}
+
+// ContentPlaces are where a content is in the archive, and its ref.
+type ContentPlaces struct {
+	Ref    string
+	Digest string
+	Places []search.FilePlace
+	Count  int
+}
+
+// maxPlaces bounds the places listed per content; Count still counts all.
+const maxPlaces = 20
+
+// ContentPlaces lists the messages and library files that hold each content,
+// newest message first.
+func (s *Store) ContentPlaces(ctx context.Context, ids []int64) (map[int64]ContentPlaces, error) {
+	out := map[int64]ContentPlaces{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx, `select id, 'content:' || encode(substr(blake3, 1, 8), 'hex'), encode(blake3, 'hex')
+		from contents where id = any($1)`, ids)
+	if err != nil {
+		return nil, err
+	}
+	var id int64
+	var c ContentPlaces
+	if _, err := pgx.ForEachRow(rows, []any{&id, &c.Ref, &c.Digest}, func() error {
+		out[id] = c
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	rows, err = s.pool.Query(ctx, `select content_id, kind, ref, name, at, source, thread_id, total from (
+		select p.*, row_number() over (partition by content_id order by o desc, n desc) as position,
+			count(*) over (partition by content_id) as total
+		from (
+			select a.content_id, 'message' as kind, m.ref, a.filename as name, m.sent_at as at, m.source, m.thread_id,
+				m.sort_at as o, m.id as n
+			from attachments a join messages m on m.id = a.message_id where a.content_id = any($1)
+			union all
+			select f.content_id, 'library_file', f.id, f.filename, null, f.source, '', '-infinity', f.seq
+			from library_files f where f.content_id = any($1)
+		) p) p where position <= $2 order by content_id, position`, ids, maxPlaces)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := []Message{}
 	for rows.Next() {
-		var m Message
-		if err := rows.Scan(&m.ID, &m.Ref, &m.Source, &m.ThreadID, &m.Sender, &m.Subject, &m.Body,
-			optionalTime{&m.SentAt}, &m.Score, &m.Snippet, &m.AttachmentSnippet); err != nil {
+		var id int64
+		var p search.FilePlace
+		var total int
+		if err := rows.Scan(&id, &p.Kind, &p.Ref, &p.Name, &p.At, &p.Source, &p.ThreadID, &total); err != nil {
 			return nil, err
 		}
-		m.Snippet = Snippet(m.Snippet, m.Body, query)
-		m.AttachmentSnippet = Snippet(m.AttachmentSnippet, "", query)
-		out = append(out, m)
+		c := out[id]
+		c.Places = append(c.Places, p)
+		c.Count = total
+		out[id] = c
 	}
 	return out, rows.Err()
 }
 
-// Exact matches contribute more than fuzzy matches; subject matches carry
-// extra weight. Keep field selection identical across all query modes.
-func searchFields(value string, phrase, conjunction bool) string {
-	var queries []string
-	for _, field := range []string{"subject", "body", "sender", "recipients", "attachment_text"} {
-		weight := 1
-		if field == "subject" {
-			weight = 3
-		}
-		if phrase {
-			queries = append(queries, fmt.Sprintf("paradedb.boost(%d, paradedb.phrase('%s', %s))", weight, field, value))
-			continue
-		}
-		queries = append(queries,
-			fmt.Sprintf("paradedb.boost(%d, paradedb.match('%s', %s, distance => $2, conjunction_mode => %t))", weight, field, value, conjunction),
-			fmt.Sprintf("paradedb.boost(%d, paradedb.match('%s', %s, distance => 0, conjunction_mode => %t))", weight*2, field, value, conjunction))
+// ContactKeys are the participant keys a contact's aliases match, for
+// search.Filters.Participants.
+func (s *Store) ContactKeys(ctx context.Context, name string) ([]string, error) {
+	c, err := s.GetContact(ctx, name)
+	if errors.Is(err, ErrNotFound) {
+		return nil, &ErrNoContact{Name: name}
 	}
-	return "paradedb.boolean(should => array[" + strings.Join(queries, ",") + "])"
+	if err != nil {
+		return nil, err
+	}
+	var keys []string
+	err = s.pool.QueryRow(ctx, `select array(select case when a.source = '' then a.value_norm else a.source || chr(31) || a.value_norm end
+		from contact_aliases a where a.contact_id = $1)`, c.ID).Scan(&keys)
+	return nonNil(keys), err
 }

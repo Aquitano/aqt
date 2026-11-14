@@ -6,6 +6,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -45,9 +46,8 @@ func TestMailboxObservationRecoveryAndFilters(t *testing.T) {
 		t.Fatalf("folders: %+v, %v", folders, err)
 	}
 	hasAttachment := true
-	hits, err := st.Search(ctx, "attached", store.SearchOpts{Source: "mail", MailboxID: folders[0].ID, Subject: "two", HasAttachment: &hasAttachment, Limit: 20})
-	if err != nil || len(hits) != 1 {
-		t.Fatalf("search: %+v, %v", hits, err)
+	if hits := storetest.Messages(t, st, "attached", search.Filters{Source: "mail", MailboxID: folders[0].ID, Subject: "two", HasAttachment: &hasAttachment}); len(hits) != 1 {
+		t.Fatalf("search: %+v", hits)
 	}
 	groups, err := st.BrowseThreads(ctx, store.BrowseOpts{Source: "mail", MailboxID: folders[0].ID, Subject: "two", HasAttachment: &hasAttachment, Limit: 20})
 	if err != nil || len(groups) != 1 || groups[0].Count != 1 {

@@ -36,7 +36,8 @@ var (
 	ListThreads = httpapi.Op[ListThreadsInput, []store.ThreadGroup]{Operation: httpapi.Operation{ID: "listThreads", Method: http.MethodGet, Path: "/v1/threads", Tag: "messages",
 		Summary: "List conversations by their latest message",
 		Description: "One row per thread, with its message count, latest sender and a preview. Read a row's " +
-			"messages with the thread route, passing its source and thread_id.",
+			"messages with the thread route, passing its source and thread_id. For the next page, pass the " +
+			"last row's last_ref as after.",
 	}}
 	GetMessage = httpapi.Op[MessageInput, store.MessageDetail]{Operation: httpapi.Operation{ID: "getMessage", Method: http.MethodGet, Path: "/v1/messages/{ref}", Tag: "messages",
 		Summary: "Read one message with its attachments",
@@ -94,22 +95,23 @@ func (s *Server) registerMessagesAPI(api huma.API) {
 }
 
 type ListThreadsInput struct {
-	Source        string `query:"source" doc:"Only this source, such as gmail or whatsapp."`
-	Order         string `query:"order" enum:"asc,desc" doc:"By latest message: newest first (desc, the default) or oldest first."`
-	From          string `query:"from" doc:"Sender contains this, ignoring case."`
-	To            string `query:"to" doc:"A recipient contains this, ignoring case."`
-	Person        string `query:"person" doc:"Sent or received by this contact, by name."`
-	Subject       string `query:"subject" doc:"Subject contains this, ignoring case."`
-	Since         string `query:"since" format:"date" doc:"Sent on or after this day, YYYY-MM-DD."`
-	Until         string `query:"until" format:"date" doc:"Sent before this day, YYYY-MM-DD."`
-	MailboxID     int64  `query:"mailbox_id" minimum:"1" doc:"Only this mail folder. Needs source."`
-	HasAttachment string `query:"has_attachment" enum:"true,false" doc:"Only messages with, or without, attachments."`
-	httpapi.Page
+	Source        string      `query:"source" doc:"Only this source, such as gmail or whatsapp."`
+	Order         string      `query:"order" enum:"asc,desc" doc:"By latest message: newest first (desc, the default) or oldest first."`
+	From          string      `query:"from" doc:"Sender contains this, ignoring case."`
+	To            string      `query:"to" doc:"A recipient contains this, ignoring case."`
+	Person        string      `query:"person" doc:"Sent or received by this contact, by name."`
+	Subject       string      `query:"subject" doc:"Subject contains this, ignoring case."`
+	Since         string      `query:"since" format:"date" doc:"Sent on or after this day, YYYY-MM-DD."`
+	Until         string      `query:"until" format:"date" doc:"Sent before this day, YYYY-MM-DD."`
+	MailboxID     int64       `query:"mailbox_id" minimum:"1" doc:"Only this mail folder. Needs source."`
+	HasAttachment string      `query:"has_attachment" enum:"true,false" doc:"Only messages with, or without, attachments."`
+	After         ref.Message `query:"after" doc:"The last_ref of the previous page's last row: the page continues after that thread."`
+	httpapi.PageSize
 }
 
 func (s *Server) browseThreads(ctx context.Context, in *ListThreadsInput) (*httpapi.Body[[]store.ThreadGroup], error) {
 	o := store.BrowseOpts{Source: in.Source, Order: in.Order, From: in.From, To: in.To, Person: in.Person,
-		Subject: in.Subject, Limit: in.Limit, Offset: in.Offset, MailboxID: in.MailboxID}
+		Subject: in.Subject, Limit: in.Limit, After: in.After, MailboxID: in.MailboxID}
 	if in.MailboxID != 0 && in.Source == "" {
 		return nil, httpapi.Invalid.New("mailbox_id requires a source")
 	}

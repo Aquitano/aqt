@@ -48,6 +48,12 @@ var (
 		Errors:  []httpapi.Kind{httpapi.NotFound},
 		Writes:  true,
 	}}
+	SetSelfContact = httpapi.Op[ContactInput, store.Contact]{Operation: httpapi.Operation{ID: "setSelfContact", Method: http.MethodPut, Path: "/v1/contacts/{name}/self", Tag: "contacts",
+		Summary:     "Mark a contact as the archive's owner",
+		Description: "Browse leaves the owner's aliases out of a thread's members. A contact marked before loses the mark.",
+		Errors:      []httpapi.Kind{httpapi.NotFound},
+		Writes:      true,
+	}}
 	ListContactMessages = httpapi.Op[ContactMessagesInput, []store.MessageDetail]{Operation: httpapi.Operation{ID: "listContactMessages", Method: http.MethodGet, Path: "/v1/contacts/{name}/messages", Tag: "contacts",
 		Summary: "List the messages a contact sent or received, across every source, newest first",
 		Description: "Page with before, the ref of the last message of the previous page, or with offset, " +
@@ -80,6 +86,7 @@ func (s *Server) registerContactsAPI(api huma.API) {
 	httpapi.Register(api, SuggestContacts, s.contactSuggest)
 	httpapi.Register(api, GetContact, s.contactShow)
 	httpapi.Register(api, DeleteContact, s.contactDelete)
+	httpapi.Register(api, SetSelfContact, s.contactSelf)
 	httpapi.Register(api, ListContactMessages, s.contactMessages)
 	httpapi.Register(api, AddContactAlias, s.aliasAdd)
 	httpapi.Register(api, RemoveContactAlias, s.aliasRemove)
@@ -182,6 +189,17 @@ func (s *Server) contactDelete(ctx context.Context, in *ContactInput) (*httpapi.
 		return nil, contactFailure(in.Name, err)
 	}
 	return &httpapi.Body[ContactDeleted]{Body: ContactDeleted{Deleted: true}}, nil
+}
+
+func (s *Server) contactSelf(ctx context.Context, in *ContactInput) (*httpapi.Body[store.Contact], error) {
+	if err := s.db.SetSelf(ctx, in.Name); err != nil {
+		return nil, contactFailure(in.Name, err)
+	}
+	c, err := s.db.GetContact(ctx, in.Name)
+	if err != nil {
+		return nil, contactFailure(in.Name, err)
+	}
+	return reply(c, nil)
 }
 
 type AliasAddInput struct {

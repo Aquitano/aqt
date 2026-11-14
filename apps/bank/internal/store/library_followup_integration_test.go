@@ -160,10 +160,12 @@ func TestAttachmentSearchPreservesPagesAndCombinedTextModes(t *testing.T) {
 		count       int
 	}{
 		{"any", "invoice quasar", 205},
-		{"all", "invoice quasar", 1},
-		{"phrase", "pdf quasar", 0},
-		{"phrase", "quasar orbit", 1},
-		{"phrase", "orbit quasar", 0},
+		// Every word must be in the filename or every word in the text.
+		{"all", "invoice quasar", 0},
+		{"all", "orbit quasar", 1},
+		{"all", `"pdf quasar"`, 0},
+		{"all", `"quasar orbit"`, 1},
+		{"all", `"orbit quasar"`, 0},
 	} {
 		rows, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Query: test.query, Match: test.mode, Limit: 500})
 		if err != nil || len(rows) != test.count {

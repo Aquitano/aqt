@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/library"
@@ -20,11 +19,36 @@ func libraryID(kind string, identity library.Identity, supplied string) (string,
 	return id, nil
 }
 
+// libraryDate is d as it is stored and read back: an instant in UTC to the
+// microsecond, which is what Postgres keeps.
 func libraryDate(d library.Date) library.Date {
-	if d.Precision == "" {
+	switch d.Precision {
+	case "":
 		d.Precision = "unknown"
+	case "instant":
+		if at, err := time.Parse(time.RFC3339Nano, d.Value); err == nil {
+			d.Value = at.UTC().Truncate(time.Microsecond).Format(time.RFC3339Nano)
+		}
 	}
 	return d
+}
+
+// dateColumns are a date's timestamp and precision columns. A day is its UTC
+// midnight.
+func dateColumns(d library.Date) (*time.Time, string, error) {
+	d = libraryDate(d)
+	layout := time.RFC3339Nano
+	switch d.Precision {
+	case "unknown":
+		return nil, d.Precision, nil
+	case "day":
+		layout = time.DateOnly
+	}
+	at, err := time.Parse(layout, d.Value)
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid %s date %q: %w", d.Precision, d.Value, library.ErrInvalid)
+	}
+	return &at, d.Precision, nil
 }
 func libraryStrings(s []string) []string {
 	if s == nil {
@@ -60,8 +84,8 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 			return r, err
 		}
 		var inserted bool
-		err = tx.QueryRow(ctx, `insert into library_items(id,source,account,external_id,kind,title,description,url,provider,provider_id,creators,series,album,year,season,episode,duration_seconds,provenance,search_text)
-   values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+		err = tx.QueryRow(ctx, `insert into library_items(id,source,account,external_id,kind,title,description,url,provider,provider_id,creators,series,album,year,season,episode,duration_seconds,provenance)
+   values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
    on conflict(id) do update set kind=excluded.kind,title=case when excluded.provider_id<>'' and excluded.title=excluded.provider_id and library_items.title<>library_items.provider_id then library_items.title else excluded.title end,
    description=coalesce(nullif(excluded.description,''),library_items.description),url=coalesce(nullif(excluded.url,''),library_items.url),
    provider=coalesce(nullif(excluded.provider,''),library_items.provider),provider_id=coalesce(nullif(excluded.provider_id,''),library_items.provider_id),
@@ -69,7 +93,7 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
    series=coalesce(nullif(excluded.series,''),library_items.series),album=coalesce(nullif(excluded.album,''),library_items.album),
    year=coalesce(excluded.year,library_items.year),season=coalesce(excluded.season,library_items.season),episode=coalesce(excluded.episode,library_items.episode),
    duration_seconds=coalesce(excluded.duration_seconds,library_items.duration_seconds),provenance=case when coalesce((excluded.provenance->>'raw_input')::bigint,0)<>0 then excluded.provenance else library_items.provenance end returning xmax=0`,
-			id, v.Source, v.Account, v.ExternalID, v.Kind, v.Title, v.Description, v.URL, v.Provider, v.ProviderID, libraryStrings(v.Creators), v.Series, v.Album, v.Year, v.Season, v.Episode, v.DurationSeconds, v.Provenance, strings.Join([]string{v.Title, v.Description, strings.Join(v.Creators, " "), v.Series, v.Album, v.Provider, v.ProviderID}, " ")).Scan(&inserted)
+			id, v.Source, v.Account, v.ExternalID, v.Kind, v.Title, v.Description, v.URL, v.Provider, v.ProviderID, libraryStrings(v.Creators), v.Series, v.Album, v.Year, v.Season, v.Episode, v.DurationSeconds, v.Provenance).Scan(&inserted)
 		if err != nil {
 			return r, err
 		}
@@ -97,28 +121,25 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 				return r, err
 			}
 		}
-		ids := make([]string, 0, len(b.Items))
-		for _, item := range b.Items {
-			ids = append(ids, library.StableID("item", item.Identity))
-		}
-		if _, err := tx.Exec(ctx, `update library_items set search_text=title || ' ' || description || ' ' || array_to_string(creators,' ') || ' ' || series || ' ' || album || ' ' || provider || ' ' || provider_id where id=any($1)`, ids); err != nil {
-			return r, err
-		}
 	}
 	for _, v := range b.Activity {
 		id, err := libraryID("activity", v.Identity, v.ID)
 		if err != nil {
 			return r, err
 		}
-		tag, err := tx.Exec(ctx, `insert into library_activity(id,source,account,external_id,item_id,kind,title,occurred,duration_seconds,provenance,search_text)
-   values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict(id) do nothing`, id, v.Source, v.Account, v.ExternalID, v.ItemID, v.Kind, v.Title, libraryDate(v.Occurred), v.DurationSeconds, v.Provenance, v.Title+" "+v.Kind)
+		at, precision, err := dateColumns(v.Occurred)
+		if err != nil {
+			return r, err
+		}
+		tag, err := tx.Exec(ctx, `insert into library_activity(id,source,account,external_id,item_id,kind,title,occurred_at,occurred_precision,duration_seconds,provenance)
+   values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict(id) do nothing`, id, v.Source, v.Account, v.ExternalID, v.ItemID, v.Kind, v.Title, at, precision, v.DurationSeconds, v.Provenance)
 		if err != nil {
 			return r, err
 		}
 		if tag.RowsAffected() == 0 {
 			var raw []byte
 			var youtubeWatch bool
-			if err = tx.QueryRow(ctx, `select to_jsonb(a),a.kind='watch' and a.external_id ~ '^[0-9a-f]{64}$' and exists(select 1 from library_items i where i.id=a.item_id and i.source=a.source and i.account=a.account and i.kind='video' and ((i.provider='youtube' and i.external_id='video:' || i.provider_id) or (i.provider='' and i.external_id ~ '^unavailable-title:[0-9a-f]{64}$'))) from library_activity a where id=$1 for update`, id).Scan(&raw, &youtubeWatch); err != nil {
+			if err = tx.QueryRow(ctx, `select (to_jsonb(a)-'occurred_at'-'occurred_precision') || jsonb_build_object('occurred',bank_library_date(a.occurred_at,a.occurred_precision)),a.kind='watch' and a.external_id ~ '^[0-9a-f]{64}$' and exists(select 1 from library_items i where i.id=a.item_id and i.source=a.source and i.account=a.account and i.kind='video' and ((i.provider='youtube' and i.external_id='video:' || i.provider_id) or (i.provider='' and i.external_id ~ '^unavailable-title:[0-9a-f]{64}$'))) from library_activity a where id=$1 for update`, id).Scan(&raw, &youtubeWatch); err != nil {
 				return r, err
 			}
 			var existing library.Activity
@@ -130,7 +151,11 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 				return r, fmt.Errorf("activity identity already refers to different observation: %w", library.ErrConflict)
 			}
 			if occurred != existing.Occurred {
-				if _, err = tx.Exec(ctx, `update library_activity set occurred=$2 where id=$1`, id, occurred); err != nil {
+				at, precision, err := dateColumns(occurred)
+				if err != nil {
+					return r, err
+				}
+				if _, err = tx.Exec(ctx, `update library_activity set occurred_at=$2,occurred_precision=$3 where id=$1`, id, at, precision); err != nil {
 					return r, err
 				}
 			}
@@ -152,8 +177,8 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 			return r, err
 		}
 		var inserted bool
-		err = tx.QueryRow(ctx, `insert into library_collections(id,source,account,external_id,kind,title,description,search_text) values($1,$2,$3,$4,$5,$6,$7,$8)
-   on conflict(id) do update set title=excluded.title,description=excluded.description,kind=excluded.kind,search_text=excluded.search_text where not library_collections.personal returning xmax=0`, id, v.Source, v.Account, v.ExternalID, v.Kind, v.Title, v.Description, v.Title+" "+v.Description).Scan(&inserted)
+		err = tx.QueryRow(ctx, `insert into library_collections(id,source,account,external_id,kind,title,description) values($1,$2,$3,$4,$5,$6,$7)
+   on conflict(id) do update set title=excluded.title,description=excluded.description,kind=excluded.kind where not library_collections.personal returning xmax=0`, id, v.Source, v.Account, v.ExternalID, v.Kind, v.Title, v.Description).Scan(&inserted)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return r, library.ErrConflict
 		}
@@ -182,8 +207,8 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 			return r, err
 		}
 		var inserted bool
-		err = tx.QueryRow(ctx, `insert into library_files(id,source,account,external_id,content_id,filename,mime_type,provenance,search_text) values($1,$2,$3,$4,$5,$6,$7,$8,$9)
-   on conflict(id) do update set filename=excluded.filename,mime_type=excluded.mime_type,provenance=excluded.provenance,search_text=excluded.search_text where library_files.content_id=excluded.content_id returning xmax=0`, id, v.Source, v.Account, v.ExternalID, contentID, v.Filename, v.MimeType, v.Provenance, v.Filename+" "+v.MimeType).Scan(&inserted)
+		err = tx.QueryRow(ctx, `insert into library_files(id,source,account,external_id,content_id,filename,mime_type,provenance) values($1,$2,$3,$4,$5,$6,$7,$8)
+   on conflict(id) do update set filename=excluded.filename,mime_type=excluded.mime_type,provenance=excluded.provenance where library_files.content_id=excluded.content_id returning xmax=0`, id, v.Source, v.Account, v.ExternalID, contentID, v.Filename, v.MimeType, v.Provenance).Scan(&inserted)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return r, fmt.Errorf("file identity already refers to different bytes: %w", library.ErrConflict)
 		}
@@ -218,8 +243,8 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 			return r, err
 		}
 		var inserted bool
-		err = tx.QueryRow(ctx, `insert into library_pages(id,source,account,external_id,path,title,body,answers,tags,aliases,content_hash,revision,sensitivity,provenance,search_text) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-   on conflict(id) do update set path=excluded.path,title=excluded.title,body=excluded.body,answers=excluded.answers,tags=excluded.tags,aliases=excluded.aliases,content_hash=excluded.content_hash,revision=excluded.revision,sensitivity=excluded.sensitivity,provenance=excluded.provenance,search_text=excluded.search_text returning xmax=0`, id, v.Source, v.Account, v.ExternalID, v.Path, v.Title, v.Body, libraryStrings(v.Answers), libraryStrings(v.Tags), libraryStrings(v.Aliases), v.ContentHash, v.Revision, v.Sensitivity, v.Provenance, strings.Join([]string{v.Title, v.Body, strings.Join(v.Answers, " "), strings.Join(v.Tags, " "), strings.Join(v.Aliases, " ")}, " ")).Scan(&inserted)
+		err = tx.QueryRow(ctx, `insert into library_pages(id,source,account,external_id,path,title,body,answers,tags,aliases,content_hash,revision,sensitivity,provenance) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+   on conflict(id) do update set path=excluded.path,title=excluded.title,body=excluded.body,answers=excluded.answers,tags=excluded.tags,aliases=excluded.aliases,content_hash=excluded.content_hash,revision=excluded.revision,sensitivity=excluded.sensitivity,provenance=excluded.provenance returning xmax=0`, id, v.Source, v.Account, v.ExternalID, v.Path, v.Title, v.Body, libraryStrings(v.Answers), libraryStrings(v.Tags), libraryStrings(v.Aliases), v.ContentHash, v.Revision, v.Sensitivity, v.Provenance).Scan(&inserted)
 		if err != nil {
 			return r, err
 		}
@@ -240,8 +265,12 @@ func insertLibrarySnapshot(ctx context.Context, tx pgx.Tx, collectionID string, 
 	for i := range snapshot.Entries {
 		snapshot.Entries[i].Added = libraryDate(snapshot.Entries[i].Added)
 	}
+	capturedAt, capturedPrecision, err := dateColumns(snapshot.Captured)
+	if err != nil {
+		return 0, err
+	}
 	var id int64
-	err := tx.QueryRow(ctx, `insert into library_snapshots(collection_id,external_id,captured,completeness,provenance) values($1,$2,$3,$4,$5) on conflict(collection_id,external_id) do nothing returning id`, collectionID, snapshot.ExternalID, snapshot.Captured, snapshot.Completeness, snapshot.Provenance).Scan(&id)
+	err = tx.QueryRow(ctx, `insert into library_snapshots(collection_id,external_id,captured_at,captured_precision,completeness,provenance) values($1,$2,$3,$4,$5,$6) on conflict(collection_id,external_id) do nothing returning id`, collectionID, snapshot.ExternalID, capturedAt, capturedPrecision, snapshot.Completeness, snapshot.Provenance).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var raw []byte
 		err = tx.QueryRow(ctx, `select s.id,`+librarySnapshotJSON+` from library_snapshots s where collection_id=$1 and external_id=$2`, collectionID, snapshot.ExternalID).Scan(&id, &raw)
@@ -261,7 +290,11 @@ func insertLibrarySnapshot(ctx context.Context, tx pgx.Tx, collectionID string, 
 		return 0, err
 	}
 	for _, entry := range snapshot.Entries {
-		if _, err = tx.Exec(ctx, `insert into library_entries(snapshot_id,position,item_id,external_id,added) values($1,$2,$3,$4,$5)`, id, entry.Position, entry.ItemID, entry.ExternalID, entry.Added); err != nil {
+		addedAt, addedPrecision, err := dateColumns(entry.Added)
+		if err != nil {
+			return 0, err
+		}
+		if _, err = tx.Exec(ctx, `insert into library_entries(snapshot_id,position,item_id,external_id,added_at,added_precision) values($1,$2,$3,$4,$5,$6)`, id, entry.Position, entry.ItemID, entry.ExternalID, addedAt, addedPrecision); err != nil {
 			return 0, err
 		}
 	}

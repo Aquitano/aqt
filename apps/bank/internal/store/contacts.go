@@ -22,6 +22,7 @@ type Contact struct {
 	ID        int64          `json:"id"`
 	Name      string         `json:"name"`
 	Note      string         `json:"note,omitempty"`
+	Self      bool           `json:"self,omitempty" doc:"The archive's owner, whom browse leaves out of a thread's members."`
 	CreatedAt time.Time      `json:"created_at"`
 	Aliases   []ContactAlias `json:"aliases"`
 }
@@ -72,18 +73,12 @@ func (e *ErrConflict) Error() string {
 
 // aliasMatch is the predicate deciding whether message m belongs to the
 // contact named by the given placeholder. An alias matches when any form of
-// the sender, or of any recipient, equals it — and, for a scoped alias, when
-// the source agrees too.
+// the sender, or of any recipient, equals it and, for a scoped alias, when
+// the source agrees too: m.participants holds both spellings, which the GIN
+// index on it finds.
 func aliasMatch(contactPlaceholder string) string {
-	return `
-	exists (
-		select 1 from contact_aliases a
-		where a.contact_id = ` + contactPlaceholder + `
-		  and (a.source = '' or a.source = m.source)
-		  and (a.value_norm = any (bank_identity_keys(m.sender))
-		       or exists (select 1 from unnest(m.recipients) r
-		                  where a.value_norm = any (bank_identity_keys(r))))
-	)`
+	return ` m.participants && array(select case when a.source = '' then a.value_norm else a.source || chr(31) || a.value_norm end
+		from contact_aliases a where a.contact_id = ` + contactPlaceholder + `)`
 }
 
 func (s *Store) CreateContact(ctx context.Context, name, note string) (Contact, error) {
@@ -178,8 +173,8 @@ func (s *Store) DeleteContact(ctx context.Context, name string) error {
 func (s *Store) GetContact(ctx context.Context, name string) (Contact, error) {
 	var c Contact
 	err := s.pool.QueryRow(ctx,
-		`select id, name, note, created_at from contacts where name = $1`,
-		strings.TrimSpace(cleanText(name))).Scan(&c.ID, &c.Name, &c.Note, &c.CreatedAt)
+		`select id, name, note, self, created_at from contacts where name = $1`,
+		strings.TrimSpace(cleanText(name))).Scan(&c.ID, &c.Name, &c.Note, &c.Self, &c.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -231,7 +226,7 @@ func (s *Store) contactAliases(ctx context.Context, contactID int64) ([]ContactA
 
 func (s *Store) ListContacts(ctx context.Context) ([]Contact, error) {
 	rows, err := s.pool.Query(ctx, `
-		select c.id, c.name, c.note, c.created_at,
+		select c.id, c.name, c.note, c.self, c.created_at,
 		       a.value is not null, coalesce(a.source, ''), coalesce(a.value, ''), coalesce(a.value_norm, '')
 		from contacts c
 		left join contact_aliases a on a.contact_id = c.id
@@ -245,7 +240,7 @@ func (s *Store) ListContacts(ctx context.Context) ([]Contact, error) {
 		var c Contact
 		var a ContactAlias
 		var hasAlias bool
-		if err := rows.Scan(&c.ID, &c.Name, &c.Note, &c.CreatedAt,
+		if err := rows.Scan(&c.ID, &c.Name, &c.Note, &c.Self, &c.CreatedAt,
 			&hasAlias, &a.Source, &a.Value, &a.Normalized); err != nil {
 			return nil, err
 		}
@@ -339,6 +334,21 @@ func scopeName(source string) string {
 	return source
 }
 
+// SetSelf marks the contact as the archive's owner, so browse leaves the
+// owner's aliases out of a thread's members. One contact at most is the owner.
+func (s *Store) SetSelf(ctx context.Context, name string) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `update contacts set self = false where self`); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `update contacts set self = true where name = $1`, strings.TrimSpace(cleanText(name)))
+		if err == nil && tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return err
+	})
+}
+
 // ContactSourceCounts reports how many messages each source contributes, the
 // quickest way to see that a contact spans more than one of them.
 func (s *Store) ContactSourceCounts(ctx context.Context, contactID int64) ([]ContactSourceCount, error) {
@@ -374,9 +384,7 @@ type ContactMessagesOpts struct {
 }
 
 // ContactMessages returns one person's messages across every source, newest
-// first. There is no full-text index behind this — it is a scan over a
-// personal archive, which is fast enough and keeps the matching rule in one
-// readable place.
+// first.
 func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessagesOpts) ([]MessageDetail, error) {
 	c, err := s.GetContact(ctx, name)
 	if err != nil {

@@ -37,12 +37,13 @@ create table texts (
     chars        integer generated always as (char_length(text)) stored
 );
 
--- Its own index: document words and file names score on different scales, so
--- search ranks text hits apart. ascii_folding lets "fur" find "für".
+-- The one place a document's words are indexed, whichever message, library
+-- file or disk holds it. ascii_folding lets "fur" find "für".
 create index texts_bm25_idx on texts using bm25 (
     content_id,
-    (text::pdb.unicode_words('ascii_folding=true'))
-) with (key_field = 'content_id', mutable_segment_rows = 0);
+    (text::pdb.unicode_words('ascii_folding=true')),
+    (status::pdb.literal)
+) with (mutable_segment_rows = 0);
 
 -- Raw inputs
 --
@@ -68,6 +69,53 @@ create table raw_inputs (
 );
 
 -- Messages and mail
+
+-- Case, surrounding space and irregular inner spacing are formatting, not
+-- identity: fold them away before anything is compared.
+create function bank_identity_fold(v text) returns text
+    language sql immutable parallel safe
+as $fn$
+    select btrim(regexp_replace(lower(v), '\s+', ' ', 'g'))
+$fn$;
+
+-- Every form a sender or recipient string can be recognised by: the whole
+-- value, the bracketed address, and the display name with the address removed.
+-- Lowercased, trimmed and whitespace-collapsed, so a match never depends on
+-- how one source chose to format a name.
+create function bank_identity_keys(v text) returns text[]
+    language sql immutable parallel safe strict
+as $fn$
+    select coalesce(array_agg(distinct k), '{}'::text[])
+    from (select unnest(array[
+              bank_identity_fold(v),
+              bank_identity_fold(substring(v from '<([^<>]+)>')),
+              bank_identity_fold(regexp_replace(v, '<[^<>]*>', '', 'g'))
+          ]) as k) t
+    where k is not null and k <> ''
+$fn$;
+
+-- The single most specific form: the address when there is one, otherwise the
+-- display name. This is what an alias is stored as, and what `contact suggest`
+-- proposes, so both sides of a match agree on one spelling.
+create function bank_identity_key(v text) returns text
+    language sql immutable parallel safe strict
+as $fn$
+    select coalesce(nullif(bank_identity_fold(substring(v from '<([^<>]+)>')), ''),
+                    bank_identity_fold(v))
+$fn$;
+
+-- Every identity key of a message's sender and recipients, once as it is and
+-- once after its source and a unit separator. An alias that matches in every
+-- source is compared with the first form and one scoped to a source with the
+-- second, so a person filter is an overlap of two arrays.
+create function bank_participants(source text, sender text, recipients text[]) returns text[]
+    language sql immutable parallel safe
+as $fn$
+    select coalesce(array_agg(distinct f), '{}'::text[])
+    from unnest(array_prepend(sender, recipients)) p
+    cross join lateral unnest(bank_identity_keys(p)) k
+    cross join lateral unnest(array[k, source || chr(31) || k]) f
+$fn$;
 
 -- id is a row number for joins and changes when the archive is rebuilt; ref is
 -- what a citation carries. ref.ForMessage derives it from the source and the
@@ -98,12 +146,9 @@ create table messages (
     -- arrives twice under different id schemes (Gmail API id vs Takeout mbox)
     -- still dedups.
     message_id         text not null default '',
-    -- Text read out of the message's attachments, denormalized so one BM25
-    -- index gives one score, one ranking and working snippets. Two indexes
-    -- would need a fusion rule. The store refreshes it for the messages each
-    -- attachment or text write touches, so there is no trigger and no
-    -- archive-wide pass.
-    attachment_text    text not null default '',
+    -- What the person filter, contact history and browse match contacts
+    -- against: bank_participants of the sender and recipients.
+    participants       text[] not null generated always as (bank_participants(source, sender, recipients)) stored,
     parent_external_id text not null default '',
     branch_id          text not null default '',
     alternative_index  integer not null default 0,
@@ -122,13 +167,27 @@ create index messages_thread_idx on messages (thread_id, sort_at, id);
 create index messages_source_thread_page_idx on messages (source, thread_id, sort_at, id);
 create index messages_parent_idx on messages (source, thread_id, parent_external_id)
     where parent_external_id <> '';
+-- Browse walks messages newest first and keeps the latest of each thread.
+create index messages_sort_idx on messages (sort_at, id);
+create index messages_participants_idx on messages using gin (participants);
 
--- Recipients are indexed because "who did I send that to" is as common a
--- question as "who sent me that", and the --to filter needs recipient text to
--- contribute to matching and ranking, not only to post-filtering.
-create index messages_bm25_idx on messages
-    using bm25 (id, subject, body, sender, recipients, attachment_text)
-    with (key_field = 'id');
+-- Prose fields share one tokenizer, names and addresses another (see
+-- internal/search). Source, thread, participants and dates are indexed as
+-- filter fields, so a filtered search selects its ranked page inside the index
+-- instead of scoring every match and filtering and sorting it in Postgres.
+-- sort_at and id are the ranking's tie-breaks, which the index must hold too.
+create index messages_bm25_idx on messages using bm25 (
+    id,
+    (subject::pdb.unicode_words('ascii_folding=true')),
+    (body::pdb.unicode_words('ascii_folding=true')),
+    (sender::pdb.source_code('ascii_folding=true')),
+    (recipients::pdb.source_code('ascii_folding=true')),
+    (source::pdb.literal),
+    (thread_id::pdb.literal),
+    (participants::pdb.literal),
+    sent_at,
+    sort_at
+);
 
 -- position is the attachment's place in the record its source read, so an
 -- import repeated or run concurrently writes each attachment once.
@@ -143,6 +202,13 @@ create table attachments (
 );
 
 create index attachments_content_idx on attachments (content_id);
+-- Filenames are names: the same tokenizers as names on disks. content_id comes
+-- first because search ranks contents, not attachment rows.
+create index attachments_bm25_idx on attachments using bm25 (
+    content_id,
+    (filename::pdb.source_code('ascii_folding=true')),
+    (filename::pdb.ngram(3, 3, 'alias=filename_ngram', 'ascii_folding=true'))
+) with (mutable_segment_rows = 0);
 
 -- A retired message keeps its identity here after its row is deleted: imports
 -- skip a tombstoned (source, external_id) or (source, message_id), and its ref
@@ -254,46 +320,15 @@ create table mail_rebuild_progress (
 -- message: the identity a source recorded stays exactly as it arrived, and
 -- detaching an alias undoes a wrong attribution completely.
 
--- Case, surrounding space and irregular inner spacing are formatting, not
--- identity: fold them away before anything is compared.
-create function bank_identity_fold(v text) returns text
-    language sql immutable parallel safe
-as $fn$
-    select btrim(regexp_replace(lower(v), '\s+', ' ', 'g'))
-$fn$;
-
--- Every form a sender or recipient string can be recognised by: the whole
--- value, the bracketed address, and the display name with the address removed.
--- Lowercased, trimmed and whitespace-collapsed, so a match never depends on
--- how one source chose to format a name.
-create function bank_identity_keys(v text) returns text[]
-    language sql immutable parallel safe strict
-as $fn$
-    select coalesce(array_agg(distinct k), '{}'::text[])
-    from (select unnest(array[
-              bank_identity_fold(v),
-              bank_identity_fold(substring(v from '<([^<>]+)>')),
-              bank_identity_fold(regexp_replace(v, '<[^<>]*>', '', 'g'))
-          ]) as k) t
-    where k is not null and k <> ''
-$fn$;
-
--- The single most specific form: the address when there is one, otherwise the
--- display name. This is what an alias is stored as, and what `contact suggest`
--- proposes, so both sides of a match agree on one spelling.
-create function bank_identity_key(v text) returns text
-    language sql immutable parallel safe strict
-as $fn$
-    select coalesce(nullif(bank_identity_fold(substring(v from '<([^<>]+)>')), ''),
-                    bank_identity_fold(v))
-$fn$;
-
 create table contacts (
     id         bigint generated always as identity primary key,
     name       text not null unique,
     note       text not null default '',
+    -- The archive's owner. Browse leaves the owner out of a thread's members.
+    self       boolean not null default false,
     created_at timestamptz not null default now()
 );
+create unique index contacts_self_idx on contacts (self) where self;
 
 create table contact_aliases (
     id         bigint generated always as identity primary key,
@@ -316,42 +351,25 @@ create index contact_aliases_norm_idx on contact_aliases (value_norm);
 
 -- Library
 
--- Valid page and note text can exceed PostgreSQL's 1 MiB vector limit.
-create function blob_text_search_vector(document text) returns tsvector
-language plpgsql immutable parallel safe as $$
-begin
-    return to_tsvector('simple',document);
-exception when program_limit_exceeded then
-    return null;
-end
-$$;
+-- A searched table has a seq column. Its BM25 index ranks by score and breaks
+-- ties on seq, because the index can select a page only by tie-breaks it holds
+-- as numbers or byte-ordered literals, and the text ids are neither.
 
--- Overflowed documents retain query terms with the native position and occurrence caps.
-create function blob_text_query_vector(document text,query text) returns tsvector
-language sql stable parallel safe as $$
-    with terms as (
-        select tsvector_to_array(to_tsvector('simple',query)) lexemes
-    ), tokens as (
-        select lexeme,least(row_number() over(order by parsed.ordinality,emitted.lexeme_order),16383) position
-        from ts_debug('simple',document) with ordinality parsed
-        cross join lateral unnest(parsed.lexemes) with ordinality emitted(lexeme,lexeme_order)
-        where octet_length(lexeme)<=2047
-    ), selected as (
-        select distinct lexeme,position from tokens,terms
-        where lexeme=any(terms.lexemes)
-    ), ranked as (
-        select lexeme,position,row_number() over(partition by lexeme order by position) rank
-        from selected
-    ), vectors as (
-        select '''' || replace(replace(lexeme,chr(92),chr(92)||chr(92)),'''','''''') || ''':' ||
-            string_agg(position::text,',' order by position) value
-        from ranked where rank<=256 group by lexeme
-    )
-    select coalesce(string_agg(value,' '),'')::tsvector from vectors
-$$;
+-- A library date: an instant, a day stored as its UTC midnight, or unknown,
+-- in the {value, precision} shape the API reads and writes.
+create function bank_library_date(at timestamptz, kind text) returns jsonb
+    language sql stable parallel safe
+as $fn$
+    select jsonb_build_object('precision', kind, 'value', case kind
+        when 'day' then to_char(at at time zone 'UTC', 'YYYY-MM-DD')
+        when 'instant' then to_char(at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS')
+            || rtrim(rtrim(to_char(at at time zone 'UTC', '.US'), '0'), '.') || 'Z'
+        else '' end)
+$fn$;
 
 create table library_items (
     id               text primary key,
+    seq              bigint generated always as identity,
     source           text not null check (source <> ''),
     account          text not null,
     external_id      text not null check (external_id <> ''),
@@ -369,11 +387,28 @@ create table library_items (
     episode          integer check (episode >= 0),
     duration_seconds integer check (duration_seconds >= 0),
     provenance       jsonb not null default '{}',
-    search_text      text not null,
+    -- The notes and tags of the item's library_state, copied when the state
+    -- changes, so one index ranks an item by everything said about it and
+    -- every word of a query can match in either.
+    state_notes      text not null default '',
+    state_tags       text[] not null default '{}',
     unique (source, account, external_id),
     check ((provider = '') = (provider_id = ''))
 );
-create index library_items_search on library_items using gin (to_tsvector('simple', search_text));
+create index library_items_bm25_idx on library_items using bm25 (
+    seq,
+    (title::pdb.unicode_words('ascii_folding=true')),
+    (description::pdb.unicode_words('ascii_folding=true')),
+    (creators::pdb.unicode_words('ascii_folding=true')),
+    (series::pdb.unicode_words('ascii_folding=true')),
+    (album::pdb.unicode_words('ascii_folding=true')),
+    (provider_id::pdb.source_code('ascii_folding=true')),
+    (state_notes::pdb.unicode_words('ascii_folding=true')),
+    (state_tags::pdb.unicode_words('ascii_folding=true')),
+    (source::pdb.literal),
+    (account::pdb.literal),
+    (kind::pdb.literal)
+);
 create index library_items_provider on library_items (provider, provider_id) where provider_id <> '';
 
 create table library_item_evidence (
@@ -385,22 +420,31 @@ create table library_item_evidence (
 
 create table library_activity (
     id               text primary key,
+    seq              bigint generated always as identity,
     source           text not null check (source <> ''),
     account          text not null,
     external_id      text not null check (external_id <> ''),
     item_id          text not null references library_items (id),
     kind             text not null check (kind in ('watch', 'listen', 'read', 'play', 'view', 'purchase', 'other')),
     title            text not null default '',
-    occurred         jsonb not null,
+    occurred_at        timestamptz,
+    occurred_precision text not null check (occurred_precision in ('unknown', 'day', 'instant')),
     duration_seconds integer check (duration_seconds >= 0),
     provenance       jsonb not null default '{}',
-    search_text      text not null,
     unique (source, account, external_id),
-    check (occurred->>'precision' in ('unknown', 'day', 'instant')),
-    check (((occurred->>'precision') = 'unknown') = ((occurred->>'value') = ''))
+    check ((occurred_precision = 'unknown') = (occurred_at is null))
 );
-create index library_activity_search on library_activity using gin (to_tsvector('simple', search_text));
 create index library_activity_item on library_activity (item_id);
+create index library_activity_occurred on library_activity (occurred_at, id) where occurred_at is not null;
+create index library_activity_bm25_idx on library_activity using bm25 (
+    seq,
+    (title::pdb.unicode_words('ascii_folding=true')),
+    (source::pdb.literal),
+    (account::pdb.literal),
+    (kind::pdb.literal),
+    (occurred_precision::pdb.literal),
+    occurred_at
+);
 
 create table library_activity_evidence (
     activity_id  text not null references library_activity (id),
@@ -411,6 +455,7 @@ create table library_activity_evidence (
 
 create table library_collections (
     id          text primary key,
+    seq         bigint generated always as identity,
     source      text not null check (source <> ''),
     account     text not null,
     external_id text not null check (external_id <> ''),
@@ -419,32 +464,39 @@ create table library_collections (
     description text not null default '',
     personal    boolean not null default false,
     revision    bigint not null default 0 check (revision >= 0),
-    search_text text not null,
     unique (source, account, external_id)
 );
-create index library_collections_search on library_collections using gin (to_tsvector('simple', search_text));
+create index library_collections_bm25_idx on library_collections using bm25 (
+    seq,
+    (title::pdb.unicode_words('ascii_folding=true')),
+    (description::pdb.unicode_words('ascii_folding=true')),
+    (source::pdb.literal),
+    (account::pdb.literal),
+    (kind::pdb.literal)
+);
 
 create table library_snapshots (
     id            bigint generated always as identity primary key,
     collection_id text not null references library_collections (id),
     external_id   text not null check (external_id <> ''),
-    captured      jsonb not null,
+    captured_at        timestamptz,
+    captured_precision text not null check (captured_precision in ('unknown', 'day', 'instant')),
     completeness  text not null check (completeness in ('complete', 'partial', 'unknown')),
     provenance    jsonb not null default '{}',
     unique (collection_id, external_id),
-    check (captured->>'precision' in ('unknown', 'day', 'instant')),
-    check (((captured->>'precision') = 'unknown') = ((captured->>'value') = ''))
+    check ((captured_precision = 'unknown') = (captured_at is null))
 );
+create index library_snapshots_captured on library_snapshots (collection_id, captured_at desc nulls last, id desc);
 
 create table library_entries (
     snapshot_id bigint not null references library_snapshots (id),
     position    integer not null check (position >= 0),
     item_id     text not null references library_items (id),
     external_id text not null default '',
-    added       jsonb not null,
+    added_at        timestamptz,
+    added_precision text not null check (added_precision in ('unknown', 'day', 'instant')),
     primary key (snapshot_id, position),
-    check (added->>'precision' in ('unknown', 'day', 'instant')),
-    check (((added->>'precision') = 'unknown') = ((added->>'value') = ''))
+    check ((added_precision = 'unknown') = (added_at is null))
 );
 
 create table library_collection_edits (
@@ -481,6 +533,7 @@ create table library_state_edits (
 
 create table library_files (
     id          text primary key,
+    seq         bigint generated always as identity,
     source      text not null check (source <> ''),
     account     text not null,
     external_id text not null check (external_id <> ''),
@@ -488,11 +541,16 @@ create table library_files (
     filename    text not null check (filename <> ''),
     mime_type   text not null,
     provenance  jsonb not null default '{}',
-    search_text text not null,
     ingested_at timestamptz not null default now(),
     unique (source, account, external_id)
 );
-create index library_files_search on library_files using gin (to_tsvector('simple', search_text));
+create index library_files_bm25_idx on library_files using bm25 (
+    seq,
+    (filename::pdb.source_code('ascii_folding=true')),
+    (filename::pdb.ngram(3, 3, 'alias=filename_ngram', 'ascii_folding=true')),
+    (source::pdb.literal),
+    (account::pdb.literal)
+);
 create index library_files_content on library_files (content_id);
 
 create table library_item_files (
@@ -503,6 +561,7 @@ create table library_item_files (
 
 create table library_pages (
     id            text primary key,
+    seq           bigint generated always as identity,
     source        text not null check (source <> ''),
     account       text not null,
     external_id   text not null check (external_id <> ''),
@@ -516,12 +575,18 @@ create table library_pages (
     revision      text not null,
     sensitivity   text not null,
     provenance    jsonb not null default '{}',
-    search_text   text not null,
-    search_vector tsvector generated always as (blob_text_search_vector(search_text)) stored,
     unique (source, account, external_id)
 );
-create index library_pages_search on library_pages using gin (search_vector);
-create index library_pages_oversized_search on library_pages (id) where search_vector is null;
+create index library_pages_bm25_idx on library_pages using bm25 (
+    seq,
+    (title::pdb.unicode_words('ascii_folding=true')),
+    (body::pdb.unicode_words('ascii_folding=true')),
+    (answers::pdb.unicode_words('ascii_folding=true')),
+    (tags::pdb.unicode_words('ascii_folding=true')),
+    (aliases::pdb.unicode_words('ascii_folding=true')),
+    (source::pdb.literal),
+    (account::pdb.literal)
+);
 
 -- Disks
 --
@@ -649,7 +714,7 @@ create index entries_bm25_idx on entries using bm25 (
     volume_id,
     (kind::pdb.literal),
     (ext::pdb.literal)
-) with (key_field = 'id', mutable_segment_rows = 0);
+) with (mutable_segment_rows = 0);
 
 -- Which contents an entry held, so what was read from earlier bytes stays
 -- searchable after the file changes. The open row is the content the entry
@@ -722,7 +787,7 @@ create index members_bm25_idx on members using bm25 (
     (name::pdb.source_code('ascii_folding=true')),
     (name::pdb.ngram(3, 3, 'alias=name_ngram', 'ascii_folding=true')),
     (path::pdb.source_code('ascii_folding=true'))
-) with (key_field = 'id', mutable_segment_rows = 0);
+) with (mutable_segment_rows = 0);
 
 create table archive_depth_failures (
     content_id       bigint not null references archives on delete cascade,
@@ -742,7 +807,7 @@ create table metadata (
 create index metadata_bm25_idx on metadata using bm25 (
     content_id,
     (text::pdb.unicode_words('ascii_folding=true'))
-) with (key_field = 'content_id', mutable_segment_rows = 0);
+) with (mutable_segment_rows = 0);
 
 -- Different providers, models and prompt policies keep separate results.
 create table ai_results (
@@ -764,7 +829,7 @@ create table ai_results (
 create index ai_results_bm25_idx on ai_results using bm25 (
     id,
     (text::pdb.unicode_words('ascii_folding=true'))
-) with (key_field = 'id', mutable_segment_rows = 0);
+) with (mutable_segment_rows = 0);
 create index ai_results_content_idx on ai_results (content_id);
 
 -- A worker's lease on one content's work under one policy, held while its

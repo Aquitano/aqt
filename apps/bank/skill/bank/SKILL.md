@@ -32,7 +32,7 @@ On the VPS itself there is no `BANK_URL`; `DATABASE_URL` points at Postgres and 
 ## Reading
 
 ```sh
-bank search "query" [--kind message|item|activity|collection|file|page] [--source s] [--from name] [--to name] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--match any|all|phrase] [--fuzzy 0-2] [--limit n] [--offset n] [--json]
+bank search 'words "a phrase"' [--kind message|item|activity|collection|file|page] [--source s] [--thread id] [--from name] [--to name] [--person contact] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--any] [--limit n] [--offset n] [--json]
 bank thread <thread_id> [--source s] [--around ref|--before ref|--after ref|--latest] [--limit n] [--json]
 bank contact list|show <name> [--json]               # who the owner has named, and their identities
 bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--before ref|--offset n] [--json]
@@ -48,21 +48,21 @@ bank query --schema              # list tables and columns before writing the fi
 
 Semantics that matter:
 
-- Always pass `--json` when consuming output. A query search returns an object with `messages`, `items`, `activity`, `collections`, `files`, `pages`, and `attachments` arrays, plus library `coverage` notes. Empty groups are `[]`. `--kind message` restricts the search but keeps this object shape. Search without a query returns a thread array. Thread and contact-history commands also return their existing response shapes.
-- **Cite records by `ref`.** Every citable record has one written form, `kind:value`: `msg:<16 hex>` for a message, `content:<16 to 64 hex>` for bytes, and `item:`, `activity:`, `collection:`, `file:` or `page:` with 32 hex for a library record, whose ID is its ref. Each `.messages[]` entry carries `ref`, for example `msg:9454d9440ade1088`, and no row number. Copy refs exactly as printed: a bare value without its kind, or uppercase hex, is rejected. `bank show <ref>` shows any of them. Its `--json` names the record (`kind`, `title`), lists where the same bytes are under `links`, and holds the record itself under `record`.
-- Message ranking is BM25 over subject, body, sender, recipients, and extracted attachment text, with typo tolerance (`--fuzzy 1` by default, max 2). Library groups use Postgres full-text search without fuzzy matching. Scores from separate groups are not comparable. The default `--match any` matches words independently. Use `--match all` to require every term across searchable fields, or `--match phrase` for adjacent words in order. Message phrase matching ignores `--fuzzy`.
-- Each message result carries a `snippet`: a bounded plain-text window around the match. Read message fields from `.messages[]`; item, activity, collection, file, page, and attachment results have different schemas.
-- A result may also carry `attachment_snippet`, meaning the match is inside an attached document rather than the message body — quote it as coming from the attachment, not from what the sender wrote. It is only set for exact-token matches; a fuzzy hit inside a document leaves it empty.
+- Always pass `--json` when consuming output. A query search returns `{hits, counts, coverage}`: `hits` is one ranked list across every kind, `counts` says how many records of each kind match in all, and `coverage` says what the search left out or cannot prove. Search without a query returns a thread array. Thread and contact-history commands also return their existing response shapes.
+- **Cite records by `ref`.** Every citable record has one written form, `kind:value`: `msg:<16 hex>` for a message, `content:<16 to 64 hex>` for bytes, and `item:`, `activity:`, `collection:`, `file:` or `page:` with 32 hex for a library record, whose ID is its ref. Each hit carries its `ref`, for example `msg:9454d9440ade1088`, and no row number. A folder or unhashed file on a disk has no ref; its place names the entry for `bank disk entry`. Copy refs exactly as printed: a bare value without its kind, or uppercase hex, is rejected. `bank show <ref>` shows any of them. Its `--json` names the record (`kind`, `title`), lists where the same bytes are under `links`, and holds the record itself under `record`.
+- One query grammar serves every kind: bare words, and `"quoted phrases"` whose words must be adjacent and in order. By default every word and phrase must match, each in any of a record's fields; `--any` needs one of them and ranks fuller matches first. A word of five to eight characters tolerates one typo and a longer one two; shorter words and quoted words match exactly. Accents do not matter: `uberweisung` finds `Überweisung`. A part of a filename finds the file: `werkstudent` finds `Werkstudentenvertrag.pdf`.
+- Every kind is ranked by BM25 in its own index, and the lists are merged by reciprocal rank fusion, so `score` orders the list but means nothing on its own. `matched` names the lists a hit came from. Each hit has `kind` (message, file, item, activity, collection or page), `ref`, `title`, a plain-text `snippet` around the match, `at` for messages and activity, and for a message its `source` and `thread_id`. Search never returns a body: `bank show <ref>` does.
+- A `file` hit is bytes, wherever they are. Its `places` list the messages that carry them as an attachment, the library files and the copies on disks, and `place_count` counts them all. When a file matched by its text, quote the snippet as coming from the document, not from what a sender wrote.
 - Searching finds text inside PDFs, Office and OpenDocument files, HTML and text attachments. It does **not** find text in scanned pages or photographs unless someone has OCR'd them: `bank show <ref>` reports `text_status` per attachment, where `needs_ocr` means the words are pixels and invisible to search. If a document ought to contain something and does not match, check that before concluding the archive lacks it.
-- `--from` is a case-insensitive substring of the sender field, so `--from alice` matches `Alice Example` and `alice@example.com`. `--to` is the same against recipients.
+- `--from` needs its words in the sender field, ignoring case and accents, so `--from alice` matches `Alice Example` and `alice@example.com`. `--to` is the same against recipients. When browsing without words they are substrings instead.
 - `youtube` rows are watch events, not correspondence: the sender is the channel, the subject the video title, the body only the watch URL, and the thread is the channel — so `--source youtube --from fireship` is everything watched from one channel, and `bank thread <channel id> --source youtube` reads it in order. Advertisements are not imported, and a video the export no longer names keeps its title with no URL.
 - `--person <contact>` is the better filter when you know who you mean: a contact ties one person's email addresses, WhatsApp display name and Discord handle together, so it catches them across sources where `--from alice` only catches one spelling. Run `bank contact list` to see which exist; an unknown name is an error, not an empty result.
-- `--until` is exclusive; both dates are plain `YYYY-MM-DD`.
+- `--until` is exclusive; both take `YYYY-MM-DD`, which starts at UTC midnight, or an RFC 3339 instant. A date leaves out the kinds without one: items, collections, pages, library files and files on disks.
 - A message whose source gave no date is undated: its JSON has no `sent_at`, and `--since`/`--until` leave it out. It sorts before every dated message, so it comes first in a thread and last in newest-first lists. `bank stats` counts undated messages separately.
-- `--limit` defaults to 100 and must be between 1 and 500; `--fuzzy` between 0 and 2. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--from`/dates rather than re-running blind.
-- `--offset` reaches past the first page: `--limit 100 --offset 100` is the second hundred in each selected result group. Check each group's array length separately. A short `.messages` page does not establish that `.items` or `.files` is exhausted. Use `--kind` to page one category. Each category keeps its own ordering. `--offset` is capped at 10000. Narrow the query if you need more. Contact message history retains its separate array pagination.
-- `.messages[]` contains message bodies already. Use `bank show <ref>` when you need recipients, `external_id`, `raw_input`, or attachments.
-- `bank thread` takes a `.messages[]` hit's `thread_id` and `source`. Pass `--around <hit.ref> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.ref>` or `--after <last.ref>`. Use `--latest` for recent history. Positions are mutually exclusive, a page holds 100 messages by default and at most 500, and there is no total history cap.
+- `--limit` defaults to 100 and must be between 1 and 500. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--person`/dates rather than re-running blind.
+- `--offset` pages the one ranked list: `--limit 100 --offset 100` is the second hundred hits. A short page is the end of the list. `counts` shows what lies behind a `--kind` filter. `--offset` is capped at 10000. Narrow the query if you need more.
+- Browsing without words (`bank search --source whatsapp`) lists conversations by their latest message; continue with `--after <last_ref of the last row>`.
+- `bank thread` takes a message hit's `thread_id` and `source`. Pass `--around <hit.ref> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.ref>` or `--after <last.ref>`. Use `--latest` for recent history. Positions are mutually exclusive, a page holds 100 messages by default and at most 500, and there is no total history cap.
 - Contact history can continue with `bank contact messages <name> --before <last.ref>`, beyond the offset limit. Results are newest-first. Use the cursor without `--offset`.
 - `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.
 - `bank stats --json` is `{sources, disks}`. Each of `sources[]` has `last_ingest`, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.
@@ -77,11 +77,12 @@ bank search "invoice" --from alice --since 2024-01-01 --json
 # "did I ever discuss pgvector with ChatGPT"
 bank search "pgvector" --source chatgpt --limit 50 --json
 
-# typo in the name, or in the archived text: widen the distance
-bank search "hetzner invoise" --fuzzy 2 --limit 5
+# a typo in a long word is tolerated; quote words that must be exact and adjacent
+bank search "hetzner invoise" --limit 5
+bank search '"quarterly review" deck' --json
 
 # one hit is rarely the answer — pull the surrounding conversation
-bank search "release plan" --kind message --json     # messages[].thread_id, .source, .ref
+bank search "release plan" --kind message --json     # hits[].thread_id, .source, .ref
 bank thread "release plan chat" --source whatsapp --around msg:9454d9440ade1088 --limit 100 --json
 
 # "what did I send to bob about the deck"

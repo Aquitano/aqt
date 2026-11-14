@@ -340,23 +340,24 @@ func printSyncResult(res gmail.SyncResult) {
 }
 
 type searchCmd struct {
-	Query         []string `arg:"" optional:"" help:"Search words; without them, browse filtered conversations."`
-	Kind          string   `help:"message, item, activity, collection, file, page, or media subtype."`
-	Account       string   `help:"Filter library records by source account."`
-	Source        string   `help:"Filter by source (whatsapp, gmail, ...)."`
-	From          string   `help:"Sender contains this (case-insensitive)."`
-	To            string   `help:"Recipient contains this (case-insensitive)."`
-	Person        string   `help:"Filter by contact, across all their aliases."`
-	MailboxID     int64    `help:"Observed folder id from bank mail mailboxes; requires --source."`
-	Subject       string   `help:"Subject contains this literal text, case-insensitive."`
-	HasAttachment string   `help:"true or false."`
-	Match         string   `default:"any" help:"any, all words, or phrase."`
-	Since         string   `help:"YYYY-MM-DD."`
-	Until         string   `help:"YYYY-MM-DD (exclusive)."`
-	Fuzzy         int      `default:"1" help:"Typo tolerance 0-2 (ignored for phrase)."`
-	Limit         int      `default:"${limit}" help:"Max results, 1-${max_limit}."`
-	Offset        int      `help:"Skip this many ranked results, for the next page (max ${max_offset})."`
-	JSON          bool     `help:"JSON output."`
+	Query         []string    `arg:"" optional:"" help:"Words and \"quoted phrases\"; without them, browse filtered conversations."`
+	Kind          string      `help:"message, item, activity, collection, file, page, or media subtype."`
+	Account       string      `help:"Filter library records by source account."`
+	Source        string      `help:"Filter by source (whatsapp, gmail, ...)."`
+	Thread        string      `help:"Only messages in this thread."`
+	From          string      `help:"Sender has these words; when browsing, contains this text."`
+	To            string      `help:"A recipient has these words; when browsing, contains this text."`
+	Person        string      `help:"Filter by contact, across all their aliases."`
+	MailboxID     int64       `help:"Observed folder id from bank mail mailboxes; requires --source."`
+	Subject       string      `help:"Subject contains this literal text, case-insensitive."`
+	HasAttachment string      `help:"true or false."`
+	Any           bool        `help:"Match any word or phrase instead of every one."`
+	Since         string      `help:"YYYY-MM-DD or RFC 3339."`
+	Until         string      `help:"YYYY-MM-DD or RFC 3339 (exclusive)."`
+	Limit         int         `default:"${limit}" help:"Max results, 1-${max_limit}."`
+	Offset        int         `help:"Skip this many ranked results, for the next page (max ${max_offset})."`
+	After         ref.Message `help:"When browsing, continue after this thread: the last ref of the previous page."`
+	JSON          bool        `help:"JSON output."`
 }
 
 func (c *searchCmd) Run(ctx context.Context) error {
@@ -370,9 +371,12 @@ func (c *searchCmd) Run(ctx context.Context) error {
 	}
 	defer closeAPI()
 	if query == "" {
+		if c.Offset > 0 {
+			return fmt.Errorf("browsing pages with --after, not --offset")
+		}
 		groups, err := client.Call(ctx, api, server.ListThreads, server.ListThreadsInput{Source: c.Source, From: c.From, To: c.To,
 			Person: c.Person, Subject: c.Subject, Since: c.Since, Until: c.Until, MailboxID: c.MailboxID,
-			HasAttachment: c.HasAttachment, Page: pageOf(c.Limit, c.Offset)})
+			HasAttachment: c.HasAttachment, After: c.After, PageSize: httpapi.PageSize{Limit: c.Limit}})
 		if err != nil {
 			return err
 		}
@@ -382,14 +386,19 @@ func (c *searchCmd) Run(ctx context.Context) error {
 		for _, group := range groups {
 			fmt.Printf("%s  %s  %-12s  %d matching messages  %s\n", group.LastRef, formatSent(group.LastAt, "2006-01-02"), group.Source, group.Count, group.Subject)
 		}
-		printMorePages(len(groups), c.Limit, c.Offset)
+		if len(groups) == c.Limit {
+			fmt.Printf("\n… possibly more: repeat with --after %s\n", groups[len(groups)-1].LastRef)
+		}
 		return nil
 	}
-	result, err := client.Call(ctx, api, server.Search, server.SearchInput{
-		LibraryFilters: server.LibraryFilters{Q: query, Match: c.Match, Source: c.Source, Account: c.Account, Kind: c.Kind,
-			Since: c.Since, Until: c.Until, Page: pageOf(c.Limit, c.Offset)},
-		From: c.From, To: c.To, Person: c.Person, Subject: c.Subject, Fuzzy: c.Fuzzy, MailboxID: c.MailboxID,
-		HasAttachment: c.HasAttachment})
+	match := ""
+	if c.Any {
+		match = "any"
+	}
+	result, err := client.Call(ctx, api, server.Search, server.SearchInput{Q: query, Match: match, Kind: c.Kind,
+		Source: c.Source, Account: c.Account, Since: c.Since, Until: c.Until, Thread: c.Thread, From: c.From, To: c.To,
+		Person: c.Person, Subject: c.Subject, MailboxID: c.MailboxID, HasAttachment: c.HasAttachment,
+		Page: pageOf(c.Limit, c.Offset)})
 	if err != nil {
 		return err
 	}

@@ -163,7 +163,7 @@ func (r reader) read(ctx context.Context, job *rivertype.JobRow, contentID int64
 		return err
 	}
 	if subject.Status != waiting {
-		return r.store.RefreshContentText(ctx, contentID)
+		return nil
 	}
 	defer func() {
 		if p := recover(); p != nil {

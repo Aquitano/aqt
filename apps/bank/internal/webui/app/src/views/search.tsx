@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertTitle } from "@aqt/ui/components/alert";
 import { Button } from "@aqt/ui/components/button";
 import { Input } from "@aqt/ui/components/input";
 import { Kbd } from "@aqt/ui/components/kbd";
@@ -16,17 +17,19 @@ import { Search as SearchIcon } from "lucide-react";
 import { useState } from "react";
 
 import type { Selection } from "@/components/detail-pane";
-import { LibrarySearchGroups } from "@/components/library-search";
 import { MailboxSelect } from "@/components/mailbox-select";
 import {
   browseThreads,
+  find,
   SEARCH_PAGE,
-  type Message,
-  type SourceStat,
+  type FilePlace,
+  type SearchHit,
   type SearchParams,
+  type SearchResult,
+  type SourceStat,
 } from "@/lib/api";
 import { fmtDate, Highlight, SourceBadge } from "@/lib/format";
-import { find } from "@/lib/library-api";
+import { getActivityRecord } from "@/lib/library-api";
 
 type SearchForm = Required<Omit<SearchParams, "offset" | "mailbox_id" | "has_attachment">> &
   Pick<SearchParams, "mailbox_id" | "has_attachment">;
@@ -41,8 +44,7 @@ function formFrom(params: SearchParams | null): SearchForm {
     since: params?.since ?? "",
     until: params?.until ?? "",
     subject: params?.subject ?? "",
-    match: params?.match ?? "any",
-    fuzzy: params?.fuzzy ?? 1,
+    match: params?.match ?? "all",
     mailbox_id: params?.mailbox_id,
     has_attachment: params?.has_attachment,
   };
@@ -55,10 +57,16 @@ const ATTACHMENT_FILTERS = [
 ];
 
 const MATCH_MODES: { value: SearchForm["match"]; label: string }[] = [
-  { value: "any", label: "Any words" },
-  { value: "all", label: "All words" },
-  { value: "phrase", label: "Exact phrase" },
+  { value: "all", label: "Every word" },
+  { value: "any", label: "Any word" },
 ];
+
+// A search pages by offset; browsing continues after the last thread's ref.
+interface PageCursor {
+  offset: number;
+  after?: string;
+}
+const firstPage: PageCursor = { offset: 0 };
 
 const fullDate = /^[1-9]\d{3}-\d{2}-\d{2}$/;
 
@@ -70,7 +78,6 @@ function searchFrom(form: SearchForm): SearchParams {
     to: form.to || undefined,
     person: form.person || undefined,
     match: form.match,
-    fuzzy: form.fuzzy,
     since: fullDate.test(form.since) ? form.since : undefined,
     until: fullDate.test(form.until) ? form.until : undefined,
     mailbox_id: form.mailbox_id,
@@ -83,54 +90,88 @@ function searchFrom(form: SearchForm): SearchParams {
 const completeDate = (input: HTMLInputElement) =>
   !input.validity.badInput && (input.value === "" || fullDate.test(input.value));
 
-export function selectMessage(m: Message): Selection {
+export function selectMessage(m: { ref: string }): Selection {
   return { kind: "message", ref: m.ref };
 }
 
-function isSelected(m: Message, selection: Selection) {
-  if (selection?.kind === "thread") return selection.flashRef === m.ref;
-  return selection?.kind === "message" && selection.ref === m.ref;
+// selectionOf is what opening a hit shows. A file only on disks has no bytes
+// here to show, and activity opens its item, which getActivityRecord names.
+function selectionOf(hit: SearchHit): Selection | "activity" {
+  if (hit.kind === "activity") return "activity";
+  if (hit.kind === "file") {
+    return hit.blake3 && hit.places?.some((p) => p.kind !== "disk")
+      ? { kind: "file", file: { blake3: hit.blake3, filename: hit.title } }
+      : null;
+  }
+  if (!hit.ref) return null;
+  return hit.kind === "message" ? selectMessage({ ref: hit.ref }) : { kind: hit.kind, id: hit.ref };
 }
 
-export function HitRow({
-  m,
+function isSelected(hit: SearchHit, selection: Selection) {
+  if (selection === null) return false;
+  if (selection.kind === "thread") return hit.kind === "message" && selection.flashRef === hit.ref;
+  if (selection.kind === "message") return hit.kind === "message" && selection.ref === hit.ref;
+  if (selection.kind === "file") return hit.kind === "file" && selection.file.blake3 === hit.blake3;
+  if (selection.kind === "item" || selection.kind === "collection" || selection.kind === "page")
+    return hit.kind === selection.kind && selection.id === hit.ref;
+  return false;
+}
+
+function placeLabel(place: FilePlace) {
+  if (place.kind === "message") return `attached as ${place.name}`;
+  if (place.kind === "library_file") return `library file ${place.name}`;
+  const state = `${place.missing ? " (missing)" : ""}${place.previous ? " (earlier version)" : ""}`;
+  return `${place.volume}:${place.path}${state}`;
+}
+
+function HitRow({
+  hit,
   query,
   selected,
   onClick,
 }: {
-  m: Message;
+  hit: SearchHit;
   query?: string;
   selected: boolean;
-  onClick: () => void;
+  onClick?: () => void;
 }) {
+  const places = hit.places ?? [];
   return (
     <button
       onClick={onClick}
+      disabled={!onClick}
       data-row
       data-selected={selected || undefined}
       className={cn(
-        "block w-full rounded-lg border border-transparent px-2.5 py-2 text-left hover:bg-accent/50",
+        "block w-full rounded-lg border border-transparent px-2.5 py-2 text-left enabled:hover:bg-accent/50",
         selected && "border-border bg-accent",
       )}
     >
       <div className="flex items-baseline gap-2">
-        <SourceBadge source={m.source} />
-        <span className="truncate text-sm font-semibold">{m.sender || "—"}</span>
-        <span className="ml-auto shrink-0 text-xs text-muted-foreground/70 tabular-nums">
-          {fmtDate(m.sent_at)}
+        {hit.source ? <SourceBadge source={hit.source} /> : null}
+        <span className="shrink-0 text-xs text-muted-foreground">{hit.type || hit.kind}</span>
+        <span className="truncate text-sm font-semibold">
+          <Highlight text={hit.title || "Untitled"} query={query} />
         </span>
+        {hit.at ? (
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground/70 tabular-nums">
+            {fmtDate(hit.at)}
+          </span>
+        ) : null}
       </div>
-      {m.subject ? (
-        <div className="truncate text-[13px] text-foreground/85">
-          <Highlight text={m.subject} query={query} />
+      {hit.snippet ? (
+        <div className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">
+          <Highlight text={hit.snippet} query={query} />
         </div>
       ) : null}
-      <div className="mt-0.5 line-clamp-2 text-[13px] text-muted-foreground">
-        {m.attachment_snippet ? (
-          <span className="text-muted-foreground/60 italic">in attachment · </span>
-        ) : null}
-        <Highlight text={m.attachment_snippet || m.snippet || m.body || ""} query={query} />
-      </div>
+      {places.length > 0 ? (
+        <div className="mt-0.5 truncate text-xs text-muted-foreground/70">
+          {places.slice(0, 2).map(placeLabel).join(" · ")}
+          {(hit.place_count ?? places.length) > 2
+            ? ` · ${(hit.place_count ?? places.length) - 2} more`
+            : ""}
+        </div>
+      ) : null}
     </button>
   );
 }
@@ -181,55 +222,44 @@ export function SearchView({
   const q = useInfiniteQuery({
     queryKey: ["find", params],
     enabled: params !== null,
-    initialPageParam: 0,
-    queryFn: async ({ pageParam }): Promise<Awaited<ReturnType<typeof find>>> => {
-      const empty = {
-        messages: [],
-        items: [],
-        activity: [],
-        collections: [],
-        files: [],
-        attachments: [],
-        pages: [],
-        coverage: [],
-      };
-      if (!params) return empty;
-      if (params.q) return find(params, pageParam);
-      const groups = await browseThreads({ ...params, order: "desc", offset: pageParam });
+    initialPageParam: firstPage,
+    queryFn: async ({ pageParam }): Promise<SearchResult> => {
+      if (!params) return { hits: [], counts: [], coverage: [] };
+      if (params.q) return find(params, pageParam.offset);
+      const groups = await browseThreads({ ...params, order: "desc", after: pageParam.after });
       return {
-        ...empty,
-        messages: groups.map((group) => ({
+        counts: [],
+        coverage: [],
+        hits: groups.map((group) => ({
+          kind: "message" as const,
           ref: group.last_ref,
           source: group.source,
           thread_id: group.thread_id,
-          sender: group.sender,
-          subject: group.subject,
-          body: group.preview,
-          sent_at: group.last_at,
+          title: group.subject || group.sender,
+          snippet: group.preview,
+          at: group.last_at,
+          score: 0,
+          matched: [],
         })),
       };
     },
     getNextPageParam: (last, pages) =>
-      [
-        last.messages,
-        last.items,
-        last.activity,
-        last.collections,
-        last.files,
-        last.attachments,
-        last.pages,
-      ].some((group) => group.length === SEARCH_PAGE) && pages.length * SEARCH_PAGE <= 10000
-        ? pages.length * SEARCH_PAGE
+      last.hits.length === SEARCH_PAGE && pages.length * SEARCH_PAGE <= 10000
+        ? { offset: pages.length * SEARCH_PAGE, after: last.hits.at(-1)?.ref }
         : undefined,
   });
 
-  const hits = q.data?.pages.flatMap((page) => page.messages) ?? [];
-  const libraryHits =
-    q.data?.pages.some((page) =>
-      [page.items, page.activity, page.collections, page.files, page.attachments, page.pages].some(
-        (group) => group.length > 0,
-      ),
-    ) ?? false;
+  const hits = q.data?.pages.flatMap((page) => page.hits) ?? [];
+  const first = q.data?.pages[0];
+  const clickHandler = (hit: SearchHit): (() => void) | undefined => {
+    const next = selectionOf(hit);
+    const ref = hit.ref;
+    if (next === "activity")
+      return ref
+        ? () => void getActivityRecord(ref).then((a) => onSelect({ kind: "item", id: a.item_id }))
+        : undefined;
+    return next ? () => onSelect(next) : undefined;
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -345,15 +375,6 @@ export function SearchView({
               </SelectGroup>
             </SelectContent>
           </Select>
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={form.fuzzy > 0}
-              disabled={form.match === "phrase"}
-              onChange={(e) => submit({ fuzzy: e.target.checked ? 1 : 0 })}
-            />
-            Allow typos
-          </label>
           <Input
             value={form.to}
             onChange={(e) => edit({ to: e.target.value })}
@@ -377,28 +398,35 @@ export function SearchView({
           <ListSkeleton />
         ) : q.isError ? (
           <div className="py-12 text-center text-sm text-muted-foreground">{q.error.message}</div>
-        ) : params && hits.length === 0 && !libraryHits ? (
-          <>
-            <LibrarySearchGroups pages={q.data?.pages ?? []} selection={selection} />
-            <div className="py-12 text-center text-sm text-muted-foreground">
-              No matching records in the available sources. Coverage gaps remain unknown.
-            </div>
-          </>
         ) : (
           <>
-            {q.data && <LibrarySearchGroups pages={q.data.pages} selection={selection} />}
-            {hits.length > 0 && (
-              <h3 className="px-3 py-2 text-xs font-semibold text-muted-foreground">
-                Messages · {hits.length} shown
-              </h3>
+            {first && first.coverage.length > 0 && (
+              <Alert className="my-2">
+                <AlertTitle>Search coverage</AlertTitle>
+                <AlertDescription>
+                  {first.coverage.map((note) => (
+                    <p key={note}>{note}</p>
+                  ))}
+                </AlertDescription>
+              </Alert>
             )}
-            {hits.map((m) => (
+            {first && first.counts.length > 0 && (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                {first.counts.map((count) => `${count.matches} ${count.kind}`).join(" · ")}
+              </p>
+            )}
+            {params && hits.length === 0 && (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                No matching records in the available sources. Coverage gaps remain unknown.
+              </div>
+            )}
+            {hits.map((hit, index) => (
               <HitRow
-                key={m.ref}
-                m={m}
+                key={`${hit.kind}:${hit.ref ?? index}`}
+                hit={hit}
                 query={params?.q}
-                selected={isSelected(m, selection)}
-                onClick={() => onSelect(selectMessage(m))}
+                selected={isSelected(hit, selection)}
+                onClick={clickHandler(hit)}
               />
             ))}
             {q.hasNextPage && (

@@ -11,10 +11,10 @@ import (
 
 	"github.com/alecthomas/kong"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 )
 
@@ -226,69 +226,61 @@ func (c *libraryIndexCmd) Run(ctx context.Context, lib *libraryCmd) error {
 }
 
 func printCatalog(result catalog.Result, limit, offset int) error {
-	count := 0
-	largest := 0
-	report := func(kind, id, title string) { fmt.Printf("%-11s %s  %s\n", kind, id, title); count++ }
-	for _, m := range result.Messages {
-		title := m.Subject
-		if title == "" {
-			title = excerpt(m.Body, 100)
+	for _, h := range result.Hits {
+		cited := h.Ref
+		if cited == "" && len(h.Places) > 0 {
+			cited = fmt.Sprintf("entry %d", h.Places[0].EntryID)
 		}
-		report("message", m.Ref, title)
-		if m.Snippet != "" && m.Snippet != title {
-			fmt.Printf("              %s\n", excerpt(m.Snippet, 160))
+		title := h.Title
+		if h.At != nil {
+			layout := "2006-01-02 15:04"
+			if h.DayOnly {
+				layout = "2006-01-02"
+			}
+			title = h.At.Local().Format(layout) + "  " + title
 		}
-		if m.AttachmentSnippet != "" {
-			fmt.Printf("              in attachment: %s\n", excerpt(m.AttachmentSnippet, 160))
+		fmt.Printf("%-11s %s  %s\n", cmp.Or(h.Type, h.Kind), cited, title)
+		if h.Snippet != "" && h.Snippet != h.Title {
+			fmt.Printf("              %s\n", excerpt(h.Snippet, 160))
 		}
-	}
-	for _, v := range result.Items {
-		report(v.Kind, v.ID, v.Title)
-	}
-	for _, v := range result.Activity {
-		date := v.Occurred.Value
-		if date == "" {
-			date = "date unknown"
-		}
-		report(v.Kind, v.ID, date+"  "+v.Title)
-	}
-	for _, v := range result.Collections {
-		report("collection", v.ID, v.Title)
-	}
-	for _, v := range result.Files {
-		report("file", v.ID, v.Filename)
-	}
-	for _, v := range result.Pages {
-		report("page", v.ID, v.Title)
-	}
-	for _, v := range result.Attachments {
-		report("attachment", v.BLAKE3.String(), v.Filename)
-	}
-	for _, v := range result.Disks.Entries {
-		report("on disk", cmp.Or(v.Ref, "-"), v.Display)
-	}
-	for _, v := range result.Disks.Members {
-		report("in archive", cmp.Or(v.Shown.Ref, "-"), v.Display)
-	}
-	for _, group := range [][]view.TextMatch{result.Disks.Texts, result.Disks.Metadata} {
-		for _, v := range group {
-			report("disk text", cmp.Or(v.Ref, "-"), v.Display)
-			fmt.Printf("              %s\n", excerpt(v.Snippet, 160))
+		for i, p := range h.Places {
+			if i == 3 {
+				fmt.Printf("              and %d more places\n", h.PlaceCount-3)
+				break
+			}
+			fmt.Printf("              %s\n", describePlace(p))
 		}
 	}
-	for _, v := range result.Disks.Analyses {
-		report("disk image", cmp.Or(v.Ref, "-"), v.Display)
-		fmt.Printf("              %s\n", excerpt(v.Snippet, 160))
-	}
-	for _, n := range []int{len(result.Messages), len(result.Items), len(result.Activity), len(result.Collections), len(result.Files), len(result.Pages), len(result.Attachments),
-		len(result.Disks.Entries), len(result.Disks.Members), len(result.Disks.Texts), len(result.Disks.Metadata), len(result.Disks.Analyses)} {
-		if n > largest {
-			largest = n
-		}
-	}
-	if count == 0 {
+	if len(result.Hits) == 0 {
 		fmt.Println("no matches")
 	}
-	printMorePages(largest, limit, offset)
+	var found []string
+	for _, c := range result.Counts {
+		found = append(found, fmt.Sprintf("%d %s", c.Matches, c.Kind))
+	}
+	if len(found) > 0 {
+		fmt.Printf("\nmatches: %s\n", strings.Join(found, ", "))
+	}
+	for _, note := range result.Coverage {
+		fmt.Printf("note: %s\n", note)
+	}
+	printMorePages(len(result.Hits), limit, offset)
 	return nil
+}
+
+func describePlace(p search.FilePlace) string {
+	switch p.Kind {
+	case "message":
+		return "attached to " + p.Ref + " as " + p.Name
+	case "library_file":
+		return "library file " + p.Ref + ": " + p.Name
+	}
+	state := ""
+	if p.Missing {
+		state = " (missing)"
+	}
+	if p.Previous {
+		state += " (previous version)"
+	}
+	return fmt.Sprintf("on disk %s: %s, entry %d%s", p.Volume, p.Path, p.EntryID, state)
 }

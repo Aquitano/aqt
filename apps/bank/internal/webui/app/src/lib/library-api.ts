@@ -1,6 +1,6 @@
 import { type } from "arktype";
 
-import { api, message, libraryFile, rawInput, type SearchParams } from "@/lib/api";
+import { api, rawInput } from "@/lib/api";
 
 const identity = { source: "string", account: "string", external_id: "string" } as const;
 const provenance = type({ raw_input: "number", locator: "string" });
@@ -100,14 +100,6 @@ const page = type({
   sensitivity: "string",
   provenance,
 });
-const groups = {
-  items: item.array(),
-  activity: activity.array(),
-  collections: collectionSummary.array(),
-  files: mediaFileSchema.array(),
-  pages: page.array(),
-  coverage: "string[]",
-} as const;
 export type MediaItem = typeof item.infer;
 export type MediaState = typeof state.infer;
 export type Activity = typeof activity.infer;
@@ -160,6 +152,9 @@ export function saveState(id: string, edit: StateEdit) {
 export function getActivity(filters: LibraryFilters = {}, offset = 0) {
   return api(`/v1/library/activity?${query(filters, offset)}`, activity.array());
 }
+export function getActivityRecord(id: string) {
+  return api(`/v1/library/activity/${encodeURIComponent(id)}`, activity);
+}
 export function getCollections(filters: LibraryFilters = {}, offset = 0) {
   return api(`/v1/library/collections?${query(filters, offset)}`, collectionSummary.array());
 }
@@ -199,15 +194,6 @@ export function uploadFiles(files: File[], itemId?: string) {
 }
 export function getPage(id: string) {
   return api(`/v1/library/pages/${encodeURIComponent(id)}`, page);
-}
-export function find(params: SearchParams, offset = 0) {
-  const search = new URLSearchParams({ limit: String(LIBRARY_PAGE), offset: String(offset) });
-  for (const [key, value] of Object.entries(params))
-    if (value !== undefined) search.set(key, String(value));
-  return api(
-    `/v1/search?${search}`,
-    type({ messages: message.array(), attachments: libraryFile.array(), ...groups }),
-  );
 }
 // Options go before the file: the server checks them before it stores bytes.
 export function importLibrary(kind: string, file: File, account: string) {

@@ -19,6 +19,7 @@ import (
 
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
@@ -169,3 +170,18 @@ var provisionQueryRole = sync.OnceValue(func() error {
 	}
 	return tx.Commit(ctx)
 })
+
+// Messages runs a message search for query, every word required, and returns
+// its hits; a failing search fails the test.
+func Messages(t *testing.T, st *store.Store, query string, f search.Filters) []search.SearchHit {
+	t.Helper()
+	q, err := search.Parse(query, search.All)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := st.SearchMessages(t.Context(), q, f, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list.Hits
+}

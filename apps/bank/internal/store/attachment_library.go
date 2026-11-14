@@ -3,14 +3,13 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
-	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -33,63 +32,70 @@ type LibraryFile struct {
 }
 
 func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]LibraryFile, error) {
-	if err := (library.ListOptions{Query: o.Query, Match: o.Match, Limit: o.Limit, Offset: o.Offset}).Validate(); err != nil {
+	o.Limit = page.Limit(o.Limit)
+	if err := page.Check(o.Limit, o.Offset); err != nil {
 		return nil, err
 	}
-	o.Limit = page.Limit(o.Limit)
-	where := "true"
-	ctes := ""
-	args := []any{}
-	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
-	if o.Source != "" {
-		where += " and m.source=" + arg(o.Source)
+	var keys []string
+	if o.Person != "" {
+		var err error
+		if keys, err = s.ContactKeys(ctx, o.Person); err != nil {
+			return nil, err
+		}
 	}
-	if o.Filename != "" {
-		where += " and strpos(lower(a.filename), lower(" + arg(o.Filename) + "))>0"
+	// filter is every filter but the query, over the attachment a and its
+	// message m.
+	filter := func(a *args) string {
+		where := ""
+		if o.Source != "" {
+			where += " and m.source=" + a.next(o.Source)
+		}
+		if o.Filename != "" {
+			where += " and strpos(lower(a.filename), lower(" + a.next(o.Filename) + "))>0"
+		}
+		if o.Text != "" {
+			where += " and exists (select 1 from texts b where b.content_id=a.content_id and b.status in ('ok','truncated','manual') and strpos(lower(b.text),lower(" + a.next(o.Text) + "))>0)"
+		}
+		if o.FileType != "" {
+			p := a.next(strings.ToLower(strings.TrimPrefix(o.FileType, ".")))
+			where += " and (lower(a.mime_type)=" + p + " or split_part(lower(a.mime_type),'/',1)=" + p + " or right(lower(a.filename),length(" + p + ")+1) = '.' || " + p + ")"
+		}
+		if o.Person != "" {
+			where += " and m.participants && " + a.next(keys) + "::text[]"
+		}
+		if !o.Since.IsZero() {
+			where += " and m.sent_at>=" + a.next(o.Since)
+		}
+		if !o.Until.IsZero() {
+			where += " and m.sent_at<" + a.next(o.Until)
+		}
+		return where
 	}
+	var a args
+	where := "true" + filter(&a)
 	snippet := "''"
 	if o.Text != "" {
-		p := arg(o.Text)
-		where += " and exists (select 1 from texts b where b.content_id=a.content_id and b.status in ('ok','truncated','manual') and strpos(lower(b.text),lower(" + p + "))>0)"
+		p := a.next(o.Text)
 		snippet = "(select substring(b.text from greatest(1,strpos(lower(b.text),lower(" + p + "))-80) for 240) from texts b where b.content_id=matched.content_id)"
 	}
-	if o.FileType != "" {
-		typ := strings.ToLower(strings.TrimPrefix(o.FileType, "."))
-		p := arg(typ)
-		where += " and (lower(a.mime_type)=" + p + " or split_part(lower(a.mime_type),'/',1)=" + p + " or right(lower(a.filename),length(" + p + ")+1) = '.' || " + p + ")"
-	}
-	if o.Person != "" {
-		c, err := s.GetContact(ctx, o.Person)
-		if errors.Is(err, ErrNotFound) {
-			return nil, &ErrNoContact{Name: o.Person}
-		}
+	order, window := "matched.sort_at desc,c.blake3", ""
+	if o.Query == "" {
+		window = " limit " + a.next(o.Limit) + " offset " + a.next(o.Offset)
+	} else {
+		ids, err := s.rankAttachments(ctx, o, filter)
 		if err != nil {
 			return nil, err
 		}
-		where += " and " + aliasMatch(arg(c.ID))
+		p := a.next(ids)
+		where += " and a.content_id = any(" + p + "::bigint[])"
+		order = "array_position(" + p + "::bigint[], matched.content_id)"
 	}
-	if !o.Since.IsZero() {
-		where += " and m.sent_at>=" + arg(o.Since)
-	}
-	if !o.Until.IsZero() {
-		where += " and m.sent_at<" + arg(o.Until)
-	}
-	if o.Query != "" {
-		nameVector := "to_tsvector('simple',n.filename || ' ' || regexp_replace(n.filename,'[._-]+',' ','g'))"
-		textCTEs, matches := fileTextMatch(o.Match, o.Query, arg, "select content_id from attachment_names", nameVector, "n.content_id")
-		ctes = `attachment_names as materialized (
- select distinct a.content_id,a.filename from attachments a join messages m on m.id=a.message_id where ` + where + `
- ), ` + textCTEs + `, matching_names as materialized (
- select n.content_id,n.filename from attachment_names n where ` + matches + `
- ), `
-		where += " and exists(select 1 from matching_names n where n.content_id=a.content_id and n.filename=a.filename)"
-	}
-	rows, err := s.pool.Query(ctx, `with `+ctes+`matched as (
+	rows, err := s.pool.Query(ctx, `with matched as (
  select a.content_id,min(a.filename) filename,min(a.mime_type) mime_type,max(m.sent_at) last_at,max(m.sort_at) sort_at
  from attachments a join messages m on m.id=a.message_id where `+where+` group by a.content_id
  ) select c.blake3,matched.filename,matched.mime_type,c.size_bytes,
  (select count(distinct message_id) from attachments a where a.content_id=matched.content_id),last_at,`+snippet+`
- from matched join contents c on c.id=matched.content_id order by matched.sort_at desc,c.blake3 limit `+arg(o.Limit)+` offset `+arg(o.Offset), args...)
+ from matched join contents c on c.id=matched.content_id order by `+order+window, a...)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +109,35 @@ func (s *Store) AttachmentLibrary(ctx context.Context, o AttachmentFilter) ([]Li
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// rankAttachments ranks attachment contents by filename and by the text read
+// from them, among the attachments filter admits, and returns the page o asks
+// for as content ids.
+func (s *Store) rankAttachments(ctx context.Context, o AttachmentFilter, filter func(*args) string) ([]int64, error) {
+	q, err := search.Parse(o.Query, search.Mode(o.Match))
+	if err != nil {
+		return nil, err
+	}
+	n := o.Offset + o.Limit
+	names, err := s.searchAttachmentNames(ctx, q, n, func(a *args) string {
+		return " and exists (select 1 from messages m where m.id = a.message_id" + filter(a) + ")"
+	})
+	if err != nil {
+		return nil, err
+	}
+	texts, err := s.searchTexts(ctx, q, search.Filters{}, n, func(a *args) string {
+		return " and exists (select 1 from attachments a join messages m on m.id = a.message_id where a.content_id = t.content_id" + filter(a) + ")"
+	})
+	if err != nil {
+		return nil, err
+	}
+	hits := search.Fuse([]search.List{names, texts}, o.Offset, o.Limit)
+	ids := make([]int64, len(hits))
+	for i, h := range hits {
+		ids[i] = h.ContentID
+	}
+	return ids, nil
 }
 
 func (s *Store) AttachmentMessages(ctx context.Context, d content.Digest, offset, limit int) ([]Message, error) {

@@ -95,7 +95,7 @@ func TestCommandsAnswerTheSameInProcessAndOverHTTP(t *testing.T) {
 	if localErr == nil || httpErr == nil || localErr.Error() != httpErr.Error() {
 		t.Fatalf("a missing ref failed as %v in process and %v over HTTP", localErr, httpErr)
 	}
-	_, _, localErr, httpErr = runBoth(t, remote, "search", "lunch", "--fuzzy", "5")
+	_, _, localErr, httpErr = runBoth(t, remote, "search", "lunch", "--offset", "20000")
 	if localErr == nil || httpErr == nil || localErr.Error() != httpErr.Error() {
 		t.Fatalf("an invalid parameter failed as %v in process and %v over HTTP", localErr, httpErr)
 	}

@@ -117,7 +117,7 @@ func (s *Store) SearchTexts(ctx context.Context, o SearchOptions) ([]TextHit, er
 
 // table is a package-owned literal; never a query parameter.
 func (s *Store) searchTextTable(ctx context.Context, o SearchOptions, table string) ([]TextHit, error) {
-	q, err := s.newTextSearch(ctx, o, "t.content_id", "t.content_id")
+	q, err := s.newTextSearch(o, "t.content_id", "t.content_id")
 	if err != nil || q == nil {
 		return nil, err
 	}

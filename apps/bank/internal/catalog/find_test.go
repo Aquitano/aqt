@@ -3,104 +3,120 @@ package catalog
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
-	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
-type emptyReader struct{}
+type archive struct{ texts search.List }
 
-func (emptyReader) Search(context.Context, string, store.SearchOpts) ([]store.Message, error) {
-	return []store.Message{}, nil
+func (archive) SearchMessages(context.Context, search.Query, search.Filters, int) (search.List, error) {
+	return search.List{Kind: search.KindMessage}, nil
 }
-func (emptyReader) SearchLibrary(context.Context, library.ListOptions) (library.SearchResult, error) {
-	return library.SearchResult{Coverage: []string{}}, nil
+func (a archive) SearchTexts(context.Context, search.Query, search.Filters, int) (search.List, error) {
+	return a.texts, nil
 }
-func (emptyReader) AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error) {
-	return []store.LibraryFile{}, nil
+func (archive) SearchAttachmentNames(context.Context, search.Query, search.Filters, int) (search.List, error) {
+	return search.List{Kind: search.KindFile}, nil
 }
-
-func TestFindRejectsConflictingScopeAndExplainsDates(t *testing.T) {
-	ctx := context.Background()
-	for _, options := range []library.ListOptions{{Kind: "movie"}, {Account: "owner"}} {
-		_, err := Find(ctx, emptyReader{}, nil, "film", store.SearchOpts{From: "alice", Limit: 20}, options)
-		if !errors.Is(err, ErrFilters) {
-			t.Fatalf("conflicting scope %+v: %v", options, err)
-		}
+func (archive) SearchLibrary(_ context.Context, _ store.LibraryList, _ search.Query, _ search.Filters, _ int) (search.List, error) {
+	return search.List{}, nil
+}
+func (archive) ContentPlaces(_ context.Context, ids []int64) (map[int64]store.ContentPlaces, error) {
+	out := map[int64]store.ContentPlaces{}
+	for _, id := range ids {
+		out[id] = store.ContentPlaces{Ref: "content:000000000000000" + string(rune('0'+id)), Count: 1,
+			Places: []search.FilePlace{{Kind: "message", Ref: "msg:0123456789abcdef", Name: "lease.pdf"}}}
 	}
-	result, err := Find(ctx, emptyReader{}, nil, "film", store.SearchOpts{Limit: 20}, library.ListOptions{Kind: "movie", Since: "2026-01-01"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(strings.Join(result.Coverage, " "), "without date filtering") {
-		t.Fatalf("missing date coverage: %+v", result.Coverage)
-	}
+	return out, nil
+}
+func (archive) ContactKeys(_ context.Context, name string) ([]string, error) {
+	return []string{name}, nil
 }
 
 type disks struct {
 	err   error
 	calls int
-	got   atticstore.SearchOptions
+	names search.List
 }
 
-func (d *disks) SearchDisks(_ context.Context, o atticstore.SearchOptions) (view.SearchResult, error) {
+func (d *disks) RankEntries(context.Context, search.Query, int) (search.List, error) {
 	d.calls++
-	d.got = o
-	return view.SearchResult{Entries: []view.Place{{Display: `E:\Backups\minecraft.zip`}}}, d.err
+	return d.names, d.err
+}
+func (d *disks) RankMembers(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+func (d *disks) RankMetadata(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+func (d *disks) RankAnalyses(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+func (d *disks) DiskPlaces(_ context.Context, ids []int64, _ int) (map[int64][]search.FilePlace, map[int64]int, error) {
+	places, counts := map[int64][]search.FilePlace{}, map[int64]int{}
+	for _, id := range ids {
+		places[id], counts[id] = []search.FilePlace{{Kind: "disk", EntryID: 9, Path: "/lease.pdf"}}, 1
+	}
+	return places, counts, nil
 }
 
-func TestFindAddsFilesOnDisksUnlessTheSearchIsScopedElsewhere(t *testing.T) {
-	ctx := context.Background()
-	found := &disks{}
-	result, err := Find(ctx, emptyReader{}, found, "minecraft", store.SearchOpts{Limit: 20}, library.ListOptions{})
-	if err != nil || len(result.Disks.Entries) != 1 {
-		t.Fatalf("unscoped search: %+v, %v", result.Disks, err)
-	}
-	for name, scoped := range map[string]func() (Result, error){
-		"sender": func() (Result, error) {
-			return Find(ctx, emptyReader{}, found, "minecraft", store.SearchOpts{From: "alice", Limit: 20}, library.ListOptions{})
-		},
-		"kind": func() (Result, error) {
-			return Find(ctx, emptyReader{}, found, "minecraft", store.SearchOpts{Limit: 20}, library.ListOptions{Kind: "movie"})
-		},
-		"date": func() (Result, error) {
-			return Find(ctx, emptyReader{}, found, "minecraft", store.SearchOpts{Limit: 20}, library.ListOptions{Since: "2026-01-01"})
-		},
-	} {
-		if result, err := scoped(); err != nil || len(result.Disks.Entries) != 0 {
-			t.Fatalf("%s-scoped search returned files on disks: %+v, %v", name, result.Disks, err)
+func TestFindRejectsConflictingFilters(t *testing.T) {
+	for _, f := range []search.Filters{{From: "alice", Kind: "movie"}, {Account: "owner", From: "alice"}, {Account: "owner", Kind: "message"}} {
+		if _, err := Find(t.Context(), archive{}, &disks{}, "film", search.All, f, 20, 0); !errors.Is(err, ErrFilters) {
+			t.Errorf("filters %+v: %v, want ErrFilters", f, err)
 		}
 	}
-	if found.calls != 1 {
-		t.Fatalf("the catalogue was searched %d times, want once", found.calls)
-	}
+}
 
+func TestFindLeavesFilesOnDisksOutOfAScopedSearch(t *testing.T) {
+	found := &disks{}
+	if _, err := Find(t.Context(), archive{}, found, "minecraft", search.All, search.Filters{}, 20, 0); err != nil || found.calls != 1 {
+		t.Fatalf("an unscoped search searched the disks %d times: %v", found.calls, err)
+	}
+	for name, f := range map[string]search.Filters{
+		"sender": {From: "alice"}, "kind": {Kind: "movie"}, "source": {Source: "gmail"},
+		"date": {Since: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+	} {
+		found := &disks{}
+		result, err := Find(t.Context(), archive{}, found, "minecraft", search.All, f, 20, 0)
+		if err != nil || found.calls != 0 {
+			t.Errorf("%s-scoped search searched the disks %d times: %v", name, found.calls, err)
+		}
+		if name != "kind" && len(result.Coverage) == 0 {
+			t.Errorf("%s-scoped search does not say what it left out", name)
+		}
+	}
 	failure := errors.New("connection reset")
-	if _, err = Find(ctx, emptyReader{}, &disks{err: failure}, "minecraft", store.SearchOpts{Limit: 20}, library.ListOptions{}); !errors.Is(err, failure) {
+	if _, err := Find(t.Context(), archive{}, &disks{err: failure}, "minecraft", search.All, search.Filters{}, 20, 0); !errors.Is(err, failure) {
 		t.Fatalf("a failing catalogue answered %v", err)
 	}
 }
 
-// One request has one meaning: the match mode that applies to messages and the
-// library applies to files on disks too.
-func TestFindPassesTheMatchModeToTheDisks(t *testing.T) {
-	ctx := context.Background()
-	for match, wantAny := range map[string]bool{"": true, "any": true, "all": false} {
-		found := &disks{}
-		if _, err := Find(ctx, emptyReader{}, found, "minecraft server", store.SearchOpts{Match: match, Limit: 20, Offset: 40}, library.ListOptions{}); err != nil {
-			t.Fatal(err)
-		}
-		if found.got.Any != wantAny || found.got.Query != "minecraft server" || found.got.Limit != 20 || found.got.Offset != 40 {
-			t.Errorf("match %q reached the disks as %+v", match, found.got)
-		}
+// A content found by its text in the archive and by its name on a disk is
+// one hit, ranked above a hit only one list found, with the places of both.
+func TestFindFusesAContentAcrossLists(t *testing.T) {
+	content := search.SearchHit{Kind: search.KindFile, Key: search.ContentKey(5), ContentID: 5}
+	folder := search.SearchHit{Kind: search.KindFile, Key: "entry 3", Title: "lease", Type: "dir"}
+	result, err := Find(t.Context(), archive{texts: search.List{Name: "text", Kind: search.KindFile, Hits: []search.SearchHit{content}, Matches: 1}},
+		&disks{names: search.List{Name: "disk name", Kind: search.KindFile, Hits: []search.SearchHit{folder, content}, Matches: 2}},
+		"lease", search.All, search.Filters{}, 20, 0)
+	if err != nil || len(result.Hits) != 2 {
+		t.Fatalf("hits %+v, %v", result.Hits, err)
 	}
-	found := &disks{}
-	result, err := Find(ctx, emptyReader{}, found, "minecraft server", store.SearchOpts{Match: "phrase", Limit: 20}, library.ListOptions{})
-	if err != nil || found.calls != 0 || !strings.Contains(strings.Join(result.Coverage, " "), "phrase") {
-		t.Fatalf("a phrase search searched the disks %d times, coverage %v, %v", found.calls, result.Coverage, err)
+	hit := result.Hits[0]
+	if hit.ContentID != 5 || hit.Ref != "content:0000000000000005" || hit.Title != "lease.pdf" || hit.PlaceCount != 2 ||
+		!slices.Equal(hit.Matched, []string{"text", "disk name"}) {
+		t.Fatalf("first hit %+v, want the content found by both lists with both places", hit)
+	}
+	if len(result.Counts) != 1 || result.Counts[0] != (search.KindCount{Kind: search.KindFile, Matches: 3}) {
+		t.Fatalf("counts %+v", result.Counts)
+	}
+	if !strings.HasPrefix(result.Hits[1].Key, "entry") {
+		t.Fatalf("second hit %+v, want the folder", result.Hits[1])
 	}
 }

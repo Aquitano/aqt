@@ -242,7 +242,7 @@ func (s *Store) Analyses(ctx context.Context, entryID int64, cited ref.Content) 
 }
 
 func (s *Store) SearchAI(ctx context.Context, o SearchOptions) ([]AIHit, error) {
-	q, err := s.newTextSearch(ctx, o, "a.id", "a.content_id")
+	q, err := s.newTextSearch(o, "a.id", "a.content_id")
 	if err != nil || q == nil {
 		return nil, err
 	}

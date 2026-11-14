@@ -16,7 +16,6 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
 
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/packages/go/pgschema"
 )
 
@@ -60,9 +59,6 @@ func Migrate(ctx context.Context, databaseURL string) error {
 	defer pool.Close()
 	if err := pgschema.Migrate(ctx, pool, migrationLock, Migrations); err != nil {
 		return fmt.Errorf("migrate: %w", err)
-	}
-	if _, err := pool.Exec(ctx, atticstore.RecordTokenizers); err != nil {
-		return fmt.Errorf("record search tokenizers: %w", err)
 	}
 	return migrateRiver(ctx, pool)
 }

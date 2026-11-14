@@ -32,23 +32,16 @@ func (s *Store) MessagesBetween(ctx context.Context, since, until time.Time, lim
 }
 
 // ActivityBetween lists watching, listening, reading and the like that falls
-// in [since, until), oldest first. An instant is compared as one, whatever
-// offset the source wrote; a day without a time falls in the window when
-// that calendar day does. Activity without a date is left out.
+// in [since, until), oldest first. An instant is compared as one; a day
+// without a time falls in the window when that calendar day does. Activity
+// without a date is left out.
 func (s *Store) ActivityBetween(ctx context.Context, since, until time.Time, limit int) ([]Dated, error) {
+	var a args
+	window := occurredBetween("a", since, until, &a)
 	rows, err := s.pool.Query(ctx, `
-		select a.at, a.day_only, a.kind, a.source, a.id, a.title from (
-			select case when a.occurred->>'precision' = 'instant' then (a.occurred->>'value')::timestamptz
-					else (a.occurred->>'value')::date::timestamptz end as at,
-				a.occurred->>'precision' = 'day' as day_only,
-				a.occurred->>'value' as value,
-				a.kind, a.source, a.id, a.title
-			from library_activity a
-			where a.occurred->>'precision' in ('instant', 'day')) a
-		where case when a.day_only then a.value::date >= $3::date and a.value::date < $4::date
-			else a.at >= $1 and a.at < $2 end
-		order by a.at, a.id limit $5`,
-		since, until, since.Format(time.DateOnly), until.Format(time.DateOnly), limit)
+		select a.occurred_at, a.occurred_precision = 'day', a.kind, a.source, a.id, a.title
+		from library_activity a where true`+window+`
+		order by a.occurred_at, a.id limit `+a.next(limit), a...)
 	if err != nil {
 		return nil, err
 	}

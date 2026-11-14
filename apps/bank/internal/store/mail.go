@@ -121,16 +121,16 @@ func (s *Store) validateMailbox(ctx context.Context, source string, id int64) er
 
 var ErrMailboxSource = fmt.Errorf("mailbox does not belong to the selected source")
 
-func mailPredicates(mailboxID int64, subject string, hasAttachment *bool, next func(any) string) string {
+func mailPredicates(m string, mailboxID int64, subject string, hasAttachment *bool, next func(any) string) string {
 	query := ""
 	if mailboxID != 0 {
-		query += " and exists(select 1 from mailbox_messages membership where membership.message_id=m.id and membership.mailbox_id=" + next(mailboxID) + ")"
+		query += " and exists(select 1 from mailbox_messages membership where membership.message_id=" + m + ".id and membership.mailbox_id=" + next(mailboxID) + ")"
 	}
 	if subject != "" {
-		query += " and strpos(lower(m.subject),lower(" + next(subject) + ")) > 0"
+		query += " and strpos(lower(" + m + ".subject),lower(" + next(subject) + ")) > 0"
 	}
 	if hasAttachment != nil {
-		query += " and exists(select 1 from attachments attachment where attachment.message_id=m.id) = " + next(*hasAttachment)
+		query += " and exists(select 1 from attachments attachment where attachment.message_id=" + m + ".id) = " + next(*hasAttachment)
 	}
 	return query
 }

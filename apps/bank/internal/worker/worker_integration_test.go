@@ -172,8 +172,8 @@ func TestNeedsOCRWaitsForTheOCRQueue(t *testing.T) {
 	if got := a.status(t, scan); got != string(extract.StatusOK) {
 		t.Fatalf("scan is %s after OCR", got)
 	}
-	if n := pgschematest.QueryInt(t, a.dsn, `select count(*) from messages where attachment_text = 'rosings parsonage'`); n != 1 {
-		t.Fatal("the message does not search the OCR text")
+	if n := pgschematest.QueryInt(t, a.dsn, `select count(*) from texts where content_id @@@ paradedb.match('text', 'parsonage')`); n != 1 {
+		t.Fatal("the OCR text is not searchable")
 	}
 }
 

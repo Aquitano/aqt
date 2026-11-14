@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -54,20 +55,14 @@ func TestRefIsStableAndAddressable(t *testing.T) {
 	}
 
 	t.Run("mail hashes its message-id", func(t *testing.T) {
-		msgs, err := st.Search(ctx, "quarterly", store.SearchOpts{Limit: 20, Fuzzy: 0, Source: "gmail"})
-		if err != nil {
-			t.Fatal(err)
-		}
+		msgs := storetest.Messages(t, st, "quarterly", search.Filters{Source: "gmail"})
 		if len(msgs) != 1 || msgs[0].Ref != goldenMailRef {
 			t.Fatalf("search = %+v, want ref %s", msgs, goldenMailRef)
 		}
 	})
 
 	t.Run("every read carries the ref", func(t *testing.T) {
-		msgs, err := st.Search(ctx, "quarterly", store.SearchOpts{Limit: 20, Fuzzy: 0, Source: goldenSource})
-		if err != nil {
-			t.Fatal(err)
-		}
+		msgs := storetest.Messages(t, st, "quarterly", search.Filters{Source: goldenSource})
 		if len(msgs) != 1 || msgs[0].Ref != goldenRef {
 			t.Fatalf("search = %+v", msgs)
 		}

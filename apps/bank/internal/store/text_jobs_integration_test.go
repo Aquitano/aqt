@@ -63,8 +63,8 @@ func TestARolledBackImportLeavesNoJob(t *testing.T) {
 	}
 }
 
-// Text a disk scan already read is the message's at once, and nothing queues
-// the content again.
+// Text a disk scan already read is not queued again when a message attaches
+// the same content.
 func TestContentAlreadyReadQueuesNothing(t *testing.T) {
 	ctx := context.Background()
 	st, dsn := storetest.NewNamed(t)
@@ -77,8 +77,5 @@ func TestContentAlreadyReadQueuesNothing(t *testing.T) {
 	}
 	if n := pgschematest.QueryInt(t, dsn, `select count(*) from river_job`); n != 0 {
 		t.Fatalf("%d jobs for content that has text", n)
-	}
-	if n := pgschematest.QueryInt(t, dsn, `select count(*) from messages where attachment_text = 'pemberley lease'`); n != 1 {
-		t.Fatal("the message does not search the text its attachment already had")
 	}
 }

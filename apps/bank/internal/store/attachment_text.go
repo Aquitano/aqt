@@ -19,16 +19,6 @@ import (
 // it lets one filter cover "never tried" and "tried, retry it".
 const StatusPending = "pending"
 
-// MaxAttachmentTextChars bounds the denormalized per-message text. A message
-// carrying a hundred scanned pages should still index, but a single row is
-// not the place to keep a book.
-//
-// It is applied as bytes in Go and as characters in SQL (left() counts
-// characters). Both bound the same thing from the same side — a byte count is
-// never below the character count — so the Go side is the conservative one and
-// the difference is not worth a second constant.
-const MaxAttachmentTextChars = 4 << 20
-
 // BlobText is the text read from one content, keyed by its digest.
 type BlobText struct {
 	BLAKE3      content.Digest `json:"blake3"`
@@ -128,8 +118,7 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 }
 
 // PutBlobText records one extraction outcome for a content the archive or a
-// disk scan already knows, and the messages carrying it search the new text.
-// Text over extract.MaxChars is cut, and ok text becomes truncated. Only
+// disk scan already knows. Text over extract.MaxChars is cut, and ok text becomes truncated. Only
 // manual text replaces manual text. needs_ocr queues an OCR job.
 func (s *Store) PutBlobText(ctx context.Context, bt BlobText) error {
 	if bt.BLAKE3.IsZero() || bt.Status == "" {
@@ -158,12 +147,12 @@ func (s *Store) PutBlobText(ctx context.Context, bt BlobText) error {
 	})
 }
 
-// changeText runs write on the content's text and refreshes the messages
-// carrying it, all in one transaction that holds the contents row. Writing
-// attachments takes the same row in share mode before it looks for text, so
-// whichever transaction commits second sees the other's rows: a message
-// attached while its text is being stored cannot miss it. Bytes the archive
-// has never seen have no row, and nothing is written for them.
+// changeText runs write on the content's text in a transaction that holds the
+// contents row. Writing attachments takes the same row in share mode before
+// it looks for text, so whichever transaction commits second sees the other's
+// rows: an attachment written while its text is cleared queues the job that
+// reads it again. Bytes the archive has never seen have no row, and nothing is
+// written for them.
 func (s *Store) changeText(ctx context.Context, d content.Digest, write func(pgx.Tx, int64) error) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var id int64
@@ -174,10 +163,7 @@ func (s *Store) changeText(ctx context.Context, d content.Digest, write func(pgx
 		if err != nil {
 			return err
 		}
-		if err := write(tx, id); err != nil {
-			return err
-		}
-		return refreshAttachmentText(ctx, tx, messagesCarrying, id)
+		return write(tx, id)
 	})
 }
 
@@ -257,18 +243,6 @@ func (s *Store) TextSubject(ctx context.Context, contentID int64) (TextSubject, 
 	return t, err
 }
 
-// RefreshContentText recomputes the searchable text of the messages carrying
-// the content. A text job calls it when it finds the content already read,
-// such as by a disk scan, which writes text without touching messages.
-func (s *Store) RefreshContentText(ctx context.Context, contentID int64) error {
-	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `select from contents where id = $1 for no key update`, contentID); err != nil {
-			return err
-		}
-		return refreshAttachmentText(ctx, tx, messagesCarrying, contentID)
-	})
-}
-
 // queueText takes the contents rows that rows just written in tx name, in
 // share mode (see changeText), and queues a text job for each content nothing
 // has read yet and an OCR job for each that waits for OCR. A content already
@@ -311,33 +285,6 @@ func (s *Store) KnownAttachment(ctx context.Context, d content.Digest) (bool, er
 		exists (select 1 from attachments a where a.content_id = c.id) or
 		exists (select 1 from library_files f where f.content_id = c.id)))`, d).Scan(&exists)
 	return exists, err
-}
-
-// Message scopes for refreshAttachmentText, selecting with its $2.
-const (
-	messagesIn       = `select unnest($2::bigint[])`
-	messagesCarrying = `select message_id from attachments where content_id = $2`
-)
-
-// refreshAttachmentText recomputes the denormalized column for the messages
-// scope selects whose attachments' text no longer matches it. Every writer of
-// attachments or text calls it in its own transaction, so there is no trigger
-// and no archive-wide pass.
-func refreshAttachmentText(ctx context.Context, tx pgx.Tx, scope string, arg any) error {
-	_, err := tx.Exec(ctx, `
-		update messages m
-		set attachment_text = c.txt
-		from (
-			select a.message_id,
-			       left(coalesce(string_agg(t.text, ' ' order by a.position), ''), $1) as txt
-			from attachments a
-			left join texts t on t.content_id = a.content_id and t.text <> ''
-			where a.message_id in (`+scope+`)
-			group by a.message_id
-		) c
-		where c.message_id = m.id and m.attachment_text is distinct from c.txt`,
-		MaxAttachmentTextChars, arg)
-	return err
 }
 
 // ExtractionStat is one status and how much content sits in it.

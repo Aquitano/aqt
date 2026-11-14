@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
@@ -113,20 +114,28 @@ func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 	if err != nil || len(snapshots) != 2 {
 		t.Fatalf("snapshot history: %+v %v", snapshots, err)
 	}
-	// What the upload's text job stores; receipt.txt matches by its text alone.
+	// What the upload's text job stores. receipt.txt and invoice.txt hold the
+	// same bytes, so they are one file hit with two places.
 	if err = s.db.PutBlobText(ctx, store.BlobText{BLAKE3: files[0].BLAKE3, Text: "Invoice evidence for the library", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "invoice", Page: paged(20, 0)}})
-	if err != nil || len(result.Messages) != 1 || len(result.Items) != 1 || len(result.Files) != 2 || len(result.Collections) != 1 {
+	kinds := func(result catalog.Result) map[string]int {
+		n := map[string]int{}
+		for _, h := range result.Hits {
+			n[h.Kind]++
+		}
+		return n
+	}
+	result, err := client.Call(ctx, c, Search, SearchInput{Q: "invoice", Page: paged(20, 0)})
+	if found := kinds(result); err != nil || found["message"] != 1 || found["item"] != 1 || found["file"] != 1 || found["collection"] != 1 || result.Hits[0].PlaceCount != 2 {
 		t.Fatalf("combined search: %+v %v", result, err)
 	}
-	result, err = client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "scan.pdf", Kind: "file", Page: paged(20, 0)}})
-	if err != nil || len(result.Attachments) != 1 {
+	result, err = client.Call(ctx, c, Search, SearchInput{Q: "scan.pdf", Kind: "file", Page: paged(20, 0)})
+	if found := kinds(result); err != nil || found["file"] != 1 || len(result.Hits) != 1 {
 		t.Fatalf("existing attachment name: %+v %v", result, err)
 	}
-	result, err = client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "invoice", Page: paged(20, 0)}, From: "alice@example.com"})
-	if err != nil || len(result.Messages) != 1 || len(result.Items) != 0 {
+	result, err = client.Call(ctx, c, Search, SearchInput{Q: "invoice", Page: paged(20, 0), From: "alice@example.com"})
+	if found := kinds(result); err != nil || found["message"] != 1 || found["item"] != 0 {
 		t.Fatalf("mail-specific filter: %+v %v", result, err)
 	}
 }
@@ -172,16 +181,16 @@ func TestLibraryRemoteImportsAndMarkdownRetraction(t *testing.T) {
 	if raw = publish(); raw.Report.Library.Pages != 1 {
 		t.Fatalf("publication: %+v", raw)
 	}
-	found, err := client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "violet telescope", Page: paged(20, 0)}})
-	if err != nil || len(found.Pages) != 1 {
+	found, err := client.Call(ctx, c, Search, SearchInput{Q: "violet telescope", Kind: "page", Page: paged(20, 0)})
+	if err != nil || len(found.Hits) != 1 {
 		t.Fatalf("Markdown answers: %+v %v", found, err)
 	}
 	if err = os.WriteFile(path, []byte("---\ntitle: Film notes\nsensitivity: confidential\n---\nPrivate.\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	publish()
-	found, err = client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "violet telescope", Page: paged(20, 0)}})
-	if err != nil || len(found.Pages) != 0 {
+	found, err = client.Call(ctx, c, Search, SearchInput{Q: "violet telescope", Kind: "page", Page: paged(20, 0)})
+	if err != nil || len(found.Hits) != 0 {
 		t.Fatalf("revoked page is still searchable: %+v %v", found, err)
 	}
 }

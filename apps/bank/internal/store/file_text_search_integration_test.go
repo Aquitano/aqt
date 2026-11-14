@@ -36,8 +36,8 @@ func TestFileSearchMatchesNameOrTextInEveryMode(t *testing.T) {
 		attachments int
 	}{
 		{"any", "payment", 1}, {"any", "nothing", 0},
-		{"all", "invoice payment", 1}, {"all", "invoice nothing", 0},
-		{"phrase", "due on the", 1}, {"phrase", "the due", 0},
+		{"all", "payment due", 1}, {"all", "invoice nothing", 0},
+		{"all", `"due on the"`, 1}, {"all", `"the due"`, 0},
 	} {
 		matches, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Match: test.mode, Query: test.query})
 		if err != nil || len(matches) != test.attachments {
@@ -51,7 +51,7 @@ func TestFileSearchMatchesNameOrTextInEveryMode(t *testing.T) {
 		mode, query string
 		files       int
 	}{
-		{"any", "muller", 1}, {"all", "report quarterly", 1}, {"all", "report payment", 0}, {"phrase", "quarterly review", 1},
+		{"any", "muller", 1}, {"all", "review quarterly", 1}, {"all", "report payment", 0}, {"all", `"quarterly review"`, 1},
 	} {
 		files, err := st.ListLibraryFiles(ctx, library.ListOptions{Match: test.mode, Query: test.query})
 		if err != nil || len(files) != test.files {

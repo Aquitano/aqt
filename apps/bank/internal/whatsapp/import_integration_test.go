@@ -10,6 +10,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/importtest"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -72,9 +73,8 @@ func TestDirectoryExportReplaysWithItsMedia(t *testing.T) {
 			if len(replayed) != 1 || replayed[0].Report.Inserted != 2 || replayed[0].Report.Attachments != 1 {
 				t.Fatalf("replay: %+v", replayed)
 			}
-			hits, err := st.Search(context.Background(), "see", store.SearchOpts{Limit: 10})
-			if err != nil || len(hits) != 1 || hits[0].ThreadID != "Alice" {
-				t.Fatalf("thread after replay: %+v %v", hits, err)
+			if hits := storetest.Messages(t, st, "see", search.Filters{}); len(hits) != 1 || hits[0].ThreadID != "Alice" {
+				t.Fatalf("thread after replay: %+v", hits)
 			}
 		})
 	}
@@ -135,9 +135,8 @@ func TestZipExportStaysInsideTheArchive(t *testing.T) {
 	if got.Report.Attachments != 1 {
 		t.Fatalf("zip media not imported: %+v", got)
 	}
-	hits, err := st.Search(ctx, "see", store.SearchOpts{Limit: 10})
-	if err != nil || len(hits) != 1 {
-		t.Fatalf("search: %+v %v", hits, err)
+	if hits := storetest.Messages(t, st, "see", search.Filters{}); len(hits) != 1 {
+		t.Fatalf("search: %+v", hits)
 	}
 	thread, err := st.GetThreadPage(ctx, "whatsapp", "Alice", store.ThreadOpts{Limit: 10})
 	if err != nil {

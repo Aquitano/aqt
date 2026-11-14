@@ -12,9 +12,11 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 var testDigest = content.Sum([]byte("scan.pdf"))
@@ -69,12 +71,12 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 		t.Fatalf("put: %d %s", w.Code, w.Body)
 	}
 
-	msgs, err := st.Search(context.Background(), "chatsworth", store.SearchOpts{Fuzzy: 0, Limit: 10})
+	q, err := search.Parse("chatsworth", search.All)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(msgs) != 1 {
-		t.Fatalf("found %d messages by text posted over HTTP, want 1", len(msgs))
+	if found, err := st.SearchTexts(context.Background(), q, search.Filters{}, 10); err != nil || len(found.Hits) != 1 {
+		t.Fatalf("found %+v, %v by text posted over HTTP, want its content", found.Hits, err)
 	}
 
 	w = authed(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", "")
@@ -134,7 +136,7 @@ func TestAttachmentTextRejectsAnInvalidStatus(t *testing.T) {
 // transcription is the one kind of text nothing here can produce again.
 func TestAttachmentTextRejectsOversizedBody(t *testing.T) {
 	s, _ := attachmentServer(t)
-	body := strings.Repeat("a", store.MaxAttachmentTextChars+1)
+	body := strings.Repeat("a", extract.MaxChars+1)
 	if w := authed(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text", body); w.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("put oversized text: %d, want 422", w.Code)
 	}

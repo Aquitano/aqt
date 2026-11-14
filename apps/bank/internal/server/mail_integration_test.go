@@ -46,7 +46,7 @@ func TestMailboxObservationsAndThreadConflictHTTP(t *testing.T) {
 		t.Fatalf("mailboxes: %+v %v", mailboxes, err)
 	}
 	importMail("child.eml", child, `{"source": "mail"}`)
-	groups, err := client.Call(ctx, remote, ListThreads, ListThreadsInput{Source: "mail", MailboxID: mailboxes[0].ID, Subject: "invoice", Page: httpapi.Page{PageSize: httpapi.PageSize{Limit: 10}}})
+	groups, err := client.Call(ctx, remote, ListThreads, ListThreadsInput{Source: "mail", MailboxID: mailboxes[0].ID, Subject: "invoice", PageSize: httpapi.PageSize{Limit: 10}})
 	if err != nil || len(groups) != 1 || groups[0].Count != 1 {
 		t.Fatalf("filtered groups: %+v %v", groups, err)
 	}

@@ -68,7 +68,7 @@ func TestCollectionBrowsingUsesPagedSummariesAndScopedDetails(t *testing.T) {
 	if _, err = client.Call(ctx, c, GetLibraryCollectionSnapshot, SnapshotInput{ID: other.ID, SnapshotID: page[0].ID}); err == nil {
 		t.Fatal("snapshot detail crossed collection boundary")
 	}
-	full, err := decoded[[]library.Collection](client.Call(ctx, c, ListLibraryCollections, LibraryCollectionsInput{LibraryFilters: LibraryFilters{Q: "Summary collection", Match: "phrase", Page: paged(100, 0)}, Projection: "full"}))
+	full, err := decoded[[]library.Collection](client.Call(ctx, c, ListLibraryCollections, LibraryCollectionsInput{LibraryFilters: LibraryFilters{Q: `"Summary collection"`, Page: paged(100, 0)}, Projection: "full"}))
 	if err != nil || len(full) != 1 || full[0].Snapshot == nil || len(full[0].Snapshot.Entries) != 2 {
 		t.Fatalf("full list interface lost entries: %+v %v", full, err)
 	}

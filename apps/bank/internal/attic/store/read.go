@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
@@ -187,7 +186,7 @@ type SearchOptions struct {
 // with no text lists whatever the filters select, in path order. Pieces with
 // no indexed terms are ignored; if none remain, the query matches nothing.
 func (s *Store) Search(ctx context.Context, o SearchOptions) ([]Hit, error) {
-	q, err := s.newSearch(ctx, o, "e")
+	q, err := s.newSearch(o, "e")
 	if err != nil {
 		return nil, err
 	}
@@ -225,10 +224,9 @@ type InvalidSearchError struct {
 
 func (e *InvalidSearchError) Error() string { return e.Reason }
 
-func (s *Store) newSearch(ctx context.Context, o SearchOptions, alias string) (*search, error) {
-	words := strings.Fields(o.Query)
+func (s *Store) newSearch(o SearchOptions, alias string) (*search, error) {
 	switch {
-	case len(words) == 0 && o.VolumeID == "" && o.Ext == "" && o.Kind == "" && o.Under == "":
+	case strings.TrimSpace(o.Query) == "" && o.VolumeID == "" && o.Ext == "" && o.Kind == "" && o.Under == "":
 		return nil, &InvalidSearchError{"search needs words or a filter"}
 	case o.Under != "" && o.VolumeID == "":
 		return nil, &InvalidSearchError{"--under needs a volume"}
@@ -236,21 +234,22 @@ func (s *Store) newSearch(ctx context.Context, o SearchOptions, alias string) (*
 	if err := page.Check(page.Limit(o.Limit), o.Offset); err != nil {
 		return nil, err
 	}
-	words, err := s.searchWords(ctx, words, true)
-	if err != nil {
-		return nil, err
-	}
 	q := &search{score: "0::real", ties: alias + `.path collate "C", ` + alias + ".id"}
 	q.order = q.ties
-	if len(words) == 0 && strings.TrimSpace(o.Query) != "" {
-		q.where = append(q.where, "false")
-	}
-	if len(words) > 0 {
-		q.where = append(q.where, alias+".id @@@ "+searchPredicate(words, o.Any, q.next))
-		q.score = "paradedb.score(" + alias + ".id)"
-		// ID tie-breaking lets ParadeDB select the page inside the index.
-		q.ties = alias + ".id"
-		q.order = q.score + " desc, " + q.ties
+	if strings.TrimSpace(o.Query) != "" {
+		parsed, ok, err := parseQuery(o)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			q.where = append(q.where, "false")
+		} else {
+			q.where = append(q.where, alias+".id @@@ "+parsed.Clause(nameFields, q.next))
+			q.score = "paradedb.score(" + alias + ".id)"
+			// ID tie-breaking lets ParadeDB select the page inside the index.
+			q.ties = alias + ".id"
+			q.order = q.score + " desc, " + q.ties
+		}
 	}
 	if o.Kind != "" {
 		q.where = append(q.where, alias+".kind = "+q.next(o.Kind))
@@ -286,7 +285,7 @@ type MemberHit struct {
 // Search. The volume and the folder filter where the archive lives; a folder
 // that is the archive itself selects its members.
 func (s *Store) SearchMembers(ctx context.Context, o SearchOptions) ([]MemberHit, error) {
-	q, err := s.newSearch(ctx, o, "m")
+	q, err := s.newSearch(o, "m")
 	if err != nil {
 		return nil, err
 	}
@@ -324,25 +323,6 @@ func (s *Store) SearchMembers(ctx context.Context, o SearchOptions) ([]MemberHit
 		hits[i].Archive = places[id]
 	}
 	return hits, nil
-}
-
-// searchPredicate builds one clause per word: the word as a name token
-// (weighted 3), as a path token, or, from three characters, as a fragment of
-// the name, where every trigram must be present.
-func searchPredicate(words []string, any bool, next func(any) string) string {
-	clauses := make([]string, 0, len(words))
-	for _, w := range words {
-		p := next(w)
-		parts := []string{
-			"paradedb.boost(3, paradedb.match('name', " + p + "))",
-			"paradedb.match('path', " + p + ")",
-		}
-		if utf8.RuneCountInString(w) >= 3 {
-			parts = append(parts, "paradedb.match('name_ngram', "+p+", conjunction_mode => true)")
-		}
-		clauses = append(clauses, "paradedb.boolean(should => array["+strings.Join(parts, ", ")+"])")
-	}
-	return searchBoolean(clauses, any)
 }
 
 // EntryDetail is everything known about one entry, plus the other places its

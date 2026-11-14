@@ -44,6 +44,9 @@ func (s *Store) SetLibraryState(ctx context.Context, id string, edit library.Sta
 	if _, err = tx.Exec(ctx, `insert into library_state_edits(item_id,revision,state) values($1,$2,$3)`, id, state.Revision, state); err != nil {
 		return library.State{}, err
 	}
+	if _, err = tx.Exec(ctx, `update library_items set state_notes=$2,state_tags=$3 where id=$1`, id, state.Notes, state.Tags); err != nil {
+		return library.State{}, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return library.State{}, err
 	}
@@ -102,7 +105,7 @@ func (s *Store) CreateLibraryCollection(ctx context.Context, value library.Colle
 		return library.Collection{}, err
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
-	tag, err := tx.Exec(ctx, `insert into library_collections(id,source,account,external_id,kind,title,description,personal,revision,search_text) values($1,$2,$3,$4,$5,$6,$7,true,1,$8) on conflict do nothing`, id, value.Source, value.Account, value.ExternalID, value.Kind, value.Title, value.Description, value.Title+" "+value.Description)
+	tag, err := tx.Exec(ctx, `insert into library_collections(id,source,account,external_id,kind,title,description,personal,revision) values($1,$2,$3,$4,$5,$6,$7,true,1) on conflict do nothing`, id, value.Source, value.Account, value.ExternalID, value.Kind, value.Title, value.Description)
 	if err != nil {
 		return library.Collection{}, err
 	}
@@ -134,7 +137,7 @@ func (s *Store) EditLibraryCollection(ctx context.Context, id string, edit libra
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
 	var raw []byte
-	err = tx.QueryRow(ctx, `select to_jsonb(r)-'search_text' from library_collections r where id=$1 for update`, id).Scan(&raw)
+	err = tx.QueryRow(ctx, `select to_jsonb(r)-'seq' from library_collections r where id=$1 for update`, id).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return value, ErrNotFound
 	}
@@ -153,7 +156,7 @@ func (s *Store) EditLibraryCollection(ctx context.Context, id string, edit libra
 	value.Revision++
 	value.Title = edit.Title
 	value.Description = edit.Description
-	if _, err = tx.Exec(ctx, `update library_collections set revision=$2,title=$3,description=$4,search_text=$5 where id=$1`, id, value.Revision, value.Title, value.Description, value.Title+" "+value.Description); err != nil {
+	if _, err = tx.Exec(ctx, `update library_collections set revision=$2,title=$3,description=$4 where id=$1`, id, value.Revision, value.Title, value.Description); err != nil {
 		return library.Collection{}, err
 	}
 	snapshot, err := writeLibraryCollectionEdit(ctx, tx, id, value.Revision, edit)
@@ -168,7 +171,7 @@ func (s *Store) EditLibraryCollection(ctx context.Context, id string, edit libra
 }
 
 func writeLibraryCollectionEdit(ctx context.Context, tx pgx.Tx, id string, revision int64, edit library.CollectionEdit) (library.Snapshot, error) {
-	snapshot := library.Snapshot{ExternalID: fmt.Sprintf("revision:%d", revision), Captured: library.Date{Precision: "instant", Value: time.Now().UTC().Format(time.RFC3339Nano)}, Completeness: "complete", Entries: edit.Entries}
+	snapshot := library.Snapshot{ExternalID: fmt.Sprintf("revision:%d", revision), Captured: libraryDate(library.Date{Precision: "instant", Value: time.Now().UTC().Format(time.RFC3339Nano)}), Completeness: "complete", Entries: edit.Entries}
 	if snapshot.Entries == nil {
 		snapshot.Entries = []library.Entry{}
 	}

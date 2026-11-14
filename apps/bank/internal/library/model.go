@@ -263,8 +263,8 @@ func (d Date) Validate() error {
 }
 
 func (o ListOptions) Validate() error {
-	if !in(o.Match, "", "any", "all", "phrase") {
-		return fail.Invalidf("match must be any, all or phrase")
+	if !in(o.Match, "", "all", "any") {
+		return fail.Invalidf("match must be all or any")
 	}
 	if !in(o.Kind, "", "message", "item", "activity", "collection", "file", "page", "video", "movie", "series", "episode", "track", "album", "podcast", "book", "article", "other", "watch", "listen", "read", "play", "view", "purchase", "playlist", "library", "watchlist", "list") {
 		return fail.Invalidf("unsupported kind %q", o.Kind)

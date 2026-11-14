@@ -16,6 +16,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -24,16 +25,19 @@ var errRevisionConflict = httpapi.Kind{Tag: "LibraryRevisionConflict", Status: h
 	Extra: map[string]reflect.Type{"code": reflect.TypeFor[string]()}}
 
 var Search = httpapi.Op[SearchInput, catalog.Result]{Operation: httpapi.Operation{ID: "search", Method: http.MethodGet, Path: "/v1/search", Tag: "search",
-	Summary: "Search messages, the media library, attachments and files on disks at once",
-	Description: "q is required, and match means the same for every kind of record: any word (the default), " +
-		"every word, or a phrase. Files on disks have no phrase match and are left out of a phrase search. " +
-		"Messages are ranked by relevance; library groups are sorted by title or date. kind narrows the search " +
-		"to one group (message, item, activity, collection, file, page) or to one kind inside a group; file " +
-		"covers library files, attachments and files on disks. from, to, person, subject, mailbox_id and " +
-		"has_attachment restrict the search to messages, and cannot be combined with a kind other than message " +
-		"or with account. since and until take YYYY-MM-DD here. limit and offset apply to each group on its " +
-		"own. coverage says what the result does not prove: an absent activity, for one, is not evidence that " +
-		"something was not watched, because only imported records are searched.",
+	Summary: "Search messages, the media library, attachments and files on disks at once, as one ranked list",
+	Description: "q is words and \"quoted phrases\", read the same way for every kind of record. Every word and " +
+		"phrase must match (match all, the default) or any of them (match any). A word of five or more " +
+		"characters tolerates a typo, nine or more two; a shorter or quoted word must match exactly. Letters " +
+		"match with or without accents. Each kind ranks its own matches, and the hits are merged by " +
+		"reciprocal rank fusion into one list; limit and offset page that list. A file is one hit with its " +
+		"places, whether it is attached to messages, kept in the library or on a disk. A hit carries a " +
+		"snippet, never a whole body: open it by its ref. counts says how many records of each kind match. " +
+		"kind narrows the search to one kind (message, item, activity, collection, file, page) or to one " +
+		"kind of library record; file covers attachments, library files and files on disks. thread, from, " +
+		"to, person, subject, mailbox_id and has_attachment restrict the search to messages and the files " +
+		"attached to them, and cannot be combined with account or a kind other than message or file. " +
+		"coverage says what the result leaves out or does not prove.",
 }}
 
 // registerSearchAPI serves the one search over every kind of record.
@@ -247,7 +251,7 @@ func libraryList[T any](v []T, err error) (*httpapi.Body[[]T], error) {
 // struct only when its type is.
 type LibraryFilters struct {
 	Q       string `query:"q" doc:"Words to find, at most 4096 bytes."`
-	Match   string `query:"match" enum:"any,all,phrase" doc:"any word (the default), every word, or the words adjacent and in order."`
+	Match   string `query:"match" enum:"all,any" doc:"Every word and quoted phrase in q (all, the default), or any of them."`
 	Source  string `query:"source" doc:"Only records from this source, such as netflix, youtube-media or manual."`
 	Account string `query:"account" doc:"Only records of this account at the source."`
 	Kind    string `query:"kind" enum:"message,item,activity,collection,file,page,video,movie,series,episode,track,album,podcast,book,article,other,watch,listen,read,play,view,purchase,playlist,library,watchlist,list" doc:"Only this kind. Items are video, movie, series, episode, track, album, podcast, book, article or other; activity is watch, listen, read, play, view, purchase or other; collections are playlist, library, watchlist or list. The searches also take a group: item, activity, collection, file, page, and message in the combined search."`
@@ -268,34 +272,43 @@ type LibraryIDInput struct {
 }
 
 type SearchInput struct {
-	LibraryFilters
-	From          string `query:"from" doc:"Message sender contains this, ignoring case."`
-	To            string `query:"to" doc:"A message recipient contains this, ignoring case."`
-	Person        string `query:"person" doc:"Messages sent or received by this contact, by name."`
+	Q             string `query:"q" required:"true" doc:"Words and \"quoted phrases\", at most 4096 bytes."`
+	Match         string `query:"match" enum:"all,any" doc:"Every word and phrase (all, the default), or any of them."`
+	Kind          string `query:"kind" enum:"message,item,activity,collection,file,page,video,movie,series,episode,track,album,podcast,book,article,other,watch,listen,read,play,view,purchase,playlist,library,watchlist,list" doc:"Only this kind of hit, or this kind of library record."`
+	Source        string `query:"source" doc:"Only records from this source. Files on disks have none and are left out."`
+	Account       string `query:"account" doc:"Only library records of this account at the source."`
+	Since         string `query:"since" doc:"Only messages and activity on or after this day (YYYY-MM-DD) or instant (RFC 3339). Undated kinds are left out."`
+	Until         string `query:"until" doc:"Only messages and activity before this day or instant."`
+	Thread        string `query:"thread" doc:"Only messages in this thread."`
+	From          string `query:"from" doc:"Message sender has these words, ignoring case and accents."`
+	To            string `query:"to" doc:"A message recipient has these words, ignoring case and accents."`
+	Person        string `query:"person" doc:"Messages sent or received by this contact, by name, through any of its aliases."`
 	Subject       string `query:"subject" doc:"Message subject contains this, ignoring case."`
-	Fuzzy         int    `query:"fuzzy" default:"1" minimum:"0" maximum:"2" doc:"Typos tolerated per word in messages."`
 	MailboxID     int64  `query:"mailbox_id" minimum:"1" doc:"Only this mail folder. Needs source."`
 	HasAttachment string `query:"has_attachment" enum:"true,false" doc:"Only messages with, or without, attachments."`
+	httpapi.Page
 }
 
 func (s *Server) search(ctx context.Context, in *SearchInput) (*httpapi.Body[catalog.Result], error) {
-	o, err := in.options()
-	if err != nil {
-		return nil, httpapi.Invalid.New(err.Error())
-	}
-	messages := store.SearchOpts{Source: o.Source, From: in.From, To: in.To, Person: in.Person, Subject: in.Subject,
-		Match: in.Match, Fuzzy: in.Fuzzy, Limit: o.Limit, Offset: o.Offset, MailboxID: in.MailboxID}
+	f := search.Filters{Kind: in.Kind, Source: in.Source, Account: in.Account, Thread: in.Thread, From: in.From,
+		To: in.To, Person: in.Person, Subject: in.Subject, MailboxID: in.MailboxID}
 	if in.HasAttachment != "" {
 		has := in.HasAttachment == "true"
-		messages.HasAttachment = &has
+		f.HasAttachment = &has
 	}
-	if messages.Since, err = parseDate(in.Since); err != nil {
-		return nil, failure(err)
+	var err error
+	for _, boundary := range []struct {
+		value string
+		at    *time.Time
+	}{{in.Since, &f.Since}, {in.Until, &f.Until}} {
+		if boundary.value == "" {
+			continue
+		}
+		if *boundary.at, err = store.ParseBoundary(boundary.value); err != nil {
+			return nil, httpapi.Invalid.New(err.Error())
+		}
 	}
-	if messages.Until, err = parseDate(in.Until); err != nil {
-		return nil, failure(err)
-	}
-	return libraryReply(catalog.Find(ctx, s.read, s.catalogue, o.Query, messages, o))
+	return libraryReply(catalog.Find(ctx, s.read, s.catalogue, in.Q, search.Mode(in.Match), f, in.Limit, in.Offset))
 }
 
 func (s *Server) libraryItems(ctx context.Context, in *LibraryFilters) (*httpapi.Body[[]library.Item], error) {

@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -82,29 +83,47 @@ func TestThreadPagesAcrossEqualTimestamps(t *testing.T) {
 	}
 }
 
-func TestBrowseKeepsUntitledMessagesSeparate(t *testing.T) {
+// Browse pages by keyset: each page continues after the previous page's last
+// thread, so no thread repeats or is skipped, even when a thread's messages
+// straddle the page boundary. A message without a thread is its own group.
+func TestBrowsePagesEveryThreadOnce(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
-	for i, thread := range []string{"", "", "same", "same", "msg:1"} {
-		if _, err := st.InsertMessage(ctx, msg("chat", fmt.Sprint(i), store.Message{ThreadID: thread, Body: "hello"})); err != nil {
+	start := time.Date(2024, 5, 1, 0, 0, 0, 0, time.UTC)
+	threads := []string{"", "a", "b", "", "a", "c", "b", "msg:1", "a", "", "d", "c"}
+	for i, thread := range threads {
+		if _, err := st.InsertMessage(ctx, msg("chat", fmt.Sprint(i), store.Message{ThreadID: thread, Body: "hello",
+			SentAt: start.Add(time.Duration(i) * time.Minute)})); err != nil {
 			t.Fatal(err)
 		}
 	}
-	seen := map[string]bool{}
-	for offset := 0; offset < 4; offset += 2 {
-		groups, err := st.BrowseThreads(ctx, store.BrowseOpts{Limit: 2, Offset: offset})
+	var order []string
+	counts := map[string]int64{}
+	var after ref.Message
+	for range len(threads) {
+		groups, err := st.BrowseThreads(ctx, store.BrowseOpts{Limit: 2, After: after})
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, g := range groups {
-			if seen[g.LastRef] {
-				t.Fatal("repeated browse group")
-			}
-			seen[g.LastRef] = true
+		if len(groups) == 0 {
+			break
 		}
+		for _, g := range groups {
+			key := cmp.Or(g.ThreadID, g.LastRef)
+			if _, seen := counts[key]; seen {
+				t.Fatalf("thread %s repeated", key)
+			}
+			order, counts[key] = append(order, key), g.Count
+		}
+		after = messageRef(t, groups[len(groups)-1].LastRef)
 	}
-	if len(seen) != 4 {
-		t.Fatalf("groups=%v", seen)
+	// Newest last message first: c (11), d (10), the untitled 9, a (8),
+	// msg:1 (7), b (6), the untitled 3 and 0.
+	if len(order) != 8 || order[0] != "c" || order[1] != "d" || order[3] != "a" || order[5] != "b" {
+		t.Fatalf("threads in order %q", order)
+	}
+	if counts["a"] != 3 || counts["b"] != 2 || counts["c"] != 2 {
+		t.Fatalf("counts %v", counts)
 	}
 }
 
@@ -159,6 +178,17 @@ func TestBrowseMembersExcludeOwner(t *testing.T) {
 		if _, err := st.InsertMessage(ctx, msg("whatsapp", fmt.Sprint(i), store.Message{ThreadID: "123@g.us", Sender: sender, Body: "hello"})); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := st.CreateContact(ctx, "me", ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, alias := range []string{"Thomas", "Thomas Breindl"} {
+		if _, err := st.AddAlias(ctx, "me", "whatsapp", alias); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.SetSelf(ctx, "me"); err != nil {
+		t.Fatal(err)
 	}
 	groups, err := st.BrowseThreads(ctx, store.BrowseOpts{Limit: 10})
 	if err != nil {

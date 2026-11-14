@@ -47,7 +47,7 @@ bank disk scan --help
 
 To keep the catalogue current, run scans from a nightly task: [Scheduled scans](#scheduled-scans).
 
-`bank disk search` requires every searchable word by default; `--any` accepts any word. Words can match names, paths or name fragments. Archive members, document text, metadata and enrichment results appear in separate ranked groups. `--volume` accepts a label or ID. `--under` accepts a mounted path, or a volume-relative path with `--volume`. All read commands support `--json`. `bank search` finds files on disks too, beside messages and the library, with `--kind file` to keep only files; `bank disk search` adds the filters only the catalogue has: volume, folder, extension, entry kind and current versions, and lists what they select without words.
+`bank disk search` reads its words like `bank search`: every word and `"quoted phrase"` by default, `--any` for any of them, typo tolerance for long words and none for short or quoted ones. Words can match names, paths or name fragments. Archive members, document text, metadata and enrichment results appear in separate ranked groups. `--volume` accepts a label or ID. `--under` accepts a mounted path, or a volume-relative path with `--volume`. All read commands support `--json`. `bank search` ranks files on disks in one list with messages and the library, a file once with all its places, and `--kind file` keeps only files; `bank disk search` adds the filters only the catalogue has: volume, folder, extension, entry kind and current versions, and lists what they select without words.
 
 Argument errors exit with code 2 and print the usage, as for every `bank` command. Command failures, including `bank disk enrich --task ocr` without targets or `--under`, exit with code 1.
 
@@ -321,7 +321,7 @@ Unreadable directories leave catalogue history intact. Files below them receive 
 
 Every catalogue operation is below `/v1/disk` in bank's one OpenAPI document at `/openapi.json`: the reads (`/v1/disk/search`, `/v1/disk/contents/{ref}`, `/v1/disk/entries/{id}`, `/v1/disk/volumes`, `/v1/disk/scans`, `/v1/disk/redundancy` and so on), the paged listing that `verify` rereads, the copies `get` chooses from, the dedupe plan, and the writes: a scan's batches, a dedupe move and an enrichment lease and result. They take bank's tokens, and every operation that writes needs a write token. Failures are bank's tagged errors, such as `NotFound`, `AmbiguousRef` with its candidates, `ClaimLost` or `InvalidRequest`. Responses carry no `online` or `mounted_at`, and the server does not serve a file's bytes: to copy a file, run `bank disk get` on the machine with the disk.
 
-`bank search` and `GET /v1/search` include the catalogue: a search without sender, source, account or date filters also returns files on disks, under `disks`, and `match` means the same for them as for messages. `/v1/disk/search` adds the filters only the catalogue has.
+`bank search` and `GET /v1/search` include the catalogue: a search without message, source, account or date filters ranks names, archive members, metadata and image analyses among its lists, and a file hit lists the entries that hold its bytes among its places. `/v1/disk/search` adds the filters only the catalogue has.
 
 A scan through bank serve sends its work in batches of a few thousand entries or about 4 MiB, each applied and committed before the server answers, so a scan makes a few requests per batch rather than several per folder. Before it hashes, lists an archive, reads a document or asks ExifTool, it learns from the server which files still need that, so bytes another disk or bank already covered are not read again.
 
@@ -421,7 +421,7 @@ The session holds the volume's advisory lock between batches. A session idle for
 
 ### Search groups preserve their own ranking
 
-Filename, archive-member, document-text, metadata and enrichment indexes rank separately because their BM25 scores are not comparable. Content results include earlier versions unless `--current` is set; filename results describe entries as they are now. Every searchable word must match within one result unless `--any` is set. Query pieces with no searchable terms must not turn an otherwise valid every-word query into an empty match.
+Filename, archive-member, document-text, metadata and enrichment indexes rank separately because their BM25 scores are not comparable; `bank search` merges them with the archive's lists by rank instead. Content results include earlier versions unless `--current` is set; filename results describe entries as they are now. Every word must match within one result unless `--any` is set. Query pieces without a letter or digit are dropped by the parser, and a query of nothing else matches nothing.
 
 Entry extensions describe files; archive-member extensions describe members. Volume and folder filters identify where the enclosing file lives. An archive named by `--under` includes its members. Copy lists retain the same filters as the search result.
 

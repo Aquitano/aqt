@@ -1,39 +1,31 @@
 package store
 
 import (
-	"context"
 	"strings"
+	"unicode"
 
-	"github.com/jackc/pgx/v5"
+	sq "github.com/aquitano/aqt/apps/bank/internal/search"
 )
 
-// The tokenizers searchWords casts query words to. ParadeDB records each
-// tokenizer configuration the first time it parses one, in
-// paradedb._typmod_cache. A read-only session cannot make that write, so
-// migrating runs RecordTokenizers with write access.
-const (
-	wordTokenizer = `pdb.unicode_words('ascii_folding=true')`
-	codeTokenizer = `pdb.source_code('ascii_folding=true')`
-	gramTokenizer = `pdb.ngram(3, 3, 'ascii_folding=true')`
+var (
+	nameFields = []sq.Field{{Name: "name", Boost: 3}, {Name: "path"}, {Name: "name_ngram", Fragment: true}}
+	textFields = []sq.Field{{Name: "text"}}
 )
 
-const RecordTokenizers = `select null::` + wordTokenizer + `, null::` + codeTokenizer + `, null::` + gramTokenizer
-
-func (s *Store) searchWords(ctx context.Context, words []string, names bool) ([]string, error) {
-	if len(words) == 0 {
-		return nil, nil
+// parseQuery reads o.Query with the archive's one grammar. ok is false when
+// it holds no letter or digit, which matches nothing rather than everything.
+func parseQuery(o SearchOptions) (q sq.Query, ok bool, err error) {
+	if !strings.ContainsFunc(o.Query, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) {
+		return q, false, nil
 	}
-	tokens := `cardinality(pdb.tokenize_unicode_words(word::` + wordTokenizer + `)) > 0`
-	if names {
-		tokens = `cardinality(pdb.tokenize_source_code(word::` + codeTokenizer + `)) > 0
-   or cardinality(pdb.tokenize_ngram(word::` + gramTokenizer + `)) > 0`
+	mode := sq.All
+	if o.Any {
+		mode = sq.Any
 	}
-	rows, err := s.pool.Query(ctx, `select word from unnest($1::text[]) with ordinality as words(word, position)
-  where `+tokens+` order by position`, words)
-	if err != nil {
-		return nil, err
+	if q, err = sq.Parse(o.Query, mode); err != nil {
+		return q, false, &InvalidSearchError{err.Error()}
 	}
-	return pgx.CollectRows(rows, pgx.RowTo[string])
+	return q, true, nil
 }
 
 func searchExt(ext string) string {
@@ -63,28 +55,16 @@ func (q *search) entryFilters(c copies) []string {
 	return where
 }
 
-func searchBoolean(clauses []string, anyWord bool) string {
-	mode := "must"
-	if anyWord {
-		mode = "should"
-	}
-	return "paradedb.boolean(" + mode + " => array[" + strings.Join(clauses, ", ") + "])"
-}
-
-func (s *Store) newTextSearch(ctx context.Context, o SearchOptions, key, contentID string) (*search, error) {
+func (s *Store) newTextSearch(o SearchOptions, key, contentID string) (*search, error) {
 	if o.Kind != "" && o.Kind != "file" {
 		return nil, nil
 	}
-	words, err := s.searchWords(ctx, strings.Fields(o.Query), false)
-	if err != nil || len(words) == 0 {
+	parsed, ok, err := parseQuery(o)
+	if err != nil || !ok {
 		return nil, err
 	}
 	q := &search{order: "paradedb.score(" + key + ") desc, " + key}
-	clauses := make([]string, len(words))
-	for i, word := range words {
-		clauses[i] = "paradedb.match('text', " + q.next(word) + ")"
-	}
-	q.where = append(q.where, key+" @@@ "+searchBoolean(clauses, o.Any), q.holders(contentID, copiesOf(o, false)))
+	q.where = append(q.where, key+" @@@ "+parsed.Clause(textFields, q.next), q.holders(contentID, copiesOf(o, false)))
 	return q, nil
 }
 

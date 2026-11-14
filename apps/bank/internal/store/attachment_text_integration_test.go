@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/extract"
-	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 var (
@@ -91,6 +91,19 @@ func TestBlobTextRoundTrip(t *testing.T) {
 	}
 }
 
+func searchTexts(t *testing.T, st *store.Store, query string) []search.SearchHit {
+	t.Helper()
+	q, err := search.Parse(query, search.All)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := st.SearchTexts(t.Context(), q, search.Filters{}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list.Hits
+}
+
 // The whole point of keying on the digest: one extraction serves every message
 // carrying that content, however many there are.
 func TestStoredTextReachesEveryMessageCarryingIt(t *testing.T) {
@@ -105,39 +118,13 @@ func TestStoredTextReachesEveryMessageCarryingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgs, err := st.Search(ctx, "netherfield", store.SearchOpts{Fuzzy: 0, Limit: 10})
-	if err != nil {
-		t.Fatal(err)
+	hits := searchTexts(t, st, "netherfield")
+	if len(hits) != 1 || !strings.Contains(strings.ToLower(hits[0].Snippet), "netherfield") {
+		t.Fatalf("found %+v by a word only in the attachment, want its content with a snippet", hits)
 	}
-	if len(msgs) != 2 {
-		t.Fatalf("found %d messages by a word only in the attachment, want 2", len(msgs))
-	}
-	if msgs[0].AttachmentSnippet == "" {
-		t.Errorf("no attachment snippet: a hit inside a PDF should say what matched")
-	}
-	if !strings.Contains(strings.ToLower(msgs[0].AttachmentSnippet), "netherfield") {
-		t.Errorf("attachment snippet = %q", msgs[0].AttachmentSnippet)
-	}
-}
-
-// Storing text refreshes the messages carrying that content and no others: a
-// stale row elsewhere stays as it was, where a whole-archive pass would fix it.
-func TestStoredTextRefreshesOnlyTheMessagesCarryingIt(t *testing.T) {
-	ctx := context.Background()
-	st, dsn := storetest.NewNamed(t)
-	seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
-	seedMessage(t, st, "m2", "forwarded", "invoice.pdf", digestA)
-	other := seedMessage(t, st, "m3", "old mail", "scan.pdf", digestB)
-	storetest.Exec(t, dsn, `update messages set attachment_text = 'stale' where id = $1`, other)
-
-	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Text: "netherfield", Status: "ok"}); err != nil {
-		t.Fatal(err)
-	}
-	if n := pgschematest.QueryInt(t, dsn, `select count(*) from messages where attachment_text = 'netherfield'`); n != 2 {
-		t.Fatalf("%d messages carry the new text, want the two with the content", n)
-	}
-	if n := pgschematest.QueryInt(t, dsn, `select count(*) from messages where id = $1 and attachment_text = 'stale'`, other); n != 1 {
-		t.Fatal("a message without the content was rewritten")
+	places, err := st.ContentPlaces(ctx, []int64{hits[0].ContentID})
+	if err != nil || len(places[hits[0].ContentID].Places) != 2 {
+		t.Fatalf("places %+v, %v; want the two messages", places, err)
 	}
 }
 
@@ -154,12 +141,8 @@ func TestClearedTextLeavesTheIndex(t *testing.T) {
 	if err := st.DeleteBlobText(ctx, digestA); err != nil {
 		t.Fatal(err)
 	}
-	msgs, err := st.Search(ctx, "kedleston", store.SearchOpts{Fuzzy: 0, Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(msgs) != 0 {
-		t.Fatalf("found %d messages by cleared attachment text, want 0", len(msgs))
+	if hits := searchTexts(t, st, "kedleston"); len(hits) != 0 {
+		t.Fatalf("found %d contents by cleared text, want 0", len(hits))
 	}
 }
 

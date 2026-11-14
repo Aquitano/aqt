@@ -96,7 +96,7 @@ func TestSearchPassesPersonThrough(t *testing.T) {
 	if status, body := authedGet(t, srv, token, "/v1/search?q=hi&person=bjoern"); status != http.StatusOK {
 		t.Fatalf("status %d (%s)", status, body)
 	}
-	if got := s.read.(*fakeReader).opts.Person; got != "bjoern" {
+	if got := s.read.(*fakeReader).filters.Person; got != "bjoern" {
 		t.Errorf("person = %q, want it forwarded to the store", got)
 	}
 }

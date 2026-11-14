@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
@@ -116,13 +117,6 @@ func TestEmptyResultsAreArrays(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
 
-	msgs, err := st.Search(ctx, "nothing here", store.SearchOpts{Limit: 20, Fuzzy: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if msgs == nil {
-		t.Error("Search returned nil, want an empty slice so JSON is []")
-	}
 	stats, err := st.Stats(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -135,12 +129,17 @@ func TestEmptyResultsAreArrays(t *testing.T) {
 func TestSearchMatchesAndFiltersRecipients(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
-	if _, err := st.InsertMessage(ctx, msg("gmail", "m1", store.Message{
+	id, err := st.InsertMessage(ctx, msg("gmail", "m1", store.Message{
 		Sender:     "alice@example.com",
 		Recipients: []string{"Bob Builder <bob@example.com>", "carol@example.com"},
 		Subject:    "quarterly numbers",
 		Body:       "attached",
-	})); err != nil {
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice, _, err := st.GetMessage(ctx, id)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.InsertMessage(ctx, msg("gmail", "m2", store.Message{
@@ -151,43 +150,30 @@ func TestSearchMatchesAndFiltersRecipients(t *testing.T) {
 	}
 
 	t.Run("recipients contribute to matching", func(t *testing.T) {
-		msgs, err := st.Search(ctx, "builder", store.SearchOpts{Limit: 20, Fuzzy: 0})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(msgs) != 1 || msgs[0].Sender != "alice@example.com" {
+		msgs := storetest.Messages(t, st, "builder", search.Filters{})
+		if len(msgs) != 1 || msgs[0].Ref != alice.Ref {
 			t.Fatalf("got %d results: %+v", len(msgs), msgs)
 		}
 	})
 
 	t.Run("--to filters case-insensitively", func(t *testing.T) {
-		msgs, err := st.Search(ctx, "quarterly", store.SearchOpts{Limit: 20, Fuzzy: 0, To: "CAROL"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(msgs) != 1 || msgs[0].Sender != "alice@example.com" {
+		msgs := storetest.Messages(t, st, "quarterly", search.Filters{To: "CAROL"})
+		if len(msgs) != 1 || msgs[0].Ref != alice.Ref {
 			t.Fatalf("got %+v", msgs)
 		}
-		none, err := st.Search(ctx, "quarterly", store.SearchOpts{Limit: 20, Fuzzy: 0, To: "nobody"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(none) != 0 {
+		if none := storetest.Messages(t, st, "quarterly", search.Filters{To: "nobody"}); len(none) != 0 {
 			t.Fatalf("got %+v, want no matches", none)
 		}
 	})
 
 	t.Run("snippets come back with results", func(t *testing.T) {
-		msgs, err := st.Search(ctx, "quarterly", store.SearchOpts{Limit: 20, Fuzzy: 0})
-		if err != nil {
-			t.Fatal(err)
-		}
+		msgs := storetest.Messages(t, st, "quarterly", search.Filters{})
 		if len(msgs) == 0 {
 			t.Fatal("no results")
 		}
 		for _, m := range msgs {
 			if m.Snippet == "" {
-				t.Errorf("message %d came back without a snippet", m.ID)
+				t.Errorf("message %s came back without a snippet", m.Ref)
 			}
 			if strings.Contains(m.Snippet, "&lt;") || strings.Contains(m.Snippet, "<b>") {
 				t.Errorf("snippet carries markup: %q", m.Snippet)
@@ -198,10 +184,7 @@ func TestSearchMatchesAndFiltersRecipients(t *testing.T) {
 	t.Run("fuzzy search still gets a snippet", func(t *testing.T) {
 		// pg_search produces no highlight for fuzzy matches, which is exactly
 		// when the local fallback has to fill in.
-		msgs, err := st.Search(ctx, "quarterlly", store.SearchOpts{Limit: 20, Fuzzy: 2})
-		if err != nil {
-			t.Fatal(err)
-		}
+		msgs := storetest.Messages(t, st, "quarterlly", search.Filters{})
 		if len(msgs) == 0 {
 			t.Fatal("fuzzy search found nothing")
 		}
