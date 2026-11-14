@@ -370,6 +370,68 @@ export const limitHits = pgTable(
   ],
 );
 
+// Threads and runs from T3 Code's own state, which knows what the transcripts do not: the thread a session
+// belongs to, who started it, and how long each run took and how it ended.
+export const t3Threads = pgTable(
+  "t3_threads",
+  {
+    machineId: uuid("machine_id")
+      .notNull()
+      .references(() => machines.id),
+    id: text("id").notNull(),
+    title: text("title"),
+    project: text("project"),
+    projectRoot: text("project_root"),
+    provider: text("provider"),
+    createdBy: text("created_by"),
+    creationSource: text("creation_source"),
+    parentThreadId: text("parent_thread_id"),
+    relationship: text("relationship"),
+    model: text("model"),
+    effort: text("effort"),
+    fast: boolean("fast"),
+    branch: text("branch"),
+    worktreePath: text("worktree_path"),
+    pullRequests: text("pull_requests").array().notNull(),
+    createdAt: timestamptz("created_at").notNull(),
+    updatedAt: timestamptz("updated_at").notNull(),
+    archivedAt: timestamptz("archived_at"),
+    deletedAt: timestamptz("deleted_at"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.machineId, table.id] }),
+    index("t3_threads_created").on(table.createdAt),
+  ],
+);
+
+export const t3Runs = pgTable(
+  "t3_runs",
+  {
+    machineId: uuid("machine_id")
+      .notNull()
+      .references(() => machines.id),
+    id: text("id").notNull(),
+    threadId: text("thread_id").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    provider: text("provider"),
+    status: text("status").notNull(),
+    model: text("model"),
+    effort: text("effort"),
+    fast: boolean("fast"),
+    requestedAt: timestamptz("requested_at").notNull(),
+    startedAt: timestamptz("started_at"),
+    completedAt: timestamptz("completed_at"),
+    attempts: integer("attempts").notNull(),
+    nativeSessionId: text("native_session_id"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.machineId, table.id] }),
+    index("t3_runs_thread").on(table.machineId, table.threadId),
+    index("t3_runs_native_session").on(table.nativeSessionId),
+    index("t3_runs_requested").on(table.requestedAt),
+  ],
+);
+
 export const tombstones = pgTable(
   "tombstones",
   {

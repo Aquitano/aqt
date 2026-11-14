@@ -21,19 +21,19 @@ require (
 	github.com/mholt/archives v0.1.5
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/natefinch/atomic v1.0.1
-	github.com/nwaples/rardecode/v2 v2.4.5
+	github.com/nwaples/rardecode/v2 v2.4.6
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/peterldowns/pgtestdb v0.1.1
 	github.com/riverqueue/river v0.51.2
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.51.2
 	github.com/riverqueue/river/rivertype v0.51.2
-	golang.org/x/oauth2 v0.37.0
-	golang.org/x/sync v0.24.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/oauth2 v0.38.0
+	golang.org/x/sync v0.25.0
+	golang.org/x/sys v0.50.0
 	golang.org/x/text v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 	lukechampine.com/blake3 v1.4.1
-	modernc.org/sqlite v1.61.0
+	modernc.org/sqlite v1.61.1
 )
 
 require (

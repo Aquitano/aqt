@@ -7,8 +7,10 @@ import { AuthLive } from "./auth.ts";
 import { ServerConfig, ServerConfigLive } from "./config.ts";
 import { DashboardRoutes } from "./dashboard-auth.ts";
 import { DbLive, PgLive, runMigrations } from "./db/client.ts";
+import { failureSummary } from "./db/errors.ts";
 import { ApiLive } from "./http.ts";
 import { callbackPath, OpenIdLive } from "./openid.ts";
+import { ensureReaderRole } from "./query.ts";
 import { QuotaSamplerLive } from "./quota-telemetry.ts";
 import { normalizersLayer } from "./registry.ts";
 import { GaugeSamplerLive, TelemetryLive } from "./telemetry.ts";
@@ -24,7 +26,17 @@ const StaticLive = Layer.unwrap(
   ),
 );
 
-const Bootstrap = Layer.effectDiscard(Effect.andThen(runMigrations(), ensureBundledCatalog()));
+// Without the reader role only the SQL endpoint fails, for example when the database user cannot create roles.
+const readerRole = ensureReaderRole().pipe(
+  Effect.catchTag("UnsafeReaderRole", (error) =>
+    Effect.logWarning("read-only SQL is unavailable", error.message),
+  ),
+  Effect.catch((error) => Effect.logWarning("read-only SQL is unavailable", failureSummary(error))),
+);
+
+const Bootstrap = Layer.effectDiscard(
+  Effect.andThen(runMigrations(), ensureBundledCatalog()).pipe(Effect.andThen(readerRole)),
+);
 
 const AppLive = Layer.mergeAll(ApiLive, StaticLive, DashboardRoutes).pipe(Layer.provide(AuthLive));
 
