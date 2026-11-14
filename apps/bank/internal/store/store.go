@@ -118,6 +118,7 @@ func (s *Store) SchemaVersion(ctx context.Context) (int32, error) {
 type Record struct {
 	Message     Message
 	Attachments []Attachment
+	Mail        *Mail
 }
 
 // Written is what WriteMessages did with one record.
@@ -142,6 +143,11 @@ func (s *Store) WriteMessages(ctx context.Context, records []Record) ([]Written,
 		if cleaned[i], err = r.Message.clean(); err != nil {
 			return nil, fmt.Errorf("message %d: %w", i, err)
 		}
+		if r.Mail != nil && r.Mail.Mailbox != nil {
+			if err := r.Mail.Mailbox.Validate(); err != nil {
+				return nil, fmt.Errorf("message %d: %w", i, err)
+			}
+		}
 	}
 	out := make([]Written, len(records))
 	if len(records) == 0 {
@@ -161,6 +167,9 @@ func (s *Store) WriteMessages(ctx context.Context, records []Record) ([]Written,
 			}
 		}
 		if err := refCollisions(ctx, tx.Query, skipped); err != nil {
+			return err
+		}
+		if err := threadMail(ctx, tx, cleaned, records, out); err != nil {
 			return err
 		}
 		return insertAttachments(ctx, tx, records, out)

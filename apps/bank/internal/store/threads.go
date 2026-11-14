@@ -28,12 +28,11 @@ type Thread struct {
 // with equal timestamps are neither repeated nor skipped, and undated
 // messages come first.
 type ThreadOpts struct {
-	Limit   int
-	Before  ref.Message
-	After   ref.Message
-	Around  ref.Message
-	Latest  bool
-	Current bool
+	Limit  int
+	Before ref.Message
+	After  ref.Message
+	Around ref.Message
+	Latest bool
 }
 
 func (o ThreadOpts) Validate() error {
@@ -65,7 +64,7 @@ func (e *AmbiguousThreadError) Error() string {
 }
 
 func (s *Store) threadSources(ctx context.Context, threadID string) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `select source from messages where thread_id = $1 union select source from mail_thread_aliases where old_id=$1 order by source`, threadID)
+	rows, err := s.pool.Query(ctx, `select distinct source from messages where thread_id = $1 order by source`, threadID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,13 +99,6 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 		default:
 			return out, &AmbiguousThreadError{ThreadID: threadID, Sources: sources}
 		}
-	}
-	if !o.Current {
-		resolved, resolveErr := s.resolveMailThread(ctx, out.Source, out.ThreadID)
-		if resolveErr != nil {
-			return out, resolveErr
-		}
-		out.ThreadID = resolved
 	}
 	var anchor Message
 	cursor := cmp.Or(o.Before, o.After, o.Around)

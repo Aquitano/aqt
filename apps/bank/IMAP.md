@@ -132,12 +132,6 @@ a user label is its own folder name. A system label without a visible folder
 keeps its Gmail name, such as `\Important`. Collecting only All Mail therefore
 still records every label.
 
-Takeout mail imported before this version has no stored thread ID. Run
-`bank mail rebuild --source gmail --apply` once on the archive host, as
-described in [MAIL.md](MAIL.md#rebuild-metadata), so the archived mbox headers
-supply it. Without the rebuild, new mail joins those conversations only through
-`References` and `In-Reply-To`.
-
 ### Running beside the Gmail API
 
 Keep `source` as `gmail` when trying IMAP alongside existing Gmail API imports.

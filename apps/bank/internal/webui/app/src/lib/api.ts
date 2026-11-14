@@ -24,11 +24,7 @@ const mailProvenance = type({
   message_id: "string",
   in_reply_to: "string[]",
   references: "string[]",
-  "raw_input?": "number",
-  native_thread_id: "string",
-  has_reply_links: "boolean",
-  incomplete: "boolean",
-  conflict_key: "string",
+  native: "boolean",
 });
 
 // A message ref, the only way a message is named outside the server.
@@ -115,27 +111,10 @@ export class RequestError extends Error {
     this.tag = tag;
   }
 }
-const mailConflict = type({
-  _tag: "'MailThreadConflict'",
-  source: "string",
-  conflict_key: "string",
-  choices: "string[]",
-  unanchored_path: "string",
-});
-export class MailConflictError extends Error {
-  readonly conflict: typeof mailConflict.infer;
-  constructor(conflict: typeof mailConflict.infer) {
-    super("This conversation contains conflicting provider threads.");
-    this.conflict = conflict;
-  }
-}
-
 async function send(path: string, init?: RequestInit) {
   const r = await fetch(path, init);
   const body: unknown = await r.json().catch(() => undefined);
   if (r.ok) return body;
-  const conflict = mailConflict(body);
-  if (!(conflict instanceof type.errors)) throw new MailConflictError(conflict);
   const failure = errorBody(body);
   if (failure instanceof type.errors) throw new RequestError(r.status, "", r.statusText);
   throw new RequestError(r.status, failure._tag, failure.message || r.statusText);
@@ -225,7 +204,6 @@ export interface ThreadPosition {
   after?: string;
   around?: string;
   latest?: boolean;
-  current?: boolean;
 }
 export function getThread(source: string, threadId: string, position: ThreadPosition) {
   const p = new URLSearchParams({ source, limit: "100" });
@@ -304,12 +282,6 @@ export function browseThreads(
 export const BROWSE_PAGE = 50;
 export const SEARCH_PAGE = 50;
 export const CONTEXT_PAGE = 100;
-
-export function getMailConflict(source: string, key: string, before?: string) {
-  const params = new URLSearchParams({ source, limit: String(CONTEXT_PAGE) });
-  if (before) params.set("before", before);
-  return api(`/v1/mail-conflicts/${encodeURIComponent(key)}?${params}`, thread);
-}
 
 export const libraryFile = type({
   blake3: "string",

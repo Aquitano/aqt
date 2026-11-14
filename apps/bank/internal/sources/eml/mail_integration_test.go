@@ -60,7 +60,7 @@ func TestMailboxObservationRecoveryAndFilters(t *testing.T) {
 
 func TestGmailIMAPMailJoinsTakeoutThread(t *testing.T) {
 	ctx := context.Background()
-	st, dsn := storetest.NewNamed(t)
+	st := storetest.New(t)
 	target := mailTarget(t, st)
 	takeout := "From 1278455344230334865@xxx Mon Aug 03 10:00:00 +0000 2026\r\nX-GM-THRID: 1278455344230334865\r\nX-Gmail-Labels: Inbox\r\nMessage-ID: <takeout@example.com>\r\nSubject: Plans\r\n\r\nfirst\r\n"
 	mustImportRaw(t, target, "mbox", "takeout.mbox", takeout, MboxOptions{Mailbox: "Archive"})
@@ -78,13 +78,6 @@ func TestGmailIMAPMailJoinsTakeoutThread(t *testing.T) {
 	}
 	if thread := threadOf("takeout@example.com"); thread != "11bdfc5cae0c8191" {
 		t.Fatalf("Takeout thread = %q, want the Gmail API form", thread)
-	}
-	storetest.Exec(t, dsn, `update mail_details set native_thread_id=''; update messages set thread_id='mail:before-takeout-thread-ids'`)
-	if _, err := RebuildMail(ctx, st, target.Blobs, "gmail", true); err != nil {
-		t.Fatal(err)
-	}
-	if thread := threadOf("takeout@example.com"); thread != "11bdfc5cae0c8191" {
-		t.Fatalf("rebuilt Takeout thread = %q", thread)
 	}
 
 	collected := "Message-ID: <imap@example.com>\r\nSubject: Re: Plans\r\n\r\nsecond\r\n"
@@ -131,18 +124,11 @@ func TestSenderThreadHeaderOutsideTakeoutIsIgnored(t *testing.T) {
 		}
 		return message.ThreadID
 	}
-	for _, step := range []string{"import", "rebuild"} {
-		if step == "rebuild" {
-			if _, err := RebuildMail(ctx, st, target.Blobs, "proton", true); err != nil {
-				t.Fatal(err)
-			}
-		}
-		threads := map[string]bool{}
-		for _, name := range []string{"one", "two", "three"} {
-			threads[threadOf(name+"@example.com")] = true
-		}
-		if len(threads) != 3 || threads["1"] {
-			t.Fatalf("%s joined unrelated mail on a sender's X-GM-THRID: %v", step, threads)
-		}
+	threads := map[string]bool{}
+	for _, name := range []string{"one", "two", "three"} {
+		threads[threadOf(name+"@example.com")] = true
+	}
+	if len(threads) != 3 || threads["1"] {
+		t.Fatalf("unrelated mail joined on a sender's X-GM-THRID: %v", threads)
 	}
 }

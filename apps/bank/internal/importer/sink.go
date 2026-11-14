@@ -35,7 +35,6 @@ type sink struct {
 	rawID   int64
 	report  ingest.Report
 	pending []store.Record
-	mail    []*ingest.Mail
 }
 
 func newSink(ctx context.Context, t Target, rawID int64) *sink {
@@ -69,8 +68,13 @@ func (s *sink) Message(m ingest.Message) error {
 		attachment.Position = position
 		record.Attachments = append(record.Attachments, attachment)
 	}
+	if m.Mail != nil {
+		record.Mail = &store.Mail{HeaderID: m.Mail.NormalizedMessageID, InReplyTo: m.Mail.InReplyTo, References: m.Mail.References}
+		if m.Mail.Mailbox != nil {
+			record.Mail.Mailbox = &store.MailboxObservation{Kind: m.Mail.Mailbox.Kind, Paths: m.Mail.Mailbox.Paths}
+		}
+	}
 	s.pending = append(s.pending, record)
-	s.mail = append(s.mail, m.Mail)
 	if len(s.pending) >= batchSize {
 		return s.flush()
 	}
@@ -106,9 +110,7 @@ func (s *sink) storePart(part ingest.Part) (store.Attachment, error) {
 	return store.Attachment{Filename: part.Filename, MimeType: mimeType, SizeBytes: size, BLAKE3: digest}, nil
 }
 
-// flush writes the pending batch, then projects its mail. The projection is
-// derived from the stored rows and runs after they commit, the same as a
-// rebuild does.
+// flush writes the pending batch in one transaction, threads included.
 func (s *sink) flush() error {
 	if len(s.pending) == 0 {
 		return nil
@@ -117,7 +119,7 @@ func (s *sink) flush() error {
 	if err != nil {
 		return fail.Opf("write messages: %w", err)
 	}
-	for i, w := range written {
+	for _, w := range written {
 		switch {
 		case w.Inserted:
 			s.report.Inserted++
@@ -127,29 +129,8 @@ func (s *sink) flush() error {
 			s.report.Duplicates++
 		}
 		s.report.Attachments += w.Attachments
-		if mail := s.mail[i]; mail != nil && w.ID != 0 {
-			if err := s.project(w.ID, mail); err != nil {
-				return err
-			}
-		}
 	}
-	s.pending, s.mail = s.pending[:0], s.mail[:0]
-	return nil
-}
-
-func (s *sink) project(id int64, mail *ingest.Mail) error {
-	projection := store.MailProjection{MessageID: mail.NormalizedMessageID, InReplyTo: mail.InReplyTo, References: mail.References,
-		RawInput: s.rawID, NativeThreadID: mail.NativeThreadID}
-	if mail.Mailbox != nil {
-		projection.Mailbox = &store.MailboxObservation{Kind: mail.Mailbox.Kind, Paths: mail.Mailbox.Paths}
-	}
-	result, err := s.t.Store.ProjectMail(s.ctx, id, projection, true, "")
-	if err != nil {
-		return fail.Opf("project mail: %w", err)
-	}
-	if result.Incomplete {
-		s.Issue(ingest.Issuef(ingest.Incomplete, "mail grouping passed its limits; rebuild with higher limits"))
-	}
+	s.pending = s.pending[:0]
 	return nil
 }
 

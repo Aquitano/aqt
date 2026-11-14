@@ -20,16 +20,6 @@ var (
 	errRetired = httpapi.Kind{Tag: "MessageRetired", Status: http.StatusGone,
 		Doc:   "The message was retired from the archive. retired says what it was and, in replacement, which record took its place.",
 		Extra: map[string]reflect.Type{"retired": reflect.TypeFor[store.RetiredMessage]()}}
-	errMailThreadConflict = httpapi.Kind{Tag: "MailThreadConflict", Status: http.StatusConflict,
-		Doc: "The thread ID is an old one whose mail the provider now files under several threads. choices lists " +
-			"those thread IDs, and unanchored_path is the route for the messages that belong to none of them.",
-		Extra: map[string]reflect.Type{
-			"code":            reflect.TypeFor[string](),
-			"source":          reflect.TypeFor[string](),
-			"conflict_key":    reflect.TypeFor[string](),
-			"choices":         reflect.TypeFor[[]string](),
-			"unanchored_path": reflect.TypeFor[string](),
-		}}
 )
 
 var (
@@ -54,13 +44,8 @@ var (
 			"at the oldest message; around centers it on a message, such as a search hit. Use at most one of " +
 			"before, after, around and latest. has_before and has_after say whether more messages exist on " +
 			"either side: pass the first message's ref as before, or the last one's as after, for the next page.",
-		Errors: []httpapi.Kind{httpapi.NotFound, errMailThreadConflict},
+		Errors: []httpapi.Kind{httpapi.NotFound},
 		Tool:   true,
-	}}
-	GetMailConflict = httpapi.Op[MailConflictInput, store.Thread]{Operation: httpapi.Operation{ID: "getMailConflict", Method: http.MethodGet, Path: "/v1/mail-conflicts/{id}", Tag: "messages",
-		Summary:     "Read the messages of a mail thread conflict that belong to no current thread",
-		Description: "Newest first. A MailThreadConflict failure names this route in unanchored_path.",
-		Errors:      []httpapi.Kind{httpapi.NotFound},
 	}}
 	GetMessageBranch = httpapi.Op[MessageInput, store.Branch]{Operation: httpapi.Operation{ID: "getMessageBranch", Method: http.MethodGet, Path: "/v1/messages/{ref}/branch", Tag: "messages",
 		Summary: "Read a message and the messages it answers, back to the start of the conversation",
@@ -89,12 +74,11 @@ var (
 	}}
 )
 
-// registerMessagesAPI serves the routes over single messages, threads, mail conflicts, source notes, ad-hoc SQL and import reports.
+// registerMessagesAPI serves the routes over single messages, threads, source notes, ad-hoc SQL and import reports.
 func (s *Server) registerMessagesAPI(api huma.API) {
 	httpapi.Register(api, ListThreads, s.browseThreads)
 	httpapi.Register(api, GetMessage, s.message)
 	httpapi.Register(api, GetThread, s.thread)
-	httpapi.Register(api, GetMailConflict, s.mailConflict)
 	httpapi.Register(api, GetMessageBranch, s.messageBranch)
 	httpapi.Register(api, GetMessageParent, s.messageParent)
 	httpapi.Register(api, SetSourceNote, s.setNote)
@@ -153,18 +137,17 @@ func (s *Server) message(ctx context.Context, in *MessageInput) (*httpapi.Body[s
 }
 
 type ThreadInput struct {
-	ID      string      `path:"id" doc:"The thread_id of any of its messages."`
-	Source  string      `query:"source" doc:"The thread's source. Needed when several sources use this thread ID."`
-	Before  ref.Message `query:"before" doc:"The page that ends just before this message, by ref."`
-	After   ref.Message `query:"after" doc:"The page that starts just after this message, by ref."`
-	Around  ref.Message `query:"around" doc:"The page with this message, by ref, in its middle."`
-	Latest  bool        `query:"latest" doc:"The page that ends at the newest message."`
-	Current bool        `query:"current" doc:"Read the ID as a current thread. Without it, an old mail thread ID is followed to the thread that replaced it."`
+	ID     string      `path:"id" doc:"The thread_id of any of its messages."`
+	Source string      `query:"source" doc:"The thread's source. Needed when several sources use this thread ID."`
+	Before ref.Message `query:"before" doc:"The page that ends just before this message, by ref."`
+	After  ref.Message `query:"after" doc:"The page that starts just after this message, by ref."`
+	Around ref.Message `query:"around" doc:"The page with this message, by ref, in its middle."`
+	Latest bool        `query:"latest" doc:"The page that ends at the newest message."`
 	httpapi.PageSize
 }
 
 func (s *Server) thread(ctx context.Context, in *ThreadInput) (*httpapi.Body[store.Thread], error) {
-	o := store.ThreadOpts{Limit: in.Limit, Before: in.Before, After: in.After, Around: in.Around, Latest: in.Latest, Current: in.Current}
+	o := store.ThreadOpts{Limit: in.Limit, Before: in.Before, After: in.After, Around: in.Around, Latest: in.Latest}
 	if err := o.Validate(); err != nil {
 		return nil, failure(err)
 	}
@@ -173,31 +156,6 @@ func (s *Server) thread(ctx context.Context, in *ThreadInput) (*httpapi.Body[sto
 		return nil, httpapi.NotFound.New(fmt.Sprintf("no thread %q", in.ID))
 	}
 	return reply(thread, err)
-}
-
-func mailThreadConflict(conflict *store.MailThreadConflictError) error {
-	return errMailThreadConflict.New(conflict.Error()).
-		With("code", conflict.Code).
-		With("source", conflict.Source).
-		With("conflict_key", conflict.ConflictKey).
-		With("choices", conflict.Choices).
-		With("unanchored_path", conflict.UnanchoredPath).
-		Recover("Read one of the current threads",
-			"Request one of choices as the thread ID with current=true and this source, or request unanchored_path for the messages that belong to none of them.")
-}
-
-type MailConflictInput struct {
-	Key    string      `path:"id" doc:"The conflict_key of a MailThreadConflict failure."`
-	Source string      `query:"source" required:"true" doc:"The mail source the conflict is in."`
-	Before ref.Message `query:"before" doc:"Only messages older than this message, by ref. Without it, the page starts at the newest."`
-	httpapi.PageSize
-}
-
-func (s *Server) mailConflict(ctx context.Context, in *MailConflictInput) (*httpapi.Body[store.Thread], error) {
-	if err := ingest.ValidSource(in.Source); err != nil {
-		return nil, httpapi.Invalid.New(err.Error())
-	}
-	return reply(s.read.MailConflictMessages(ctx, in.Source, in.Key, in.Before, in.Limit))
 }
 
 func (s *Server) messageBranch(ctx context.Context, in *MessageInput) (*httpapi.Body[store.Branch], error) {

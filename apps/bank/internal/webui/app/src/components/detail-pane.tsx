@@ -14,17 +14,9 @@ import { ContactEditor } from "@/components/contact-editor";
 import { Conversation } from "@/components/conversation";
 import { FileDetail } from "@/components/file-preview";
 import { ItemDetail, PageDetail } from "@/components/library-detail";
-import {
-  CONTEXT_PAGE,
-  getContactMessages,
-  getMessage,
-  getThread,
-  getMailConflict,
-  MailConflictError,
-  type Message,
-} from "@/lib/api";
+import { CONTEXT_PAGE, getContactMessages, getMessage, getThread, type Message } from "@/lib/api";
 import { isMe, SourceBadge, threadTitle } from "@/lib/format";
-import { navigate, select, useLocation, type Selection } from "@/lib/navigation";
+import { type Selection } from "@/lib/navigation";
 import { CollectionDetail } from "@/views/collections";
 export type { Selection } from "@/lib/navigation";
 
@@ -87,7 +79,6 @@ function LinkedMessage({ messageRef }: { messageRef: string }) {
               source: m.source,
               threadId: m.thread_id,
               flashRef: m.ref,
-              current: true,
             }
           : { kind: "message", ref: messageRef }
       }
@@ -109,22 +100,6 @@ function SelectedDetail({
   selection: ConversationSelection;
   message?: Message;
 }) {
-  const location = useLocation();
-  const choices = new URLSearchParams(location).get("choices");
-  const conversationChoices = choices && (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={() =>
-        navigate((params) => {
-          Array.from(params.keys()).forEach((key) => params.delete(key));
-          new URLSearchParams(choices).forEach((value, key) => params.append(key, value));
-        })
-      }
-    >
-      Back to conversation choices
-    </Button>
-  );
   const q = useInfiniteQuery({
     queryKey: ["detail", selection],
     enabled: selection !== null,
@@ -132,11 +107,8 @@ function SelectedDetail({
     queryFn: async ({ pageParam }): Promise<Page> => {
       if (!selection) return { messages: [], has_before: false, has_after: false };
       switch (selection.kind) {
-        case "mail-conflict":
-          return getMailConflict(selection.source, selection.key, pageParam.before);
         case "thread":
           return getThread(selection.source, selection.threadId, {
-            current: selection.current,
             ...(pageParam.before || pageParam.after
               ? pageParam
               : selection.flashRef
@@ -197,51 +169,8 @@ function SelectedDetail({
           <EmptyMedia variant="icon">
             <ShieldAlert />
           </EmptyMedia>
-          <EmptyTitle>
-            {q.error instanceof MailConflictError ? "Conversation split" : "Could not load"}
-          </EmptyTitle>
+          <EmptyTitle>Could not load</EmptyTitle>
           <EmptyDescription>{q.error.message}</EmptyDescription>
-          {conversationChoices}
-          {q.error instanceof MailConflictError && (
-            <div className="flex flex-wrap gap-2">
-              {q.error.conflict.choices.map((threadId) => (
-                <Button
-                  key={threadId}
-                  variant="outline"
-                  onClick={() => {
-                    if (q.error instanceof MailConflictError)
-                      select(
-                        {
-                          kind: "thread",
-                          source: q.error.conflict.source,
-                          threadId,
-                          current: true,
-                        },
-                        choices || location,
-                      );
-                  }}
-                >
-                  {threadId}
-                </Button>
-              ))}
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (q.error instanceof MailConflictError)
-                    select(
-                      {
-                        kind: "mail-conflict",
-                        source: q.error.conflict.source,
-                        key: q.error.conflict.conflict_key,
-                      },
-                      choices || location,
-                    );
-                }}
-              >
-                Unanchored messages
-              </Button>
-            </div>
-          )}
         </EmptyHeader>
       </Empty>
     );
@@ -262,9 +191,7 @@ function SelectedDetail({
                 messages.find((m) => m.subject)?.subject ?? "",
                 participants(messages),
               )
-            : selection.kind === "mail-conflict"
-              ? "Unanchored messages"
-              : first?.subject || first?.sender || "Message"}
+            : first?.subject || first?.sender || "Message"}
         </span>
       </span>
     );
@@ -278,7 +205,6 @@ function SelectedDetail({
           flashRef={selection.kind === "thread" ? selection.flashRef : undefined}
           navigation={
             <>
-              {conversationChoices}
               {q.hasPreviousPage && (
                 <Button
                   variant="outline"

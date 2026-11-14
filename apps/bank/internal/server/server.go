@@ -36,7 +36,6 @@ type reader interface {
 	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
 	GetMessageByRef(ctx context.Context, cited ref.Message) (store.Message, []store.Attachment, error)
 	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
-	MailConflictMessages(context.Context, string, string, ref.Message, int) (store.Thread, error)
 	Stats(ctx context.Context) ([]store.SourceStats, error)
 	ListContacts(ctx context.Context) ([]store.Contact, error)
 	GetContact(ctx context.Context, name string) (store.Contact, error)

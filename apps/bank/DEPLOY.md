@@ -269,7 +269,7 @@ bank contact list
 bank fetch <blake3> -o invoice.pdf
 ```
 
-`sync`, `worker`, `token`, `verify`, `reimport`, `import inbox` and `mail rebuild` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
+`sync`, `worker`, `token`, `verify`, `reimport` and `import inbox` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
 
 ### Disks on the PC
 
@@ -331,7 +331,7 @@ restic -r s3:... forget --keep-daily 14 --keep-weekly 8 --keep-monthly 24 --prun
 
 Restore drill: `restic restore latest`, `pg_restore -d bank bank.dump`, point `BANK_DATA_DIR` at the restored dir, then `docker compose run --rm bank verify`. It hashes every content that an attachment, a library file or a raw input refers to, and reports bytes that are missing, corrupt or the wrong size. Do this once before trusting the setup.
 
-Mailbox observations and supplied mail identifiers are stored as options of the raw inputs, so the database dump holds them and `blobs/` holds the mail itself. After restoring the database and files, `bank mail rebuild --source <source>` previews mail projection recovery without writes. Add `--apply` only after reviewing the report. Rebuild checkpoints live in the restored database, not on the collector laptop. See [MAIL.md](MAIL.md).
+Mailbox observations, reply headers and threads are rows in the database dump, and `blobs/` holds the mail itself, so a restore needs no further step for mail.
 
 ```sh
 docker compose run --rm bank verify           # read-only report
@@ -348,8 +348,7 @@ docker compose stop bank                       # no writes while wiping; db stay
 
 docker compose exec -T db psql -U bank -d bank -c \
   "truncate messages, contacts, sync_state,
-   raw_inputs, mailboxes, mail_thread_nodes, mail_thread_conflicts,
-   mail_thread_aliases, mail_rebuild_progress, library_items,
+   raw_inputs, mailboxes, library_items,
    library_collections, library_files, library_pages restart identity cascade;"
 
 # blobs, which include the raw inputs, and extraction staging (host side;

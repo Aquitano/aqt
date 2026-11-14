@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -15,7 +14,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
-func TestMailboxObservationsAndThreadConflictHTTP(t *testing.T) {
+func TestMailboxObservationsAndThreadsHTTP(t *testing.T) {
 	ctx := context.Background()
 	server, _ := attachmentServer(t)
 	token, err := Tokens(server.dataDir).New("mail-test", tokens.Write)
@@ -60,29 +59,12 @@ func TestMailboxObservationsAndThreadConflictHTTP(t *testing.T) {
 			t.Fatal(err)
 		}
 		detail, err := client.Call(ctx, remote, GetMessage, MessageInput{Ref: cited})
-		if err != nil || detail.Mail == nil || message.Mail == nil || !detail.Mail.HasReplyLinks || !message.Mail.HasReplyLinks {
+		if err != nil || detail.Mail == nil || message.Mail == nil || detail.Mail.MessageID != message.MessageID {
 			t.Fatalf("mail provenance missing over HTTP: %+v %v", detail, err)
 		}
-		if message.MessageID == "root@example.com" && (detail.RawInput == 0 || detail.Mail.RawInput == 0 || len(detail.Mailboxes) != 2) {
+		if message.MessageID == "root@example.com" && (detail.RawInput == 0 || len(detail.Mailboxes) != 2) {
 			t.Fatalf("raw input or folder provenance lost: %+v", detail)
 		}
-	}
-	importMail("mail.eml", root, `{"source": "mail", "thread_id": "provider-one"}`)
-	importMail("child.eml", child, `{"source": "mail", "thread_id": "provider-two"}`)
-	_, err = client.Call(ctx, remote, GetThread, ThreadInput{Source: "mail", ID: groups[0].ThreadID, PageSize: httpapi.PageSize{Limit: 10}})
-	var conflict *store.MailThreadConflictError
-	if !errors.As(err, &conflict) || len(conflict.Choices) != 2 {
-		t.Fatalf("HTTP conflict not typed: %v", err)
-	}
-	for _, choice := range conflict.Choices {
-		page, err := client.Call(ctx, remote, GetThread, ThreadInput{Source: "mail", ID: choice, Current: true, PageSize: httpapi.PageSize{Limit: 10}})
-		if err != nil || len(page.Messages) != 1 || page.Messages[0].Mail == nil || page.Messages[0].Mail.ConflictKey == "" || page.Messages[0].Mail.NativeThreadID != choice {
-			t.Fatalf("provider conflict provenance: %+v %v", page, err)
-		}
-	}
-	page, err := client.Call(ctx, remote, GetMailConflict, MailConflictInput{Source: "mail", Key: conflict.ConflictKey, PageSize: httpapi.PageSize{Limit: 10}})
-	if err != nil || len(page.Messages) != 0 {
-		t.Fatalf("unanchored route: %+v %v", page, err)
 	}
 	status, _ := authedGet(t, httpServer, token, "/v1/threads?person=missing&limit=10")
 	if status != 422 {

@@ -1,4 +1,4 @@
-# Import and recover mail metadata
+# Import mail and read its conversations
 
 Bank keeps folder observations separately from message identity. Importing one email from two folders produces one canonical message and two memberships. Folder observations are historical, not a live view of moves or deletions.
 
@@ -38,17 +38,11 @@ With query text, search returns ranked messages. Without query text, it returns 
 
 ## Read reconstructed conversations
 
-Bank joins email using bounded `References` and `In-Reply-To` evidence. Subject similarity alone never joins messages. Missing ancestors are retained as placeholders so later arrivals can complete the conversation. The projection preserves message refs, external IDs, bodies, raw input references, and attachment rows.
+Mail from Gmail keeps the thread Gmail gave it: the API's hexadecimal `threadId`, or the decimal `X-GM-THRID` from a Takeout mbox or from IMAP, converted to the same form. Only an mbox imported into the `gmail` source, which is where `bank import mbox` puts Takeout by default, reads the `X-GM-THRID` header; in EML, other sources' mailboxes and collected mail the sender chose it, so Bank ignores it.
 
-A component with one explicit provider thread ID uses that ID. For Gmail this is the API's hexadecimal `threadId`; the decimal `X-GM-THRID` from a Takeout header or from IMAP is converted to it. Without one, Bank derives an ID beginning with `mail:`. Only an mbox imported into the `gmail` source, which is where `bank import mbox` puts Takeout by default, reads the `X-GM-THRID` header; in EML, other sources' mailboxes and collected mail the sender chose it, so Bank ignores it. Earlier derived IDs resolve through aliases if later mail changes the grouping.
+Other mail is grouped by its `Message-ID`, `In-Reply-To` and `References` headers. A new mail joins every thread of its source that shares one of those ids with it, so two replies to a message Bank never received still land together. When one mail links two threads that were separate so far, they become one thread under the smaller id, and the other id stops existing. The result does not depend on the order mail arrives in. Subject similarity alone never joins messages.
 
-When contradictory headers connect multiple provider threads, Bank preserves each provider's thread and leaves unanchored messages separate. Opening an old combined thread returns a typed conflict instead of silently choosing one provider. The browser offers provider choices and a paginated list of unanchored messages. The CLI error includes the commands to read both:
-
-```sh
-bank thread '<current-thread-id>' --current --source gmail
-bank mail conflict '<conflict-key>' --source gmail --limit 100
-bank mail conflict '<conflict-key>' --source gmail --before msg:<16 hex> --limit 100
-```
+A thread's id starts with `mail:` and comes from the first message the conversation names, so it is usually the same whichever of its mails was imported first.
 
 ## Inspect message provenance
 
@@ -59,38 +53,6 @@ bank show <id-or-ref> --provenance
 bank show <id-or-ref> --json
 ```
 
-The view includes the source, stable ref, external ID, raw input and the message's place in it, and historically observed folders. For mail, it also shows the normalized Message-ID, reply headers, provider thread ID, grouping conflicts, and incomplete grouping. A reply connection can come from another message's headers. Missing folder observations do not mean the message was never in a folder.
-
-The header raw input is the ID of the raw input whose headers are currently stored. It can differ from the message's raw input after a duplicate import corrects the headers. Metadata may have no recorded header input. The JSON message detail and conversation responses include the same mail evidence under `mail`.
-
-## Rebuild metadata
-
-Run rebuild beside the database and blob store. It is not available through `BANK_URL`. Back up the database and blobs before applying historical changes.
-
-```sh
-bank mail rebuild --source proton
-bank mail rebuild --source proton --apply
-bank verify --json
-```
-
-The first command is read-only, including its database connection. It does not migrate the schema or write checkpoints. Run a current Bank server first if the database has not received the additive mail migrations. The preview carries earlier proposed graph changes in memory, so conflicts across raw inputs are visible before applying. It stops rather than presenting a complete preview when grouping is incomplete. When its workspace exceeds 100000 nodes or messages, or 1000000 edge and historical references, it discards the proposals held so far and compares later inputs against the database alone. The report counts these discards as `preview_resets`. A non-zero count means a conflict between inputs on either side of a reset can surface only in the applied run.
-
-Rebuild reads the stored `eml` and `mbox` raw inputs of the source in the order they arrived. It parses only their headers and streams MBOX. The MBOX import size limit does not apply to individual EML inputs. It resolves existing canonical rows and updates only mail metadata and thread projections. It does not create messages, rewrite bodies, or extract attachments. JSON output reports missing rows, unknown folders, invalid inputs, conflicts, and incomplete grouping.
-
-Applied work is checkpointed in the destination database with the raw input's digest and options, the message's digest, the projection version, and the grouping limits. The same bytes imported with other options are new work. Failed or incomplete work is retryable. Repeating an interrupted MBOX rebuild safely replays any uncheckpointed messages.
-
-The grouping limits apply to the connected header component. The node limit also bounds the total node references in affected historical alias records:
-
-| Environment variable     | Default |
-| ------------------------ | ------: |
-| `BANK_MAIL_MAX_NODES`    |   10000 |
-| `BANK_MAIL_MAX_EDGES`    |   50000 |
-| `BANK_MAIL_MAX_MESSAGES` |   10000 |
-
-Each limit accepts 1 through 100000. Exceeding a limit retains header facts and explicit provider IDs but avoids additional inferred merges. Existing edges stay available until a complete recomputation can process a correction. The import report warns about incomplete grouping. Raise a limit deliberately and run rebuild to retry.
-
-After a split, `--current` reads a subgroup listed in the conflict response without following its historical alias. Without that flag, the old combined ID continues to describe the split. The browser follows aliases for search and browse results, then uses current subgroup reads when a subgroup is chosen in the conflict picker.
-
-Rebuild preserves headers and provider IDs already recorded in the database, so older raw inputs cannot undo a correction. It still recovers folder observations from every input, and a message without a provider ID takes the Gmail thread ID from the `X-GM-THRID` header of a stored Takeout mbox. Keep the database backup, because it holds the corrections that rebuild preserves.
+The view includes the source, stable ref, external ID, raw input and the message's place in it, and historically observed folders. For mail, it also shows the normalized Message-ID, the reply headers, and whether the thread came from the provider. Missing folder observations do not mean the message was never in a folder. The JSON message detail and conversation responses include the same mail evidence under `mail`.
 
 HTML rendering and browser uploads are not part of this workflow. The reader continues to display normalized message text.

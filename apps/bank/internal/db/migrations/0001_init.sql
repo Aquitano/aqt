@@ -250,67 +250,21 @@ create table mailbox_messages (
 );
 create index mailbox_messages_message on mailbox_messages (message_id);
 
-create table mail_thread_nodes (
-    source       text not null,
-    node_key     text not null,
-    thread_id    text not null default '',
-    conflict_key text not null default '',
-    primary key (source, node_key)
-);
-
+-- One row per imported email that the threading rule reads. reply_ids holds
+-- every Message-ID the mail names in In-Reply-To or References; a mail joins
+-- each header-derived thread it shares an id with, in whatever order mail
+-- arrives. Provider threads (Gmail) are taken as given and never merged.
 create table mail_details (
-    message_id        bigint primary key references messages (id) on delete cascade,
-    source            text not null,
-    node_key          text not null,
-    in_reply_to       text[] not null default '{}',
-    reference_ids     text[] not null default '{}',
-    native_thread_id  text not null default '',
-    incomplete        boolean not null default false,
-    header_message_id text not null default '',
-    header_raw_input  bigint references raw_inputs,
-    foreign key (source, node_key) references mail_thread_nodes (source, node_key)
+    message_id    bigint primary key references messages (id) on delete cascade,
+    source        text not null,
+    header_id     text not null default '',
+    in_reply_to   text[] not null default '{}',
+    reference_ids text[] not null default '{}',
+    reply_ids     text[] generated always as (in_reply_to || reference_ids) stored,
+    native        boolean not null
 );
-create index mail_details_node on mail_details (source, node_key);
-create index mail_details_native on mail_details (source, native_thread_id) where native_thread_id <> '';
-
-create table mail_thread_edges (
-    source     text not null,
-    owner_id   bigint not null references messages (id) on delete cascade,
-    left_node  text not null,
-    right_node text not null,
-    primary key (source, owner_id, left_node, right_node),
-    foreign key (source, left_node) references mail_thread_nodes (source, node_key),
-    foreign key (source, right_node) references mail_thread_nodes (source, node_key)
-);
-create index mail_thread_edges_left on mail_thread_edges (source, left_node);
-create index mail_thread_edges_right on mail_thread_edges (source, right_node);
-create index mail_thread_edges_owner on mail_thread_edges (owner_id);
-
-create table mail_thread_conflicts (
-    source       text not null,
-    conflict_key text not null,
-    node_keys    text[] not null,
-    primary key (source, conflict_key)
-);
-create index mail_thread_conflicts_nodes on mail_thread_conflicts using gin (node_keys);
-
-create table mail_thread_aliases (
-    source       text not null,
-    old_id       text not null,
-    current_id   text,
-    conflict_key text,
-    primary key (source, old_id),
-    check ((current_id is null) <> (conflict_key is null))
-);
-create index mail_thread_aliases_conflict on mail_thread_aliases (source, conflict_key);
-create index mail_thread_aliases_old on mail_thread_aliases (old_id);
-
-create table mail_rebuild_progress (
-    source       text not null,
-    work_key     text not null,
-    completed_at timestamptz not null default now(),
-    primary key (source, work_key)
-);
+create index mail_details_header on mail_details (source, header_id) where header_id <> '' and not native;
+create index mail_details_replies on mail_details using gin (reply_ids) where not native;
 
 -- Contacts
 --

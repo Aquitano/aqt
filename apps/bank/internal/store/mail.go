@@ -6,6 +6,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
@@ -40,14 +42,10 @@ func (o MailboxObservation) Validate() error {
 }
 
 type MailProvenance struct {
-	MessageID      string   `json:"message_id"`
-	InReplyTo      []string `json:"in_reply_to"`
-	References     []string `json:"references"`
-	RawInput       int64    `json:"raw_input,omitempty"`
-	NativeThreadID string   `json:"native_thread_id"`
-	HasReplyLinks  bool     `json:"has_reply_links"`
-	Incomplete     bool     `json:"incomplete"`
-	ConflictKey    string   `json:"conflict_key"`
+	MessageID  string   `json:"message_id"`
+	InReplyTo  []string `json:"in_reply_to"`
+	References []string `json:"references"`
+	Native     bool     `json:"native" doc:"The thread id came from the provider (Gmail), not from reply headers."`
 }
 
 func (s *Store) loadMailProvenance(ctx context.Context, messages []MessageDetail) error {
@@ -56,10 +54,8 @@ func (s *Store) loadMailProvenance(ctx context.Context, messages []MessageDetail
 	for index, message := range messages {
 		ids[index], positions[message.ID] = message.ID, index
 	}
-	rows, err := s.pool.Query(ctx, `select d.message_id,d.header_message_id,d.in_reply_to,d.reference_ids,coalesce(d.header_raw_input,0),d.native_thread_id,d.incomplete,n.conflict_key,
-		exists(select 1 from mail_thread_edges e where e.source=d.source and (e.left_node=d.node_key or e.right_node=d.node_key))
-		from mail_details d join mail_thread_nodes n on n.source=d.source and n.node_key=d.node_key
-		where d.message_id=any($1)`, ids)
+	rows, err := s.pool.Query(ctx, `select message_id, header_id, in_reply_to, reference_ids, native
+		from mail_details where message_id = any($1)`, ids)
 	if err != nil {
 		return err
 	}
@@ -67,7 +63,7 @@ func (s *Store) loadMailProvenance(ctx context.Context, messages []MessageDetail
 	for rows.Next() {
 		var id int64
 		var provenance MailProvenance
-		if err := rows.Scan(&id, &provenance.MessageID, &provenance.InReplyTo, &provenance.References, &provenance.RawInput, &provenance.NativeThreadID, &provenance.Incomplete, &provenance.ConflictKey, &provenance.HasReplyLinks); err != nil {
+		if err := rows.Scan(&id, &provenance.MessageID, &provenance.InReplyTo, &provenance.References, &provenance.Native); err != nil {
 			return err
 		}
 		messages[positions[id]].Mail = &provenance
@@ -160,4 +156,26 @@ func (s *Store) loadMailboxes(ctx context.Context, messages []MessageDetail) err
 		messages[positions[messageID]].Mailboxes = append(messages[positions[messageID]].Mailboxes, mailbox)
 	}
 	return rows.Err()
+}
+
+func persistMailboxObservation(ctx context.Context, tx pgx.Tx, message Message, observation *MailboxObservation) error {
+	if observation == nil {
+		return nil
+	}
+	paths := append([]string{}, observation.Paths...)
+	for i, path := range paths {
+		if observation.Kind == "imap" && strings.EqualFold(path, "INBOX") {
+			paths[i] = "INBOX"
+		}
+	}
+	if _, err := tx.Exec(ctx, `insert into mailboxes(source,kind,path)
+		select $1,$2,wanted.path from unnest($3::text[]) wanted(path)
+		where not exists(select 1 from mailboxes m where m.source=$1 and m.kind=$2 and m.path=wanted.path)
+		on conflict(source,kind,path) do nothing`, message.Source, observation.Kind, paths); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `insert into mailbox_messages(mailbox_id,message_id)
+		select m.id,$4 from mailboxes m where m.source=$1 and m.kind=$2 and m.path=any($3)
+		on conflict do nothing`, message.Source, observation.Kind, paths, message.ID)
+	return err
 }

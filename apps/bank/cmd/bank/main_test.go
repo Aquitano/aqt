@@ -42,9 +42,6 @@ func TestCLIParsesDocumentedForms(t *testing.T) {
 		{[]string{"retire", "--source", "youtube", "--external-prefix", "watch:", "--external-prefix", "playlist:"}, func(c cli) bool {
 			return c.Retire.Source == "youtube" && reflect.DeepEqual(c.Retire.ExternalPrefix, []string{"watch:", "playlist:"}) && !c.Retire.Apply
 		}},
-		{[]string{"mail", "conflict", "key", "--source", "gmail", "--json"}, func(c cli) bool {
-			return c.Mail.Conflict.Key == "key" && c.Mail.Source == "gmail" && c.Mail.Conflict.Limit == page.DefaultLimit
-		}},
 		{[]string{"disk", "search", "minecraft", "server", "--ext", "rar", "--json"}, func(c cli) bool {
 			return reflect.DeepEqual(c.Disk.Search.Words, []string{"minecraft", "server"}) && c.Disk.Search.Ext == "rar" && c.Disk.Search.JSON && c.Disk.Search.Limit == page.DefaultLimit
 		}},

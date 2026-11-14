@@ -92,7 +92,6 @@ type Mail struct {
 	NormalizedMessageID string
 	InReplyTo           []string
 	References          []string
-	NativeThreadID      string
 	Mailbox             *Mailbox
 }
 

@@ -421,15 +421,14 @@ func printMorePages(got, limit, offset int) {
 }
 
 type threadCmd struct {
-	ID      []string    `arg:"" help:"Thread id; several words are joined with spaces."`
-	Source  string      `help:"Source the thread belongs to."`
-	Limit   int         `default:"${limit}" help:"Page size, 1-${max_limit}."`
-	Before  ref.Message `help:"Page backward from this message, by ref."`
-	After   ref.Message `help:"Page forward from this message, by ref."`
-	Around  ref.Message `help:"Center context on this message, by ref."`
-	Latest  bool        `help:"Start at the newest page."`
-	Current bool        `help:"Read a current subgroup instead of resolving its historical alias."`
-	JSON    bool        `help:"JSON output, including has_before, has_after and attachments."`
+	ID     []string    `arg:"" help:"Thread id; several words are joined with spaces."`
+	Source string      `help:"Source the thread belongs to."`
+	Limit  int         `default:"${limit}" help:"Page size, 1-${max_limit}."`
+	Before ref.Message `help:"Page backward from this message, by ref."`
+	After  ref.Message `help:"Page forward from this message, by ref."`
+	Around ref.Message `help:"Center context on this message, by ref."`
+	Latest bool        `help:"Start at the newest page."`
+	JSON   bool        `help:"JSON output, including has_before, has_after and attachments."`
 }
 
 func (c *threadCmd) Run(ctx context.Context) error {
@@ -439,7 +438,7 @@ func (c *threadCmd) Run(ctx context.Context) error {
 	}
 	defer closeAPI()
 	thread, err := client.Call(ctx, api, server.GetThread, server.ThreadInput{ID: strings.Join(c.ID, " "), Source: c.Source,
-		Before: c.Before, After: c.After, Around: c.Around, Latest: c.Latest, Current: c.Current, PageSize: httpapi.PageSize{Limit: c.Limit}})
+		Before: c.Before, After: c.After, Around: c.Around, Latest: c.Latest, PageSize: httpapi.PageSize{Limit: c.Limit}})
 	if err != nil {
 		return err
 	}
@@ -722,8 +721,8 @@ func printProvenance(m store.Message) {
 		fmt.Printf("observed folder: %s (%s, historical)\n", mailbox.Path, mailbox.Kind)
 	}
 	if mail := m.Mail; mail != nil {
-		fmt.Printf("header raw input: %s\nnormalized Message-ID: %s\nIn-Reply-To: %s\nReferences: %s\nprovider thread ID: %s\nreply links: %t\ngrouping incomplete: %t\nconflict key: %s\n",
-			recorded(rawInputLabel(mail.RawInput, "")), recorded(mail.MessageID), recorded(strings.Join(mail.InReplyTo, ", ")), recorded(strings.Join(mail.References, ", ")), recorded(mail.NativeThreadID), mail.HasReplyLinks, mail.Incomplete, recorded(mail.ConflictKey))
+		fmt.Printf("normalized Message-ID: %s\nIn-Reply-To: %s\nReferences: %s\nthread from provider: %t\n",
+			recorded(mail.MessageID), recorded(strings.Join(mail.InReplyTo, ", ")), recorded(strings.Join(mail.References, ", ")), mail.Native)
 	}
 }
 

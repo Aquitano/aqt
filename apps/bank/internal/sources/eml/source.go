@@ -220,7 +220,6 @@ func emit(data []byte, opts EMLOptions, locator string, takeout bool, out ingest
 			NormalizedMessageID: m.NormalizedMessageID,
 			InReplyTo:           m.InReplyTo,
 			References:          m.References,
-			NativeThreadID:      threadID,
 			Mailbox:             opts.mailbox(),
 		},
 	})

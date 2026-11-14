@@ -98,9 +98,6 @@ func failure(err error) error {
 	if ambiguous, ok := errors.AsType[*store.AmbiguousRefError](err); ok {
 		return Ambiguous(ambiguous)
 	}
-	if conflict, ok := errors.AsType[*store.MailThreadConflictError](err); ok {
-		return mailThreadConflict(conflict)
-	}
 	if taken, ok := errors.AsType[*store.ErrConflict](err); ok {
 		return errAliasTaken.New(taken.Error()).With("alias", taken.Alias).With("owner", taken.Owner)
 	}

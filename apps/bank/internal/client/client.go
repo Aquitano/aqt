@@ -230,7 +230,6 @@ var failures = map[string]func(e *Error, body []byte) error{
 	"ScanRunning":             is(store.ErrScanRunning),
 	"ClaimLost":               is(store.ErrClaimLost),
 	"MessageRetired":          as[store.RetiredError],
-	"MailThreadConflict":      as[store.MailThreadConflictError],
 	"AliasTaken":              as[store.ErrConflict],
 }
 

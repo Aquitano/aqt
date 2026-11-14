@@ -23,8 +23,6 @@ func TestTaggedFailuresAreTheStoresErrors(t *testing.T) {
 	}{
 		"/v1/refs/content:1111111111111111": {http.StatusConflict, `{"_tag":"AmbiguousRef","message":"ref content:1111111111111111 is ambiguous","ref":"content:1111111111111111",` +
 			`"candidates":[{"ref":"content:1111111111111111a","size":6},{"ref":"content:1111111111111111b","size":7,"volume":"Archive","path":"/b.txt"}]}`},
-		"/v1/threads/old": {http.StatusConflict, `{"_tag":"MailThreadConflict","message":"split","code":"mail_thread_conflict","source":"gmail",` +
-			`"conflict_key":"k","choices":["a","b"],"unanchored_path":"/v1/mail-conflicts/k?source=gmail"}`},
 		"/v1/messages/msg:0123456789abcdef": {http.StatusNotFound, `{"_tag":"NotFound","message":"message msg:0123456789abcdef: not found"}`},
 		"/v1/contacts/nobody":               {http.StatusUnprocessableEntity, `{"_tag":"InvalidRequest","message":"no contact"}`},
 		"/v1/stats":                         {http.StatusBadGateway, `upstream down`},
@@ -49,11 +47,6 @@ func TestTaggedFailuresAreTheStoresErrors(t *testing.T) {
 	local := &store.AmbiguousRefError{Ref: ambiguous.Ref, Candidates: ambiguous.Candidates}
 	if err.Error() != local.Error() {
 		t.Fatalf("remote message %q, local %q", err, local)
-	}
-
-	err = get("/v1/threads/old")
-	if conflict, ok := errors.AsType[*store.MailThreadConflictError](err); !ok || len(conflict.Choices) != 2 {
-		t.Fatalf("a mail thread conflict answered %#v", err)
 	}
 
 	if err = get("/v1/messages/msg:0123456789abcdef"); !errors.Is(err, store.ErrNotFound) {

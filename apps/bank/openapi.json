@@ -2944,12 +2944,6 @@
       "MailProvenance": {
         "additionalProperties": false,
         "properties": {
-          "conflict_key": {
-            "type": "string"
-          },
-          "has_reply_links": {
-            "type": "boolean"
-          },
           "in_reply_to": {
             "items": {
               "type": "string"
@@ -2959,18 +2953,12 @@
               "null"
             ]
           },
-          "incomplete": {
-            "type": "boolean"
-          },
           "message_id": {
             "type": "string"
           },
-          "native_thread_id": {
-            "type": "string"
-          },
-          "raw_input": {
-            "format": "int64",
-            "type": "integer"
+          "native": {
+            "description": "The thread id came from the provider (Gmail), not from reply headers.",
+            "type": "boolean"
           },
           "references": {
             "items": {
@@ -2986,72 +2974,7 @@
           "message_id",
           "in_reply_to",
           "references",
-          "native_thread_id",
-          "has_reply_links",
-          "incomplete",
-          "conflict_key"
-        ],
-        "type": "object"
-      },
-      "MailThreadConflictError": {
-        "description": "The thread ID is an old one whose mail the provider now files under several threads. choices lists those thread IDs, and unanchored_path is the route for the messages that belong to none of them.",
-        "properties": {
-          "_tag": {
-            "enum": [
-              "MailThreadConflict"
-            ],
-            "type": "string"
-          },
-          "choices": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "code": {
-            "type": "string"
-          },
-          "conflict_key": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "recovery": {
-            "properties": {
-              "action": {
-                "description": "What to do, in a few words.",
-                "type": "string"
-              },
-              "instructions": {
-                "description": "How to do it.",
-                "type": "string"
-              }
-            },
-            "required": [
-              "action",
-              "instructions"
-            ],
-            "type": "object"
-          },
-          "source": {
-            "type": "string"
-          },
-          "unanchored_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "_tag",
-          "choices",
-          "code",
-          "conflict_key",
-          "message",
-          "source",
-          "unanchored_path"
+          "native"
         ],
         "type": "object"
       },
@@ -14406,115 +14329,6 @@
         "x-agent-tool": true
       }
     },
-    "/v1/mail-conflicts/{id}": {
-      "get": {
-        "description": "Newest first. A MailThreadConflict failure names this route in unanchored_path.",
-        "operationId": "getMailConflict",
-        "parameters": [
-          {
-            "description": "The conflict_key of a MailThreadConflict failure.",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "description": "The conflict_key of a MailThreadConflict failure.",
-              "type": "string"
-            }
-          },
-          {
-            "description": "The mail source the conflict is in.",
-            "explode": false,
-            "in": "query",
-            "name": "source",
-            "required": true,
-            "schema": {
-              "description": "The mail source the conflict is in.",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Only messages older than this message, by ref. Without it, the page starts at the newest.",
-            "explode": false,
-            "in": "query",
-            "name": "before",
-            "schema": {
-              "description": "Only messages older than this message, by ref. Without it, the page starts at the newest.",
-              "type": "string"
-            }
-          },
-          {
-            "description": "How many results, at most.",
-            "explode": false,
-            "in": "query",
-            "name": "limit",
-            "schema": {
-              "default": 20,
-              "description": "How many results, at most.",
-              "format": "int64",
-              "maximum": 500,
-              "minimum": 1,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Thread"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UnauthorizedError"
-                }
-              }
-            },
-            "description": "Unauthorized: the bearer token is missing or unknown."
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            },
-            "description": "NotFound: nothing matches."
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvalidRequestError"
-                }
-              }
-            },
-            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
-          },
-          "500": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InternalError"
-                }
-              }
-            },
-            "description": "Internal: the server failed; message says how."
-          }
-        },
-        "summary": "Read the messages of a mail thread conflict that belong to no current thread",
-        "tags": [
-          "messages"
-        ]
-      }
-    },
     "/v1/mailboxes": {
       "get": {
         "operationId": "listMailboxes",
@@ -15724,16 +15538,6 @@
             }
           },
           {
-            "description": "Read the ID as a current thread. Without it, an old mail thread ID is followed to the thread that replaced it.",
-            "explode": false,
-            "in": "query",
-            "name": "current",
-            "schema": {
-              "description": "Read the ID as a current thread. Without it, an old mail thread ID is followed to the thread that replaced it.",
-              "type": "boolean"
-            }
-          },
-          {
             "description": "How many results, at most.",
             "explode": false,
             "in": "query",
@@ -15778,16 +15582,6 @@
               }
             },
             "description": "NotFound: nothing matches."
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MailThreadConflictError"
-                }
-              }
-            },
-            "description": "MailThreadConflict: the thread ID is an old one whose mail the provider now files under several threads. choices lists those thread IDs, and unanchored_path is the route for the messages that belong to none of them."
           },
           "422": {
             "content": {

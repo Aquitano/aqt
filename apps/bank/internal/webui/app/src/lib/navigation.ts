@@ -24,14 +24,12 @@ export type Selection =
       source: string;
       threadId: string;
       flashRef?: string;
-      current?: boolean;
     }
   | { kind: "item"; id: string }
   | { kind: "collection"; id: string }
   | { kind: "page"; id: string }
   | { kind: "message"; ref: string }
   | { kind: "contact"; name: string }
-  | { kind: "mail-conflict"; source: string; key: string }
   | { kind: "file"; file: Attachment }
   | null;
 
@@ -43,10 +41,7 @@ const selectionKeys = [
   "thread",
   "threadSource",
   "around",
-  "current",
-  "choices",
   "contact",
-  "conflict",
   "file",
   "filename",
   "mime",
@@ -121,8 +116,6 @@ export function readSelection(params: URLSearchParams): Selection {
       },
     };
   const source = params.get("threadSource");
-  const conflict = params.get("conflict");
-  if (source && conflict) return { kind: "mail-conflict", source, key: conflict };
   const threadId = params.get("thread");
   if (source && threadId) {
     const around = params.get("around");
@@ -131,7 +124,6 @@ export function readSelection(params: URLSearchParams): Selection {
       source,
       threadId,
       flashRef: around && messageRef.test(around) ? around : undefined,
-      current: params.get("current") === "true" || undefined,
     };
   }
   return null;
@@ -161,19 +153,11 @@ export function writeSelection(params: URLSearchParams, selection: Selection) {
       params.set("thread", selection.threadId);
       params.set("threadSource", selection.source);
       if (selection.flashRef) params.set("around", selection.flashRef);
-      if (selection.current) params.set("current", "true");
-      break;
-    case "mail-conflict":
-      params.set("conflict", selection.key);
-      params.set("threadSource", selection.source);
   }
 }
 
-export function select(selection: Selection, choices?: string) {
-  navigate((params) => {
-    writeSelection(params, selection);
-    if (choices) params.set("choices", choices);
-  });
+export function select(selection: Selection) {
+  navigate((params) => writeSelection(params, selection));
 }
 
 export function messageLink(ref: string) {
