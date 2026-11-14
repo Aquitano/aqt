@@ -45,7 +45,7 @@ type syncState struct {
 	Quarantined map[string]string `json:"quarantined,omitempty"`
 }
 
-const fetchWorkers = 8 // messages.get costs 5 quota units at 250 units/s/user
+var fetchWorkers = 8 // messages.get costs 5 quota units at 250 units/s/user
 
 // Sync pulls new mail. First run (or full=true) walks the whole mailbox;
 // afterwards it uses history.list deltas. Both paths are idempotent, so an

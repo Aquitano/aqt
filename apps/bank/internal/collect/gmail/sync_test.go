@@ -35,11 +35,6 @@ type stubGmail struct {
 	raw       map[string]string
 	mu        sync.Mutex // the sync fetches with several workers at once
 	fetched   map[string]int
-	// held names a message whose response waits until a 404 has been served,
-	// which is how a test orders two concurrent workers.
-	held    string
-	gone404 chan struct{}
-	once    sync.Once
 }
 
 func (g *stubGmail) fetchCount(id string) int {
@@ -51,9 +46,6 @@ func (g *stubGmail) fetchCount(id string) int {
 func (g *stubGmail) start(t *testing.T) {
 	t.Helper()
 	g.fetched = map[string]int{}
-	if g.held != "" {
-		g.gone404 = make(chan struct{})
-	}
 	oldBackoff := retryBase
 	retryBase = time.Millisecond
 	t.Cleanup(func() { retryBase = oldBackoff })
@@ -94,21 +86,9 @@ func (g *stubGmail) serve(w http.ResponseWriter, r *http.Request) {
 		switch g.status[id] {
 		case http.StatusNotFound:
 			w.WriteHeader(http.StatusNotFound)
-			if g.gone404 != nil {
-				// Released only once the 404 is on the wire: the held message's
-				// failure cancels the run, and a 404 still unsent then reads as
-				// a cancelled request instead of a dead message.
-				if f, ok := w.(http.Flusher); ok {
-					f.Flush()
-				}
-				g.once.Do(func() { close(g.gone404) })
-			}
 		case http.StatusInternalServerError:
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
-			if id == g.held {
-				<-g.gone404
-			}
 			raw := fmt.Sprintf("From: a@example.com\r\nSubject: mail %s\r\n"+
 				"Message-ID: <%s@example.com>\r\nDate: Mon, 13 May 2024 21:08:00 +0200\r\n\r\nbody\r\n", id, id)
 			if custom, ok := g.raw[id]; ok {
@@ -294,8 +274,14 @@ func TestQuarantineSurvivesAFailedRun(t *testing.T) {
 			t.Fatal(err)
 		}
 		target.Blobs = blobs
+		// One worker, so the 404 is recorded before the failing message
+		// cancels the run. With several, the cancel can reach the 404's
+		// request first, and then nothing was learned.
+		oldWorkers := fetchWorkers
+		fetchWorkers = 1
+		t.Cleanup(func() { fetchWorkers = oldWorkers })
 		g := &stubGmail{t: t, historyID: "100", ids: []string{"gone", "good"},
-			status: map[string]int{"gone": http.StatusNotFound}, held: "good"}
+			status: map[string]int{"gone": http.StatusNotFound}}
 		g.start(t)
 
 		if _, err := runSync(ctx, &client{http: http.DefaultClient}, target, false); err == nil {
