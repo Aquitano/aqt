@@ -35,8 +35,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/diskcmd"
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
@@ -83,12 +86,11 @@ type cli struct {
 	Search      searchCmd      `cmd:"" help:"Grouped archive search, or filtered conversations without a query."`
 	Thread      threadCmd      `cmd:"" help:"One conversation page, oldest first."`
 	Contact     contactCmd     `cmd:"" help:"One person across their many identities."`
-	Show        showCmd        `cmd:"" help:"Print one message and its attachments."`
-	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness."`
-	Ref         refCmd         `cmd:"" help:"Say what any cited ref names (msg:…, content:…, or a library ID such as item:…) and where the same bytes are elsewhere."`
+	Show        showCmd        `cmd:"" help:"Print any cited record (msg:…, content:…, or a library ID such as item:…) and where the same bytes are elsewhere."`
+	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness, and the files on disks in numbers."`
 	Timeline    timelineCmd    `cmd:"" help:"What happened in a year, month or day: messages, activity and files on disks."`
 	OpenAPI     openapiCmd     `cmd:"" name:"openapi" help:"Print the OpenAPI document of the typed routes." hidden:""`
-	Coverage    coverageCmd    `cmd:"" help:"Note what a source holds (empty text clears)."`
+	Note        noteCmd        `cmd:"" help:"Note what a source holds (empty text clears)."`
 	Query       queryCmd       `cmd:"" help:"Read-only ad-hoc SQL: READ ONLY tx, 15s timeout, row cap 100."`
 	Fetch       fetchCmd       `cmd:"" help:"Write an attachment to a file."`
 	Verify      verifyCmd      `cmd:"" help:"Check that every stored blob is present and intact."`
@@ -99,6 +101,7 @@ type cli struct {
 	Worker      workerCmd      `cmd:"" help:"Work one job queue, such as ocr, beside a running serve."`
 	UI          uiCmd          `cmd:"" name:"ui" help:"Local archive browser (needs BANK_URL)."`
 	Token       tokenCmd       `cmd:"" help:"API tokens."`
+	Disk        diskcmd.Cmd    `cmd:"" help:"Scan, verify, copy and tidy files on the disks attached to this machine."`
 }
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -145,6 +148,7 @@ func execute(ctx context.Context, args []string) error {
 		return err
 	}
 	kctx.BindTo(ctx, (*context.Context)(nil))
+	kctx.Bind(diskcmd.Connect(connect))
 	return kctx.Run()
 }
 
@@ -265,7 +269,12 @@ func connect(ctx context.Context) (*client.Client, func(), error) {
 		return nil, nil, err
 	}
 	srv := server.New(st.Store, st.catalogue, blobs, dataDir(), sources.All)
-	return client.InProcess(srv.LocalHandler()), st.Close, nil
+	return client.InProcess(srv.LocalHandler()), func() {
+		if err := st.catalogue.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "bank:", err)
+		}
+		st.Close()
+	}, nil
 }
 
 // onTheBox refuses a command that works on the archive's own database, blob
@@ -473,9 +482,31 @@ func (c *threadCmd) Run(ctx context.Context) error {
 }
 
 type showCmd struct {
-	Ref        ref.Message `arg:"" help:"The message's ref, msg:<16 hex>."`
-	JSON       bool        `help:"JSON output."`
-	Provenance bool        `help:"Show archive, folder, and mail grouping evidence."`
+	Ref        ref.Ref `arg:"" help:"The ref as cited: msg:<16 hex>, content:<16 to 64 hex>, or a library ID such as item:<32 hex>."`
+	JSON       bool    `help:"JSON output: what the ref names, its links, and the whole record under record."`
+	Provenance bool    `help:"For a message: archive, folder, and mail grouping evidence."`
+	Text       bool    `help:"For a content: print the text read from it, by a disk scan, a text job or by hand."`
+	Metadata   bool    `help:"For a content: print its embedded image, document, audio and video tags."`
+}
+
+func (c *showCmd) Validate() error {
+	kind := c.Ref.Kind()
+	switch {
+	case (c.Text || c.Metadata) && kind != ref.KindContent:
+		return fmt.Errorf("--text and --metadata need a content ref")
+	case c.Text && c.Metadata:
+		return fmt.Errorf("--text and --metadata cannot be combined")
+	case c.Provenance && kind != ref.KindMessage:
+		return fmt.Errorf("--provenance needs a message ref")
+	}
+	return nil
+}
+
+// shown is what `bank show --json` prints: what the ref names and where the
+// same bytes are, with the record itself.
+type shown[T any] struct {
+	catalog.Resolved
+	Record T `json:"record"`
 }
 
 func (c *showCmd) Run(ctx context.Context) error {
@@ -484,9 +515,65 @@ func (c *showCmd) Run(ctx context.Context) error {
 		return err
 	}
 	defer closeAPI()
-	d, err := client.Call(ctx, api, server.GetMessage, server.MessageInput{Ref: c.Ref})
+	if c.Text || c.Metadata {
+		cited, err := c.Ref.Content()
+		if err != nil {
+			return err
+		}
+		return showContentPart(ctx, api, cited, c.Text, c.JSON)
+	}
+	resolved, err := client.Call(ctx, api, server.ResolveRef, server.ResolveInput{Ref: c.Ref})
+	if err != nil {
+		return err
+	}
+	switch c.Ref.Kind() {
+	case ref.KindMessage:
+		return c.showMessage(ctx, api, resolved)
+	case ref.KindContent:
+		cited, err := c.Ref.Content()
+		if err != nil {
+			return err
+		}
+		found, err := diskcmd.Content(ctx, api, cited)
+		if err != nil {
+			return err
+		}
+		if c.JSON {
+			return printJSON(shown[view.Content]{resolved, found})
+		}
+		fmt.Printf("%s  %s, first seen %s\n  blake3  %s\n", found.Ref, humanBytes(found.Size), found.FirstSeen.Local().Format("2006-01-02"), found.BLAKE3)
+		printLinks(resolved, "on_disk")
+		if len(found.Occurrences) > 0 {
+			fmt.Println("on disks:")
+		}
+		return diskcmd.PrintPlaces(found)
+	case ref.KindItem:
+		return showLibrary(ctx, api, server.GetLibraryItem, c.Ref, resolved, c.JSON)
+	case ref.KindActivity:
+		return showLibrary(ctx, api, server.GetLibraryActivity, c.Ref, resolved, c.JSON)
+	case ref.KindCollection:
+		return showLibrary(ctx, api, server.GetLibraryCollection, c.Ref, resolved, c.JSON)
+	case ref.KindFile:
+		return showLibrary(ctx, api, server.GetLibraryFile, c.Ref, resolved, c.JSON)
+	case ref.KindPage:
+		return showLibrary(ctx, api, server.GetLibraryPage, c.Ref, resolved, c.JSON)
+	}
+	return fmt.Errorf("%s names no kind of record bank shows", c.Ref)
+}
+
+func (c *showCmd) showMessage(ctx context.Context, api *client.Client, resolved catalog.Resolved) error {
+	cited, err := c.Ref.Message()
+	if err != nil {
+		return err
+	}
+	d, err := client.Call(ctx, api, server.GetMessage, server.MessageInput{Ref: cited})
 	if retired, ok := errors.AsType[*store.RetiredError](err); ok {
-		return printRetired(retired.Retired, c.JSON)
+		if c.JSON {
+			return printJSON(shown[store.RetiredMessage]{resolved, retired.Retired})
+		}
+		printRetired(retired.Retired)
+		printLinks(resolved)
+		return nil
 	}
 	if errors.Is(err, store.ErrNotFound) {
 		return fmt.Errorf("no message %s", c.Ref)
@@ -495,7 +582,7 @@ func (c *showCmd) Run(ctx context.Context) error {
 		return err
 	}
 	if c.JSON {
-		return printJSON(d)
+		return printJSON(shown[store.MessageDetail]{resolved, d})
 	}
 
 	m := d.Message
@@ -525,13 +612,61 @@ func (c *showCmd) Run(ctx context.Context) error {
 			}
 		}
 	}
+	printLinks(resolved, "attachment")
 	return nil
 }
 
-func printRetired(r store.RetiredMessage, asJSON bool) error {
-	if asJSON {
-		return printJSON(store.RetiredError{Retired: r})
+// showLibrary prints a library record: what it is in text, and the whole
+// record in JSON.
+func showLibrary[T any](ctx context.Context, api *client.Client, op httpapi.Op[server.LibraryIDInput, T], cited ref.Ref, resolved catalog.Resolved, asJSON bool) error {
+	record, err := client.Call(ctx, api, op, server.LibraryIDInput{ID: cited.String()})
+	if err != nil {
+		return err
 	}
+	if asJSON {
+		return printJSON(shown[T]{resolved, record})
+	}
+	fmt.Printf("%s  %s  %s\n  full  %s\n", resolved.Kind, resolved.Ref, resolved.Title, resolved.Href)
+	printLinks(resolved)
+	return nil
+}
+
+// showContentPart prints the text read from a content, or its embedded tags.
+func showContentPart(ctx context.Context, api *client.Client, cited ref.Content, text, asJSON bool) error {
+	if !text {
+		d, err := diskcmd.Metadata(ctx, api, cited)
+		switch {
+		case err != nil:
+			return err
+		case asJSON:
+			return printJSON(d)
+		}
+		return diskcmd.PrintMetadata(d)
+	}
+	d, err := diskcmd.Text(ctx, api, cited)
+	switch {
+	case err != nil:
+		return err
+	case asJSON:
+		return printJSON(d)
+	case d.Text == "":
+		return fmt.Errorf("%s has no text: %s %s", d.Ref, d.Status, d.Detail)
+	}
+	fmt.Println(d.Text)
+	return nil
+}
+
+// printLinks lists where the same bytes are elsewhere, leaving out the
+// relations the record's own output already shows.
+func printLinks(resolved catalog.Resolved, shownAlready ...string) {
+	for _, link := range resolved.Links {
+		if !slices.Contains(shownAlready, link.Relation) {
+			fmt.Printf("%-11s %s  %s\n", link.Relation, link.Ref, link.Title)
+		}
+	}
+}
+
+func printRetired(r store.RetiredMessage) {
 	replacement := r.Replacement
 	if replacement == "" {
 		replacement = "none recorded"
@@ -544,7 +679,6 @@ func printRetired(r store.RetiredMessage, asJSON bool) error {
 	if r.RawInput != 0 {
 		fmt.Printf("raw input: %d\n", r.RawInput)
 	}
-	return nil
 }
 
 // rawInputLabel names a raw input and where in it a record was read, or
@@ -601,12 +735,18 @@ func (c *statsCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	disks, err := diskcmd.Stats(ctx, api)
+	if err != nil {
+		return err
+	}
 	if c.JSON {
-		return printJSON(stats)
+		return printJSON(struct {
+			Sources []store.SourceStats `json:"sources"`
+			Disks   view.Stats          `json:"disks"`
+		}{stats, disks})
 	}
 	if len(stats) == 0 {
 		fmt.Println("archive is empty")
-		return nil
 	}
 	var total int64
 	for _, s := range stats {
@@ -623,20 +763,22 @@ func (c *statsCmd) Run(ctx context.Context) error {
 			fmt.Print("  (stale)")
 		}
 		fmt.Println()
-		if s.Coverage != "" {
-			fmt.Printf("%-12s %s\n", "", s.Coverage)
+		if s.Note != "" {
+			fmt.Printf("%-12s %s\n", "", s.Note)
 		}
 		total += s.Messages
 	}
-	fmt.Printf("%-12s %8d messages\n", "total", total)
+	if len(stats) > 0 {
+		fmt.Printf("%-12s %8d messages\n", "total", total)
+	}
 	if anyStale(stats) {
 		fmt.Printf("\n(stale) means nothing new in %d days — a gap there may be a broken import, not a quiet month\n",
 			int(store.StaleAfter.Hours()/24))
 	}
 
-	// Coverage belongs in "how much of my archive can I actually search", but
-	// not in --json: that payload is a list of sources and agents already
-	// parse it. `bank attachment stats --json` is the machine-readable form.
+	// Text read from attachments belongs in "how much of my archive can I
+	// actually search", but not in --json: `bank attachment stats --json` is
+	// its machine-readable form.
 	ext, err := client.Call(ctx, api, server.GetAttachmentStats, struct{}{})
 	if err != nil {
 		return err
@@ -645,6 +787,8 @@ func (c *statsCmd) Run(ctx context.Context) error {
 		fmt.Println()
 		printExtractionStats(ext)
 	}
+	fmt.Println("\nfiles on disks:")
+	diskcmd.PrintStats(disks)
 	return nil
 }
 
@@ -652,26 +796,26 @@ func anyStale(stats []store.SourceStats) bool {
 	return slices.ContainsFunc(stats, func(s store.SourceStats) bool { return s.Stale })
 }
 
-// coverageCmd maintains the per-source note on what the archive actually holds
+// noteCmd maintains the per-source note on what the archive actually holds
 // — the context that turns "search found nothing" into either "it did not
 // happen" or "that period was never imported".
-type coverageCmd struct {
+type noteCmd struct {
 	Source string   `arg:""`
 	Text   []string `arg:"" optional:"" help:"The note; omit it to clear."`
 }
 
-func (c *coverageCmd) Run(ctx context.Context) error {
+func (c *noteCmd) Run(ctx context.Context) error {
 	text := strings.Join(c.Text, " ")
 	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeAPI()
-	if _, err := client.Call(ctx, api, server.SetSourceCoverage, server.CoverageInput{Source: c.Source, Body: server.CoverageInputBody{Text: text}}); err != nil {
+	if _, err := client.Call(ctx, api, server.SetSourceNote, server.NoteInput{Source: c.Source, Body: server.NoteInputBody{Text: text}}); err != nil {
 		return err
 	}
 	if text == "" {
-		fmt.Printf("%s: coverage note cleared\n", c.Source)
+		fmt.Printf("%s: note cleared\n", c.Source)
 		return nil
 	}
 	fmt.Printf("%s: %s\n", c.Source, text)

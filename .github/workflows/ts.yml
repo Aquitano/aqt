@@ -5,7 +5,7 @@ on:
     paths:
       [
         "packages/ts/**",
-        "apps/bank/attic/executor/**",
+        "apps/bank/executor/**",
         "apps/gallery/**",
         "apps/img/**",
         "apps/bank/internal/webui/app/**",
@@ -23,7 +23,7 @@ on:
     paths:
       [
         "packages/ts/**",
-        "apps/bank/attic/executor/**",
+        "apps/bank/executor/**",
         "apps/gallery/**",
         "apps/img/**",
         "apps/bank/internal/webui/app/**",

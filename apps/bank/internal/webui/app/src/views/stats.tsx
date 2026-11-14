@@ -43,7 +43,7 @@ export function StatsView({
             <div className="text-xs text-muted-foreground">
               Last sync: {s.last_sync ? fmtDay(s.last_sync) : "not recorded"}
             </div>
-            {s.coverage && <p className="mt-3 text-sm text-muted-foreground">{s.coverage}</p>}
+            {s.note && <p className="mt-3 text-sm text-muted-foreground">{s.note}</p>}
           </CardContent>
         </Card>
       ))}

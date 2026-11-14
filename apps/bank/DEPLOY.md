@@ -135,7 +135,7 @@ its job tables' version in `river_migration`. Restore the pre-upgrade dump to
 roll back a schema change.
 
 Migrations run in `bank migrate` and when the server starts, River's after the
-app's. Every other command, including `attic`'s and `bank worker`, stops with an
+app's. Every other command, including `bank worker`, stops with an
 error while the schema or the job tables are behind its binary, and an older
 binary stops instead of writing to newer ones. A second migrator
 gives up after ten seconds instead of waiting for the first. Take the dump before
@@ -271,18 +271,18 @@ bank fetch <blake3> -o invoice.pdf
 
 `sync`, `worker`, `token`, `verify`, `reimport`, `import inbox` and `mail rebuild` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
 
-### Scanning disks from the PC
+### Disks on the PC
 
-`attic scan` on the Windows PC the disks attach to writes the file catalogue through `bank serve` with the same two variables, so the PC holds no database credentials and Postgres stays on the box's loopback. Give it a write token of its own, so revoking it stops only the scans:
+`bank disk` on the Windows PC the disks attach to reads and writes the file catalogue through `bank serve` with the same two variables, so the PC holds no database credentials and Postgres stays on the box's loopback. Give it a write token of its own, so revoking it stops only the PC:
 
 ```powershell
 # on the PC; the token comes from: docker compose run --rm -T bank token new pc
 [Environment]::SetEnvironmentVariable('BANK_URL', 'http://vps.tailnet.ts.net:8480', 'User')
 [Environment]::SetEnvironmentVariable('BANK_TOKEN', 'bank_...', 'User')
-attic scan E:\
+bank disk scan E:\
 ```
 
-Build `attic.exe` from the commit the server runs. The server holds each scan's volume between its requests and records a scan that sends nothing for five minutes, or that is still open when the server stops, as interrupted; the next scan continues it. Archive listings that span several requests wait under `$BANK_DATA_DIR/scans` until they are complete. [attic's README](attic/README.md#scan-through-bank-serve) has the rest, including which attic commands still need `DATABASE_URL`.
+Build `bank.exe` (`GOOS=windows go build ./cmd/bank`) from the commit the server runs. The server holds each scan's volume between its requests and records a scan that sends nothing for five minutes, or that is still open when the server stops, as interrupted; the next scan continues it. Archive listings that span several requests wait under `$BANK_DATA_DIR/scans` until they are complete. An enrichment lease that the PC stops renewing runs out after two minutes. [DISKS.md](DISKS.md#through-bank-serve) has the rest.
 
 ## 6. Scheduled work
 

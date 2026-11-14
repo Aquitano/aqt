@@ -6,8 +6,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/unpack"
 )
 
 // PendingArchive is a hashed archive below the scan root whose content has
@@ -45,7 +45,7 @@ func (sc *Scan) ArchiveTotals(ctx context.Context, ranges []config.ArchiveRange,
 		cross join lateral (select e.content_id`+pendingArchiveWhere+`
 			and e.path collate "C" > $10 offset 0) candidate
 		where policy.upper collate "C" > $10 and ($4 = '' or policy.lower collate "C" < $4)`,
-		sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lowers, uppers, depths, unpackMaxBytes, archive.LaterVolumePattern, lower).Scan(&n)
+		sc.Volume.ID, unpack.Extensions, unpack.Compressed, upper, lowers, uppers, depths, unpackMaxBytes, unpack.LaterVolumePattern, lower).Scan(&n)
 	return n, err
 }
 
@@ -74,8 +74,8 @@ func (sc *Scan) NextArchives(ctx context.Context, after PendingArchive, limit in
 				and (e.path collate "C", e.id) > ($10, $11)
 				order by e.path collate "C", e.id limit $12
 			) candidate order by policy.lower collate "C", candidate.path collate "C", candidate.id limit $12`,
-			sc.Volume.ID, archive.Extensions, archive.Compressed, upper, lowers, uppers, depths,
-			unpackMaxBytes, archive.LaterVolumePattern, lower, after.ID, limit)
+			sc.Volume.ID, unpack.Extensions, unpack.Compressed, upper, lowers, uppers, depths,
+			unpackMaxBytes, unpack.LaterVolumePattern, lower, after.ID, limit)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +154,7 @@ func (sc *Scan) StartListing(ctx context.Context, contentID int64, depth int, un
 	return &Listing{sc: sc, tx: tx, contentID: contentID, replacing: replacing, depth: depth, unpackMaxBytes: unpackMaxBytes}, nil
 }
 
-func (l *Listing) Add(ctx context.Context, m archive.Member) error {
+func (l *Listing) Add(ctx context.Context, m unpack.Member) error {
 	var crc *int64
 	if m.CRC32 != nil {
 		v := int64(*m.CRC32)
@@ -190,8 +190,8 @@ func (l *Listing) flush(ctx context.Context) error {
 }
 
 // Finish records how reading the archive went and commits its members.
-func (l *Listing) Finish(ctx context.Context, res archive.Result) error {
-	if l.replacing && (res.Status != archive.Listed || res.Incomplete) {
+func (l *Listing) Finish(ctx context.Context, res unpack.Result) error {
+	if l.replacing && (res.Status != unpack.Listed || res.Incomplete) {
 		if !res.CacheableFailure {
 			l.Abort(ctx)
 			return ctx.Err()

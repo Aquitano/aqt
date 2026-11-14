@@ -24,11 +24,11 @@ import (
 
 	gitconfig "github.com/go-git/go-git/v5/plumbing/format/config"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/scratch"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/unpack"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
 
@@ -152,7 +152,7 @@ func Run(ctx context.Context, cat Catalogue, o Options) (Result, error) {
 	}
 	r := &run{o: o, sc: sc, rules: o.Config.Rules(vol.ID, vol.Label), mountRoot: mounted.Root, lastProgress: time.Now(),
 		changeTimes: slices.Contains([]string{"NTFS", "REFS"}, strings.ToUpper(vol.FS)),
-		archives:    archive.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
+		archives:    unpack.Options{Depth: a.Depth, UnpackMaxBytes: a.UnpackMaxBytes, Temp: o.Config.Temp, Log: log},
 		textsRead:   map[int64]bool{}, log: log}
 	r.folders = config.NewFolders(mounted.Root, r.rules)
 	if r.o.list == nil {
@@ -195,7 +195,7 @@ type run struct {
 	dirs         int64
 	hashFiles    int64
 	hashBytes    int64
-	archives     archive.Options
+	archives     unpack.Options
 	text         extract.Options
 	textsRead    map[int64]bool
 	readErr      error
@@ -657,7 +657,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	info, err := f.Stat()
 	var possible bool
 	if err == nil {
-		possible, err = archive.MayBeArchive(ctx, f, info.Size())
+		possible, err = unpack.MayBeArchive(ctx, f, info.Size())
 	}
 	err = errors.Join(err, f.Close())
 	if err != nil {
@@ -669,21 +669,21 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 		if err := r.volumeGone(); err != nil {
 			return err
 		}
-		r.sc.Skip(a.Path, archive.NotArchive, "", "")
+		r.sc.Skip(a.Path, unpack.NotArchive, "", "")
 		return nil
 	}
 	started, members := time.Now(), r.sc.Counts().Members
-	var skips []archive.Skip
+	var skips []unpack.Skip
 	opener := archiveFiles{r: r, ctx: ctx, source: source, stamp: a.Stamp}
 	defer opener.close()
 	options := r.archives
 	options.Depth = rules.ArchiveDepth
-	res, err := archive.List(ctx, opener.source, opener.open, options,
-		func(m archive.Member) error {
+	res, err := unpack.List(ctx, opener.source, opener.open, options,
+		func(m unpack.Member) error {
 			r.progress(false)
 			return l.Add(ctx, m)
 		},
-		func(s archive.Skip) { skips = append(skips, s) })
+		func(s unpack.Skip) { skips = append(skips, s) })
 	if opener.fatal != nil {
 		l.Abort(ctx)
 		return opener.fatal
@@ -692,13 +692,13 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 		l.Abort(ctx)
 		return r.readFailure(ctx, a.Path, opener.failure)
 	}
-	if err == nil && res.Status != archive.Listed {
+	if err == nil && res.Status != unpack.Listed {
 		// A disk unplugged mid-read looks like a damaged archive.
 		err = r.volumeGone()
 	}
 	if err != nil {
 		l.Abort(ctx)
-		var unreadable archive.UnreadableError
+		var unreadable unpack.UnreadableError
 		if !errors.As(err, &unreadable) || ctx.Err() != nil {
 			return err
 		}
@@ -711,7 +711,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	}
 	verified := opener.held[opener.source] != nil
 	res.CacheableFailure = res.CacheableFailure && verified && !opener.multipart
-	if verified && (res.Status == archive.Listed && !res.Incomplete || res.CacheableFailure) {
+	if verified && (res.Status == unpack.Listed && !res.Incomplete || res.CacheableFailure) {
 		if r.archiveTried == nil {
 			r.archiveTried = map[archiveAttempt]bool{}
 		}
@@ -728,14 +728,14 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 	}
 	attrs := []any{"path", a.Path, "size", a.Size, "format", res.Format, "status", res.Status,
 		"members", r.sc.Counts().Members - members, "nested_unopened", closed, "took_ms", took.Milliseconds()}
-	if res.Status != archive.Listed {
+	if res.Status != unpack.Listed {
 		r.log.Warn("archive not listed", append(attrs, "detail", res.Detail)...)
 		r.sc.Skip(a.Path, res.Status, "", res.Detail)
 	} else {
 		r.log.Info("archive listed", attrs...)
 	}
 	for _, s := range skips {
-		r.sc.Skip(a.Path+archive.Separator+s.Path, s.Reason, "", s.Detail)
+		r.sc.Skip(a.Path+unpack.Separator+s.Path, s.Reason, "", s.Detail)
 	}
 	return nil
 }

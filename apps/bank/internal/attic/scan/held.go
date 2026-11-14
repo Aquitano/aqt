@@ -9,10 +9,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/scratch"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/unpack"
 )
 
 var errChanged = errors.New("file does not match its catalogued hash or stamp")
@@ -107,7 +107,7 @@ type archiveFiles struct {
 	multipart bool
 }
 
-func (a *archiveFiles) open(path string) (archive.Handle, error) {
+func (a *archiveFiles) open(path string) (unpack.Handle, error) {
 	if f := a.held[path]; f != nil {
 		return archiveReader{SectionReader: io.NewSectionReader(f, 0, f.Entry.Size), file: f}, nil
 	}

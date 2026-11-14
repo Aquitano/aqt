@@ -259,7 +259,7 @@ func TestArchiveUpgradeRemembersPermanentFailuresAtEachDepth(t *testing.T) {
 }
 
 func testArchiveUpgradeRemembersPermanentFailuresAtEachDepth(t *testing.T, catalogue newCatalogue) {
-	encrypted, err := os.ReadFile(filepath.Join("..", "archive", "testdata", "encrypted.7z"))
+	encrypted, err := os.ReadFile(filepath.Join("..", "unpack", "testdata", "encrypted.7z"))
 	if err != nil {
 		t.Fatal(err)
 	}

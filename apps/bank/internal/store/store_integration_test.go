@@ -248,7 +248,7 @@ func TestStatsReportFreshness(t *testing.T) {
 	}
 }
 
-func TestCoverageNotesAndStaleness(t *testing.T) {
+func TestSourceNotesAndStaleness(t *testing.T) {
 	ctx := context.Background()
 	st, dsn := storetest.NewNamed(t)
 	if _, err := st.InsertMessage(ctx, msg("whatsapp", "w1", store.Message{Body: "hi"})); err != nil {
@@ -262,7 +262,7 @@ func TestCoverageNotesAndStaleness(t *testing.T) {
 	storetest.Exec(t, dsn,
 		`update messages set ingested_at = now() - interval '90 days' where source = 'whatsapp'`)
 
-	if err := st.SetCoverage(ctx, "whatsapp", "only the chats exported in 2025-08; nothing before"); err != nil {
+	if err := st.SetNote(ctx, "whatsapp", "only the chats exported in 2025-08; nothing before"); err != nil {
 		t.Fatal(err)
 	}
 	by := func() map[string]store.SourceStats {
@@ -279,25 +279,25 @@ func TestCoverageNotesAndStaleness(t *testing.T) {
 	}
 
 	stats := by()
-	if !strings.HasPrefix(stats["whatsapp"].Coverage, "only the chats") {
-		t.Errorf("coverage = %q", stats["whatsapp"].Coverage)
+	if !strings.HasPrefix(stats["whatsapp"].Note, "only the chats") {
+		t.Errorf("note = %q", stats["whatsapp"].Note)
 	}
 	if !stats["whatsapp"].Stale {
 		t.Error("a source with nothing new in 90 days should be flagged stale")
 	}
-	if stats["gmail"].Stale || stats["gmail"].Coverage != "" {
+	if stats["gmail"].Stale || stats["gmail"].Note != "" {
 		t.Errorf("gmail = %+v, want fresh and unannotated", stats["gmail"])
 	}
-	// A coverage note is written by hand and must not read as a sync.
+	// A note is written by hand and must not read as a sync.
 	if stats["whatsapp"].LastSync != nil {
-		t.Error("a coverage note claimed to be a sync checkpoint")
+		t.Error("a note claimed to be a sync checkpoint")
 	}
 
-	if err := st.SetCoverage(ctx, "whatsapp", ""); err != nil {
+	if err := st.SetNote(ctx, "whatsapp", ""); err != nil {
 		t.Fatal(err)
 	}
-	if c := by()["whatsapp"].Coverage; c != "" {
-		t.Errorf("coverage = %q after clearing", c)
+	if c := by()["whatsapp"].Note; c != "" {
+		t.Errorf("note = %q after clearing", c)
 	}
 }
 

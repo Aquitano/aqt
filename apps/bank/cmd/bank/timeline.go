@@ -7,7 +7,6 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
-	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
 )
@@ -65,35 +64,6 @@ func (c *timelineCmd) Run(ctx context.Context) error {
 	}
 	for _, note := range result.Coverage {
 		fmt.Printf("note: %s\n", note)
-	}
-	return nil
-}
-
-type refCmd struct {
-	Ref  ref.Ref `arg:"" help:"The ref as cited, such as msg:<16 hex>, content:<16 to 64 hex> or item:<32 hex>."`
-	JSON bool    `help:"JSON output."`
-}
-
-func (c *refCmd) Run(ctx context.Context) error {
-	api, closeAPI, err := connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer closeAPI()
-	resolved, err := client.Call(ctx, api, server.ResolveRef, server.ResolveInput{Ref: c.Ref})
-	if err != nil {
-		return err
-	}
-	if c.JSON {
-		return printJSON(resolved)
-	}
-	fmt.Printf("%s  %s  %s\n", resolved.Kind, resolved.Ref, resolved.Title)
-	if resolved.At != nil {
-		fmt.Printf("  at    %s\n", resolved.At.Local().Format("2006-01-02 15:04"))
-	}
-	fmt.Printf("  full  %s\n", resolved.Href)
-	for _, link := range resolved.Links {
-		fmt.Printf("  %-11s %s  %s\n", link.Relation, link.Ref, link.Title)
 	}
 	return nil
 }

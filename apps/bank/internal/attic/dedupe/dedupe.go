@@ -170,7 +170,7 @@ func setAside(ctx context.Context, rec Recorder, g store.DedupeGroup, kept *kept
 		}
 		return Move{}, "changed while it was being set aside", nil
 	}
-	if err := rec.RecordDedupeMove(ctx, store.DedupeMove{EntryID: extra.ID, KeptEntryID: kept.hit.ID, ContentID: g.ContentID, MovedTo: to}); err != nil {
+	if err := rec.RecordDedupeMove(ctx, store.DedupeMove{EntryID: extra.ID, KeptEntryID: kept.hit.ID, MovedTo: to}); err != nil {
 		// An unrecorded move would leave the catalogue unable to say where the
 		// copy went, so the copy goes back unless its path was taken meanwhile.
 		err = fmt.Errorf("record the move of %s: %w", extra.Path, err)

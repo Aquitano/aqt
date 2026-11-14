@@ -197,6 +197,7 @@ var failures = map[string]func(e *Error, body []byte) error{
 	"AmbiguousRef":            as[atticstore.AmbiguousRefError],
 	"AmbiguousVolume":         as[atticstore.AmbiguousVolumeError],
 	"ScanRunning":             is(atticstore.ErrScanRunning),
+	"ClaimLost":               is(atticstore.ErrClaimLost),
 	"MessageRetired":          as[store.RetiredError],
 	"MailThreadConflict":      as[store.MailThreadConflictError],
 	"AliasTaken":              as[store.ErrConflict],

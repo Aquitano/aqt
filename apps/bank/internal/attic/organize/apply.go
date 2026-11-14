@@ -123,7 +123,7 @@ func readPrepared(path string) (Plan, error) {
 		return Plan{}, err
 	}
 	if p.PreparedAt.IsZero() {
-		return Plan{}, fmt.Errorf("%s is not prepared; run `attic organize prepare` on it first", path)
+		return Plan{}, fmt.Errorf("%s is not prepared; run `bank disk organize prepare` on it first", path)
 	}
 	for i, m := range p.Moves {
 		if len(m.Baseline) == 0 {

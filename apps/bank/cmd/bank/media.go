@@ -15,7 +15,6 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
-	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 )
 
@@ -56,11 +55,7 @@ type libraryCmd struct {
 	Activity         libraryListCmd             `cmd:"" help:"Activity matching a query."`
 	Collections      libraryListCmd             `cmd:"" help:"Collections matching a query."`
 	Files            libraryListCmd             `cmd:"" help:"Files matching a query."`
-	Get              libraryGetCmd              `cmd:"" help:"Any record by id: item:, activity:, collection:, file: or page:."`
-	Collection       libraryGetCmd              `cmd:"" help:"One collection."`
-	File             libraryGetCmd              `cmd:"" help:"One file."`
-	Page             libraryGetCmd              `cmd:"" help:"One page."`
-	Snapshots        libraryGetCmd              `cmd:"" help:"A collection's snapshots."`
+	Snapshots        librarySnapshotsCmd        `cmd:"" help:"A collection's snapshots."`
 	Create           libraryCreateCmd           `cmd:"" help:"Create an item from JSON."`
 	CollectionCreate libraryCollectionCreateCmd `cmd:"" name:"collection-create" help:"Create a collection from JSON."`
 	State            libraryStateCmd            `cmd:"" help:"Replace an item's personal state from JSON."`
@@ -102,40 +97,17 @@ func (c *libraryListCmd) Run(ctx context.Context, kctx *kong.Context, lib *libra
 	}
 }
 
-type libraryGetCmd struct {
-	ID string `arg:""`
+type librarySnapshotsCmd struct {
+	ID string `arg:"" help:"The collection's ID, collection:<32 hex>."`
 }
 
-func (c *libraryGetCmd) Run(ctx context.Context, kctx *kong.Context) error {
-	kind := kctx.Selected().Name
-	if kind == "get" {
-		r, err := ref.Parse(c.ID)
-		if err != nil {
-			return err
-		}
-		if kind = string(r.Kind()); kind == string(ref.KindMessage) || kind == string(ref.KindContent) {
-			return fmt.Errorf("%s is not a library record; use bank ref", c.ID)
-		}
-	}
+func (c *librarySnapshotsCmd) Run(ctx context.Context) error {
 	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
 	defer closeAPI()
-	id := server.LibraryIDInput{ID: c.ID}
-	switch kind {
-	case "activity":
-		return printLibrary(client.Call(ctx, api, server.GetLibraryActivity, id))
-	case "collection":
-		return printLibrary(client.Call(ctx, api, server.GetLibraryCollection, id))
-	case "file":
-		return printLibrary(client.Call(ctx, api, server.GetLibraryFile, id))
-	case "page":
-		return printLibrary(client.Call(ctx, api, server.GetLibraryPage, id))
-	case "snapshots":
-		return printLibrary(client.Call(ctx, api, server.ListLibraryCollectionSnapshots, server.SnapshotsInput{ID: c.ID, Projection: "full"}))
-	}
-	return printLibrary(client.Call(ctx, api, server.GetLibraryItem, id))
+	return printLibrary(client.Call(ctx, api, server.ListLibraryCollectionSnapshots, server.SnapshotsInput{ID: c.ID, Projection: "full"}))
 }
 
 type libraryCreateCmd struct {

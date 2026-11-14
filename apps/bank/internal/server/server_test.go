@@ -581,8 +581,8 @@ func TestReadTokensReadAndOnlyWriteTokensWrite(t *testing.T) {
 		{"a read token looks items up by POST", reader, http.MethodPost, "/v1/library/items/summaries", `{"ids": [""]}`, http.StatusUnprocessableEntity},
 		{"a read token cannot write", reader, http.MethodDelete, "/v1/attachments/" + strings.Repeat("ab", 32) + "/text", "", http.StatusForbidden},
 		{"a read token cannot import", reader, http.MethodPost, "/v1/import/json", "[]", http.StatusForbidden},
-		{"a read token cannot record coverage", reader, http.MethodPut, "/v1/sources/gmail/coverage", `{"text": "x"}`, http.StatusForbidden},
-		{"a write token may write", writer, http.MethodPut, "/v1/sources/gmail/coverage", `{"text": 5}`, http.StatusUnprocessableEntity},
+		{"a read token cannot record a note", reader, http.MethodPut, "/v1/sources/gmail/note", `{"text": "x"}`, http.StatusForbidden},
+		{"a write token may write", writer, http.MethodPut, "/v1/sources/gmail/note", `{"text": 5}`, http.StatusUnprocessableEntity},
 	} {
 		req, err := http.NewRequestWithContext(t.Context(), tc.method, srv.URL+tc.path, strings.NewReader(tc.body))
 		if err != nil {

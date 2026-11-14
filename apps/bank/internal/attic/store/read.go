@@ -591,7 +591,7 @@ func (s *Store) CurrentPlaces(ctx context.Context, digests []content.Digest) (ma
 	return places, rows.Err()
 }
 
-// ScanInfo is one scan as `attic scans`, `attic volumes` and `attic skips`
+// ScanInfo is one scan as `bank disk scans`, `bank disk volumes` and `bank disk skips`
 // report it.
 type ScanInfo struct {
 	ID       int64      `json:"id"`

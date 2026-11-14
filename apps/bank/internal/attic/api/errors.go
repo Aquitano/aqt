@@ -30,6 +30,8 @@ var (
 		}}
 	errScanRunning = httpapi.Kind{Tag: "ScanRunning", Status: http.StatusConflict,
 		Doc: "Another scan of this volume is open. It ends when it finishes, or when it has sent nothing for its idle time."}
+	errClaimLost = httpapi.Kind{Tag: "ClaimLost", Status: http.StatusConflict,
+		Doc: "The lease ran out and another worker holds the work now, or the result was saved already. Nothing changed."}
 )
 
 // Ambiguous is the documented failure for an ambiguous content ref.
@@ -50,6 +52,8 @@ func failure(err error) error {
 	switch {
 	case errors.Is(err, store.ErrScanRunning):
 		return errScanRunning.New(err.Error())
+	case errors.Is(err, store.ErrClaimLost):
+		return errClaimLost.New(err.Error())
 	case errors.Is(err, store.ErrNotFound), errors.Is(err, session.ErrNotOpen):
 		return errNotFound.New(err.Error())
 	case invalidSearch, errors.Is(err, fail.ErrInvalid):

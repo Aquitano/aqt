@@ -107,7 +107,7 @@ export function LibrarySearchGroups({
             key={collection.id}
             selected={selection?.kind === "collection" && selection.id === collection.id}
             title={collection.title}
-            description={`${collection.kind} · ${collection.snapshot?.entry_count ?? 0} entries · ${collection.snapshot?.completeness ?? "unknown"} coverage`}
+            description={`${collection.kind} · ${collection.snapshot?.entry_count ?? 0} entries · ${collection.snapshot?.completeness ?? "unknown"} snapshot`}
             source={collection.source}
             onClick={() => select({ kind: "collection", id: collection.id })}
           />

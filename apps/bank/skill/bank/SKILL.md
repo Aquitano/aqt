@@ -36,9 +36,10 @@ bank search "query" [--kind message|item|activity|collection|file|page] [--sourc
 bank thread <thread_id> [--source s] [--around ref|--before ref|--after ref|--latest] [--limit n] [--json]
 bank contact list|show <name> [--json]               # who the owner has named, and their identities
 bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [--before ref|--offset n] [--json]
-bank show <ref> [--json]         # full body, recipients, raw_input, attachment list
-bank ref <ref> [--json]          # what any ref names, and where the same bytes are
-bank stats [--json]              # sources, counts, date ranges, freshness, coverage notes
+bank show <ref> [--json]         # any ref: a message's body, recipients and attachments, a library record,
+                                 #  or a content's places; and where the same bytes are elsewhere
+bank show content:<hex> --text   # the text read from a file, whether attached or on a disk
+bank stats [--json]              # sources, counts, date ranges, freshness, notes; files on disks
 bank fetch <blake3> -o <path>    # write attachment bytes to a file
 bank attachment stats [--json]   # how much of the archive is searchable inside its attachments
 bank query <sql|-> [--limit n] [--json]   # read-only ad-hoc SQL — the analytics escape hatch
@@ -48,7 +49,7 @@ bank query --schema              # list tables and columns before writing the fi
 Semantics that matter:
 
 - Always pass `--json` when consuming output. A query search returns an object with `messages`, `items`, `activity`, `collections`, `files`, `pages`, and `attachments` arrays, plus library `coverage` notes. Empty groups are `[]`. `--kind message` restricts the search but keeps this object shape. Search without a query returns a thread array. Thread and contact-history commands also return their existing response shapes.
-- **Cite records by `ref`.** Every citable record has one written form, `kind:value`: `msg:<16 hex>` for a message, `content:<16 to 64 hex>` for bytes, and `item:`, `activity:`, `collection:`, `file:` or `page:` with 32 hex for a library record, whose ID is its ref. Each `.messages[]` entry carries `ref`, for example `msg:9454d9440ade1088`, and no row number. Copy refs exactly as printed: a bare value without its kind, or uppercase hex, is rejected. `bank ref <ref>` says what any of them names.
+- **Cite records by `ref`.** Every citable record has one written form, `kind:value`: `msg:<16 hex>` for a message, `content:<16 to 64 hex>` for bytes, and `item:`, `activity:`, `collection:`, `file:` or `page:` with 32 hex for a library record, whose ID is its ref. Each `.messages[]` entry carries `ref`, for example `msg:9454d9440ade1088`, and no row number. Copy refs exactly as printed: a bare value without its kind, or uppercase hex, is rejected. `bank show <ref>` shows any of them. Its `--json` names the record (`kind`, `title`), lists where the same bytes are under `links`, and holds the record itself under `record`.
 - Message ranking is BM25 over subject, body, sender, recipients, and extracted attachment text, with typo tolerance (`--fuzzy 1` by default, max 2). Library groups use Postgres full-text search without fuzzy matching. Scores from separate groups are not comparable. The default `--match any` matches words independently. Use `--match all` to require every term across searchable fields, or `--match phrase` for adjacent words in order. Message phrase matching ignores `--fuzzy`.
 - Each message result carries a `snippet`: a bounded plain-text window around the match. Read message fields from `.messages[]`; item, activity, collection, file, page, and attachment results have different schemas.
 - A result may also carry `attachment_snippet`, meaning the match is inside an attached document rather than the message body — quote it as coming from the attachment, not from what the sender wrote. It is only set for exact-token matches; a fuzzy hit inside a document leaves it empty.
@@ -64,8 +65,8 @@ Semantics that matter:
 - `bank thread` takes a `.messages[]` hit's `thread_id` and `source`. Pass `--around <hit.ref> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.ref>` or `--after <last.ref>`. Use `--latest` for recent history. Positions are mutually exclusive, a page holds 100 messages by default and at most 500, and there is no total history cap.
 - Contact history can continue with `bank contact messages <name> --before <last.ref>`, beyond the offset limit. Results are newest-first. Use the cursor without `--offset`.
 - `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.
-- `bank stats --json` includes `last_ingest` per source, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.
-- **Read `coverage` before concluding anything from absence.** It is the owner's note on what a source actually holds ("only the chats exported in 2025-08"), and it is the difference between "it never happened" and "that period was never imported". `stale: true` means nothing new has landed in that source for 30 days — a gap there may be a broken import rather than a quiet month. Both come back in `bank stats --json`.
+- `bank stats --json` is `{sources, disks}`. Each of `sources[]` has `last_ingest`, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.
+- **Read a source's `note` before concluding anything from absence.** It is the owner's note on what a source actually holds ("only the chats exported in 2025-08"), and it is the difference between "it never happened" and "that period was never imported". `stale: true` means nothing new has landed in that source for 30 days — a gap there may be a broken import rather than a quiet month. Both come back in `bank stats --json`.
 
 Worked examples:
 
@@ -92,7 +93,7 @@ bank search "lease" --person alice --limit 50 --json
 bank contact messages alice --since 2024-01-01 --json
 
 # grab the screenshot attached to a message
-bank show msg:9454d9440ade1088 --json   # -> attachments[].blake3
+bank show msg:9454d9440ade1088 --json   # -> record.attachments[].blake3
 bank fetch 3f9a1c2b4d5e6f70a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718 -o /tmp/screenshot.jpg
 
 # what is even in here, and how far back
@@ -161,7 +162,7 @@ bank contact import <file|-> [--json]
 
 A JSON array or NDJSON of `{"name": "Björn", "note": "the one with the servers", "aliases": ["bjoern@example.com", "whatsapp:Björn", "discord:bjoern_aq"]}`. Aliases take the same `<source>:<value>` scoping as `contact alias add`, a bare value matching everywhere. Existing contacts are extended rather than replaced, and an alias another contact already claims is reported and skipped without stopping the rest of the file.
 
-`bank coverage <source> <text>` maintains the per-source coverage notes (an empty text clears one). Same rule again: propose the wording, let the owner run it.
+`bank note <source> <text>` maintains the per-source notes (an empty text clears one). Same rule again: propose the wording, let the owner run it.
 
 ```sh
 echo '{"body":"note text","thread":"decisions","sender":"claude","sent_at":"2026-08-17T12:00:00Z"}' \

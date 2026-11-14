@@ -138,17 +138,18 @@ func TestEnrichDedupRetriesVersionsAndSearch(t *testing.T) {
 	if err != nil || len(files) != 1 {
 		t.Fatalf("queue %+v %v", files, err)
 	}
-	release, err := st.ClaimAI(t.Context(), files[0].ContentID, p.key, true)
-	if err != nil || release == nil {
+	held, err := st.ClaimAI(t.Context(), files[0].ContentID, p.key, true)
+	if err != nil || held == nil {
 		t.Fatalf("claim %v", err)
 	}
-	defer release.Close()
-	other, err := st.ClaimAI(t.Context(), files[0].ContentID, p.key, true)
-	if err != nil || other != nil {
-		if other != nil {
-			other.Close()
-		}
-		t.Fatalf("double claim %v", err)
+	if other, err := st.ClaimAI(t.Context(), files[0].ContentID, p.key, true); err != nil || other != nil {
+		t.Fatalf("double claim %+v %v", other, err)
+	}
+	if err := st.ReleaseAI(t.Context(), held.Lease); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := st.ClaimAI(t.Context(), files[0].ContentID, p.key, true); err != nil || again == nil {
+		t.Fatalf("claim after release %v", err)
 	}
 }
 

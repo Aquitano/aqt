@@ -293,7 +293,7 @@ func decide(rules []rule, path []string, dir bool) (bool, string) {
 	return false, ""
 }
 
-// Describe lists the effective rules, for `attic config`.
+// Describe lists the effective rules, for `bank disk config`.
 func (r Rules) Describe() (exclude, nameOnly []string) {
 	for _, x := range r.exclude {
 		exclude = append(exclude, x.source)

@@ -5,7 +5,7 @@ Personal archive and library: messages, media, viewing activity, playlists, file
 Bank imports personal ChatGPT and Claude.ai exports. Turnstash owns coding-session
 ingestion. Removing an importer does not delete previously archived records.
 
-The same Go module holds [attic](attic/README.md), the catalogue of files on disks that come and go. Its tables are in this database beside the archive's, and both name bytes by one BLAKE3 `contents` row and share the text read from them. `cmd/attic` scans disks on the PC they attach to and writes the catalogue through `bank serve`, which answers the catalogue's routes below `/v1/disk`. `bank search` returns its files beside messages and media.
+Bank also catalogues the files on disks that come and go: see [Files on disks](#files-on-disks) and [DISKS.md](DISKS.md).
 
 Every route is a typed Go handler in `internal/server/*_api.go` or, for the catalogue, `internal/attic/api`, on the operation and error types in `internal/httpapi`: parameters and bodies are declared on structs, so their parsing and bounds checks are generated, and uploads and downloads stream. `GET /openapi.json` is the one document that describes them all, and a failure is always JSON with a `_tag`, a `message` and, where the caller can act, a `recovery`. A rejected parameter or body answers 422, including a body that is too large or too slow, which Huma would otherwise answer with 400, 408 or 413. A failure is the server's, a 500 whose cause stays in the log, unless a typed or sentinel error says it is invalid input, missing or a conflict. `openapi.json` is the committed copy: regenerate it with `go run ./cmd/bank openapi > openapi.json`, because a test fails while it is stale.
 
@@ -66,13 +66,14 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank search "invoice" --limit 50 --offset 50  # the next page
 ./bank show msg:9454d9440ade1088                # the ref a citation carries
 ./bank show msg:9454d9440ade1088 --provenance   # raw input and mail grouping evidence
-./bank ref content:3f9a1c2b4d5e6f70             # what any ref names, and where its bytes are
+./bank show content:3f9a1c2b4d5e6f70            # any ref: bytes, where they are on disks and in the archive
+./bank show content:3f9a1c2b4d5e6f70 --text     # the text read from them
 ./bank thread "Alice" --source whatsapp --around msg:9454d9440ade1088 --limit 100
                                                 # context centered on a search hit
 ./bank thread "Alice" --source whatsapp --before msg:9454d9440ade1088 --limit 100
                                                 # earlier messages, without a history cap
-./bank stats                                    # counts, freshness, coverage notes
-./bank coverage whatsapp "only the chats exported in 2025-08"
+./bank stats                                    # counts, freshness, notes, files on disks
+./bank note whatsapp "only the chats exported in 2025-08"
 ./bank query --schema                           # tables and columns, before the first query
 ./bank query "select source, count(*) from messages group by 1"
                                                 # read-only ad-hoc SQL: READ ONLY tx,
@@ -98,7 +99,7 @@ export BANK_TOKEN=$(ssh vps 'cd /opt/aqt/apps/bank && docker compose run --rm -T
 
 `bank ui` opens a local archive browser (search, thread-grouped browse, contacts, stats) at `127.0.0.1:8481`. It needs `BANK_URL`/`BANK_TOKEN` and attaches the token server-side, so it never reaches the browser. The page is a Vite + React app on the shared `@aqt/ui` components in `internal/webui/app`; its built `dist/` is committed and embedded, so `go build` needs no JS toolchain — after changing the app, rebuild with `bun run build` there.
 
-Stats shows each source's last import, recorded sync checkpoint, and coverage note.
+Stats shows each source's last import, recorded sync checkpoint, and note.
 Sources flagged as stale by the API show **No recent imports**. A recent sync does
 not imply that new messages were imported.
 
@@ -116,7 +117,7 @@ Gmail retries reconcile attachments even when the message row already exists. To
 
 ChatGPT imports preserve referenced assets included in the full export ZIP or directory. Importing only `conversations.json` imports text without the asset files. Missing files appear in the import's missing-media count. Reimporting a fuller export fills missing attachments even when a message already has some files, without duplicating those files.
 
-Attachment storage and text extraction have different coverage. Audio, video, archives, and other binary files can be stored and downloaded without searchable contents. Supported document attachments are searchable inside. A text job reads PDFs, Office and OpenDocument files, HTML and plain text, keyed on the content so a document attached to forty messages, or already read by an attic scan, is read once.
+Not every stored attachment is searchable inside. Audio, video, archives, and other binary files can be stored and downloaded without searchable contents. Supported document attachments are searchable inside. A text job reads PDFs, Office and OpenDocument files, HTML and plain text, keyed on the content so a document attached to forty messages, or already read by a disk scan, is read once.
 
 Background work runs as jobs in a [River](https://riverqueue.com) queue in the same database. Storing an attachment or a library file whose bytes have no text yet queues a text job in the same transaction, so the job exists exactly when the row does, and the content is queued once however many messages carry it. `bank serve` works the default queue, four jobs at a time, and schedules the Gmail sync every hour and the inbox sweep every 15 minutes. A tick that finds the previous run still going is skipped, and a failed run is retried by the next tick. A text job stores the text and updates the messages that carry the content. A text or OCR job that fails or panics is tried three times and then recorded as `failed`; `bank extract --status failed` reads those again by hand. Imports on a machine without a running `bank serve` queue their text jobs until one starts. `/healthz` reports how many jobs wait, run and have failed in each queue.
 
@@ -131,7 +132,7 @@ It keeps local checkpoints, retries failures and preserves mailbox read flags.
 
 Schema migrations are embedded and run through Tern in `bank migrate` and when
 `bank serve` starts, followed by River's own migrations for its job tables.
-Every other command of `bank` and `attic` stops with an error when either the
+Every other command stops with an error when either the
 schema or the job tables are at another version than the binary's. See
 [DEPLOY.md](DEPLOY.md) before upgrading.
 
@@ -144,6 +145,19 @@ additional limits. The query runs as a cursor, which accepts one SELECT, VALUES 
 TABLE statement, and reading stops at the row cap or at 8 MiB of values; a value
 over 64 KiB is cut. `truncated` and `cut_values` in `--json` say when either
 happened. Other read commands work without this setting.
+
+## Files on disks
+
+The catalogue of files on disks lives in the same database: volumes, entries, scans and what was read from each file. A file on a disk, a message attachment and a library file with the same bytes share one `contents` row and the text read from it. `bank search` returns files on disks beside messages and the library, `bank show content:<hex>` lists where a content lives, and `bank stats` counts them.
+
+`bank disk` holds the commands that run on the machine the disks attach to: `scan`, `search`, `entry`, `get`, `verify`, `enrich`, `analysis`, `volumes`, `scans`, `skips`, `dupes`, `redundancy`, `dedupe plan|apply`, `organize prepare|apply|undo` and `config`. They reach the catalogue only through the API, like every other command, so the Windows PC the disks attach to needs `BANK_URL` and a token and never a database connection. [DISKS.md](DISKS.md) has setup, use, configuration and the catalogue's design.
+
+```powershell
+bank disk scan E:\
+bank disk search werkstudent --ext pdf
+bank disk get 36331 --to C:\Recovered\document.pdf
+bank disk redundancy --volume Data
+```
 
 ## Retrieve conversation history
 
@@ -161,7 +175,7 @@ Every record that can be cited has one written form, `kind:value` in lowercase h
 | `content:<16 to 64 hex>`  | Bytes, by a prefix of their BLAKE3 digest. All 64 characters name exactly one content.                 |
 | `item:<32 hex>` and so on | A library record: `item:`, `activity:`, `collection:`, `file:` or `page:`. The ref is the record's ID. |
 
-`bank show`, `bank thread`, `bank ref`, `bank library get`, attic's commands and every route that takes a ref accept only this form. A bare value, an uppercase one or a message row number is rejected. Messages have no public row number; JSON names them by `ref` alone.
+`bank show`, `bank thread`, the `bank disk` commands and every route that takes a ref accept only this form. A bare value, an uppercase one or a message row number is rejected. Messages have no public row number; JSON names them by `ref` alone.
 
 LinkedIn conversations use the export's conversation ID.
 

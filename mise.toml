@@ -73,8 +73,6 @@ run = [
   "bun run --filter \"@aqt/bank-*\" typecheck",
   "bun run --cwd apps/bank/internal/webui/app test",
   "bun run --cwd apps/bank/internal/webui/app check:dist",
-  "bunx --no-install vp check apps/bank/attic/executor",
-  "bun run --cwd apps/bank/attic/executor typecheck",
 ]
 
 [tasks."bank:go"]
@@ -92,7 +90,7 @@ env = { GOWORK = "off", GOOS = "linux" }
 run = ["go vet ./...", "golangci-lint run"]
 
 [tasks."bank:go:windows"]
-description = "Vet and lint the Windows build, where attic scans and the mail collector run"
+description = "Vet and lint the Windows build, where bank disk scans and the mail collector run"
 dir = "apps/bank"
 env = { GOWORK = "off", GOOS = "windows" }
 run = ["go vet ./...", "golangci-lint run"]

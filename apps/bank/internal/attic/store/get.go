@@ -11,11 +11,13 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Retrieval is a hashed content and the files that hold it, the one an entry
+// ID names first.
 type Retrieval struct {
-	Ref    string
-	Digest content.Digest
-	Size   int64
-	Places []Hit
+	Ref    string         `json:"ref"`
+	Digest content.Digest `json:"blake3"`
+	Size   int64          `json:"size"`
+	Places []Hit          `json:"places" doc:"Hashed files that hold the content, present ones first. A place marked missing was not found by the last scan of its folder."`
 }
 
 func (s *Store) Retrieval(ctx context.Context, entryID int64, cited ref.Content) (Retrieval, error) {

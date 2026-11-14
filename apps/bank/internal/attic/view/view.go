@@ -12,9 +12,9 @@ import (
 	"strings"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/ai"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/unpack"
 )
 
 // OnlineRoots maps each known volume that is attached right now to where it
@@ -124,7 +124,7 @@ func MemberMatches(members []store.MemberHit, roots map[string]string) []MemberM
 		}
 		shown := BestCopy(copies)
 		out[i].Shown = shown
-		out[i].Display = shown.Display + archive.Separator + filepath.FromSlash(m.Path)
+		out[i].Display = shown.Display + unpack.Separator + filepath.FromSlash(m.Path)
 		out[i].Online = shown.Online
 	}
 	return out
@@ -253,4 +253,65 @@ type Stats struct {
 type SkipReport struct {
 	Scan   store.ScanInfo    `json:"scan"`
 	Groups []store.SkipGroup `json:"groups"`
+}
+
+// The server sends places without mounts. The machine the disks attach to
+// spells them again for its own: Localized answers the same value as if it had
+// been built there with roots.
+
+func hitsOf(places []Place) []store.Hit {
+	hits := make([]store.Hit, len(places))
+	for i, p := range places {
+		hits[i] = p.Hit
+	}
+	return hits
+}
+
+// Localize spells places for roots.
+func Localize(places []Place, roots map[string]string) []Place {
+	return Places(hitsOf(places), roots)
+}
+
+func (r SearchResult) Localized(roots map[string]string) SearchResult {
+	members := make([]store.MemberHit, len(r.Members))
+	for i, m := range r.Members {
+		members[i] = m.MemberHit
+		members[i].Archive = hitsOf(m.Archive)
+	}
+	texts := func(matches []TextMatch) []TextMatch {
+		hits := make([]store.TextHit, len(matches))
+		for i, t := range matches {
+			hits[i] = t.TextHit
+			hits[i].Places = hitsOf(t.Places)
+		}
+		return TextMatches(hits, roots)
+	}
+	analyses := make([]store.AIHit, len(r.Analyses))
+	for i, a := range r.Analyses {
+		analyses[i] = store.AIHit{TextHit: a.TextHit, Key: a.Key}
+		analyses[i].Places = hitsOf(a.Places)
+	}
+	return SearchResult{Entries: Localize(r.Entries, roots), Members: MemberMatches(members, roots), Texts: texts(r.Texts),
+		Metadata: texts(r.Metadata), Analyses: AnalysisMatches(analyses, roots)}
+}
+
+func (c Content) Localized(roots map[string]string) Content {
+	d := c.ContentDetail
+	d.Occurrences = hitsOf(c.Occurrences)
+	return NewContent(d, roots)
+}
+
+func (e Entry) Localized(roots map[string]string) Entry {
+	d := e.EntryDetail
+	d.Copies = hitsOf(e.Copies)
+	return NewEntry(d, roots)
+}
+
+func (r DupeReport) Localized(roots map[string]string) DupeReport {
+	dupes := make([]store.Dupe, len(r.Dupes))
+	for i, d := range r.Dupes {
+		dupes[i] = d.Dupe
+		dupes[i].Places = hitsOf(d.Places)
+	}
+	return NewDupeReport(dupes, r.Wasted, roots)
 }

@@ -9,10 +9,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/unpack"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
@@ -64,11 +64,11 @@ func finishArchiveListing(t *testing.T, sc *store.Scan, contentID int64, depth i
 	}
 	defer l.Abort(t.Context())
 	for _, path := range paths {
-		if err := l.Add(t.Context(), archive.Member{Kind: "file", Name: path, Path: path}); err != nil {
+		if err := l.Add(t.Context(), unpack.Member{Kind: "file", Name: path, Path: path}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := l.Finish(t.Context(), archive.Result{Format: "zip", Status: archive.Listed}); err != nil {
+	if err := l.Finish(t.Context(), unpack.Result{Format: "zip", Status: unpack.Listed}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -166,7 +166,7 @@ func TestArchiveQueueSkipsCachedContinuationNames(t *testing.T) {
 		t.Fatalf("initial split listing: %v, %v", l, err)
 	}
 	defer l.Abort(ctx)
-	if err := l.Finish(ctx, archive.Result{Format: "rar", Status: archive.Split}); err != nil {
+	if err := l.Finish(ctx, unpack.Result{Format: "rar", Status: unpack.Split}); err != nil {
 		t.Fatal(err)
 	}
 	if pending, err := sc.NextArchives(ctx, store.PendingArchive{}, 10, ranges, 0); err != nil ||
@@ -199,13 +199,13 @@ func TestArchiveCacheRollbackPreservesCommittedListing(t *testing.T) {
 				t.Fatalf("upgrade: %v, %v", l, err)
 			}
 			defer l.Abort(ctx)
-			if err := l.Add(ctx, archive.Member{Kind: "file", Name: "replacement.txt", Path: "replacement.txt"}); err != nil {
+			if err := l.Add(ctx, unpack.Member{Kind: "file", Name: "replacement.txt", Path: "replacement.txt"}); err != nil {
 				t.Fatal(err)
 			}
 			if failure == "finish cancelled" {
 				cancelled, cancel := context.WithCancel(ctx)
 				cancel()
-				if err := l.Finish(cancelled, archive.Result{Format: "zip", Status: archive.Listed}); err == nil {
+				if err := l.Finish(cancelled, unpack.Result{Format: "zip", Status: unpack.Listed}); err == nil {
 					t.Fatal("cancelled finish succeeded")
 				}
 			}
@@ -226,7 +226,7 @@ func TestArchiveCacheRollbackPreservesCommittedListing(t *testing.T) {
 }
 
 func TestArchiveCacheKeepsListingWhenUpgradeIsIncomplete(t *testing.T) {
-	for _, res := range []archive.Result{{Status: archive.Split}, {Status: archive.Listed, Incomplete: true}, {Status: archive.Listed, Incomplete: true, CacheableFailure: true}} {
+	for _, res := range []unpack.Result{{Status: unpack.Split}, {Status: unpack.Listed, Incomplete: true}, {Status: unpack.Listed, Incomplete: true, CacheableFailure: true}} {
 		t.Run(fmt.Sprint(res), func(t *testing.T) {
 			sc, conn, id := archiveCacheScan(t)
 			ctx := t.Context()

@@ -161,12 +161,28 @@ func (s *Store) FindVolume(ctx context.Context, idOrLabel string) (Volume, error
 	if err != nil {
 		return Volume{}, err
 	}
+	return oneVolume(found, idOrLabel)
+}
+
+// PickVolume is FindVolume among volumes already listed, such as a client's
+// copy of the known volumes.
+func PickVolume(vols []Volume, idOrLabel string) (Volume, error) {
+	var found []Volume
+	for _, v := range vols {
+		if v.ID == idOrLabel || strings.EqualFold(v.Label, idOrLabel) {
+			found = append(found, v)
+		}
+	}
+	return oneVolume(found, idOrLabel)
+}
+
+func oneVolume(found []Volume, idOrLabel string) (Volume, error) {
 	switch len(found) {
 	case 0:
 		return Volume{}, fmt.Errorf("no volume %q: %w", idOrLabel, ErrNotFound)
 	case 1:
 		return found[0], nil
 	default:
-		return Volume{}, fmt.Errorf("%d volumes are labelled %q; use the id from 'attic volumes'", len(found), idOrLabel)
+		return Volume{}, fmt.Errorf("%d volumes are labelled %q; use the id from 'bank disk volumes'", len(found), idOrLabel)
 	}
 }

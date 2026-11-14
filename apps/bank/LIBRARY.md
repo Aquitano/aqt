@@ -39,7 +39,7 @@ The Netflix importer accepts CSV `Title` and `Date` columns. Slash dates default
 
 Netflix supplies no stable event ID in this export. Bank identifies observations by their exact title, date, and occurrence number within matching rows. Reordered and overlapping exports reuse these identities while repeated rows within one export remain separate observations. Localized or changed titles remain separate identities.
 
-The `youtube-media` importer reads Takeout ZIP files, extracted directories, watch-history JSON or HTML, and supported playlist or music library CSV/JSON files. Selected input bytes are limited to 512 MiB in total. It prefers JSON history when both history formats exist. Playlist snapshots preserve repeated songs, exported positions, and complete, partial, or unknown coverage. The existing `youtube` importer remains available for its message representation.
+The `youtube-media` importer reads Takeout ZIP files, extracted directories, watch-history JSON or HTML, and supported playlist or music library CSV/JSON files. Selected input bytes are limited to 512 MiB in total. It prefers JSON history when both history formats exist. Playlist snapshots preserve repeated songs, exported positions, and whether the snapshot is complete, partial or of unknown completeness. The existing `youtube` importer remains available for its message representation.
 
 HTML timestamp parsing depends on the importing machine's timezone. Prefer JSON history when moving imports between machines with different timezone settings. Replaying HTML history on a machine in another timezone conflicts with the activity already stored.
 
@@ -66,13 +66,13 @@ Bank searches the most recent successful publication. Changes in Brain are visib
 
 ## Query and edit
 
-`bank ref <ref>` says what any cited ref names: `msg:<16 hex>` for a message, a library ID such as `item:<32 hex>`, or `content:<16 to 64 hex>` for bytes. A bare value without its kind is rejected. It prints the record's kind and title, the route that returns it in full, and where the same bytes are. A message or library file lists the places on disks that hold its bytes; bytes list the messages and library files that hold them and the places on disks.
+`bank show <ref>` shows any cited record: `msg:<16 hex>` for a message, a library ID such as `item:<32 hex>`, or `content:<16 to 64 hex>` for bytes. A bare value without its kind is rejected. It prints the record and where the same bytes are; `--json` adds the record's kind and title, the route that returns it in full, and the record itself under `record`. A message or library file lists the places on disks that hold its bytes; bytes list the messages and library files that hold them and the places on disks.
 
 Message attachments, library files and files on disks share one `contents` row per BLAKE3 digest, so these links need no background pass and appear as soon as an import or a scan commits.
 
 `bank timeline 2019-03` lists what happened in a year, a month or a day, oldest first: messages by when they were sent, activity by when it happened, and files on disks by when they were last modified. `--group message`, `activity` or `file` narrows it. `--limit` caps each group on its own, so a day with thousands of files cannot push the messages out, and the output names the groups that reached it. Activity without a date and files that have gone missing are left out.
 
-`bank search` and the UI Search tab return separate groups for correspondence, media, activity, collections, files, message attachments, and published pages. `bank search` adds the files [attic](attic/README.md) catalogues on disks, cited as `content:<hex>`: names and paths, archive members, document text, embedded tags and OCR. `--match` means the same there as for every other group; a phrase search leaves files on disks out, because they are matched by words. It is left out when a sender, source, account, date or a kind other than `file` narrows the search, and when the catalogue cannot answer, which `coverage` then says. Each group has its own bounded page. A message hit carries its `msg:` ref for `bank show`.
+`bank search` and the UI Search tab return separate groups for correspondence, media, activity, collections, files, message attachments, and published pages. `bank search` adds the files the [catalogue of disks](DISKS.md) holds, cited as `content:<hex>`: names and paths, archive members, document text, embedded tags and OCR. `--match` means the same there as for every other group; a phrase search leaves files on disks out, because they are matched by words. It is left out when a sender, source, account, date or a kind other than `file` narrows the search, and when the catalogue cannot answer, which `coverage` then says. Each group has its own bounded page. A message hit carries its `msg:` ref for `bank show`.
 
 ```sh
 bank search "arrival" --json
@@ -81,12 +81,12 @@ bank search "invoice" --from alice --since 2025-01-01
 bank library list --kind track --source youtube
 bank library activity --source netflix --account thomas
 bank library collections --kind playlist
-bank library get item:<32 hex>
-bank library get activity:<32 hex>
+bank show item:<32 hex> --json
+bank show activity:<32 hex> --json
 bank library snapshots collection:<32 hex>
 ```
 
-A library record's ID is its ref. `bank library get` takes any of them and picks the record kind from it: `item:`, `activity:`, `collection:`, `file:` or `page:`.
+A library record's ID is its ref. `bank show` takes any of them and picks the record kind from it: `item:`, `activity:`, `collection:`, `file:` or `page:`.
 
 Correspondence-specific filters such as sender, recipient, mailbox, and contact restrict combined search to correspondence. Account filters restrict it to the library because mail has a different account model. Message fuzzy matching stays in ParadeDB; library text search uses Postgres full-text indexes. Scores from these indexes are not treated as comparable. Date filters apply to correspondence, dated activity, and message attachments. Items, collections, standalone files, and pages have no event date, so they remain unfiltered by those dates. Undated activity is excluded when a date filter is present. Bank rejects combinations of correspondence filters with a library kind or account.
 
@@ -125,7 +125,7 @@ Run the cutover on the server. `retire` refuses to run through `BANK_URL`.
 4. Build the replacement map for every cited ref. `bank show <ref> --json` says what the message was; `bank search "<title>" --json` or `bank library activity "<title>" --source youtube` finds the library record. Write a CSV of `ref,replacement` rows, or a JSON object of ref to ID, with refs in their `msg:` form, into `BANK_DATA_DIR` so the container sees it under `/data`. Replacements must be existing item, activity or collection IDs.
 5. Dry run: `bank retire --source youtube --external-prefix watch: --external-prefix playlist: --external-prefix library-song: --replacement-map /data/youtube-refs.csv --reason "replaced by youtube-media"`. It prints counts and samples per prefix, and every map ref that matches no retiring row. Such a ref is a typo or a citation of a row this run keeps, and `--apply` refuses to run until the map has none.
 6. Apply: repeat the command with `--apply`. One statement deletes the rows and writes their tombstones; attachment, mailbox and mail-thread rows follow through their cascades. Message imports wait until it commits, so none can bring a retired row back. Blobs and raw inputs stay.
-7. Verify: `bank stats`, `bank show <cited ref>` reports it retired with its replacement, and `bank library get <replacement>` resolves. Then re-point the wiki citations to the library IDs.
+7. Verify: `bank stats`, `bank show <cited ref>` reports it retired with its replacement, and `bank show <replacement>` resolves. Then re-point the wiki citations to the library IDs.
 
 ## Extend and move Bank
 

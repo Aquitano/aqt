@@ -1,6 +1,6 @@
 -- The whole archive: correspondence, contacts, the library, the catalogue of
 -- files on disks, and the contents and text they share. DESIGN.md and
--- attic/DESIGN.md explain the identities each part relies on.
+-- DISKS.md explain the identities each part relies on.
 
 -- Contents and text
 --
@@ -525,7 +525,7 @@ create index library_pages_oversized_search on library_pages (id) where search_v
 
 -- Disks
 --
--- The catalogue of files on disks that come and go. attic/DESIGN.md explains
+-- The catalogue of files on disks that come and go. DISKS.md explains
 -- its three identities: volumes by fingerprint, contents by BLAKE3 (defined
 -- above, shared with the archive), entries by NTFS file id or by path.
 --
@@ -766,6 +766,21 @@ create index ai_results_bm25_idx on ai_results using bm25 (
     (text::pdb.unicode_words('ascii_folding=true'))
 ) with (key_field = 'id', mutable_segment_rows = 0);
 create index ai_results_content_idx on ai_results (content_id);
+
+-- A worker's lease on one content's work under one policy, held while its
+-- provider reads the bytes, which can take minutes. The worker renews it as it
+-- goes; once it expires, another worker may claim the work and gets a new
+-- lease. Only the current lease can save a result.
+create table ai_claims (
+    content_id     bigint not null references contents,
+    task           text not null check (task in ('ocr', 'describe')),
+    provider       text not null,
+    model          text not null,
+    prompt_version text not null,
+    lease          uuid not null unique,
+    expires_at     timestamptz not null,
+    primary key (content_id, task, provider, model, prompt_version)
+);
 
 -- A copy dedupe moved into its disk's quarantine folder. The entry stays, so
 -- the catalogue still says where the copy was and which copy was kept.

@@ -2,8 +2,7 @@ package store
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"errors"
 	"html"
 	"slices"
 	"strings"
@@ -12,18 +11,20 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic/ai"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// AISelection is the files an enrichment run may read: on these volumes,
+// below Under, among Entries or Refs when either is given, with one of the
+// Extensions the provider reads.
 type AISelection struct {
-	Volumes    []string
-	Under      string
-	Entries    []int64
-	Refs       []ref.Content
-	Extensions []string
-	Key        ai.Key
-	Force      bool
-	Retry      bool
+	Volumes    []string      `json:"volumes" doc:"IDs of the volumes attached to the worker's machine."`
+	Under      string        `json:"under,omitempty" doc:"Volume-relative folder on the selected volumes."`
+	Entries    []int64       `json:"entries,omitempty"`
+	Refs       []ref.Content `json:"refs,omitempty"`
+	Extensions []string      `json:"extensions"`
+	Key        ai.Key        `json:"key"`
+	Force      bool          `json:"force,omitempty" doc:"Select contents that already have a result under this key."`
+	Retry      bool          `json:"retry,omitempty" doc:"Select contents whose earlier attempt failed, instead of new ones."`
 	contents   []int64
 }
 
@@ -105,51 +106,65 @@ func (s *Store) NextAI(ctx context.Context, o AISelection, after int64, limit in
 	})
 }
 
-// AIClaim holds the content-policy lock and saves through the same connection.
-// No transaction stays open while an external provider runs.
+// AILease is how long a claim holds without being renewed. A worker renews
+// it well before then while its provider runs, so a lease that runs out means
+// the worker died or lost its connection, and the work is free again.
+const AILease = 2 * time.Minute
+
+// ErrClaimLost means a lease is no longer the current one: it ran out and
+// another worker claimed the work, or the result was saved already.
+var ErrClaimLost = errors.New("this claim's lease ran out and the work went to another worker")
+
+// AIClaim is a lease on one content's work under one policy.
 type AIClaim struct {
-	conn      *pgxpool.Conn
-	contentID int64
-	key       ai.Key
-	release   func()
+	Lease   string    `json:"lease" doc:"Send it to renew, release or save the work."`
+	Expires time.Time `json:"expires_at" doc:"When another worker may claim the work, unless the lease is renewed first."`
 }
 
-func (c *AIClaim) Close() { c.release() }
-
-// ClaimAI returns nil for work already complete or claimed by another runner.
+// ClaimAI leases the work on contentID under key. It returns nil when the
+// work is complete, unless force, or another worker holds a lease that has
+// not run out.
 func (s *Store) ClaimAI(ctx context.Context, contentID int64, key ai.Key, force bool) (*AIClaim, error) {
-	conn, err := s.pool.Acquire(ctx)
-	if err != nil {
-		return nil, err
-	}
-	encoded, _ := json.Marshal(key)
-	lockKey := fmt.Sprintf("attic-ai:%d:%s", contentID, encoded)
-	var locked bool
-	if err := conn.QueryRow(ctx, `select pg_try_advisory_lock(hashtextextended($1,0))`, lockKey).Scan(&locked); err != nil {
-		conn.Release()
-		return nil, err
-	}
-	if !locked {
-		conn.Release()
+	var c AIClaim
+	err := s.pool.QueryRow(ctx, `insert into ai_claims (content_id, task, provider, model, prompt_version, lease, expires_at)
+ select $1, $2, $3, $4, $5, gen_random_uuid(), now() + make_interval(secs => $7)
+ where exists (select 1 from contents where id = $1)
+ and ($6 or not exists (select 1 from ai_results where content_id = $1 and task = $2 and provider = $3 and model = $4
+  and prompt_version = $5 and status <> 'failed'))
+ on conflict (content_id, task, provider, model, prompt_version) do update
+ set lease = excluded.lease, expires_at = excluded.expires_at
+ where ai_claims.expires_at <= now()
+ returning lease::text, expires_at`, contentID, key.Task, key.Provider, key.Model, key.PromptVersion, force, AILease.Seconds()).
+		Scan(&c.Lease, &c.Expires)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
-	release := func() {
-		timeout, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if _, err := conn.Exec(timeout, `select pg_advisory_unlock(hashtextextended($1,0))`, lockKey); err != nil {
-			_ = conn.Conn().Close(timeout)
-		}
-		conn.Release()
+	return &c, err
+}
+
+// RenewAI extends a lease its holder still holds.
+func (s *Store) RenewAI(ctx context.Context, lease string) (AIClaim, error) {
+	c := AIClaim{Lease: lease}
+	err := s.pool.QueryRow(ctx, `update ai_claims set expires_at = now() + make_interval(secs => $2)
+ where lease::text = $1 returning expires_at`, lease, AILease.Seconds()).Scan(&c.Expires)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return c, ErrClaimLost
 	}
-	if !force {
-		var done bool
-		err := conn.QueryRow(ctx, `select exists(select 1 from ai_results where content_id=$1 and task=$2 and provider=$3 and model=$4 and prompt_version=$5 and status<>'failed')`, contentID, key.Task, key.Provider, key.Model, key.PromptVersion).Scan(&done)
-		if err != nil || done {
-			release()
-			return nil, err
-		}
-	}
-	return &AIClaim{conn: conn, contentID: contentID, key: key, release: release}, nil
+	return c, err
+}
+
+// ReleaseAI gives up a lease without a result. Releasing a lease that is no
+// longer current changes nothing.
+func (s *Store) ReleaseAI(ctx context.Context, lease string) error {
+	_, err := s.pool.Exec(ctx, `delete from ai_claims where lease::text = $1`, lease)
+	return err
+}
+
+// AIOutcome is what a provider made of one content.
+type AIOutcome struct {
+	ai.Result
+	Failure   string `json:"failure,omitempty" doc:"Why the provider failed. The content is retried by a later run."`
+	ElapsedMS int64  `json:"elapsed_ms" minimum:"0"`
 }
 
 type Analysis struct {
@@ -164,27 +179,47 @@ type Analysis struct {
 	Updated   time.Time `json:"updated"`
 }
 
-// Save retries update their own policy row; a failed forced run preserves an
+// SaveAI stores the outcome of the work lease holds and ends the lease. A
+// lease that is no longer current saves nothing and answers ErrClaimLost, so
+// a worker that outlived its lease cannot overwrite the next worker's answer.
+// Retries update their own policy row; a failed forced run preserves an
 // earlier usable answer. A changed model or prompt always gets a separate row.
-func (c *AIClaim) Save(ctx context.Context, result ai.Result, failure error, elapsed time.Duration) error {
-	contentID, key := c.contentID, c.key
-	status, detail := "ok", ""
+func (s *Store) SaveAI(ctx context.Context, lease string, o AIOutcome) error {
+	status, detail, result := "ok", "", o.Result
 	switch {
-	case failure != nil:
-		status, detail = "failed", failure.Error()
+	case o.Failure != "":
+		status, detail = "failed", o.Failure
 		result = ai.Result{}
 	case result.Truncated:
 		status = "truncated"
 	case result.Text == "":
 		status = "empty"
 	}
-	_, err := c.conn.Exec(ctx, `insert into ai_results (content_id,task,provider,model,prompt_version,status,text,detail,reported_model,elapsed_ms)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var contentID int64
+	var key ai.Key
+	err = tx.QueryRow(ctx, `delete from ai_claims where lease::text = $1
+ returning content_id, task, provider, model, prompt_version`, lease).
+		Scan(&contentID, &key.Task, &key.Provider, &key.Model, &key.PromptVersion)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrClaimLost
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `insert into ai_results (content_id,task,provider,model,prompt_version,status,text,detail,reported_model,elapsed_ms)
  values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
  on conflict (content_id,task,provider,model,prompt_version) do update set
  status=excluded.status,text=excluded.text,detail=excluded.detail,reported_model=excluded.reported_model,
  elapsed_ms=excluded.elapsed_ms,attempts=ai_results.attempts+1,updated_at=now()
- where ai_results.status='failed' or excluded.status<>'failed'`, contentID, key.Task, key.Provider, key.Model, key.PromptVersion, status, CleanText(result.Text), CleanText(detail), CleanText(result.ReportedModel), elapsed.Milliseconds())
-	return err
+ where ai_results.status='failed' or excluded.status<>'failed'`, contentID, key.Task, key.Provider, key.Model, key.PromptVersion, status, CleanText(result.Text), CleanText(detail), CleanText(result.ReportedModel), o.ElapsedMS); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Store) Analyses(ctx context.Context, entryID int64, cited ref.Content) ([]Analysis, error) {

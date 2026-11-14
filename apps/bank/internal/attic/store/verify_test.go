@@ -23,11 +23,7 @@ func TestVerificationResolvesCatalogueSpelling(t *testing.T) {
 		if err != nil || under != "/Files/Archive" {
 			t.Fatalf("scope %q: %q, %v", input, under, err)
 		}
-		var files []store.VerifyFile
-		err = st.WalkVerification(t.Context(), volume, under, func(f store.VerifyFile) error {
-			files = append(files, f)
-			return nil
-		})
+		files, err := st.VerifyFiles(t.Context(), volume, under, store.VerifyFile{}, 10)
 		if err != nil || len(files) != 1 || files[0].Path != "/Files/Archive/a.txt" || !files[0].Missing {
 			t.Fatalf("missing files for %q: %+v, %v", input, files, err)
 		}

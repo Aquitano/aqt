@@ -17,7 +17,7 @@ func TestLockedAndOfflineFilesAreNotVerified(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := blake3.Sum256([]byte("bytes"))
-	f := store.VerifyFile{Path: "/file", Kind: "file", HashState: "done", Digest: digest[:]}
+	f := store.VerifyFile{Path: "/file", Kind: "file", HashState: "done", Digest: digest}
 	p, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		t.Fatal(err)

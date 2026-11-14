@@ -13,12 +13,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/metadata"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/session"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/unpack"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 )
 
@@ -472,7 +472,7 @@ type remoteListing struct {
 	sent    bool
 }
 
-func (l *remoteListing) Add(ctx context.Context, m archive.Member) error {
+func (l *remoteListing) Add(ctx context.Context, m unpack.Member) error {
 	modified := m.Modified
 	// A tar header can claim any year; JSON and Postgres stop at 9999.
 	if y := modified.Year(); y < 1 || y > 9999 {
@@ -491,7 +491,7 @@ func (l *remoteListing) Add(ctx context.Context, m archive.Member) error {
 	return l.s.queue(ctx, session.Op{Archive: &chunk}, size)
 }
 
-func (l *remoteListing) Finish(ctx context.Context, res archive.Result) error {
+func (l *remoteListing) Finish(ctx context.Context, res unpack.Result) error {
 	chunk := l.chunk
 	chunk.Outcome = &session.ArchiveOutcome{Format: res.Format, Status: res.Status, Detail: store.CleanText(res.Detail),
 		Incomplete: res.Incomplete, CacheableFailure: res.CacheableFailure}

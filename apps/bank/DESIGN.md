@@ -1,6 +1,6 @@
 # aqt-bank architecture
 
-Bank stores correspondence, a personal media library, activity, collections, files, and published Markdown pages. The CLI and web UI search these records together. The library contracts and ownership rules are documented in [LIBRARY.md](LIBRARY.md).
+Bank stores correspondence, a personal media library, activity, collections, files, and published Markdown pages, and catalogues the files on disks that come and go. The CLI and web UI search these records together. The library contracts and ownership rules are documented in [LIBRARY.md](LIBRARY.md); the catalogue of disks, its identities and its commands in [DISKS.md](DISKS.md).
 
 ## Decisions (locked 2026-08-17)
 
@@ -86,10 +86,10 @@ bank thread <id> [--source s] [--limit n] [--json]   # a page of the conversatio
 bank thread <id> --source s --around <msg:ref>      # context centered on a message
 bank thread <id> --source s --before <msg:ref>      # the preceding page
 bank thread <id> --source s --after <msg:ref>       # the following page
-bank show <msg:ref> [--json]            # full message + attachment digests
-bank ref <ref> [--json]                 # what any ref names, and where the same bytes are
-bank stats [--json]                     # counts, date ranges, last import, last sync, coverage
-bank coverage <source> <text>           # note what a source holds (empty text clears)
+bank show <ref> [--json]                # any cited record, and where the same bytes are
+bank show <content:ref> --text|--metadata  # what was read from the bytes, attached or on a disk
+bank stats [--json]                     # counts, date ranges, last import, last sync, notes, disks
+bank note <source> <text>               # note what a source holds (empty text clears)
 bank fetch <blake3> [-o path]           # write an attachment to a file
 bank verify [--json]                    # hash every content the database names; repairs nothing
 bank reimport [kind...]                 # replay stored raw inputs through today's sources
@@ -99,11 +99,14 @@ bank retire --source s --external-prefix p… [--replacement-map f] [--reason r]
 bank serve [--listen addr]              # HTTP API (default 127.0.0.1:8480), default job queue, schedule
 bank worker [--queue ocr]               # work one job queue in another process
 bank token new|list|revoke <name>       # bearer tokens for bank serve
+bank disk scan|search|entry|get|verify|enrich|analysis|volumes|scans|skips|dupes|redundancy
+bank disk dedupe plan|apply, bank disk organize prepare|apply|undo, bank disk config
+                                        # on the machine the disks attach to; see DISKS.md
 ```
 
 Every command that has an API operation calls it through `internal/client`. With `BANK_URL` (and `BANK_TOKEN`) set, the client talks to that `bank serve`. Without it, the CLI builds the server's handler in process from `DATABASE_URL` and `BANK_DATA_DIR` and the client calls it through an `http.RoundTripper`: no socket, no token, no job workers or schedule, and opening the database checks the schema version without migrating. Flags, validation, defaults, errors and output are the same in both, because both run the same handlers.
 
-An operation is declared once, as an `httpapi.Op[Input, Output]` value in `internal/server` (or `internal/attic/api`). The server registers its handler with that value and the client calls `client.Call(ctx, c, server.GetMessage, server.MessageInput{...})` with it, so method and path come from one place and the compiler ties the input and output types to both. The client encodes the input from the same struct tags Huma decodes it with.
+An operation is declared once, as an `httpapi.Op[Input, Output]` value in `internal/server` (or `internal/attic/api` for the catalogue below `/v1/disk`). The server registers its handler with that value and the client calls `client.Call(ctx, c, server.GetMessage, server.MessageInput{...})` with it, so method and path come from one place and the compiler ties the input and output types to both. The client encodes the input from the same struct tags Huma decodes it with.
 
 `auth`, `sync`, `migrate`, `serve`, `worker`, `token`, `verify`, `retire`, `reimport`, `import inbox` and `mail rebuild` administer the box itself and work on the archive, the blob store or the token file directly. All of them except `auth` and `serve` refuse outright when `BANK_URL` is set. Acting on the wrong box is the split brain the Decisions table's "Remote access" row exists to prevent, and the CLI should not need the operator to remember which side a command belongs on. `imap` and `ui` need `BANK_URL`, `healthcheck` takes a URL, and `openapi` needs nothing.
 
@@ -156,3 +159,11 @@ Derived work runs in [River](https://riverqueue.com), a job queue whose tables l
 | `inbox_sweep` | none         | default | 1        | `bank serve`, every 15 min |
 
 A text or OCR job that fails or panics is retried with River's backoff, and its last failure stores `failed` as the content's text status. A scheduled job is not retried, because the next tick is the retry, and a tick that finds the previous run unfinished is skipped. `bank serve` is the only client that can lead, so it alone schedules jobs, moves retries along and cleans up finished jobs; `bank worker` only works its queue. On SIGTERM both stop fetching, give running jobs the same 30 seconds as requests, and cancel what is left.
+
+## Files on disks
+
+The catalogue of files on disks shares the database and the content identity with the archive: `volumes`, `scans`, `entries` and their versions, archive listings, metadata and enrichment results are keyed on the same `contents` rows as attachments and library files, and `texts` is one table for both. A document read by a disk scan or by a text job is read once, and a ref such as `content:3f9a1c2b4d5e6f70` names the same bytes wherever they are.
+
+The disks attach to a Windows PC and Postgres listens only on the server's loopback, so `bank disk` reaches the catalogue only through the API, like every other command. Only reading files happens on the PC: a scan sends its work in numbered batches that the server applies with the same reconciliation code, `verify` rereads files against a paged listing of their digests, `dedupe apply` records each move it made, and `get` copies from places the server lists. The server never knows which disks are attached; each command matches the volumes' fingerprints against the PC's mounts.
+
+Enrichment calls an AI provider that can take minutes per file, so a run leases each content's work under its policy instead of holding a lock across the call. The worker renews the lease while the provider runs. A lease that runs out, because the worker crashed or lost its connection, makes the work claimable again, and a result whose lease went to another worker is refused, so a late answer cannot replace a current one. [DISKS.md](DISKS.md#design) has the catalogue's identities, versions, extraction and dedupe decisions.

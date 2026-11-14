@@ -64,7 +64,7 @@ var (
 		Summary: "Read the message a message answers",
 		Errors:  []httpapi.Kind{httpapi.NotFound},
 	}}
-	SetSourceCoverage = httpapi.Op[CoverageInput, SourceCoverage]{Operation: httpapi.Operation{ID: "setSourceCoverage", Method: http.MethodPut, Path: "/v1/sources/{source}/coverage", Tag: "messages",
+	SetSourceNote = httpapi.Op[NoteInput, SourceNote]{Operation: httpapi.Operation{ID: "setSourceNote", Method: http.MethodPut, Path: "/v1/sources/{source}/note", Tag: "messages",
 		Summary:     "Record what a source is known to hold",
 		Description: "The note is shown with the source's statistics. It does not count as a sync.",
 		Writes:      true,
@@ -80,7 +80,7 @@ var (
 	}}
 )
 
-// registerMessagesAPI serves the routes over single messages, threads, mail conflicts, source coverage, ad-hoc SQL and import reports.
+// registerMessagesAPI serves the routes over single messages, threads, mail conflicts, source notes, ad-hoc SQL and import reports.
 func (s *Server) registerMessagesAPI(api huma.API) {
 	httpapi.Register(api, ListThreads, s.browseThreads)
 	httpapi.Register(api, GetMessage, s.message)
@@ -88,7 +88,7 @@ func (s *Server) registerMessagesAPI(api huma.API) {
 	httpapi.Register(api, GetMailConflict, s.mailConflict)
 	httpapi.Register(api, GetMessageBranch, s.messageBranch)
 	httpapi.Register(api, GetMessageParent, s.messageParent)
-	httpapi.Register(api, SetSourceCoverage, s.setCoverage)
+	httpapi.Register(api, SetSourceNote, s.setNote)
 	httpapi.Register(api, RunQuery, s.query)
 	httpapi.Register(api, ListRawInputs, s.rawInputs)
 }
@@ -206,28 +206,28 @@ func (s *Server) messageParent(ctx context.Context, in *MessageInput) (*httpapi.
 	return reply(m, err)
 }
 
-type CoverageInput struct {
+type NoteInput struct {
 	Source string `path:"source" doc:"The source the note is about, such as gmail or whatsapp."`
-	Body   CoverageInputBody
+	Body   NoteInputBody
 }
 
-type CoverageInputBody struct {
+type NoteInputBody struct {
 	Text string `json:"text,omitempty" doc:"What the source holds, in a sentence. Empty or absent clears the note."`
 }
 
-type SourceCoverage struct {
-	Source   string `json:"source"`
-	Coverage string `json:"coverage"`
+type SourceNote struct {
+	Source string `json:"source"`
+	Note   string `json:"note"`
 }
 
-func (s *Server) setCoverage(ctx context.Context, in *CoverageInput) (*httpapi.Body[SourceCoverage], error) {
+func (s *Server) setNote(ctx context.Context, in *NoteInput) (*httpapi.Body[SourceNote], error) {
 	if err := ingest.ValidSource(in.Source); err != nil {
 		return nil, httpapi.Invalid.New(err.Error())
 	}
-	if err := s.db.SetCoverage(ctx, in.Source, in.Body.Text); err != nil {
+	if err := s.db.SetNote(ctx, in.Source, in.Body.Text); err != nil {
 		return nil, failure(err)
 	}
-	return &httpapi.Body[SourceCoverage]{Body: SourceCoverage{Source: in.Source, Coverage: in.Body.Text}}, nil
+	return &httpapi.Body[SourceNote]{Body: SourceNote{Source: in.Source, Note: in.Body.Text}}, nil
 }
 
 type QueryInput struct {

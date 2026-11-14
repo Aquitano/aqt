@@ -6,25 +6,26 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/jackc/pgx/v5"
 )
 
 // KeptFolder is a folder whose copies dedupe keeps, such as the organised
 // tree. An empty Path keeps the whole volume.
 type KeptFolder struct {
-	VolumeID string
-	Path     string
+	VolumeID string `json:"volume_id" format:"uuid"`
+	Path     string `json:"path" doc:"Volume-relative, such as /Photos; empty keeps the whole volume."`
 }
 
 // DedupeGroup is one content with at least one present copy inside the kept
 // folders and at least one outside them.
 type DedupeGroup struct {
 	ContentID int64          `json:"-"`
-	Digest    content.Digest `json:"-"`
+	Digest    content.Digest `json:"blake3"`
 	Ref       string         `json:"ref"`
 	Size      int64          `json:"size"`
-	Kept      []Hit          `json:"kept"`
-	Extra     []Hit          `json:"extra"`
+	Kept      []Hit          `json:"kept" doc:"Present copies inside the kept folders."`
+	Extra     []Hit          `json:"extra" doc:"Present copies outside them, which apply would set aside."`
 }
 
 // DedupePlan finds hashed contents stored both inside and outside the kept
@@ -101,10 +102,17 @@ type DedupeMove struct {
 	MovedAt     time.Time `json:"moved_at"`
 }
 
+// RecordDedupeMove records m. The content is the one both entries hold, so a
+// move between entries that hold different contents is refused.
 func (s *Store) RecordDedupeMove(ctx context.Context, m DedupeMove) error {
-	_, err := s.pool.Exec(ctx, `insert into dedupe_moves (entry_id, kept_entry_id, content_id, moved_to) values ($1, $2, $3, $4)
+	tag, err := s.pool.Exec(ctx, `insert into dedupe_moves (entry_id, kept_entry_id, content_id, moved_to)
+		select e.id, k.id, e.content_id, $3 from entries e join entries k on k.content_id = e.content_id
+		where e.id = $1 and k.id = $2 and e.id <> k.id
 		on conflict (entry_id) do update set kept_entry_id = excluded.kept_entry_id, content_id = excluded.content_id,
-		moved_to = excluded.moved_to, moved_at = now()`, m.EntryID, m.KeptEntryID, m.ContentID, m.MovedTo)
+		moved_to = excluded.moved_to, moved_at = now()`, m.EntryID, m.KeptEntryID, CleanText(m.MovedTo))
+	if err == nil && tag.RowsAffected() == 0 {
+		err = fail.Invalidf("entries %d and %d do not hold the same content", m.EntryID, m.KeptEntryID)
+	}
 	return err
 }
 

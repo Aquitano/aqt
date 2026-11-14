@@ -173,7 +173,7 @@ func (s *Store) textInfo(ctx context.Context, contentID int64) (*TextInfo, error
 	return &t, err
 }
 
-// TextDetail is a document's text, for `attic text`.
+// TextDetail is a document's text, for `bank show content:… --text`.
 type TextDetail struct {
 	Ref string `json:"ref"`
 	TextInfo

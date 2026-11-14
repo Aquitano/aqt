@@ -18,15 +18,15 @@ import (
 
 // ContentFile identifies a catalogued copy and the bytes its derived results belong to.
 type ContentFile struct {
-	ID        int64
-	Path      string
-	ContentID int64
-	Size      int64
-	Digest    content.Digest
-	VolumeID  string
-	Ref       string
+	ID        int64          `json:"id"`
+	Path      string         `json:"path"`
+	ContentID int64          `json:"content_id"`
+	Size      int64          `json:"size"`
+	Digest    content.Digest `json:"blake3"`
+	VolumeID  string         `json:"volume_id"`
+	Ref       string         `json:"ref"`
 	// Stamp is set by NextMetadata, whose readers check the file in place.
-	Stamp Stamp
+	Stamp Stamp `json:"-"`
 }
 
 const pendingMetadata = `from entries e join contents c on c.id = e.content_id

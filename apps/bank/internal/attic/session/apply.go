@@ -9,10 +9,10 @@ import (
 	"os"
 	"slices"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/metadata"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/unpack"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 )
 
@@ -225,7 +225,7 @@ func (s *session) archive(ctx context.Context, a *ArchiveChunk) error {
 		return err
 	}
 	add := func(m ArchiveMember) error {
-		return l.Add(ctx, archive.Member{Path: m.Path, Name: m.Name, Kind: m.Kind, Size: m.Size, Modified: m.Modified,
+		return l.Add(ctx, unpack.Member{Path: m.Path, Name: m.Name, Kind: m.Kind, Size: m.Size, Modified: m.Modified,
 			CRC32: m.CRC32, Encrypted: m.Encrypted})
 	}
 	if err := s.replay(a.ContentID, add); err != nil {
@@ -239,7 +239,7 @@ func (s *session) archive(ctx context.Context, a *ArchiveChunk) error {
 		}
 	}
 	o := a.Outcome
-	return l.Finish(ctx, archive.Result{Format: o.Format, Status: o.Status, Detail: o.Detail, Incomplete: o.Incomplete,
+	return l.Finish(ctx, unpack.Result{Format: o.Format, Status: o.Status, Detail: o.Detail, Incomplete: o.Incomplete,
 		CacheableFailure: o.CacheableFailure})
 }
 

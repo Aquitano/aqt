@@ -16,7 +16,7 @@ import (
 // operation, such as a document's text, can be up to 16 MiB on its own.
 const MaxBatchBytes = 64 << 20
 
-const scanProtocol = `attic scan, on the machine the disks attach to, writes the catalogue through
+const scanProtocol = `bank disk scan, on the machine the disks attach to, writes the catalogue through
 these operations: resolveDiskVolume, startDiskScan, then batches of its work with
 writeDiskScan, interleaved with the list*Work operations that say what is left to
 hash, list, read or tag, and a last batch that finishes the scan. A scan that sends

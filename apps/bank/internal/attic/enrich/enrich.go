@@ -50,7 +50,18 @@ func ValidateLimit(provider string, limit int) error {
 	return nil
 }
 
-func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
+// Work is the catalogue's side of a run. *store.Store is one; the machine
+// with the disks reaches the same calls through bank serve's API.
+type Work interface {
+	AIVolumes(ctx context.Context, o store.AISelection) ([]string, error)
+	NextAI(ctx context.Context, o store.AISelection, after int64, limit int) ([]store.ContentFile, error)
+	ClaimAI(ctx context.Context, contentID int64, key ai.Key, force bool) (*store.AIClaim, error)
+	RenewAI(ctx context.Context, lease string) (store.AIClaim, error)
+	ReleaseAI(ctx context.Context, lease string) error
+	SaveAI(ctx context.Context, lease string, o store.AIOutcome) error
+}
+
+func Run(ctx context.Context, st Work, o Options) (Summary, error) {
 	var summary Summary
 	if o.Provider == nil {
 		return summary, errors.New("enrichment needs a provider")
@@ -73,10 +84,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 		log = slog.Default()
 	}
 	temp := o.Config.Temp
-	selection, err := st.ResolveRefs(ctx, o.Selection)
-	if err != nil {
-		return summary, err
-	}
+	selection := o.Selection
 	selection.Key, selection.Extensions = o.Provider.Key(), o.Provider.Extensions()
 	selection.Volumes = nil
 	rules := map[string]config.Rules{}
@@ -154,7 +162,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 				if claim == nil {
 					continue
 				}
-				attempted, status, err := readOne(ctx, w, o, p, claim, log)
+				attempted, status, err := readOne(ctx, w, st, o, p, claim.Lease, log)
 				if attempted {
 					summary.Attempted++
 					seen[p.ContentID] = true
@@ -186,8 +194,19 @@ func Run(ctx context.Context, st *store.Store, o Options) (Summary, error) {
 	return summary, nil
 }
 
-func readOne(ctx context.Context, w *scratch.Workspace, o Options, p store.ContentFile, claim *store.AIClaim, log *slog.Logger) (bool, string, error) {
-	defer claim.Close()
+// readOne reads one content under lease. It saves the outcome, which ends the
+// lease, or releases the lease without one.
+func readOne(ctx context.Context, w *scratch.Workspace, st Work, o Options, p store.ContentFile, lease string, log *slog.Logger) (bool, string, error) {
+	saved := false
+	defer func() {
+		if !saved {
+			release, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			if err := st.ReleaseAI(release, lease); err != nil {
+				log.Warn("enrichment claim stays until its lease runs out", "err", err)
+			}
+		}
+	}()
 	mount := o.Mounts[p.VolumeID]
 	if runtime.GOOS == "windows" {
 		current, _, err := disk.Locate(mount.Root)
@@ -220,8 +239,10 @@ func readOne(ctx context.Context, w *scratch.Workspace, o Options, p store.Conte
 	}()
 	timeout, cancel := context.WithTimeout(ctx, time.Duration(o.Config.AI.TimeoutSeconds)*time.Second)
 	defer cancel()
+	stopRenewing := renew(timeout, st, lease, log)
 	start := time.Now()
 	result, failure := o.Provider.Read(timeout, copied)
+	stopRenewing()
 	if failure == nil && timeout.Err() != nil {
 		failure = timeout.Err()
 	}
@@ -234,11 +255,48 @@ func readOne(ctx context.Context, w *scratch.Workspace, o Options, p store.Conte
 	if errors.Is(failure, ai.ErrInput) {
 		return false, "", failure
 	}
-	if err := claim.Save(ctx, result, failure, time.Since(start)); err != nil {
-		return true, "", err
-	}
+	outcome := store.AIOutcome{Result: result, ElapsedMS: time.Since(start).Milliseconds()}
 	if failure != nil {
+		outcome.Failure = failure.Error()
+	}
+	saved = true
+	switch err := st.SaveAI(ctx, lease, outcome); {
+	case errors.Is(err, store.ErrClaimLost):
+		return true, "not saved: the claim ran out and another worker took the work", nil
+	case err != nil:
+		return true, "", err
+	case failure != nil:
 		return true, "failed: " + failure.Error(), nil
 	}
 	return true, "saved", nil
+}
+
+// renew keeps lease current while a provider runs, until the returned stop is
+// called. A lease that cannot be renewed is left to run out: the result is
+// then refused when it is saved.
+func renew(ctx context.Context, st Work, lease string, log *slog.Logger) (stop func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tick := time.NewTicker(store.AILease / 4)
+		defer tick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				if _, err := st.RenewAI(ctx, lease); err != nil && ctx.Err() == nil {
+					log.Warn("enrichment claim not renewed", "err", err)
+					if errors.Is(err, store.ErrClaimLost) {
+						return
+					}
+				}
+			}
+		}
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
 }

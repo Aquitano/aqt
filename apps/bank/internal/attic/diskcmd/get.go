@@ -1,0 +1,51 @@
+package diskcmd
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/retrieve"
+	"github.com/aquitano/aqt/apps/bank/internal/client"
+)
+
+type getCmd struct {
+	Target string `arg:"" name:"id-or-ref" help:"Hashed ordinary-file entry ID or content ref; no archive members or directories."`
+	To     string `required:"" name:"to" help:"New destination file in an existing directory; never overwritten. On Windows use a different volume from the source."`
+	Config string `help:"Configuration file for content rules. Retrieval stages beside the destination, independent of temp."`
+	JSON   bool   `help:"Print the verified digest, destination and source as JSON."`
+}
+
+func (cmd *getCmd) Run(ctx context.Context, connect Connect) error {
+	id, cited, err := parseTarget(cmd.Target)
+	if err != nil {
+		return err
+	}
+	cfg, _, err := loadConfig(cmd.Config)
+	if err != nil {
+		return err
+	}
+	bank, closeAPI, err := connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeAPI()
+	content, err := client.Call(ctx, bank, api.GetDiskCopies, api.CopiesInput{Ref: cited, Entry: id})
+	if err != nil {
+		return err
+	}
+	vols, err := knownVolumes(ctx, bank)
+	if err != nil {
+		return err
+	}
+	result, err := retrieve.Get(ctx, content, cmd.To, vols, disk.Mounted(), cfg)
+	if err != nil {
+		return err
+	}
+	if cmd.JSON {
+		return printJSON(result)
+	}
+	fmt.Printf("%s saved to %s (%d bytes, BLAKE3 verified)\n", result.Ref, result.Destination, result.Size)
+	return nil
+}

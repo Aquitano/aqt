@@ -3,7 +3,6 @@ package verify
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 type Result struct {
@@ -40,10 +38,18 @@ type Summary struct {
 	Complete    bool   `json:"complete"`
 }
 
-func Run(ctx context.Context, st *store.Store, volumeID, under string, mount disk.Volume, report func(Result) error) (Summary, error) {
+// Files pages through the catalogue's entries below a folder. *store.Store
+// is one; the machine with the disks reaches it through bank serve's API.
+type Files interface {
+	VerifyFiles(ctx context.Context, volumeID, under string, after store.VerifyFile, limit int) ([]store.VerifyFile, error)
+}
+
+const filesPage = 500
+
+func Run(ctx context.Context, files Files, volumeID, under string, mount disk.Volume, report func(Result) error) (Summary, error) {
 	summary := Summary{Type: "summary", VolumeID: volumeID, Under: under}
 	var selected int64
-	err := st.WalkVerification(ctx, volumeID, under, func(f store.VerifyFile) error {
+	err := eachFile(ctx, files, volumeID, under, func(f store.VerifyFile) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -86,12 +92,35 @@ func Run(ctx context.Context, st *store.Store, volumeID, under string, mount dis
 	return summary, nil
 }
 
+// eachFile visits the selected entries one page at a time.
+func eachFile(ctx context.Context, files Files, volumeID, under string, visit func(store.VerifyFile) error) error {
+	var after store.VerifyFile
+	for {
+		page, err := files.VerifyFiles(ctx, volumeID, under, after, filesPage)
+		if err != nil {
+			return err
+		}
+		for _, f := range page {
+			if err := visit(f); err != nil {
+				return err
+			}
+		}
+		if len(page) < filesPage {
+			return nil
+		}
+		after = page[len(page)-1]
+	}
+}
+
 func readOne(ctx context.Context, mount disk.Volume, f store.VerifyFile) Result {
-	r := Result{Type: "entry", ID: f.ID, Path: f.Path, Expected: hex.EncodeToString(f.Digest)}
+	r := Result{Type: "entry", ID: f.ID, Path: f.Path}
+	if !f.Digest.IsZero() {
+		r.Expected = f.Digest.String()
+	}
 	switch {
 	case f.Kind != "file":
 		r.Status, r.Detail = "unavailable", "catalogue entry is not an ordinary file"
-	case f.HashState != "done" || len(f.Digest) != len(content.Digest{}):
+	case f.HashState != "done" || f.Digest.IsZero():
 		r.Status, r.Detail = "unknown", "no full stored digest; hash state: "+f.HashState
 	case mount.Root == "":
 		r.Status, r.Detail = "unavailable", "selected volume is offline"
@@ -116,8 +145,8 @@ func readOne(ctx context.Context, mount disk.Volume, f store.VerifyFile) Result 
 		case err != nil:
 			r.Status, r.Detail = "unreadable", err.Error()
 		default:
-			r.Actual = hex.EncodeToString(digest[:])
-			if r.Actual == r.Expected {
+			r.Actual = digest.String()
+			if digest == f.Digest {
 				r.Status = "matched"
 			} else {
 				r.Status = "mismatched"

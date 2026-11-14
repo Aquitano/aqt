@@ -341,10 +341,10 @@ func TestBackfillDispatchAndQuarantineDoNotRace(t *testing.T) {
 	}
 }
 
-func TestSyncPreservesCoverageAndOtherState(t *testing.T) {
+func TestSyncPreservesNoteAndOtherState(t *testing.T) {
 	ctx := context.Background()
 	st, target := syncFixture(t)
-	if err := st.SetCoverage(ctx, "gmail", "archive since 2011"); err != nil {
+	if err := st.SetNote(ctx, "gmail", "archive since 2011"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.SetSyncState(ctx, "gmail", []byte(`{"custom":"keep"}`)); err != nil {
@@ -363,7 +363,7 @@ func TestSyncPreservesCoverageAndOtherState(t *testing.T) {
 	if err := json.Unmarshal(raw, &state); err != nil {
 		t.Fatal(err)
 	}
-	if state["coverage"] != "archive since 2011" || state["custom"] != "keep" || state["history_id"] != "100" {
+	if state["note"] != "archive since 2011" || state["custom"] != "keep" || state["history_id"] != "100" {
 		t.Fatalf("sync overwrote state: %s", raw)
 	}
 }

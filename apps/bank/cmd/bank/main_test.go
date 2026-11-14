@@ -45,6 +45,24 @@ func TestCLIParsesDocumentedForms(t *testing.T) {
 		{[]string{"mail", "conflict", "key", "--source", "gmail", "--json"}, func(c cli) bool {
 			return c.Mail.Conflict.Key == "key" && c.Mail.Source == "gmail" && c.Mail.Conflict.Limit == page.DefaultLimit
 		}},
+		{[]string{"disk", "search", "minecraft", "server", "--ext", "rar", "--json"}, func(c cli) bool {
+			return reflect.DeepEqual(c.Disk.Search.Words, []string{"minecraft", "server"}) && c.Disk.Search.Ext == "rar" && c.Disk.Search.JSON && c.Disk.Search.Limit == page.DefaultLimit
+		}},
+		{[]string{"disk", "scan", `E:\Files`, "--volume", "known", "--new-volume=false"}, func(c cli) bool {
+			return c.Disk.Scan.Folder == `E:\Files` && c.Disk.Scan.Volume == "known" && !c.Disk.Scan.NewVolume && c.Disk.Scan.LogLevel == "info"
+		}},
+		{[]string{"disk", "enrich", "123", "content:0123456789abcdef", "--task", "ocr", "--force"}, func(c cli) bool {
+			return reflect.DeepEqual(c.Disk.Enrich.Targets, []string{"123", "content:0123456789abcdef"}) && c.Disk.Enrich.Task == "ocr" && c.Disk.Enrich.Force && c.Disk.Enrich.Limit == 20
+		}},
+		{[]string{"disk", "get", "content:0123456789abcdef", "--to", "recovered.pdf", "--json"}, func(c cli) bool {
+			return c.Disk.Get.To == "recovered.pdf" && c.Disk.Get.JSON
+		}},
+		{[]string{"disk", "dedupe", "plan", "--keep", `E:\Files`, "--keep", `F:\Photos`}, func(c cli) bool {
+			return reflect.DeepEqual(c.Disk.Dedupe.Plan.Keep, []string{`E:\Files`, `F:\Photos`}) && c.Disk.Dedupe.Plan.MinSize == "1M"
+		}},
+		{[]string{"show", "content:0123456789abcdef", "--text"}, func(c cli) bool {
+			return c.Show.Ref.String() == "content:0123456789abcdef" && c.Show.Text
+		}},
 	} {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {
 			root := newCLI()
@@ -76,6 +94,25 @@ func TestSearchDashQueryReachesServer(t *testing.T) {
 	}
 }
 
+func TestCLIRejectsInvalidSelections(t *testing.T) {
+	for _, args := range [][]string{
+		{"disk", "search", "words", "--kind", "folder"},
+		{"disk", "enrich", "123", "--task", "caption"},
+		{"disk", "enrich", "123"},
+		{"disk", "scan", `E:\`, "--volume", "known", "--new-volume"},
+		{"disk", "scan", `E:\`, "--no-hash", "--rebuild-content"},
+		{"disk", "get", "123", "456", "--to", "file"},
+		{"show", "msg:0123456789abcdef", "--text"},
+		{"show", "content:0123456789abcdef", "--provenance"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			if _, err := newParser(newCLI()).Parse(args); err == nil {
+				t.Fatal("invalid selection accepted")
+			}
+		})
+	}
+}
+
 func TestHumanBytesHandlesLargeArchives(t *testing.T) {
 	for n, want := range map[int64]string{0: "0B", 1024: "1.0K", 1 << 40: "1.0T", 1 << 50: "1.0P", 1 << 60: "1.0E", math.MaxInt64: "8.0E"} {
 		if got := humanBytes(n); got != want {
@@ -95,10 +132,12 @@ func TestHealthcheckReportsHTTPFailure(t *testing.T) {
 	}
 }
 
-func TestLibraryGetRoutesByIDKind(t *testing.T) {
+func TestShowRoutesLibraryRefsByKind(t *testing.T) {
 	var path string
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path = r.URL.Path
+		if !strings.HasPrefix(r.URL.Path, "/v1/refs/") {
+			path = r.URL.Path
+		}
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{}`)
 	}))
@@ -113,11 +152,11 @@ func TestLibraryGetRoutesByIDKind(t *testing.T) {
 		"file:" + id:       "/v1/library/files/file:" + id,
 		"page:" + id:       "/v1/library/pages/page:" + id,
 	} {
-		if err := execute(context.Background(), []string{"library", "get", cited}); err != nil {
+		if err := execute(context.Background(), []string{"show", cited, "--json"}); err != nil {
 			t.Fatal(err)
 		}
 		if path != want {
-			t.Errorf("get %s requested %s, want %s", cited, path, want)
+			t.Errorf("show %s requested %s, want %s", cited, path, want)
 		}
 	}
 }
@@ -125,6 +164,10 @@ func TestLibraryGetRoutesByIDKind(t *testing.T) {
 func TestShowPrintsRetiredRefs(t *testing.T) {
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if strings.HasPrefix(r.URL.Path, "/v1/refs/") {
+			fmt.Fprint(w, `{"ref":"msg:0123456789abcdef","kind":"retired_message","href":"/v1/messages/msg:0123456789abcdef","links":[]}`)
+			return
+		}
 		w.WriteHeader(http.StatusGone)
 		fmt.Fprint(w, `{"_tag":"MessageRetired","message":"message msg:0123456789abcdef was retired","retired":{"ref":"msg:0123456789abcdef","source":"youtube","external_id":"watch:1","replacement":"activity:0123456789abcdef0123456789abcdef"}}`)
 	}))

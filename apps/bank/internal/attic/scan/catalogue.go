@@ -3,16 +3,16 @@ package scan
 import (
 	"context"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/metadata"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/unpack"
 )
 
-// Catalogue is where a scan records what it finds: bank's database from this
-// process (Local), or bank serve's API from the machine with the disks
-// (Remote).
+// Catalogue is where a scan records what it finds: bank serve's API, called
+// over HTTP from the machine with the disks or in process (Remote). The tests
+// also scan straight into the database (Local), to show both record the same.
 type Catalogue interface {
 	ResolveVolume(ctx context.Context, mounted disk.Volume, forceID string, forceNew bool) (store.Volume, error)
 	StartScan(ctx context.Context, v store.Volume, root string) (Session, error)
@@ -62,40 +62,7 @@ type Session interface {
 
 // Listing is one archive's listing; nothing of it is kept until Finish.
 type Listing interface {
-	Add(ctx context.Context, m archive.Member) error
-	Finish(ctx context.Context, res archive.Result) error
+	Add(ctx context.Context, m unpack.Member) error
+	Finish(ctx context.Context, res unpack.Result) error
 	Abort(ctx context.Context)
-}
-
-// Local writes the catalogue in st from this process.
-func Local(st *store.Store) Catalogue { return local{st} }
-
-type local struct{ *store.Store }
-
-func (l local) StartScan(ctx context.Context, v store.Volume, root string) (Session, error) {
-	sc, err := l.Store.StartScan(ctx, v, root)
-	if err != nil {
-		return nil, err
-	}
-	return localScan{sc}, nil
-}
-
-type localScan struct{ *store.Scan }
-
-func (s localScan) ID() int64                { return s.Scan.ID }
-func (s localScan) Counts() store.ScanCounts { return s.Scan.Counts }
-
-func (s localScan) Finish(ctx context.Context, status string, phases store.PhaseTimes, failure error) (int64, error) {
-	s.Phases = phases
-	err := s.Scan.Finish(ctx, status, failure)
-	files, _, _ := s.PendingTotals(context.WithoutCancel(ctx))
-	return files, err
-}
-
-func (s localScan) StartListing(ctx context.Context, contentID int64, depth int, unpackMaxBytes int64) (Listing, error) {
-	l, err := s.Scan.StartListing(ctx, contentID, depth, unpackMaxBytes)
-	if l == nil {
-		return nil, err
-	}
-	return l, err
 }

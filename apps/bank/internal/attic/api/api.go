@@ -17,7 +17,7 @@ const description = `The catalogue of files on disks that come and go. For every
 where it is (an entry: a path on a volume), what it is (a content, identified by its
 BLAKE3 digest and cited as content:<hex>), and the text, tags, OCR and image descriptions
 read from it. It keeps no file bytes, and the server is not the machine the disks attach
-to: attic get on that machine copies a file.
+to: bank disk get on that machine copies a file.
 
 A place is missing when the last scan of its folder no longer found the file, and has
 version "previous" when the entry held this content before its bytes changed, so earlier

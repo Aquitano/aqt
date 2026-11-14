@@ -1,7 +1,6 @@
 package verify
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -43,7 +42,7 @@ func TestRereadIgnoresUnchangedMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := blake3.Sum256([]byte("before"))
-	f := store.VerifyFile{ID: 1, Kind: "file", Path: "/file", HashState: "done", Digest: digest[:]}
+	f := store.VerifyFile{ID: 1, Kind: "file", Path: "/file", HashState: "done", Digest: digest}
 	if r := readOne(t.Context(), m, f); r.Status != "matched" {
 		t.Fatalf("%+v", r)
 	}
@@ -61,7 +60,7 @@ func TestRereadIgnoresUnchangedMetadata(t *testing.T) {
 	if r.Status != "mismatched" || r.Expected == r.Actual || r.Bytes != 6 {
 		t.Fatalf("%+v", r)
 	}
-	if !bytes.Equal(f.Digest, digest[:]) {
+	if f.Digest != digest {
 		t.Fatal("baseline changed")
 	}
 	if got, err := os.ReadFile(p); err != nil || string(got) != "after!" {
@@ -88,7 +87,7 @@ func TestReadOutcomes(t *testing.T) {
 			if tc.offline {
 				mount.Root = ""
 			}
-			r := readOne(t.Context(), mount, store.VerifyFile{Path: tc.path, Kind: tc.kind, HashState: tc.state, Digest: digest[:]})
+			r := readOne(t.Context(), mount, store.VerifyFile{Path: tc.path, Kind: tc.kind, HashState: tc.state, Digest: digest})
 			if r.Status != tc.want || r.Detail == "" {
 				t.Fatalf("%+v", r)
 			}

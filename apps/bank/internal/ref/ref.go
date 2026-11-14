@@ -148,6 +148,8 @@ func (c Content) IsZero() bool { return c.value == "" }
 
 func (c Content) String() string { return Ref{kind: KindContent, value: c.value}.String() }
 
+func (c Content) MarshalText() ([]byte, error) { return []byte(c.String()), nil }
+
 func (c *Content) UnmarshalText(text []byte) (err error) {
 	*c, err = ParseContent(string(text))
 	return err

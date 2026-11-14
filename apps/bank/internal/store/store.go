@@ -437,23 +437,23 @@ func (s *Store) SetSyncState(ctx context.Context, source string, state []byte) e
 	return err
 }
 
-// SetCoverage records what a source is known to hold and what it is known to
+// SetNote records what a source is known to hold and what it is known to
 // be missing — "Gmail from 2011, WhatsApp only the chats exported in 2025-08".
 // It shares sync_state's blob because it is the same kind of fact (where this
-// source stands), and it deliberately leaves updated_at alone: coverage is
+// source stands), and it deliberately leaves updated_at alone: the note is
 // written by hand and must not read as a sync having happened. An empty text
 // clears the note.
-func (s *Store) SetCoverage(ctx context.Context, source, text string) error {
+func (s *Store) SetNote(ctx context.Context, source, text string) error {
 	source = strings.TrimSpace(cleanText(source))
 	if source == "" {
-		return fail.Invalidf("coverage needs a source")
+		return fail.Invalidf("a note needs a source")
 	}
 	_, err := s.pool.Exec(ctx, `
 		insert into sync_state (source, state)
-		values ($1, case when $2::text = '' then '{}'::jsonb else jsonb_build_object('coverage', $2::text) end)
+		values ($1, case when $2::text = '' then '{}'::jsonb else jsonb_build_object('note', $2::text) end)
 		on conflict (source) do update
-		set state = case when $2::text = '' then sync_state.state - 'coverage'
-		                 else jsonb_set(sync_state.state, '{coverage}', to_jsonb($2::text), true) end`,
+		set state = case when $2::text = '' then sync_state.state - 'note'
+		                 else jsonb_set(sync_state.state, '{note}', to_jsonb($2::text), true) end`,
 		source, cleanText(text))
 	return err
 }
@@ -532,10 +532,10 @@ type SourceStats struct {
 	// because omitempty does nothing for a zero time.Time, and an agent
 	// reading "0001-01-01" as a sync date would be worse than reading nothing.
 	LastSync *time.Time `json:"last_sync"`
-	// Coverage is the owner's note on what this source actually holds, set
-	// with `bank coverage`. Absence of a message only means something once you
+	// Note is the owner's note on what this source actually holds, set with
+	// `bank note`. Absence of a message only means something once you
 	// know the source was ever complete for that period.
-	Coverage string `json:"coverage,omitempty"`
+	Note string `json:"note,omitempty"`
 	// Stale reports that nothing has landed here in StaleAfter, which for a
 	// source that should be growing means the drop-off went unnoticed.
 	Stale bool `json:"stale"`
@@ -547,16 +547,16 @@ type SourceStats struct {
 const StaleAfter = 30 * 24 * time.Hour
 
 func (s *Store) Stats(ctx context.Context) ([]SourceStats, error) {
-	// A row that only carries a coverage note is not a sync checkpoint, so it
-	// must not report a last_sync: `bank coverage` writes into the same blob.
+	// A row that only carries a note is not a sync checkpoint, so it must not
+	// report a last_sync: `bank note` writes into the same blob.
 	// The type check keeps a state blob that is not an object (nothing writes
 	// one today) from failing the whole of `bank stats` on the `-` operator.
 	rows, err := s.pool.Query(ctx, `
 		select m.source, count(*), count(*) filter (where m.sent_at is null), min(m.sent_at), max(m.sent_at), max(m.ingested_at),
 		       coalesce(max(ss.updated_at) filter (
-		           where jsonb_typeof(ss.state) <> 'object' or ss.state - 'coverage' <> '{}'::jsonb),
+		           where jsonb_typeof(ss.state) <> 'object' or ss.state - 'note' <> '{}'::jsonb),
 		           'epoch'::timestamptz),
-		       coalesce(max(ss.state ->> 'coverage'), '')
+		       coalesce(max(ss.state ->> 'note'), '')
 		from messages m
 		left join sync_state ss on ss.source = m.source
 		group by m.source order by m.source`)
@@ -570,7 +570,7 @@ func (s *Store) Stats(ctx context.Context) ([]SourceStats, error) {
 		var st SourceStats
 		var lastSync time.Time
 		if err := rows.Scan(&st.Source, &st.Messages, &st.Undated, optionalTime{&st.Earliest}, optionalTime{&st.Latest}, &st.LastIngest,
-			&lastSync, &st.Coverage); err != nil {
+			&lastSync, &st.Note); err != nil {
 			return nil, err
 		}
 		if lastSync.Unix() != 0 {

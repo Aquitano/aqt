@@ -19,7 +19,7 @@ import (
 
 // The write routes run against the real store: the CLI reaches them only over
 // HTTP when BANK_URL is set, so the wiring is the part worth exercising.
-func TestContactImportAndCoverageRoutes(t *testing.T) {
+func TestContactImportAndNoteRoutes(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
 	dir := t.TempDir()
@@ -118,8 +118,8 @@ func TestContactImportAndCoverageRoutes(t *testing.T) {
 		}
 	})
 
-	t.Run("coverage", func(t *testing.T) {
-		if status, body := send(http.MethodPut, "/v1/sources/gmail/coverage",
+	t.Run("note", func(t *testing.T) {
+		if status, body := send(http.MethodPut, "/v1/sources/gmail/note",
 			`{"text":"everything from 2011 on"}`); status != http.StatusOK {
 			t.Fatalf("status %d (%s)", status, body)
 		}
@@ -128,11 +128,11 @@ func TestContactImportAndCoverageRoutes(t *testing.T) {
 		if err := json.Unmarshal([]byte(body), &stats); err != nil {
 			t.Fatal(err)
 		}
-		if len(stats) != 1 || stats[0].Coverage != "everything from 2011 on" {
+		if len(stats) != 1 || stats[0].Note != "everything from 2011 on" {
 			t.Fatalf("stats = %+v", stats)
 		}
 		if stats[0].LastSync != nil {
-			t.Error("a coverage note must not read as a sync checkpoint")
+			t.Error("a note must not read as a sync checkpoint")
 		}
 	})
 }
@@ -151,7 +151,7 @@ func TestWritesDuringAnOutageAreTheServersFault(t *testing.T) {
 		{http.MethodPost, "/v1/contacts", `{"name":"erin"}`},
 		{http.MethodPost, "/v1/contacts/erin/aliases", `{"value":"erin@example.com"}`},
 		{http.MethodDelete, "/v1/contacts/erin/aliases?value=erin%40example.com", ""},
-		{http.MethodPut, "/v1/sources/gmail/coverage", `{"text":"all of it"}`},
+		{http.MethodPut, "/v1/sources/gmail/note", `{"text":"all of it"}`},
 	} {
 		req, err := http.NewRequestWithContext(t.Context(), tc.method, srv.URL+tc.path, strings.NewReader(tc.body))
 		if err != nil {
