@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -27,8 +26,8 @@ type retireCmd struct {
 }
 
 func (c *retireCmd) Run(ctx context.Context) error {
-	if client.FromEnv() != nil {
-		return fmt.Errorf("retire deletes rows from the server's own database; run it there, not through BANK_URL")
+	if err := onTheBox("retire", "deletes rows from the server's own database"); err != nil {
+		return err
 	}
 	var replacements map[string]string
 	if c.ReplacementMap != "" {
@@ -54,7 +53,7 @@ func (c *retireCmd) Run(ctx context.Context) error {
 	for _, p := range res.Prefixes {
 		fmt.Printf("%s %q: %s, %s\n", res.Source, p.Prefix, plural(int(p.Messages), "message"), plural(int(p.Attachments), "attachment"))
 		for _, m := range p.Samples {
-			fmt.Printf("  %s  %s  %s  %s", m.Ref, m.SentAt.Format(time.DateOnly), m.ExternalID, excerpt(m.Subject, 60))
+			fmt.Printf("  %s  %s  %s  %s", m.Ref, formatSent(m.SentAt, time.DateOnly), m.ExternalID, excerpt(m.Subject, 60))
 			if m.Replacement != "" {
 				fmt.Printf("  -> %s", m.Replacement)
 			}

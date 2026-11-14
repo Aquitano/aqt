@@ -9,7 +9,7 @@ The collector uses read-only `EXAMINE` and `BODY.PEEK[]`. It does not mark mail
 as read, move messages, delete messages, or copy mailbox deletions into Bank.
 The first run imports the existing contents of every selected folder.
 
-Each upload includes its account ID and exact IMAP folder. Bank stores historical folder observations, including duplicates already seen elsewhere. Upgrade the Bank server before this collector: a response that does not acknowledge the upload's `mail_context_version` (1, or 2 for Gmail metadata) keeps the queued file pending and does not advance its checkpoint. See [MAIL.md](MAIL.md) for folder filters and recovery.
+Each upload carries the account's source and the exact IMAP folder as the options of its raw input. Bank stores historical folder observations, including duplicates already seen elsewhere. See [MAIL.md](MAIL.md) for folder filters and recovery.
 
 ## Start with Proton Bridge on Windows
 
@@ -132,23 +132,14 @@ a user label is its own folder name. A system label without a visible folder
 keeps its Gmail name, such as `\Important`. Collecting only All Mail therefore
 still records every label.
 
-These uploads use mail context version 2. A Bank server that predates it
-rejects them, and the mail stays queued until the server is upgraded.
-
-Takeout mail imported before this version has no stored thread ID. Run
-`bank mail rebuild --source gmail --apply` once on the archive host, as
-described in [MAIL.md](MAIL.md#rebuild-metadata), so the archived mbox headers
-supply it. Without the rebuild, new mail joins those conversations only through
-`References` and `In-Reply-To`.
-
 ### Running beside the Gmail API
 
 Keep `source` as `gmail` when trying IMAP alongside existing Gmail API imports.
 Bank deduplicates messages with the same Message-ID within a source. After the
 trial, use one collector per mailbox to avoid repeated downloads. API and IMAP
-collection keep independent checkpoints. Messages without Message-ID use their
-raw content digest for EML deduplication; do not assume cross-provider or
-cross-source deduplication.
+collection keep independent checkpoints. Messages without Message-ID use the
+BLAKE3 digest of their raw bytes for EML deduplication; do not assume
+cross-provider or cross-source deduplication.
 
 ## Configuration
 
@@ -209,6 +200,8 @@ The queue contains decrypted mail, so keep the state directory private.
 
 SQLite checkpoints use `(account, folder, UIDVALIDITY, UID)`. A batch advances
 only when every message receives a successful Bank import acknowledgement.
+A message is acknowledged when its import report counts it as inserted,
+duplicate, retired or rejected.
 If an upload succeeds but its response is lost, the batch is retried and Bank
 deduplicates it. UIDVALIDITY changes cause that folder to be scanned again.
 Messages deleted from the mail server before collection cannot be recovered.
@@ -223,10 +216,11 @@ A message whose body exceeds `max_message_bytes` stops its folder and records an
 error. Increase the configured size limit, then retry. The size the server
 reports in metadata only groups messages into batches, so an inaccurate report
 does not block a message. A message Bank cannot parse is acknowledged as
-rejected and the checkpoint moves past it, because Bank has already archived its
-raw bytes and folder context. The collector records its UID, counts it as
-`rejected` in `checkpoint` and `pass` events and in `--status`, and Bank logs the
-parse error. An import that fails for any other reason stops its folder until a
+rejected and the checkpoint moves past it. Bank stored the message as a raw
+input, with its folder among the options, before parsing it, so `bank reimport
+eml` can replay it after a parser fix. The collector records its UID, counts it
+as `rejected` in `checkpoint` and `pass` events and in `--status`, and the raw
+input's report records the parse error. An import that fails for any other reason stops its folder until a
 retry succeeds. A message that disappears during
 FETCH is retried on the next pass, whose metadata query sees the current mailbox.
 
@@ -256,12 +250,46 @@ with `Restart=on-failure`, a persistent state directory and credentials supplied
 to the process. Do not expose Bridge's IMAP listener to the network; run the
 collector beside Bridge and upload through Bank's HTTP API.
 
+## Switching to a rebuilt Bank server
+
+The collector decides what it has delivered from its own state, never by asking
+Bank. `state.sqlite` in `state_dir` keeps a checkpoint per account and folder,
+`(UIDVALIDITY, UID)`, and each pass fetches only UIDs above it. It also binds
+each account to a digest of its address, username, source and Bank URL. Against
+a rebuilt Bank that starts empty, the old state would skip every message
+collected before. A state directory from before the rebuild holds a binding
+digest computed another way, so it refuses every account with `changed mailbox
+identity, source or Bank destination`. The reset below is needed either way.
+
+On the collector's machine:
+
+1. Run `bank imap --config <config> --status` and note `pending` for each
+   account. Pending messages were fetched but never acknowledged. The new state
+   fetches them again from the mail server, unless they were deleted there
+   since.
+2. Stop the collector, including its Task Scheduler task or systemd unit, so it
+   releases `daemon.lock` in the state directory.
+3. Move the state directory aside rather than deleting it. It is `state_dir`,
+   relative to the configuration file: `state` in the copied example,
+   `imap-state` when the field is unset. With the Windows setup above, run
+   `Rename-Item "$imapDir\state" state.old`. If pending messages may be
+   gone from the mail server, their files are in the `fetch-*` directories of
+   the old state, and `bank import eml --source <source> --mailbox <folder>
+   <file>` imports them.
+4. Mint a token on the rebuilt server, as [DEPLOY.md](DEPLOY.md#5-remote-cli-bank-serve)
+   shows, because tokens from before the rebuild no longer verify. Set `BANK_URL` and
+   `BANK_TOKEN` for the collector's process, including a scheduled task's.
+5. Run `--check`, then `--once`. The first pass creates a new state directory
+   and imports the existing contents of every selected folder again. Start
+   continuous mode once it succeeds.
+6. Delete the old state directory. It can hold decrypted mail.
+
 ## Development checks
 
 ```sh
-go test ./internal/imapsync -count=1
-go test -race ./internal/imapsync
-go test ./internal/imapsync -run '^$' -bench BenchmarkIMAPBackfill -benchmem
+go test ./internal/collect/imapsync -count=1
+go test -race ./internal/collect/imapsync
+go test ./internal/collect/imapsync -run '^$' -bench BenchmarkIMAPBackfill -benchmem
 go vet ./...
 ```
 

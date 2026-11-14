@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -67,6 +68,43 @@ func TestQueryTruncatesAtLimit(t *testing.T) {
 	var bad *store.BadQueryError
 	if _, err := st.Query(ctx, "select 1", 100001); !errors.As(err, &bad) {
 		t.Fatalf("oversized limit: err = %v, want BadQueryError", err)
+	}
+}
+
+// The cursor stops the work at the cap: every row past it would sleep, so a
+// query that read on to the end would run into the statement timeout.
+func TestQueryStopsReadingAtItsCaps(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+
+	started := time.Now()
+	res, err := st.Query(ctx, "select g, pg_sleep(0.01) from generate_series(1, 5000) g", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Rows) != 10 || !res.Truncated || time.Since(started) > 5*time.Second {
+		t.Fatalf("got %d rows, truncated=%v after %s; want 10 rows, truncated, at once", len(res.Rows), res.Truncated, time.Since(started))
+	}
+
+	res, err = st.Query(ctx, "select repeat('x', 70000) as long, 'short' as short", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if long, _ := res.Rows[0][0].(string); len(long) != store.QueryMaxValue || res.CutValues != 1 || res.Truncated {
+		t.Fatalf("a long value: %d bytes, %d cut, truncated=%v", len(long), res.CutValues, res.Truncated)
+	}
+
+	res, err = st.Query(ctx, "select repeat('x', 60000) from generate_series(1, 1000)", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Truncated || len(res.Rows)*60000 > store.QueryMaxResult {
+		t.Fatalf("a large result: %d rows, truncated=%v", len(res.Rows), res.Truncated)
+	}
+
+	var bad *store.BadQueryError
+	if _, err := st.Query(ctx, "select 1; select 2", 10); !errors.As(err, &bad) {
+		t.Fatalf("two statements: err = %v, want BadQueryError", err)
 	}
 }
 
@@ -135,12 +173,8 @@ func TestQueryLoginCannotEscapeReadOnly(t *testing.T) {
 
 func TestQueryConfigurationRejectsPrivilegedConnections(t *testing.T) {
 	ctx := context.Background()
-	_, dsn := storetest.NewNamed(t)
-	st, err := store.Open(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
+	dsn := storetest.Migrated(t)
+	st := store.New(storetest.Pool(t, dsn))
 	if _, err := st.Query(ctx, "select 1", 1); err == nil {
 		t.Fatal("missing query connection fell back to writer")
 	}

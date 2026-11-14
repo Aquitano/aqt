@@ -65,7 +65,7 @@ run = [
 ]
 
 [tasks."bank:check"]
-depends = ["shared:ts", "shared:go", "bank:ts", "bank:go"]
+depends = ["shared:ts", "shared:go", "bank:ts", "bank:go", "bank:go:unix", "bank:go:windows"]
 
 [tasks."bank:ts"]
 run = [
@@ -80,6 +80,20 @@ dir = "apps/bank"
 # Without the workspace, as the image builds.
 env = { GOWORK = "off" }
 run = ["go mod tidy -diff", "go vet ./...", "go test -race ./...", "golangci-lint run"]
+# The race detector needs cgo, which Windows only has with a C compiler installed.
+run_windows = ["go mod tidy -diff", "go vet ./...", "go test ./...", "golangci-lint run"]
+
+[tasks."bank:go:unix"]
+description = "Vet and lint the Linux build, which the server image runs"
+dir = "apps/bank"
+env = { GOWORK = "off", GOOS = "linux" }
+run = ["go vet ./...", "golangci-lint run"]
+
+[tasks."bank:go:windows"]
+description = "Vet and lint the Windows build, where bank disk scans and the mail collector run"
+dir = "apps/bank"
+env = { GOWORK = "off", GOOS = "windows" }
+run = ["go vet ./...", "golangci-lint run"]
 
 [tasks."bank:dev"]
 dir = "apps/bank"

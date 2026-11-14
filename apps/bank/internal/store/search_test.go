@@ -3,37 +3,8 @@ package store
 import (
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 )
-
-func TestSearchOptsValidate(t *testing.T) {
-	base := SearchOpts{Limit: 20, Fuzzy: 1}
-	bad := map[string]SearchOpts{
-		"zero limit":     {Limit: 0, Fuzzy: 1},
-		"negative limit": {Limit: -1, Fuzzy: 1},
-		"limit over cap": {Limit: MaxSearchLimit + 1, Fuzzy: 1},
-		"negative fuzzy": {Limit: 20, Fuzzy: -1},
-		"fuzzy over cap": {Limit: 20, Fuzzy: MaxFuzzyDistance + 1},
-		"until before since": {Limit: 20, Fuzzy: 1,
-			Since: time.Date(2024, 5, 2, 0, 0, 0, 0, time.UTC),
-			Until: time.Date(2024, 5, 1, 0, 0, 0, 0, time.UTC)},
-	}
-	for name, o := range bad {
-		if err := o.Validate(); err == nil {
-			t.Errorf("%s: accepted %+v", name, o)
-		}
-	}
-	for _, o := range []SearchOpts{
-		base,
-		{Limit: 1, Fuzzy: 0},
-		{Limit: MaxSearchLimit, Fuzzy: MaxFuzzyDistance},
-	} {
-		if err := o.Validate(); err != nil {
-			t.Errorf("rejected %+v: %v", o, err)
-		}
-	}
-}
 
 func TestSnippet(t *testing.T) {
 	t.Run("engine highlight is unescaped and stripped of markup", func(t *testing.T) {

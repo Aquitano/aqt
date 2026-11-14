@@ -22,6 +22,9 @@ type Status string
 const (
 	// StatusOK: text was recovered and indexed.
 	StatusOK Status = "ok"
+	// StatusTruncated: the text was longer than MaxChars and the first
+	// MaxChars are kept. It is searchable like ok.
+	StatusTruncated Status = "truncated"
 	// StatusEmpty: the extractor understood the file and it holds no text.
 	// A blank spreadsheet is not a failure and must not be retried forever.
 	StatusEmpty Status = "empty"
@@ -43,7 +46,7 @@ const (
 )
 
 // Statuses lists every status, for flag validation and reporting order.
-var Statuses = []Status{StatusOK, StatusEmpty, StatusNeedsOCR, StatusUnsupported, StatusTooBig, StatusFailed, StatusManual}
+var Statuses = []Status{StatusOK, StatusTruncated, StatusEmpty, StatusNeedsOCR, StatusUnsupported, StatusTooBig, StatusFailed, StatusManual}
 
 // Result is one extraction attempt.
 type Result struct {
@@ -59,6 +62,17 @@ type Result struct {
 	// must not stop the pass.
 	Err error
 }
+
+// Stored is the status to record: text cut at the cap is truncated.
+func (r Result) Stored() Status {
+	if r.Truncated && r.Status == StatusOK {
+		return StatusTruncated
+	}
+	return r.Status
+}
+
+// MaxChars is the default cap on stored text, in bytes of UTF-8.
+const MaxChars = 4 << 20
 
 // Options bound what extraction is allowed to cost and which tools it may use.
 type Options struct {
@@ -115,7 +129,7 @@ func DefaultOptions() Options {
 	return Options{
 		OCRLang:     "eng",
 		MaxBytes:    64 << 20,
-		MaxChars:    1 << 20,
+		MaxChars:    MaxChars,
 		OCRMaxPages: 20,
 		Timeout:     5 * time.Minute,
 		Tesseract:   "tesseract",

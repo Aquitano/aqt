@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { Attachment, SearchParams } from "@/lib/api";
+import { messageRef, type Attachment, type SearchParams } from "@/lib/api";
 import type { LibraryFilters } from "@/lib/library-api";
 
 export const VIEWS = [
@@ -23,15 +23,13 @@ export type Selection =
       kind: "thread";
       source: string;
       threadId: string;
-      flashId?: number;
-      current?: boolean;
+      flashRef?: string;
     }
   | { kind: "item"; id: string }
   | { kind: "collection"; id: string }
   | { kind: "page"; id: string }
-  | { kind: "message"; id: string }
+  | { kind: "message"; ref: string }
   | { kind: "contact"; name: string }
-  | { kind: "mail-conflict"; source: string; key: string }
   | { kind: "file"; file: Attachment }
   | null;
 
@@ -43,10 +41,7 @@ const selectionKeys = [
   "thread",
   "threadSource",
   "around",
-  "current",
-  "choices",
   "contact",
-  "conflict",
   "file",
   "filename",
   "mime",
@@ -61,7 +56,6 @@ const searchKeys = [
   "until",
   "subject",
   "match",
-  "fuzzy",
   "mailbox_id",
   "has_attachment",
 ];
@@ -108,8 +102,7 @@ export function readSelection(params: URLSearchParams): Selection {
   const page = params.get("page");
   if (page) return { kind: "page", id: page };
   const message = params.get("message");
-  if (message && (/^[a-f0-9]{12}$/.test(message) || /^[1-9]\d*$/.test(message)))
-    return { kind: "message", id: message };
+  if (message && messageRef.test(message)) return { kind: "message", ref: message };
   const contact = params.get("contact");
   if (contact) return { kind: "contact", name: contact };
   const file = params.get("file");
@@ -117,23 +110,20 @@ export function readSelection(params: URLSearchParams): Selection {
     return {
       kind: "file",
       file: {
-        sha256: file,
+        blake3: file,
         filename: params.get("filename") || file,
         mime_type: params.get("mime") || "",
       },
     };
   const source = params.get("threadSource");
-  const conflict = params.get("conflict");
-  if (source && conflict) return { kind: "mail-conflict", source, key: conflict };
   const threadId = params.get("thread");
   if (source && threadId) {
-    const around = Number(params.get("around"));
+    const around = params.get("around");
     return {
       kind: "thread",
       source,
       threadId,
-      flashId: Number.isSafeInteger(around) && around > 0 ? around : undefined,
-      current: params.get("current") === "true" || undefined,
+      flashRef: around && messageRef.test(around) ? around : undefined,
     };
   }
   return null;
@@ -149,33 +139,25 @@ export function writeSelection(params: URLSearchParams, selection: Selection) {
       params.set(selection.kind, selection.id);
       break;
     case "message":
-      params.set("message", selection.id);
+      params.set("message", selection.ref);
       break;
     case "contact":
       params.set("contact", selection.name);
       break;
     case "file":
-      params.set("file", selection.file.sha256);
+      params.set("file", selection.file.blake3);
       params.set("filename", selection.file.filename);
       if (selection.file.mime_type) params.set("mime", selection.file.mime_type);
       break;
     case "thread":
       params.set("thread", selection.threadId);
       params.set("threadSource", selection.source);
-      if (selection.flashId) params.set("around", String(selection.flashId));
-      if (selection.current) params.set("current", "true");
-      break;
-    case "mail-conflict":
-      params.set("conflict", selection.key);
-      params.set("threadSource", selection.source);
+      if (selection.flashRef) params.set("around", selection.flashRef);
   }
 }
 
-export function select(selection: Selection, choices?: string) {
-  navigate((params) => {
-    writeSelection(params, selection);
-    if (choices) params.set("choices", choices);
-  });
+export function select(selection: Selection) {
+  navigate((params) => writeSelection(params, selection));
 }
 
 export function messageLink(ref: string) {
@@ -187,7 +169,6 @@ export function messageLink(ref: string) {
 export function readSearch(params: URLSearchParams): SearchParams | null {
   if (!params.has("q")) return null;
   const match = params.get("match");
-  const fuzzy = Number(params.get("fuzzy") ?? 1);
   const mailbox = Number(params.get("mailbox_id"));
   const attachment = params.get("has_attachment");
   return {
@@ -199,8 +180,7 @@ export function readSearch(params: URLSearchParams): SearchParams | null {
     since: params.get("since") || undefined,
     until: params.get("until") || undefined,
     subject: params.get("subject") || undefined,
-    match: match === "all" || match === "phrase" ? match : "any",
-    fuzzy: Number.isInteger(fuzzy) && fuzzy >= 0 && fuzzy <= 2 ? fuzzy : 1,
+    match: match === "any" || match === "all" ? match : "best",
     mailbox_id: Number.isSafeInteger(mailbox) && mailbox > 0 ? mailbox : undefined,
     has_attachment: attachment === "true" ? true : attachment === "false" ? false : undefined,
   };

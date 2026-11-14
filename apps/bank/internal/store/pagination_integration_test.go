@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/find"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -37,27 +39,22 @@ func seedIdentical(t *testing.T, st *store.Store, n int) {
 // separate, and a plan change at archive scale is free to rearrange them
 // between one page and the next.
 func TestSearchPagesCoverEveryMatchExactlyOnce(t *testing.T) {
-	ctx := context.Background()
 	st := storetest.New(t)
 	const total, page = 7, 3
 	seedIdentical(t, st, total)
 
-	seen := map[int64]int{}
+	seen := map[string]int{}
 	for offset := 0; offset < total+page; offset += page {
-		msgs, err := st.Search(ctx, "quarterly", store.SearchOpts{Fuzzy: 0, Limit: page, Offset: offset})
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, m := range msgs {
-			seen[m.ID]++
+		for _, m := range findMessages(t, st, "quarterly", page, offset) {
+			seen[m.Ref]++
 		}
 	}
 	if len(seen) != total {
 		t.Fatalf("paged over %d distinct messages, want %d", len(seen), total)
 	}
-	for id, n := range seen {
+	for ref, n := range seen {
 		if n != 1 {
-			t.Errorf("message %d returned %d times across pages", id, n)
+			t.Errorf("message %s returned %d times across pages", ref, n)
 		}
 	}
 }
@@ -67,22 +64,15 @@ func TestSearchPagesCoverEveryMatchExactlyOnce(t *testing.T) {
 // above: this passes today either way, and exists so a future change that
 // makes the order genuinely unstable is caught here.
 func TestSearchOrderIsStableAcrossIdenticalQueries(t *testing.T) {
-	ctx := context.Background()
 	st := storetest.New(t)
 	seedIdentical(t, st, 10)
 
-	first, err := st.Search(ctx, "quarterly", store.SearchOpts{Fuzzy: 0, Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
+	first := findMessages(t, st, "quarterly", 10, 0)
 	for i := 0; i < 5; i++ {
-		again, err := st.Search(ctx, "quarterly", store.SearchOpts{Fuzzy: 0, Limit: 10})
-		if err != nil {
-			t.Fatal(err)
-		}
+		again := findMessages(t, st, "quarterly", 10, 0)
 		for j := range first {
-			if again[j].ID != first[j].ID {
-				t.Fatalf("run %d position %d: id %d, first run had %d", i, j, again[j].ID, first[j].ID)
+			if again[j].Ref != first[j].Ref {
+				t.Fatalf("run %d position %d: %s, first run had %s", i, j, again[j].Ref, first[j].Ref)
 			}
 		}
 	}
@@ -91,35 +81,25 @@ func TestSearchOrderIsStableAcrossIdenticalQueries(t *testing.T) {
 // An offset past the end is an empty page, not an error: that is how a caller
 // finds out it has reached the end.
 func TestSearchOffsetPastTheEnd(t *testing.T) {
-	ctx := context.Background()
 	st := storetest.New(t)
 	seedIdentical(t, st, 3)
 
-	msgs, err := st.Search(ctx, "quarterly", store.SearchOpts{Fuzzy: 0, Limit: 10, Offset: 50})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(msgs) != 0 {
+	if msgs := findMessages(t, st, "quarterly", 10, 50); len(msgs) != 0 {
 		t.Fatalf("got %d messages past the end, want none", len(msgs))
 	}
 }
 
-func TestSearchOffsetBounds(t *testing.T) {
-	valid := store.SearchOpts{Fuzzy: 1, Limit: 20}
-	bad := valid
-	bad.Offset = -1
-	if err := bad.Validate(); err == nil {
-		t.Error("a negative offset should be a usage error")
+func findMessages(t *testing.T, st *store.Store, query string, limit, offset int) []search.SearchHit {
+	t.Helper()
+	q, err := search.Parse(query, search.All)
+	if err != nil {
+		t.Fatal(err)
 	}
-	bad.Offset = store.MaxSearchOffset + 1
-	if err := bad.Validate(); err == nil {
-		t.Error("an offset past the cap should be a usage error")
+	found, err := find.Find(t.Context(), st, q, search.Filters{Kind: search.KindMessage}, limit, offset)
+	if err != nil {
+		t.Fatal(err)
 	}
-	ok := valid
-	ok.Offset = store.MaxSearchOffset
-	if err := ok.Validate(); err != nil {
-		t.Errorf("the cap itself should be allowed: %v", err)
-	}
+	return found.Hits
 }
 
 func TestContactMessagesPaging(t *testing.T) {

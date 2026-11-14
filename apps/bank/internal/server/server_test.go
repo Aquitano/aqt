@@ -1,11 +1,14 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,13 +19,22 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 // fakeReader stands in for the database so handler tests need no Postgres.
 type fakeReader struct {
+	noDisks
 	msgs       []store.Message
-	opts       store.SearchOpts
+	filters    search.Filters
+	n          int
 	thread     store.Thread
 	contacts   []store.Contact
 	contactErr error
@@ -36,23 +48,43 @@ type fakeReader struct {
 	queryLimit int
 }
 
-func (f *fakeReader) Search(_ context.Context, _ string, o store.SearchOpts) ([]store.Message, error) {
-	f.opts = o
-	return f.msgs, f.searchErr
+func (f *fakeReader) SearchMessages(_ context.Context, _ search.Query, o search.Filters, n int) (search.List, error) {
+	f.filters, f.n = o, n
+	list := search.List{Name: "messages", Kind: search.KindMessage}
+	for _, m := range f.msgs {
+		list.Hits = append(list.Hits, search.SearchHit{Kind: search.KindMessage, Ref: m.Ref, Key: m.Ref, Source: m.Source})
+	}
+	return list, nil
 }
 
-func (f *fakeReader) GetMessage(context.Context, int64) (store.Message, []store.Attachment, error) {
+func (f *fakeReader) SearchTexts(context.Context, search.Query, search.Filters, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (f *fakeReader) SearchAttachmentNames(context.Context, search.Query, search.Filters, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (f *fakeReader) SearchLibrary(context.Context, store.LibraryList, search.Query, search.Filters, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (f *fakeReader) ContentPlaces(context.Context, []int64) (map[int64]store.ContentPlaces, error) {
+	return map[int64]store.ContentPlaces{}, nil
+}
+
+func (f *fakeReader) ContactKeys(_ context.Context, name string) ([]string, error) {
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
+	return []string{name}, nil
+}
+
+func (f *fakeReader) GetMessageByRef(_ context.Context, cited ref.Message) (store.Message, []store.Attachment, error) {
 	if f.messageErr != nil {
 		return store.Message{}, nil, f.messageErr
 	}
-	return store.Message{ID: 7}, nil, nil
-}
-
-func (f *fakeReader) GetMessageByRef(_ context.Context, ref string) (store.Message, []store.Attachment, error) {
-	if f.messageErr != nil {
-		return store.Message{}, nil, f.messageErr
-	}
-	return store.Message{ID: 7, Ref: ref}, nil, nil
+	return store.Message{ID: 7, Ref: cited.String()}, nil, nil
 }
 
 func (f *fakeReader) GetThreadPage(_ context.Context, _, _ string, _ store.ThreadOpts) (store.Thread, error) {
@@ -103,10 +135,49 @@ func (f *fakeReader) Query(_ context.Context, sql string, limit int) (store.Quer
 	return f.queryRes, f.queryErr
 }
 
+func (f *fakeReader) AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error) {
+	return nil, nil
+}
+
+// noDisks is the store's side of disks and dates with nothing in it.
+type noDisks struct{}
+
+func (noDisks) RankEntries(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (noDisks) RankMembers(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (noDisks) RankMetadata(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (noDisks) RankAnalyses(context.Context, search.Query, int) (search.List, error) {
+	return search.List{}, nil
+}
+
+func (noDisks) DiskPlaces(context.Context, []int64, int) (map[int64][]search.FilePlace, map[int64]int, error) {
+	return nil, nil, nil
+}
+
+func (noDisks) MessagesBetween(context.Context, time.Time, time.Time, int) ([]store.Dated, error) {
+	return nil, nil
+}
+
+func (noDisks) ActivityBetween(context.Context, time.Time, time.Time, int) ([]store.Dated, error) {
+	return nil, nil
+}
+
+func (noDisks) Modified(context.Context, time.Time, time.Time, int) ([]store.Hit, error) {
+	return nil, nil
+}
+
 func testServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	dir := t.TempDir()
-	token, err := NewToken(dir, "test")
+	token, err := Tokens(dir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,10 +186,10 @@ func testServer(t *testing.T) (*Server, string) {
 		t.Fatal(err)
 	}
 	return &Server{
-		read:       &fakeReader{msgs: []store.Message{{ID: 7, Source: "whatsapp", Body: "hi", SentAt: time.Unix(0, 0)}}},
-		blobs:      blobs,
-		dataDir:    dir,
-		archiveDir: filepath.Join(dir, "archive"),
+		read:    &fakeReader{msgs: []store.Message{{ID: 7, Ref: "msg:0123456789abcdef", Source: "whatsapp", Body: "hi", SentAt: time.Unix(0, 0)}}},
+		blobs:   blobs,
+		kinds:   sources.All,
+		dataDir: dir,
 	}, token
 }
 
@@ -143,8 +214,8 @@ func TestQueryHandler(t *testing.T) {
 	}
 
 	resp := post(`{"limit": 5}`)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("missing sql: status %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("missing sql: status %d, want 422", resp.StatusCode)
 	}
 	resp.Body.Close()
 
@@ -167,8 +238,8 @@ func TestQueryHandler(t *testing.T) {
 
 	fake.queryErr = &store.BadQueryError{Err: fmt.Errorf(`relation "nope" does not exist`)}
 	resp = post(`{"sql": "select * from nope"}`)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("bad SQL: status %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("bad SQL: status %d, want 422", resp.StatusCode)
 	}
 	resp.Body.Close()
 
@@ -224,15 +295,15 @@ func TestSearchRequiresToken(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("with token: status %d, want 200", resp.StatusCode)
 	}
-	var msgs []store.Message
-	if err := json.NewDecoder(resp.Body).Decode(&msgs); err != nil {
+	var found find.Result
+	if err := json.NewDecoder(resp.Body).Decode(&found); err != nil {
 		t.Fatal(err)
 	}
-	if len(msgs) != 1 || msgs[0].ID != 7 {
-		t.Fatalf("unexpected search payload %+v", msgs)
+	if len(found.Hits) != 1 || found.Hits[0].Ref != "msg:0123456789abcdef" {
+		t.Fatalf("unexpected search payload %+v", found)
 	}
-	if o := s.read.(*fakeReader).opts; o.Fuzzy != 1 || o.Limit != 20 {
-		t.Fatalf("defaults not applied: %+v", o)
+	if n := s.read.(*fakeReader).n; n != page.DefaultLimit {
+		t.Fatalf("defaults not applied: each list was asked for %d hits", n)
 	}
 }
 
@@ -241,19 +312,20 @@ func TestBlobHandlerValidatesDigest(t *testing.T) {
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 
-	sum, _, err := s.blobs.Put(strings.NewReader("payload"))
+	digest, _, err := s.blobs.Put(t.Context(), strings.NewReader("payload"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	sum := digest.String()
 
 	cases := []struct {
 		name, path string
 		want       int
 	}{
 		// Escaped so the path stays one segment and reaches the handler intact.
-		{"traversal", "/v1/blobs/%2e%2e%2f%2e%2e%2fetc%2fpasswd", http.StatusBadRequest},
-		{"uppercase", "/v1/blobs/" + strings.ToUpper(sum), http.StatusBadRequest},
-		{"too short", "/v1/blobs/abc123", http.StatusBadRequest},
+		{"traversal", "/v1/blobs/%2e%2e%2f%2e%2e%2fetc%2fpasswd", http.StatusUnprocessableEntity},
+		{"uppercase", "/v1/blobs/" + strings.ToUpper(sum), http.StatusUnprocessableEntity},
+		{"too short", "/v1/blobs/abc123", http.StatusUnprocessableEntity},
 		{"absent", "/v1/blobs/" + sum[:63] + "f", http.StatusNotFound},
 		{"present", "/v1/blobs/" + sum, http.StatusOK},
 	}
@@ -273,7 +345,7 @@ func TestBlobHandlerValidatesDigest(t *testing.T) {
 				t.Fatalf("status %d, want %d", resp.StatusCode, tc.want)
 			}
 			if tc.want == http.StatusOK {
-				body, _ := os.ReadFile(s.blobs.Path(sum))
+				body, _ := os.ReadFile(s.blobs.Path(digest))
 				if string(body) != "payload" {
 					t.Fatalf("blob content = %q", body)
 				}
@@ -314,39 +386,36 @@ func TestMessageStatusDistinguishesMissingFromBroken(t *testing.T) {
 			s.read.(*fakeReader).messageErr = tc.err
 			srv := httptest.NewServer(s.Handler())
 			defer srv.Close()
-			if status, body := authedGet(t, srv, token, "/v1/messages/7"); status != tc.want {
+			if status, body := authedGet(t, srv, token, "/v1/messages/msg:0123456789abcdef"); status != tc.want {
 				t.Fatalf("status %d, want %d (%s)", status, tc.want, body)
 			}
 		})
 	}
-	t.Run("unparseable id", func(t *testing.T) {
-		s, token := testServer(t)
-		srv := httptest.NewServer(s.Handler())
-		defer srv.Close()
-		if status, body := authedGet(t, srv, token, "/v1/messages/abc"); status != http.StatusBadRequest {
-			t.Fatalf("status %d, want 400 (%s)", status, body)
-		}
-	})
-	// A ref is what citations carry, and an all-digit one must not be read as
-	// a row id.
-	for _, ref := range []string{"c5e63bfc3750", "123456789012"} {
-		t.Run("ref "+ref, func(t *testing.T) {
+	// Only a message ref names a message: a row number, a bare value or
+	// another kind of ref is refused before it reaches the store.
+	for _, cited := range []string{"7", "0123456789abcdef", "content:0123456789abcdef", "item:0123456789abcdef0123456789abcdef"} {
+		t.Run("rejects "+cited, func(t *testing.T) {
 			s, token := testServer(t)
 			srv := httptest.NewServer(s.Handler())
 			defer srv.Close()
-			status, body := authedGet(t, srv, token, "/v1/messages/"+ref)
-			if status != http.StatusOK {
-				t.Fatalf("status %d, want 200 (%s)", status, body)
-			}
-			var d store.MessageDetail
-			if err := json.Unmarshal([]byte(body), &d); err != nil {
-				t.Fatal(err)
-			}
-			if d.Ref != ref {
-				t.Fatalf("ref = %q, want %q — looked up as a row id", d.Ref, ref)
+			if status, body := authedGet(t, srv, token, "/v1/messages/"+cited); status != http.StatusUnprocessableEntity {
+				t.Fatalf("status %d, want 422 (%s)", status, body)
 			}
 		})
 	}
+	t.Run("message JSON has no row number", func(t *testing.T) {
+		s, token := testServer(t)
+		srv := httptest.NewServer(s.Handler())
+		defer srv.Close()
+		_, body := authedGet(t, srv, token, "/v1/messages/msg:0123456789abcdef")
+		var fields map[string]any
+		if err := json.Unmarshal([]byte(body), &fields); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := fields["id"]; ok || fields["ref"] != "msg:0123456789abcdef" {
+			t.Fatalf("message JSON = %s", body)
+		}
+	})
 }
 
 func TestThreadStatusCodes(t *testing.T) {
@@ -382,8 +451,8 @@ func TestThreadStatusCodes(t *testing.T) {
 		srv := httptest.NewServer(s.Handler())
 		defer srv.Close()
 		status, body := authedGet(t, srv, token, "/v1/threads/x")
-		if status != http.StatusBadRequest {
-			t.Fatalf("status %d, want 400 (%s)", status, body)
+		if status != http.StatusUnprocessableEntity {
+			t.Fatalf("status %d, want 422 (%s)", status, body)
 		}
 		if !strings.Contains(body, "discord") || !strings.Contains(body, "whatsapp") {
 			t.Errorf("the error should name the candidate sources: %s", body)
@@ -408,14 +477,17 @@ func TestSearchValidatesBounds(t *testing.T) {
 		"/v1/search?q=hi&limit=0",
 		"/v1/search?q=hi&limit=-3",
 		"/v1/search?q=hi&limit=100000",
-		"/v1/search?q=hi&fuzzy=5",
-		"/v1/search?q=hi&fuzzy=-1",
+		"/v1/search?q=hi&match=phrase",
+		"/v1/search?q=%21%21%21",
 	} {
-		if status, body := authedGet(t, srv, token, path); status != http.StatusBadRequest {
-			t.Errorf("%s: status %d, want 400 (%s)", path, status, body)
+		if status, body := authedGet(t, srv, token, path); status != http.StatusUnprocessableEntity {
+			t.Errorf("%s: status %d, want 422 (%s)", path, status, body)
 		}
 	}
-	if status, _ := authedGet(t, srv, token, "/v1/search?q=hi&limit=500&fuzzy=2"); status != http.StatusOK {
+	if status, body := authedGet(t, srv, token, "/v1/search?q=hi&offset=10001"); status != http.StatusUnprocessableEntity {
+		t.Errorf("offset past the maximum: status %d (%s)", status, body)
+	}
+	if status, _ := authedGet(t, srv, token, "/v1/search?q=hi&limit=500&offset=10000&match=any"); status != http.StatusOK {
 		t.Errorf("boundary values rejected: %d", status)
 	}
 }
@@ -425,7 +497,7 @@ func TestEmptyListsSerializeAsArrays(t *testing.T) {
 	s.read.(*fakeReader).msgs = []store.Message{}
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
-	for _, path := range []string{"/v1/search?q=nothing", "/v1/stats"} {
+	for _, path := range []string{"/v1/stats", "/v1/contacts/suggest"} {
 		status, body := authedGet(t, srv, token, path)
 		if status != http.StatusOK {
 			t.Fatalf("%s: status %d", path, status)
@@ -436,86 +508,77 @@ func TestEmptyListsSerializeAsArrays(t *testing.T) {
 	}
 }
 
+// importForm is a multipart import body: the options field, then the file.
+func importForm(t *testing.T, options, name, body string) (*bytes.Buffer, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	form := multipart.NewWriter(&buf)
+	if err := form.WriteField("options", options); err != nil {
+		t.Fatal(err)
+	}
+	part, err := form.CreateFormFile("file", name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(part, body); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &buf, form.FormDataContentType()
+}
+
+// A source names rows, never a path: the options are refused before any
+// byte is stored, and stored bytes go to the content-addressed blob store.
 func TestImportRejectsUnsafeSource(t *testing.T) {
 	s, token := testServer(t)
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
-	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/import/json?source=../../escape", strings.NewReader("[]"))
+	body, contentType := importForm(t, `{"source": "../../escape"}`, "../../escape.json", "[]")
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/import/json", body)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", contentType)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422", resp.StatusCode)
 	}
-	// The traversal must not have created anything next to the archive root.
-	if _, err := os.Stat(filepath.Join(filepath.Dir(filepath.Dir(s.archiveDir)), "escape")); err == nil {
-		t.Fatal("a sibling directory was created")
+	err = filepath.WalkDir(filepath.Dir(s.dataDir), func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		stored := !d.IsDir() && strings.HasPrefix(path, filepath.Join(s.dataDir, "blobs"))
+		if stored || strings.Contains(d.Name(), "escape") {
+			t.Errorf("a refused import wrote %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestWriteCauseSeparatesInputFromInfrastructure(t *testing.T) {
+func TestImportFailureSeparatesInputFromInfrastructure(t *testing.T) {
 	for _, tc := range []struct {
 		err  error
 		want int
 	}{
-		{errors.New("no chat .txt inside zip"), http.StatusBadRequest},
+		{errors.New("no chat .txt inside zip"), http.StatusUnprocessableEntity},
 		{fail.Opf("insert message: %w", errors.New("connection refused")), http.StatusInternalServerError},
 		{fmt.Errorf("wrapped: %w", fail.Op(errors.New("disk full"))), http.StatusInternalServerError},
 		{context.Canceled, http.StatusInternalServerError},
 	} {
-		rec := httptest.NewRecorder()
-		writeCause(rec, tc.err)
-		if rec.Code != tc.want {
-			t.Errorf("%v: status %d, want %d", tc.err, rec.Code, tc.want)
+		var failed *httpapi.Error
+		if !errors.As(importFailure(tc.err), &failed) || failed.GetStatus() != tc.want {
+			t.Errorf("%v: %v, want status %d", tc.err, failed, tc.want)
 		}
-	}
-}
-
-func TestPruneUploadsKeepsActiveStaging(t *testing.T) {
-	dir := t.TempDir()
-	staging := uploadStagingDir(dir)
-	if err := os.MkdirAll(staging, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	mk := func(name string, age time.Duration) string {
-		p := filepath.Join(staging, name)
-		if err := os.MkdirAll(p, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(p, "payload"), []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		when := time.Now().Add(-age)
-		if err := os.Chtimes(p, when, when); err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-	stale := mk("upload-old", 48*time.Hour)
-	fresh := mk("upload-new", time.Minute)
-	other := mk("not-an-upload", 48*time.Hour)
-
-	if err := pruneUploads(dir, uploadMaxAge); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
-		t.Error("an abandoned staging dir survived")
-	}
-	if _, err := os.Stat(fresh); err != nil {
-		t.Error("an upload in flight was pruned")
-	}
-	if _, err := os.Stat(other); err != nil {
-		t.Error("an unrelated directory was removed")
-	}
-	// A missing staging directory is the normal case on a fresh install.
-	if err := pruneUploads(t.TempDir(), uploadMaxAge); err != nil {
-		t.Errorf("no staging dir should not be an error: %v", err)
 	}
 }
 
@@ -523,10 +586,63 @@ func (f *fakeReader) ListMailboxes(context.Context, string) ([]store.Mailbox, er
 	return []store.Mailbox{}, nil
 }
 
-func (f *fakeReader) MailConflictMessages(context.Context, string, string, int64, int) (store.Thread, error) {
+func (f *fakeReader) MailConflictMessages(context.Context, string, string, ref.Message, int) (store.Thread, error) {
 	return store.Thread{}, nil
 }
 
 func (f *fakeReader) BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error) {
 	return []store.ThreadGroup{}, nil
+}
+
+func TestReadTokensReadAndOnlyWriteTokensWrite(t *testing.T) {
+	s, writer := testServer(t)
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	reader, err := Tokens(s.dataDir).New("reader", tokens.Read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, token, method, path, body string
+		want                            int
+	}{
+		{"a read token reads", reader, http.MethodGet, "/v1/search?q=hi", "", http.StatusOK},
+		{"a read token runs read-only SQL", reader, http.MethodPost, "/v1/query", `{"sql": "select 1"}`, http.StatusOK},
+		// The handler refuses the empty ID, which shows the token was let through.
+		{"a read token looks items up by POST", reader, http.MethodPost, "/v1/library/items/summaries", `{"ids": [""]}`, http.StatusUnprocessableEntity},
+		{"a read token cannot write", reader, http.MethodDelete, "/v1/attachments/" + strings.Repeat("ab", 32) + "/text", "", http.StatusForbidden},
+		{"a read token cannot import", reader, http.MethodPost, "/v1/import/json", "[]", http.StatusForbidden},
+		{"a read token cannot record a note", reader, http.MethodPut, "/v1/sources/gmail/note", `{"text": "x"}`, http.StatusForbidden},
+		{"a write token may write", writer, http.MethodPut, "/v1/sources/gmail/note", `{"text": 5}`, http.StatusUnprocessableEntity},
+	} {
+		req, err := http.NewRequestWithContext(t.Context(), tc.method, srv.URL+tc.path, strings.NewReader(tc.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+tc.token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s: status %d, want %d", tc.name, resp.StatusCode, tc.want)
+		}
+	}
+}
+
+func TestUnreadableTokenFileIsTheServersFault(t *testing.T) {
+	s, token := testServer(t)
+	if err := os.Remove(Tokens(s.dataDir).Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(Tokens(s.dataDir).Path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.Handler())
+	defer srv.Close()
+	if status, body := authedGet(t, srv, token, "/v1/stats"); status != http.StatusInternalServerError || !strings.Contains(body, `"Internal"`) {
+		t.Fatalf("status %d, want 500 (%s)", status, body)
+	}
 }

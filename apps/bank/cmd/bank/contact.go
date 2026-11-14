@@ -10,6 +10,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -17,7 +21,7 @@ import (
 // an alias can be scoped to a source before anything from it exists, and that
 // "whatsapp:Alice" is read as a scope rather than as a name with a colon in it.
 var builtinSources = []string{
-	"whatsapp", "gmail", "proton", "discord", "linkedin", "youtube", "chatgpt", "claude",
+	"whatsapp", "gmail", "proton", "discord", "linkedin", "chatgpt", "claude",
 }
 
 type contactCmd struct {
@@ -29,6 +33,7 @@ type contactCmd struct {
 	Messages contactMessagesCmd `cmd:"" help:"Everything a contact sent or received, newest first."`
 	Suggest  contactSuggestCmd  `cmd:"" help:"Identities no contact claims yet."`
 	Import   contactImportCmd   `cmd:"" help:"Apply a whole contact book at once."`
+	Self     contactSelfCmd     `cmd:"" help:"Mark the contact that is you, whom browse leaves out of thread members."`
 }
 
 func (contactCmd) Help() string {
@@ -46,12 +51,12 @@ type contactAddCmd struct {
 }
 
 func (c *contactAddCmd) Run(ctx context.Context) error {
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	contact, err := b.CreateContact(ctx, c.Name, c.Note)
+	defer closeAPI()
+	contact, err := client.Call(ctx, api, server.CreateContact, server.ContactCreateInput{Body: server.ContactCreateInputBody{Name: c.Name, Note: c.Note}})
 	if err != nil {
 		return err
 	}
@@ -64,16 +69,33 @@ type contactRmCmd struct {
 }
 
 func (c *contactRmCmd) Run(ctx context.Context) error {
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	if err := b.DeleteContact(ctx, c.Name); err != nil {
+	defer closeAPI()
+	if _, err := client.Call(ctx, api, server.DeleteContact, server.ContactInput{Name: c.Name}); err != nil {
 		return contactErr(c.Name, err)
 	}
 	// Worth saying plainly: this is a lens, not the data.
 	fmt.Printf("contact %s removed; its messages are untouched\n", c.Name)
+	return nil
+}
+
+type contactSelfCmd struct {
+	Name string `arg:""`
+}
+
+func (c *contactSelfCmd) Run(ctx context.Context) error {
+	api, closeAPI, err := connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeAPI()
+	if _, err := client.Call(ctx, api, server.SetSelfContact, server.ContactInput{Name: c.Name}); err != nil {
+		return contactErr(c.Name, err)
+	}
+	fmt.Printf("contact %s is the archive's owner\n", c.Name)
 	return nil
 }
 
@@ -82,12 +104,12 @@ type contactListCmd struct {
 }
 
 func (c *contactListCmd) Run(ctx context.Context) error {
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	contacts, err := b.ListContacts(ctx)
+	defer closeAPI()
+	contacts, err := client.Call(ctx, api, server.ListContacts, struct{}{})
 	if err != nil {
 		return err
 	}
@@ -124,12 +146,12 @@ type contactShowCmd struct {
 }
 
 func (c *contactShowCmd) Run(ctx context.Context) error {
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	d, err := b.GetContactDetail(ctx, c.Name)
+	defer closeAPI()
+	d, err := client.Call(ctx, api, server.GetContact, server.ContactInput{Name: c.Name})
 	if err != nil {
 		return contactErr(c.Name, err)
 	}
@@ -175,8 +197,8 @@ type contactAliasAddCmd struct {
 }
 
 func (c *contactAliasAddCmd) Run(ctx context.Context) error {
-	return eachAlias(ctx, c.Aliases, func(b backend, source, value string) error {
-		a, err := b.AddAlias(ctx, c.Name, source, value)
+	return eachAlias(ctx, c.Aliases, func(api *client.Client, source, value string) error {
+		a, err := client.Call(ctx, api, server.AddContactAlias, server.AliasAddInput{Name: c.Name, Body: server.AliasAddInputBody{Source: source, Value: value}})
 		if err != nil {
 			return contactErr(c.Name, err)
 		}
@@ -191,8 +213,8 @@ type contactAliasRmCmd struct {
 }
 
 func (c *contactAliasRmCmd) Run(ctx context.Context) error {
-	return eachAlias(ctx, c.Aliases, func(b backend, source, value string) error {
-		if err := b.RemoveAlias(ctx, c.Name, source, value); err != nil {
+	return eachAlias(ctx, c.Aliases, func(api *client.Client, source, value string) error {
+		if _, err := client.Call(ctx, api, server.RemoveContactAlias, server.AliasRemoveInput{Name: c.Name, Source: source, Value: value}); err != nil {
 			return contactErr(c.Name, err)
 		}
 		fmt.Printf("%s: detached %s %s\n", c.Name, value, scopeLabel(source))
@@ -200,19 +222,19 @@ func (c *contactAliasRmCmd) Run(ctx context.Context) error {
 	})
 }
 
-func eachAlias(ctx context.Context, aliases []string, apply func(b backend, source, value string) error) error {
-	b, closeBackend, err := openBackend(ctx)
+func eachAlias(ctx context.Context, aliases []string, apply func(api *client.Client, source, value string) error) error {
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	known, err := knownSources(ctx, b)
+	defer closeAPI()
+	known, err := knownSources(ctx, api)
 	if err != nil {
 		return err
 	}
 	for _, raw := range aliases {
 		source, value := store.ContactAliasScope(raw, func(s string) bool { return known[s] })
-		if err := apply(b, source, value); err != nil {
+		if err := apply(api, source, value); err != nil {
 			return err
 		}
 	}
@@ -221,12 +243,12 @@ func eachAlias(ctx context.Context, aliases []string, apply func(b backend, sour
 
 // knownSources is what makes "whatsapp:Alice" a scope rather than a value: the
 // sources already in the archive, plus the ones importers can still create.
-func knownSources(ctx context.Context, b backend) (map[string]bool, error) {
+func knownSources(ctx context.Context, api *client.Client) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, s := range builtinSources {
 		out[s] = true
 	}
-	stats, err := b.Stats(ctx)
+	stats, err := client.Call(ctx, api, server.GetStats, struct{}{})
 	if err != nil {
 		return nil, err
 	}
@@ -237,31 +259,24 @@ func knownSources(ctx context.Context, b backend) (map[string]bool, error) {
 }
 
 type contactMessagesCmd struct {
-	Name   string `arg:""`
-	Source string `help:"Only this source."`
-	Since  string `help:"YYYY-MM-DD."`
-	Until  string `help:"YYYY-MM-DD (exclusive)."`
-	Limit  int    `default:"50" help:"Page size."`
-	Before int64  `help:"Continue before this message id (without --offset)."`
-	Offset int    `help:"Skip this many messages."`
-	JSON   bool   `help:"JSON output."`
+	Name   string      `arg:""`
+	Source string      `help:"Only this source."`
+	Since  string      `help:"YYYY-MM-DD."`
+	Until  string      `help:"YYYY-MM-DD (exclusive)."`
+	Limit  int         `default:"${limit}" help:"Page size, 1-${max_limit}."`
+	Before ref.Message `help:"Continue before this message, by ref (without --offset)."`
+	Offset int         `help:"Skip this many messages, at most ${max_offset}."`
+	JSON   bool        `help:"JSON output."`
 }
 
 func (c *contactMessagesCmd) Run(ctx context.Context) error {
-	o := store.ContactMessagesOpts{Source: c.Source, Limit: c.Limit, Before: c.Before, Offset: c.Offset}
-	var err error
-	if o.Since, err = parseDate(c.Since); err != nil {
-		return err
-	}
-	if o.Until, err = parseDate(c.Until); err != nil {
-		return err
-	}
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	msgs, err := b.ContactMessages(ctx, c.Name, o)
+	defer closeAPI()
+	msgs, err := client.Call(ctx, api, server.ListContactMessages, server.ContactMessagesInput{Name: c.Name, Source: c.Source,
+		Since: c.Since, Until: c.Until, Before: c.Before, Page: pageOf(c.Limit, c.Offset)})
 	if err != nil {
 		return contactErr(c.Name, err)
 	}
@@ -277,27 +292,27 @@ func (c *contactMessagesCmd) Run(ctx context.Context) error {
 		if title == "" {
 			title = excerpt(m.Body, 100)
 		}
-		fmt.Printf("%6d  %s  %-8s  %-22s  %s\n",
-			m.ID, m.SentAt.Format("2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
+		fmt.Printf("%s  %s  %-8s  %-22s  %s\n",
+			m.Ref, formatSent(m.SentAt, "2006-01-02"), m.Source, excerpt(m.Sender, 22), title)
 	}
-	if len(msgs) == o.Limit {
-		fmt.Printf("Earlier messages: repeat with --before %d and without --offset\n", msgs[len(msgs)-1].ID)
+	if len(msgs) == c.Limit {
+		fmt.Printf("Earlier messages: repeat with --before %s and without --offset\n", msgs[len(msgs)-1].Ref)
 	}
 	return nil
 }
 
 type contactSuggestCmd struct {
-	Limit int  `default:"20" help:"How many identities."`
+	Limit int  `default:"${limit}" help:"How many identities, 1-${max_limit}."`
 	JSON  bool `help:"JSON output."`
 }
 
 func (c *contactSuggestCmd) Run(ctx context.Context) error {
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	out, err := b.SuggestIdentities(ctx, c.Limit)
+	defer closeAPI()
+	out, err := client.Call(ctx, api, server.SuggestContacts, server.ContactSuggestInput{PageSize: httpapi.PageSize{Limit: c.Limit}})
 	if err != nil {
 		return err
 	}
@@ -347,12 +362,12 @@ func (c *contactImportCmd) Run(ctx context.Context) error {
 	if len(entries) == 0 {
 		return fmt.Errorf("%s holds no contacts", c.File)
 	}
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	known, err := knownSources(ctx, b)
+	defer closeAPI()
+	known, err := knownSources(ctx, api)
 	if err != nil {
 		return err
 	}
@@ -366,7 +381,7 @@ func (c *contactImportCmd) Run(ctx context.Context) error {
 		in = append(in, contact)
 	}
 
-	res, err := b.ImportContacts(ctx, in)
+	res, err := client.Call(ctx, api, server.ImportContacts, server.ContactImportInput{Body: in})
 	if err != nil {
 		return err
 	}
@@ -427,4 +442,12 @@ func contactErr(name string, err error) error {
 		return fmt.Errorf("no contact %q — see 'bank contact list'", name)
 	}
 	return err
+}
+
+// readInput reads a file, or stdin when path is "-".
+func readInput(path string) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(os.Stdin)
+	}
+	return os.ReadFile(path)
 }

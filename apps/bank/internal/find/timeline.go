@@ -1,0 +1,114 @@
+package find
+
+import (
+	"context"
+	"slices"
+	"time"
+
+	"github.com/aquitano/aqt/apps/bank/internal/disks/view"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
+	"github.com/aquitano/aqt/apps/bank/internal/store"
+)
+
+// Dated is what the timeline reads: messages and activity by date, and files
+// on disks by when they were last modified.
+type Dated interface {
+	MessagesBetween(ctx context.Context, since, until time.Time, limit int) ([]store.Dated, error)
+	ActivityBetween(ctx context.Context, since, until time.Time, limit int) ([]store.Dated, error)
+	Modified(ctx context.Context, since, until time.Time, limit int) ([]store.Hit, error)
+}
+
+// Event is one thing that happened: a message sent, something watched,
+// listened to or read, or a file last modified.
+type Event struct {
+	At        time.Time `json:"at" doc:"When it happened. Midnight when precision is day."`
+	Precision string    `json:"precision" enum:"instant,day" doc:"day when the source recorded a date without a time."`
+	Group     string    `json:"group" enum:"message,activity,file" doc:"Which records the event comes from."`
+	Kind      string    `json:"kind" doc:"message, the activity kind such as watch or listen, or file."`
+	Source    string    `json:"source" doc:"The message or activity source, such as gmail or netflix, or the disk's label."`
+	Ref       string    `json:"ref" doc:"What to cite and resolve: msg:<hex> for a message, an activity ID, or content:<hex> for a hashed file."`
+	Title     string    `json:"title" doc:"Subject or opening words, the activity's title, or the file's path."`
+}
+
+type Timeline struct {
+	Events    []Event  `json:"events" doc:"Oldest first."`
+	Truncated []string `json:"truncated" doc:"Groups that reached limit; narrow the dates or ask for one group to see the rest."`
+	Coverage  []string `json:"coverage" doc:"What this answer leaves out and why."`
+}
+
+// TimelineGroups are the values of TimelineOptions.Groups, in display order.
+var TimelineGroups = []string{"message", "activity", "file"}
+
+type TimelineOptions struct {
+	// Since is the first day and Until the day after the last.
+	Since, Until time.Time
+	// Groups limits the answer; empty means every group.
+	Groups []string
+	// Limit caps each group, so a day with thousands of files cannot push
+	// the messages out.
+	Limit int
+}
+
+// BuildTimeline merges what happened in the window, oldest first.
+func BuildTimeline(ctx context.Context, dated Dated, o TimelineOptions) (Timeline, error) {
+	out := Timeline{Events: []Event{}, Truncated: []string{}, Coverage: []string{}}
+	if o.Since.IsZero() || !o.Until.After(o.Since) {
+		return out, fail.Invalidf("the timeline needs since and a later until")
+	}
+	if err := page.Check(o.Limit, 0); err != nil {
+		return out, err
+	}
+	for _, group := range o.Groups {
+		if !slices.Contains(TimelineGroups, group) {
+			return out, fail.Invalidf("unknown timeline group %q", group)
+		}
+	}
+	wants := func(group string) bool { return len(o.Groups) == 0 || slices.Contains(o.Groups, group) }
+	// Each group asks for one row past the limit, so a group that has
+	// exactly limit rows is not reported as truncated.
+	add := func(group string, rows []store.Dated) {
+		if len(rows) > o.Limit {
+			out.Truncated, rows = append(out.Truncated, group), rows[:o.Limit]
+		}
+		for _, r := range rows {
+			e := Event{At: r.At, Precision: "instant", Group: group, Kind: r.Kind, Source: r.Source, Ref: r.Ref, Title: r.Title}
+			if r.Day {
+				e.Precision = "day"
+			}
+			out.Events = append(out.Events, e)
+		}
+	}
+	if wants("message") {
+		rows, err := dated.MessagesBetween(ctx, o.Since, o.Until, o.Limit+1)
+		if err != nil {
+			return out, err
+		}
+		add("message", rows)
+	}
+	if wants("activity") {
+		rows, err := dated.ActivityBetween(ctx, o.Since, o.Until, o.Limit+1)
+		if err != nil {
+			return out, err
+		}
+		add("activity", rows)
+		out.Coverage = append(out.Coverage, "Activity an export recorded without a date is left out.")
+	}
+	if wants("file") {
+		hits, err := dated.Modified(ctx, o.Since, o.Until, o.Limit+1)
+		if err != nil {
+			return out, err
+		}
+		places := view.Places(hits, nil)
+		if len(places) > o.Limit {
+			out.Truncated, places = append(out.Truncated, "file"), places[:o.Limit]
+		}
+		for _, p := range places {
+			e := Event{At: *p.Modified, Precision: "instant", Group: "file", Kind: "file", Source: p.Volume, Ref: p.Ref, Title: p.Display}
+			out.Events = append(out.Events, e)
+		}
+		out.Coverage = append(out.Coverage, "A file appears at its last modification, as its disk recorded it; earlier edits and files that have since gone missing are left out.")
+	}
+	slices.SortStableFunc(out.Events, func(a, b Event) int { return a.At.Compare(b.At) })
+	return out, nil
+}

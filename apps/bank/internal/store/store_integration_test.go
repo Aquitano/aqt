@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
@@ -54,13 +55,9 @@ func TestMalformedIdentifiersDoNotBreakInsertion(t *testing.T) {
 	if err != nil || byMessageID != id {
 		t.Fatalf("FindByEmailMessageID = %d, %v; want %d", byMessageID, err, id)
 	}
-	has, err := st.HasMessage(ctx, "proton", badExternal)
-	if err != nil || !has {
-		t.Fatalf("HasMessage = %v, %v", has, err)
-	}
 }
 
-func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
+func TestInsertMessagesBatchesInOrder(t *testing.T) {
 	ctx := context.Background()
 	st, dsn := storetest.NewNamed(t)
 	const n = 1005 // crosses the store's protocol-batch boundary
@@ -74,7 +71,7 @@ func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
 	}
 	// A duplicate inside the same call must preserve result alignment.
 	messages = append(messages, messages[0])
-	ids, err := st.InsertMessages(ctx, messages, store.InsertMessagesOpts{})
+	ids, err := st.InsertMessages(ctx, messages)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +83,7 @@ func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
 		t.Fatalf("rows = %d, want %d", rows, n)
 	}
 
-	again, err := st.InsertMessages(ctx, messages[:n], store.InsertMessagesOpts{})
+	again, err := st.InsertMessages(ctx, messages[:n])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,28 +91,6 @@ func TestInsertMessagesBatchesInOrderAndRethreads(t *testing.T) {
 		if id != 0 {
 			t.Fatalf("unchanged row %d returned id %d", i, id)
 		}
-	}
-
-	newAt := at.Add(time.Hour)
-	rethreaded, err := st.InsertMessages(ctx, []store.Message{
-		{Source: "batch", ExternalID: "m-0000", ThreadID: "new", Subject: "new subject", Body: "must not replace body", SentAt: newAt},
-		{Source: "batch", ExternalID: "fresh", ThreadID: "new", Subject: "fresh", Body: "fresh body", SentAt: newAt},
-	}, store.InsertMessagesOpts{Rethread: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rethreaded[0] != 0 || rethreaded[1] == 0 {
-		t.Fatalf("rethread results = %v, want duplicate then insert", rethreaded)
-	}
-	got, _, err := st.GetMessage(ctx, ids[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.ThreadID != "new" || got.Subject != "new subject" || !got.SentAt.Equal(newAt) {
-		t.Errorf("derived fields were not updated: %+v", got)
-	}
-	if got.Body != "body 0" {
-		t.Errorf("rethread replaced body with %q", got.Body)
 	}
 }
 
@@ -125,15 +100,15 @@ func TestInsertMessagesCleansWholeBatchBeforeWriting(t *testing.T) {
 	_, err := st.InsertMessages(ctx, []store.Message{
 		{Source: "batch", ExternalID: "valid", Body: "would otherwise land", SentAt: time.Now()},
 		{Source: "batch", Body: "missing external id", SentAt: time.Now()},
-	}, store.InsertMessagesOpts{})
+	})
 	if err == nil {
 		t.Fatal("invalid message did not reject the batch")
 	}
-	has, err := st.HasMessage(ctx, "batch", "valid")
+	found, err := st.FindMessageID(ctx, "batch", "valid")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if has {
+	if found != 0 {
 		t.Fatal("valid prefix was written before the invalid message was rejected")
 	}
 }
@@ -142,13 +117,6 @@ func TestEmptyResultsAreArrays(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
 
-	msgs, err := st.Search(ctx, "nothing here", store.SearchOpts{Limit: 20, Fuzzy: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if msgs == nil {
-		t.Error("Search returned nil, want an empty slice so JSON is []")
-	}
 	stats, err := st.Stats(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -161,12 +129,17 @@ func TestEmptyResultsAreArrays(t *testing.T) {
 func TestSearchMatchesAndFiltersRecipients(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
-	if _, err := st.InsertMessage(ctx, msg("gmail", "m1", store.Message{
+	id, err := st.InsertMessage(ctx, msg("gmail", "m1", store.Message{
 		Sender:     "alice@example.com",
 		Recipients: []string{"Bob Builder <bob@example.com>", "carol@example.com"},
 		Subject:    "quarterly numbers",
 		Body:       "attached",
-	})); err != nil {
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice, _, err := st.GetMessage(ctx, id)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := st.InsertMessage(ctx, msg("gmail", "m2", store.Message{
@@ -177,43 +150,30 @@ func TestSearchMatchesAndFiltersRecipients(t *testing.T) {
 	}
 
 	t.Run("recipients contribute to matching", func(t *testing.T) {
-		msgs, err := st.Search(ctx, "builder", store.SearchOpts{Limit: 20, Fuzzy: 0})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(msgs) != 1 || msgs[0].Sender != "alice@example.com" {
+		msgs := storetest.Messages(t, st, "builder", search.Filters{})
+		if len(msgs) != 1 || msgs[0].Ref != alice.Ref {
 			t.Fatalf("got %d results: %+v", len(msgs), msgs)
 		}
 	})
 
 	t.Run("--to filters case-insensitively", func(t *testing.T) {
-		msgs, err := st.Search(ctx, "quarterly", store.SearchOpts{Limit: 20, Fuzzy: 0, To: "CAROL"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(msgs) != 1 || msgs[0].Sender != "alice@example.com" {
+		msgs := storetest.Messages(t, st, "quarterly", search.Filters{To: "CAROL"})
+		if len(msgs) != 1 || msgs[0].Ref != alice.Ref {
 			t.Fatalf("got %+v", msgs)
 		}
-		none, err := st.Search(ctx, "quarterly", store.SearchOpts{Limit: 20, Fuzzy: 0, To: "nobody"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(none) != 0 {
+		if none := storetest.Messages(t, st, "quarterly", search.Filters{To: "nobody"}); len(none) != 0 {
 			t.Fatalf("got %+v, want no matches", none)
 		}
 	})
 
 	t.Run("snippets come back with results", func(t *testing.T) {
-		msgs, err := st.Search(ctx, "quarterly", store.SearchOpts{Limit: 20, Fuzzy: 0})
-		if err != nil {
-			t.Fatal(err)
-		}
+		msgs := storetest.Messages(t, st, "quarterly", search.Filters{})
 		if len(msgs) == 0 {
 			t.Fatal("no results")
 		}
 		for _, m := range msgs {
 			if m.Snippet == "" {
-				t.Errorf("message %d came back without a snippet", m.ID)
+				t.Errorf("message %s came back without a snippet", m.Ref)
 			}
 			if strings.Contains(m.Snippet, "&lt;") || strings.Contains(m.Snippet, "<b>") {
 				t.Errorf("snippet carries markup: %q", m.Snippet)
@@ -224,10 +184,7 @@ func TestSearchMatchesAndFiltersRecipients(t *testing.T) {
 	t.Run("fuzzy search still gets a snippet", func(t *testing.T) {
 		// pg_search produces no highlight for fuzzy matches, which is exactly
 		// when the local fallback has to fill in.
-		msgs, err := st.Search(ctx, "quarterlly", store.SearchOpts{Limit: 20, Fuzzy: 2})
-		if err != nil {
-			t.Fatal(err)
-		}
+		msgs := storetest.Messages(t, st, "quarterlly", search.Filters{})
 		if len(msgs) == 0 {
 			t.Fatal("fuzzy search found nothing")
 		}
@@ -274,7 +231,7 @@ func TestStatsReportFreshness(t *testing.T) {
 	}
 }
 
-func TestCoverageNotesAndStaleness(t *testing.T) {
+func TestSourceNotesAndStaleness(t *testing.T) {
 	ctx := context.Background()
 	st, dsn := storetest.NewNamed(t)
 	if _, err := st.InsertMessage(ctx, msg("whatsapp", "w1", store.Message{Body: "hi"})); err != nil {
@@ -288,7 +245,7 @@ func TestCoverageNotesAndStaleness(t *testing.T) {
 	storetest.Exec(t, dsn,
 		`update messages set ingested_at = now() - interval '90 days' where source = 'whatsapp'`)
 
-	if err := st.SetCoverage(ctx, "whatsapp", "only the chats exported in 2025-08; nothing before"); err != nil {
+	if err := st.SetNote(ctx, "whatsapp", "only the chats exported in 2025-08; nothing before"); err != nil {
 		t.Fatal(err)
 	}
 	by := func() map[string]store.SourceStats {
@@ -305,25 +262,25 @@ func TestCoverageNotesAndStaleness(t *testing.T) {
 	}
 
 	stats := by()
-	if !strings.HasPrefix(stats["whatsapp"].Coverage, "only the chats") {
-		t.Errorf("coverage = %q", stats["whatsapp"].Coverage)
+	if !strings.HasPrefix(stats["whatsapp"].Note, "only the chats") {
+		t.Errorf("note = %q", stats["whatsapp"].Note)
 	}
 	if !stats["whatsapp"].Stale {
 		t.Error("a source with nothing new in 90 days should be flagged stale")
 	}
-	if stats["gmail"].Stale || stats["gmail"].Coverage != "" {
+	if stats["gmail"].Stale || stats["gmail"].Note != "" {
 		t.Errorf("gmail = %+v, want fresh and unannotated", stats["gmail"])
 	}
-	// A coverage note is written by hand and must not read as a sync.
+	// A note is written by hand and must not read as a sync.
 	if stats["whatsapp"].LastSync != nil {
-		t.Error("a coverage note claimed to be a sync checkpoint")
+		t.Error("a note claimed to be a sync checkpoint")
 	}
 
-	if err := st.SetCoverage(ctx, "whatsapp", ""); err != nil {
+	if err := st.SetNote(ctx, "whatsapp", ""); err != nil {
 		t.Fatal(err)
 	}
-	if c := by()["whatsapp"].Coverage; c != "" {
-		t.Errorf("coverage = %q after clearing", c)
+	if c := by()["whatsapp"].Note; c != "" {
+		t.Errorf("note = %q after clearing", c)
 	}
 }
 
@@ -401,50 +358,4 @@ func asAmbiguous(err error, target **store.AmbiguousThreadError) bool {
 	}
 	*target = amb
 	return true
-}
-
-// The body healer is the only write allowed past "a re-import never overwrites
-// a body", so the rule that keeps it safe — strictly more text wins, nothing
-// else moves — is what this pins down.
-func TestSetLongerMessageBodyOnlyGrows(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
-
-	const stub = "Diese Nachricht ist im HTML-Format."
-	const full = "Ihr Dauerauftrag ueber 450,00 EUR an Hausverwaltung Meier wurde eingerichtet."
-
-	id, err := st.InsertMessage(ctx, msg("gmail", "stub@example.com", store.Message{
-		MessageID: "stub@example.com", Sender: "bank@example.com", Subject: "Dauerauftrag", Body: stub,
-	}))
-	if err != nil || id == 0 {
-		t.Fatalf("seed: %d %v", id, err)
-	}
-
-	for _, tc := range []struct {
-		name string
-		body string
-		want bool
-	}{
-		{"longer wins", full, true},
-		{"equal is left alone", full, false},
-		{"shorter never shrinks the row", stub, false},
-		{"whitespace is not text", full + "\n\n\t  ", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			healed, err := st.SetLongerMessageBody(ctx, id, tc.body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if healed != tc.want {
-				t.Errorf("healed = %v, want %v", healed, tc.want)
-			}
-			body, err := st.MessageBody(ctx, id)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if body != full {
-				t.Errorf("body = %q, want %q", body, full)
-			}
-		})
-	}
 }

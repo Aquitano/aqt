@@ -36,12 +36,16 @@ func TestLibraryOversizedPagesAndNotesRemainSearchable(t *testing.T) {
 	if _, err = st.SetLibraryState(ctx, item.ID, library.StateEdit{Notes: notes}); err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct{ mode, query string }{{"any", "suffixneedle"}, {"all", "metadata suffixneedle"}, {"phrase", "phrase head"}} {
-		result, err := st.SearchLibrary(ctx, library.ListOptions{Query: test.query, Match: test.mode})
-		if err != nil || len(result.Pages) != 1 || len(result.Items) != 1 {
-			t.Fatalf("oversized %s %q: pages=%d items=%d error=%v", test.mode, test.query, len(result.Pages), len(result.Items), err)
+	for _, test := range []struct{ mode, query string }{{"any", "suffixneedle"}, {"all", "metadata suffixneedle"}, {"all", `"phrase head"`}} {
+		pages, err := st.ListLibraryPages(ctx, library.ListOptions{Query: test.query, Match: test.mode})
+		if err != nil {
+			t.Fatal(err)
 		}
-		if result.Pages[0].Body != pageText || result.Items[0].State.Notes != notes {
+		items, err := st.ListLibraryItems(ctx, library.ListOptions{Query: test.query, Match: test.mode})
+		if err != nil || len(pages) != 1 || len(items) != 1 {
+			t.Fatalf("oversized %s %q: pages=%d items=%d error=%v", test.mode, test.query, len(pages), len(items), err)
+		}
+		if pages[0].Body != pageText || items[0].State.Notes != notes {
 			t.Fatal("search truncated the preserved text")
 		}
 	}
@@ -58,7 +62,7 @@ func TestPersonalCollectionSnapshotFollowsRevisionDespiteClockChanges(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	storetest.Exec(t, dsn, `update library_snapshots set captured='{"precision":"instant","value":"9999-01-01T00:00:00Z"}' where id=$1`, collection.Snapshot.ID)
+	storetest.Exec(t, dsn, `update library_snapshots set captured_at='9999-01-01T00:00:00Z',captured_precision='instant' where id=$1`, collection.Snapshot.ID)
 	updated, err := st.EditLibraryCollection(ctx, collection.ID, library.CollectionEdit{ExpectedRevision: collection.Revision, Title: "Empty", Entries: []library.Entry{}})
 	if err != nil {
 		t.Fatal(err)

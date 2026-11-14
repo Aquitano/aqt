@@ -31,13 +31,14 @@ test("submitted filters survive selection, view changes, and URL round trips wit
   assert.equal(readLibraryFilters(restored, "collections").q, "Watch later");
 });
 
-test("message selections read back from the URL with the id they were written with", () => {
-  for (const id of ["42", "0123456789ab"]) {
-    const params = new URLSearchParams();
-    writeSelection(params, { kind: "message", id });
-    assert.deepEqual(readSelection(new URLSearchParams(params.toString())), {
-      kind: "message",
-      id,
-    });
+test("message selections read back from the URL by ref, and row numbers are not refs", () => {
+  const params = new URLSearchParams();
+  writeSelection(params, { kind: "message", ref: "msg:0123456789abcdef" });
+  assert.deepEqual(readSelection(new URLSearchParams(params.toString())), {
+    kind: "message",
+    ref: "msg:0123456789abcdef",
+  });
+  for (const old of ["42", "0123456789ab"]) {
+    assert.equal(readSelection(new URLSearchParams({ message: old })), null);
   }
 });

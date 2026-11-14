@@ -1,0 +1,230 @@
+package media
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
+	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"gopkg.in/yaml.v3"
+)
+
+type markdownMeta struct {
+	Title       string      `yaml:"title"`
+	Type        string      `yaml:"type"`
+	Category    string      `yaml:"category"`
+	Sensitivity string      `yaml:"sensitivity"`
+	Answers     []string    `yaml:"answers"`
+	Tags        []string    `yaml:"tags"`
+	Aliases     []string    `yaml:"aliases"`
+	Balances    []yaml.Node `yaml:"balances"`
+	Origin      string      `yaml:"origin"`
+}
+
+func markdownAccount(root, account string) string {
+	if account != "" {
+		return account
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		abs = filepath.Clean(root)
+	}
+	if runtime.GOOS == "windows" {
+		abs = strings.ToLower(abs)
+	}
+	return "directory:" + fieldhash.Hex(filepath.ToSlash(abs))[:24]
+}
+
+func sensitivityAllowed(value string, opts PublicationOptions) (bool, error) {
+	maximum := opts.MaxSensitivity
+	if maximum == "" {
+		maximum = "normal"
+	}
+	if maximum != "normal" && maximum != "personal" && maximum != "confidential" {
+		return false, fmt.Errorf("max sensitivity must be normal, personal or confidential")
+	}
+	switch value {
+	case "", "normal":
+		return true, nil
+	case "personal":
+		return maximum == "personal" || maximum == "confidential", nil
+	case "confidential":
+		return maximum == "confidential" && opts.AllowConfidential, nil
+	default:
+		return false, nil
+	}
+}
+
+func parseMarkdown(root string, opts PublicationOptions) ([]library.Page, []Input, error) {
+	pages, inputs := []library.Page{}, []Input{}
+	if _, err := sensitivityAllowed("normal", opts); err != nil {
+		return nil, nil, err
+	}
+	info, err := os.Lstat(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, nil, fmt.Errorf("selected Markdown directory cannot be a symlink")
+	}
+	if !info.IsDir() {
+		return nil, nil, fmt.Errorf("Markdown publication requires an explicitly selected directory")
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	opts.Account = markdownAccount(abs, opts.Account)
+	scanRoot := abs
+	brainVault := false
+	if filepath.Base(abs) == "wiki" {
+		if _, err := os.Stat(filepath.Join(filepath.Dir(abs), "CLAUDE.md")); err == nil {
+			brainVault = true
+		}
+	}
+	if wiki, err := os.Stat(filepath.Join(abs, "wiki")); err == nil && wiki.IsDir() {
+		if _, err := os.Stat(filepath.Join(abs, "CLAUDE.md")); err == nil {
+			scanRoot = filepath.Join(abs, "wiki")
+			brainVault = true
+		}
+	}
+	err = filepath.WalkDir(scanRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return fmt.Errorf("scan %s: %w", path, walkErr)
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() {
+			if path != scanRoot && (strings.HasPrefix(entry.Name(), ".") || entry.Name() == "node_modules" || entry.Name() == "archive" || entry.Name() == "raw") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.EqualFold(filepath.Ext(entry.Name()), ".md") {
+			return nil
+		}
+		rel, err := filepath.Rel(abs, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if brainVault && excludedBrainPage(rel) {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", rel, err)
+		}
+		if len(raw) > 8<<20 {
+			return fmt.Errorf("%s exceeds the 8 MiB page limit", rel)
+		}
+		input := Input{Name: rel, Bytes: raw}
+		page, err := markdownDocument(input, opts, path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", rel, err)
+		}
+		if page == nil {
+			return nil
+		}
+		pages = append(pages, *page)
+		inputs = append(inputs, input)
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return pages, inputs, nil
+}
+
+func nonNil(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
+func readFrontmatter(raw []byte) (markdownMeta, string, error) {
+	text := strings.TrimPrefix(string(raw), "\ufeff")
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	if !strings.HasPrefix(normalized, "---\n") {
+		return markdownMeta{}, text, nil
+	}
+	lines := strings.Split(normalized, "\n")
+	for i := 1; i < len(lines); i++ {
+		if lines[i] != "---" {
+			continue
+		}
+		var meta markdownMeta
+		if err := yaml.Unmarshal([]byte(strings.Join(lines[1:i], "\n")), &meta); err != nil {
+			return meta, "", fmt.Errorf("invalid YAML frontmatter: %w", err)
+		}
+		return meta, strings.Join(lines[i+1:], "\n"), nil
+	}
+	return markdownMeta{}, "", fmt.Errorf("unterminated YAML frontmatter")
+}
+
+func markdownDocument(input Input, opts PublicationOptions, sensitivityPath string) (*library.Page, error) {
+	meta, body, err := readFrontmatter(input.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(body, "<!-- auto-generated by 'brain render'") || meta.Origin == "bank" {
+		return nil, nil
+	}
+	sensitivity := meta.Sensitivity
+	normalizedPath := "/" + strings.ToLower(filepath.ToSlash(sensitivityPath))
+	if sensitivity == "" {
+		switch {
+		case strings.Contains(normalizedPath, "/health/"), meta.Type == "document" && strings.EqualFold(meta.Category, "health"), len(meta.Balances) > 0:
+			sensitivity = "confidential"
+		case strings.Contains(normalizedPath, "/journal/"), strings.Contains(normalizedPath, "/self/"):
+			sensitivity = "personal"
+		default:
+			sensitivity = "normal"
+		}
+	}
+	allowed, err := sensitivityAllowed(sensitivity, opts)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return nil, nil
+	}
+	title := strings.TrimSpace(meta.Title)
+	if title == "" {
+		for _, line := range strings.Split(body, "\n") {
+			if strings.HasPrefix(line, "# ") {
+				title = strings.TrimSpace(strings.TrimPrefix(line, "# "))
+				break
+			}
+		}
+	}
+	if title == "" {
+		title = strings.TrimSuffix(filepath.Base(input.Name), filepath.Ext(input.Name))
+	}
+	id := identity(opts.Source, opts.Account, input.Name)
+	sum := content.Sum(input.Bytes).String()
+	return &library.Page{Identity: id, ID: library.StableID("page", id), Path: input.Name, Title: title, Body: body, Answers: nonNil(meta.Answers), Tags: nonNil(meta.Tags), Aliases: nonNil(meta.Aliases), ContentHash: sum, Revision: sum, Sensitivity: sensitivity, Provenance: library.Provenance{Locator: input.Name}}, nil
+}
+
+func excludedBrainPage(path string) bool {
+	switch filepath.Base(path) {
+	case "index.md", "log.md", "hot.md", "overview.md", "_index.md", "README.md":
+		return true
+	}
+	relative := strings.TrimPrefix(path, "wiki/")
+	switch relative {
+	case "meta/retrieval-qa.md", "meta/catalog.md", "meta/graph.md", "meta/actions.md", "meta/dates.md", "meta/contracts.md", "meta/finance.md", "meta/goals.md", "meta/travel.md", "meta/dreams.md":
+		return true
+	}
+	return false
+}

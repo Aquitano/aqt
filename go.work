@@ -1,7 +1,6 @@
 go 1.27.2
 
 use (
-	./apps/attic
 	./apps/bank
 	./apps/tracker
 	./packages/go/extract

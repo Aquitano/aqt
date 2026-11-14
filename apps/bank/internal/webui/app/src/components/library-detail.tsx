@@ -408,10 +408,10 @@ export function ItemDetail({ id }: { id: string }) {
                 </dd>
               </>
             )}
-            {item.provenance.raw_ref && (
+            {item.provenance.raw_input > 0 && (
               <>
                 <dt>Raw input</dt>
-                <dd>{item.provenance.raw_ref}</dd>
+                <dd>#{item.provenance.raw_input}</dd>
               </>
             )}
             {item.provenance.locator && (
@@ -427,10 +427,10 @@ export function ItemDetail({ id }: { id: string }) {
               <ul className="flex flex-col gap-2">
                 {item.evidence?.map((evidence) => (
                   <li
-                    key={JSON.stringify([evidence.raw_ref, evidence.locator])}
+                    key={JSON.stringify([evidence.raw_input, evidence.locator])}
                     className="rounded-lg border p-2 break-all"
                   >
-                    <p>{evidence.raw_ref}</p>
+                    <p>Raw input #{evidence.raw_input}</p>
                     {evidence.locator && <p className="mt-1">{evidence.locator}</p>}
                   </li>
                 ))}

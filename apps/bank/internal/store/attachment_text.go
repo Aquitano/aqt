@@ -4,46 +4,39 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/jobs"
+	"github.com/aquitano/aqt/packages/go/extract"
 	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
 )
 
-// StatusPending is the virtual status of a blob no extraction has touched
+// StatusPending is the virtual status of a content no extraction has touched
 // yet. It is not stored — the absence of a row is what it means — but naming
 // it lets one filter cover "never tried" and "tried, retry it".
 const StatusPending = "pending"
 
-// MaxAttachmentTextChars bounds the denormalized per-message text. A message
-// carrying a hundred scanned pages should still index, but a single row is
-// not the place to keep a book.
-//
-// It is applied as bytes in Go and as characters in SQL (left() counts
-// characters). Both bound the same thing from the same side — a byte count is
-// never below the character count — so the Go side is the conservative one and
-// the difference is not worth a second constant.
-const MaxAttachmentTextChars = 4 << 20
-
-// BlobText is the extracted text of one blob, keyed by its digest.
+// BlobText is the text read from one content, keyed by its digest.
 type BlobText struct {
-	SHA256      string    `json:"sha256"`
-	Text        string    `json:"text"`
-	Extractor   string    `json:"extractor,omitempty"`
-	Status      string    `json:"status"`
-	Chars       int       `json:"chars"`
-	ExtractedAt time.Time `json:"extracted_at"`
+	BLAKE3      content.Digest `json:"blake3"`
+	Text        string         `json:"text"`
+	Extractor   string         `json:"extractor,omitempty"`
+	Status      string         `json:"status"`
+	Chars       int            `json:"chars"`
+	ExtractedAt time.Time      `json:"extracted_at"`
 }
 
 // BlobRef is one distinct piece of attachment content and what is known about
 // its text. Filename and MimeType come from an arbitrary message carrying it —
 // enough to choose an extractor, since the bytes are identical either way.
 type BlobRef struct {
-	SHA256    string `json:"sha256"`
-	Filename  string `json:"filename"`
-	MimeType  string `json:"mime_type,omitempty"`
-	SizeBytes int64  `json:"size_bytes"`
+	BLAKE3    content.Digest `json:"blake3"`
+	Filename  string         `json:"filename"`
+	MimeType  string         `json:"mime_type,omitempty"`
+	SizeBytes int64          `json:"size_bytes"`
 	// Messages counts how many messages carry this content.
 	Messages int64 `json:"messages"`
 	// Status is StatusPending when nothing has been extracted yet.
@@ -54,21 +47,13 @@ type BlobRef struct {
 
 // ListBlobsOpts selects attachment content to work on or report.
 type ListBlobsOpts struct {
-	// Statuses filters by extraction status; StatusPending selects blobs with
-	// no row yet. Empty means every blob.
+	// Statuses filters by extraction status; StatusPending selects content
+	// with no text row yet, read by neither a disk scan nor bank. Empty means
+	// all of it.
 	Statuses []string
 	// Source restricts to files or message attachments of one source.
 	Source string
 	Limit  int
-	// NewestFirst orders by the most recently stored file instead of
-	// by size. The pass that runs after an import needs it: with a backlog of
-	// large pending blobs, the default order would spend a bounded batch
-	// before ever reaching the file that just landed.
-	NewestFirst bool
-	// StoredSince restricts to content stored at or after it, so the passes
-	// after an upload drain what uploads stored without taking on the
-	// archive's older backlog.
-	StoredSince time.Time
 }
 
 // MaxBlobList bounds one listing, the same reasoning as MaxSearchLimit.
@@ -76,8 +61,7 @@ const MaxBlobList = 5000
 
 // ListBlobs returns distinct attachment content with its extraction status,
 // largest first — a big scanned PDF is worth more than a signature image, and
-// a bounded run should spend its budget there. NewestFirst is the exception,
-// for the pass that has to reach what an import just stored.
+// a bounded run should spend its budget there.
 func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, error) {
 	if o.Limit <= 0 || o.Limit > MaxBlobList {
 		o.Limit = MaxBlobList
@@ -87,49 +71,34 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 		args = append(args, v)
 		return fmt.Sprintf("$%d", len(args))
 	}
-	conditions := []string{}
-	if o.Source != "" {
-		conditions = append(conditions, "a.source = "+next(o.Source))
-	}
-	if !o.StoredSince.IsZero() {
-		conditions = append(conditions, "a.newest >= "+next(o.StoredSince))
-	}
 	where := ""
-	if len(conditions) > 0 {
-		where = " where " + strings.Join(conditions, " and ")
+	if o.Source != "" {
+		where = " where a.source = " + next(o.Source)
 	}
 	sql := `
-		select b.sha256, b.filename, b.mime_type, b.size_bytes, b.messages,
+		select c.blake3, b.filename, b.mime_type, c.size_bytes, b.messages,
 		       coalesce(t.status, '` + StatusPending + `'), coalesce(t.extractor, ''),
-		       coalesce(length(t.text), 0)
+		       coalesce(t.chars, 0)
 		from (
-			select a.sha256,
+			select a.content_id,
 			       min(a.filename) as filename,
 			       min(a.mime_type) as mime_type,
-			       max(a.size_bytes) as size_bytes,
-			       count(distinct a.message_id) as messages,
-			       max(a.newest) as newest,
-			       max(a.attachment_id) as attachment_id
+			       count(distinct a.message_id) as messages
 			from (
-                select a.sha256,a.filename,a.mime_type,a.size_bytes,a.message_id,
-                       coalesce(a.ingested_at,m.ingested_at) as newest,a.id as attachment_id,m.source
+                select a.content_id,a.filename,a.mime_type,a.message_id,m.source
                 from attachments a join messages m on m.id=a.message_id
                 union all
-                select f.sha256,f.filename,f.mime_type,f.size_bytes,null::bigint,
-                       f.ingested_at,0::bigint,f.source
+                select f.content_id,f.filename,f.mime_type,null::bigint,f.source
                 from library_files f
             ) a` + where + `
-			group by a.sha256
+			group by a.content_id
 		) b
-		left join blob_text t on t.sha256 = b.sha256`
+		join contents c on c.id = b.content_id
+		left join texts t on t.content_id = b.content_id`
 	if len(o.Statuses) > 0 {
 		sql += " where coalesce(t.status, '" + StatusPending + "') = any(" + next(o.Statuses) + ")"
 	}
-	order := "b.size_bytes desc"
-	if o.NewestFirst {
-		order = "b.newest desc, b.attachment_id desc"
-	}
-	sql += " order by " + order + ", b.sha256 limit " + next(o.Limit)
+	sql += " order by c.size_bytes desc, c.blake3 limit " + next(o.Limit)
 
 	rows, err := s.pool.Query(ctx, sql, args...)
 	if err != nil {
@@ -139,7 +108,7 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 	out := []BlobRef{}
 	for rows.Next() {
 		var b BlobRef
-		if err := rows.Scan(&b.SHA256, &b.Filename, &b.MimeType, &b.SizeBytes, &b.Messages,
+		if err := rows.Scan(&b.BLAKE3, &b.Filename, &b.MimeType, &b.SizeBytes, &b.Messages,
 			&b.Status, &b.Extractor, &b.Chars); err != nil {
 			return nil, err
 		}
@@ -148,21 +117,54 @@ func (s *Store) ListBlobs(ctx context.Context, o ListBlobsOpts) ([]BlobRef, erro
 	return out, rows.Err()
 }
 
-// PutBlobText records one extraction outcome.
+// PutBlobText records one extraction outcome for a content the archive or a
+// disk scan already knows. Text over extract.MaxChars is cut, and ok text becomes truncated. Only
+// manual text replaces manual text. needs_ocr queues an OCR job.
 func (s *Store) PutBlobText(ctx context.Context, bt BlobText) error {
-	if bt.SHA256 == "" || bt.Status == "" {
-		return fmt.Errorf("blob text needs a sha256 and a status")
+	if bt.BLAKE3.IsZero() || bt.Status == "" {
+		return fmt.Errorf("text needs a digest and a status")
 	}
-	text := truncateRunes(cleanText(bt.Text), MaxAttachmentTextChars)
-	_, err := s.pool.Exec(ctx, `
-		insert into blob_text (sha256, text, extractor, status, extracted_at)
-		values ($1, $2, $3, $4, now())
-		on conflict (sha256) do update
-		set text = excluded.text, extractor = excluded.extractor,
-		    status = excluded.status, extracted_at = now()
-		where blob_text.status <> 'manual' or excluded.status = 'manual'`,
-		bt.SHA256, text, cleanText(bt.Extractor), bt.Status)
-	return err
+	text, status := CleanText(bt.Text), bt.Status
+	if len(text) > extract.MaxChars {
+		text = truncateRunes(text, extract.MaxChars)
+		if status == string(extract.StatusOK) {
+			status = string(extract.StatusTruncated)
+		}
+	}
+	return s.changeText(ctx, bt.BLAKE3, func(tx pgx.Tx, id int64) error {
+		tag, err := tx.Exec(ctx, `
+			insert into texts (content_id, text, extractor, status, extracted_at)
+			values ($1, $2, $3, $4, now())
+			on conflict (content_id) do update
+			set text = excluded.text, extractor = excluded.extractor, status = excluded.status,
+			    detail = '', extracted_at = now()
+			where texts.status <> 'manual' or excluded.status = 'manual'`,
+			id, text, CleanText(bt.Extractor), status)
+		if err != nil || tag.RowsAffected() == 0 || status != string(extract.StatusNeedsOCR) {
+			return err
+		}
+		return jobs.Insert(ctx, tx, jobs.OCR{ContentID: id})
+	})
+}
+
+// changeText runs write on the content's text in a transaction that holds the
+// contents row. Writing attachments takes the same row in share mode before
+// it looks for text, so whichever transaction commits second sees the other's
+// rows: an attachment written while its text is cleared queues the job that
+// reads it again. Bytes the archive has never seen have no row, and nothing is
+// written for them.
+func (s *Store) changeText(ctx context.Context, d content.Digest, write func(pgx.Tx, int64) error) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		var id int64
+		err := tx.QueryRow(ctx, `select id from contents where blake3 = $1 for no key update`, d).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		return write(tx, id)
+	})
 }
 
 // truncateRunes cuts on a rune boundary. Plain byte-slicing would split a
@@ -181,80 +183,108 @@ func truncateRunes(s string, max int) string {
 	return s[:max]
 }
 
-func (s *Store) GetBlobText(ctx context.Context, sha256 string) (BlobText, error) {
+func (s *Store) GetBlobText(ctx context.Context, d content.Digest) (BlobText, error) {
 	var bt BlobText
 	err := s.pool.QueryRow(ctx, `
-		select sha256, text, extractor, status, length(text), extracted_at
-		from blob_text where sha256 = $1`, sha256,
-	).Scan(&bt.SHA256, &bt.Text, &bt.Extractor, &bt.Status, &bt.Chars, &bt.ExtractedAt)
+		select c.blake3, t.text, t.extractor, t.status, t.chars, t.extracted_at
+		from texts t join contents c on c.id = t.content_id where c.blake3 = $1`, d,
+	).Scan(&bt.BLAKE3, &bt.Text, &bt.Extractor, &bt.Status, &bt.Chars, &bt.ExtractedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return bt, ErrNotFound
 	}
 	return bt, err
 }
 
-// DeleteBlobText drops an extraction result, putting the blob back in the
-// pending queue. This is how a bad manual transcription is undone.
-func (s *Store) DeleteBlobText(ctx context.Context, sha256 string) error {
-	tag, err := s.pool.Exec(ctx, `delete from blob_text where sha256 = $1`, sha256)
+// DeleteBlobText drops an extraction result and queues the content to be
+// read again. This is how a bad manual transcription is undone.
+func (s *Store) DeleteBlobText(ctx context.Context, d content.Digest) error {
+	deleted := false
+	err := s.changeText(ctx, d, func(tx pgx.Tx, id int64) error {
+		tag, err := tx.Exec(ctx, `delete from texts where content_id = $1`, id)
+		if err != nil || tag.RowsAffected() == 0 {
+			return err
+		}
+		deleted = true
+		return jobs.Insert(ctx, tx, jobs.Text{ContentID: id})
+	})
+	if err == nil && !deleted {
+		return ErrNotFound
+	}
+	return err
+}
+
+// TextSubject is a content as a text job reads it: Filename and MimeType come
+// from one place the archive holds it.
+type TextSubject struct {
+	BLAKE3   content.Digest
+	Filename string
+	MimeType string
+	// Status is StatusPending when the content has no text row.
+	Status string
+}
+
+// TextSubject returns ErrNotFound when no attachment or library file holds the
+// content any more, so there is nothing that would search its text.
+func (s *Store) TextSubject(ctx context.Context, contentID int64) (TextSubject, error) {
+	var t TextSubject
+	err := s.pool.QueryRow(ctx, `
+		select c.blake3, p.filename, p.mime_type, coalesce(t.status, '`+StatusPending+`')
+		from contents c
+		join lateral (
+			select filename, mime_type from attachments where content_id = c.id
+			union all
+			select filename, mime_type from library_files where content_id = c.id
+			limit 1) p on true
+		left join texts t on t.content_id = c.id
+		where c.id = $1`, contentID).Scan(&t.BLAKE3, &t.Filename, &t.MimeType, &t.Status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return t, ErrNotFound
+	}
+	return t, err
+}
+
+// queueText takes the contents rows that rows just written in tx name, in
+// share mode (see changeText), and queues a text job for each content nothing
+// has read yet and an OCR job for each that waits for OCR. A content already
+// queued is not queued twice.
+func queueText(ctx context.Context, tx pgx.Tx, contentIDs []int64) error {
+	if len(contentIDs) == 0 {
+		return nil
+	}
+	if _, err := tx.Exec(ctx, `select from contents where id = any($1) order by id for share`, contentIDs); err != nil {
+		return err
+	}
+	rows, err := tx.Query(ctx, `
+		select c.id, t.status from contents c left join texts t on t.content_id = c.id
+		where c.id = any($1) and (t.status is null or t.status = 'needs_ocr')`, contentIDs)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+	queued, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (river.JobArgs, error) {
+		var id int64
+		var status *string
+		if err := r.Scan(&id, &status); err != nil {
+			return nil, err
+		}
+		if status == nil {
+			return jobs.Text{ContentID: id}, nil
+		}
+		return jobs.OCR{ContentID: id}, nil
+	})
+	if err != nil {
+		return err
 	}
-	return nil
+	return jobs.Insert(ctx, tx, queued...)
 }
 
 // KnownAttachment reports whether the archive holds this content, so a
 // caller cannot store text for a digest the archive has never seen.
-func (s *Store) KnownAttachment(ctx context.Context, sha256 string) (bool, error) {
+func (s *Store) KnownAttachment(ctx context.Context, d content.Digest) (bool, error) {
 	var exists bool
-	err := s.pool.QueryRow(ctx,
-		`select exists (select 1 from attachments where sha256 = $1) or exists(select 1 from library_files where sha256=$1)`, sha256).Scan(&exists)
+	err := s.pool.QueryRow(ctx, `select exists (select 1 from contents c where c.blake3 = $1 and (
+		exists (select 1 from attachments a where a.content_id = c.id) or
+		exists (select 1 from library_files f where f.content_id = c.id)))`, d).Scan(&exists)
 	return exists, err
-}
-
-// RefreshAttachmentText recomputes the denormalized column for every message
-// whose attachments' text no longer matches it, and returns how many rows
-// changed.
-//
-// One idempotent statement rather than triggers or bookkeeping: it covers a
-// blob that was just extracted, a message imported after its blob was already
-// extracted, and text corrected by hand, without any of them needing to know
-// about the others.
-//
-// A non-zero since limits it to messages with an attachment stored or
-// extracted at or after since, which is all a pass after an upload can have
-// changed, including older messages sharing content it just read.
-func (s *Store) RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error) {
-	args := []any{MaxAttachmentTextChars}
-	scope := ""
-	if !since.IsZero() {
-		args = append(args, since)
-		scope = `where a.message_id in (
-				select s.message_id from attachments s
-				join messages sm on sm.id = s.message_id
-				left join blob_text st on st.sha256 = s.sha256
-				where coalesce(s.ingested_at, sm.ingested_at) >= $2 or st.extracted_at >= $2)`
-	}
-	tag, err := s.pool.Exec(ctx, `
-		update messages m
-		set attachment_text = c.txt
-		from (
-			select a.message_id,
-			       left(coalesce(string_agg(t.text, ' ' order by a.id), ''), $1) as txt
-			from attachments a
-			left join blob_text t on t.sha256 = a.sha256 and t.text <> ''
-			`+scope+`
-			group by a.message_id
-		) c
-		where c.message_id = m.id and m.attachment_text is distinct from c.txt`,
-		args...)
-	if err != nil {
-		return 0, err
-	}
-	return tag.RowsAffected(), nil
 }
 
 // ExtractionStat is one status and how much content sits in it.
@@ -271,12 +301,10 @@ type ExtractionStat struct {
 func (s *Store) ExtractionStats(ctx context.Context) ([]ExtractionStat, error) {
 	rows, err := s.pool.Query(ctx, `
 		select coalesce(t.status, '`+StatusPending+`') as status,
-		       count(*), coalesce(sum(b.size_bytes), 0), coalesce(sum(length(t.text)), 0)
-		from (
-			select sha256, max(size_bytes) as size_bytes
-			from (select sha256,size_bytes from attachments union all select sha256,size_bytes from library_files) files group by sha256
-		) b
-		left join blob_text t on t.sha256 = b.sha256
+		       count(*), coalesce(sum(c.size_bytes), 0), coalesce(sum(t.chars), 0)
+		from (select content_id from attachments union select content_id from library_files) b
+		join contents c on c.id = b.content_id
+		left join texts t on t.content_id = b.content_id
 		group by 1 order by 1`)
 	if err != nil {
 		return nil, err
@@ -291,16 +319,4 @@ func (s *Store) ExtractionStats(ctx context.Context) ([]ExtractionStat, error) {
 		out = append(out, st)
 	}
 	return out, rows.Err()
-}
-
-// ValidSHA256 rejects anything that is not a digest before it reaches a query
-// or a file path.
-func ValidSHA256(s string) error {
-	if len(s) != 64 {
-		return fmt.Errorf("not a sha256 digest: %q", s)
-	}
-	if strings.TrimLeft(strings.ToLower(s), "0123456789abcdef") != "" {
-		return fmt.Errorf("not a sha256 digest: %q", s)
-	}
-	return nil
 }

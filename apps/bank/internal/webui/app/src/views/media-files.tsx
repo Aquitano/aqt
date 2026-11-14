@@ -59,12 +59,12 @@ export function MediaFilesView({ selection }: { selection: Selection }) {
               key={file.id}
               data-row
               data-selected={
-                (selection?.kind === "file" && selection.file.sha256 === file.sha256) || undefined
+                (selection?.kind === "file" && selection.file.blake3 === file.blake3) || undefined
               }
               onClick={() => select({ kind: "file", file })}
               className={cn(
                 "flex w-full items-start gap-3 rounded-lg p-3 text-left hover:bg-accent/50",
-                selection?.kind === "file" && selection.file.sha256 === file.sha256 && "bg-accent",
+                selection?.kind === "file" && selection.file.blake3 === file.blake3 && "bg-accent",
               )}
             >
               <File className="mt-1 size-5 shrink-0 text-muted-foreground" />

@@ -9,18 +9,21 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/jackc/pgx/v5"
 )
 
-const librarySnapshotJSON = `(to_jsonb(s)-'collection_id') || jsonb_build_object('entries',coalesce((select jsonb_agg(to_jsonb(e)-'snapshot_id' order by e.position) from library_entries e where e.snapshot_id=s.id),'[]'::jsonb))`
-const librarySnapshotSummaryJSON = `(to_jsonb(s)-'collection_id') || jsonb_build_object('entry_count',(select count(*) from library_entries e where e.snapshot_id=s.id))`
-const librarySnapshotOrder = `case s.captured->>'precision' when 'instant' then (s.captured->>'value')::timestamptz when 'day' then (s.captured->>'value')::date::timestamp at time zone 'UTC' end desc nulls last,s.id desc`
+const librarySnapshotBase = `(to_jsonb(s)-'collection_id'-'captured_at'-'captured_precision') || jsonb_build_object('captured',bank_library_date(s.captured_at,s.captured_precision))`
+const librarySnapshotJSON = librarySnapshotBase + ` || jsonb_build_object('entries',coalesce((select jsonb_agg((to_jsonb(e)-'snapshot_id'-'added_at'-'added_precision') || jsonb_build_object('added',bank_library_date(e.added_at,e.added_precision)) order by e.position) from library_entries e where e.snapshot_id=s.id),'[]'::jsonb))`
+const librarySnapshotSummaryJSON = librarySnapshotBase + ` || jsonb_build_object('entry_count',(select count(*) from library_entries e where e.snapshot_id=s.id))`
+const librarySnapshotOrder = `s.captured_at desc nulls last,s.id desc`
 const libraryCurrentSnapshot = `s.collection_id=r.id and (not r.personal or s.id=(select e.snapshot_id from library_collection_edits e where e.collection_id=r.id and e.revision=r.revision))`
-const libraryItemJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('evidence',coalesce((select jsonb_agg(jsonb_build_object('raw_ref',e.raw_ref,'locator',e.locator) order by e.raw_ref,e.locator) from library_item_evidence e where e.item_id=r.id),'[]'::jsonb),'state',coalesce((select to_jsonb(st)-'item_id' from library_state st where st.item_id=r.id),'{"revision":0,"status":"","favorite":false,"progress":0,"progress_unit":"","notes":"","tags":[]}'::jsonb),'file_ids',coalesce((select jsonb_agg(f.file_id order by f.file_id) from library_item_files f where f.item_id=r.id),'[]'::jsonb))`
-const libraryCollectionJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotJSON + ` from library_snapshots s where ` + libraryCurrentSnapshot + ` order by ` + librarySnapshotOrder + ` limit 1))`
-const libraryCollectionSummaryJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('snapshot',(select ` + librarySnapshotSummaryJSON + ` from library_snapshots s where ` + libraryCurrentSnapshot + ` order by ` + librarySnapshotOrder + ` limit 1))`
-const libraryActivityJSON = `(to_jsonb(r)-'search_text') || jsonb_build_object('evidence',coalesce((select jsonb_agg(jsonb_build_object('raw_ref',e.raw_ref,'locator',e.locator) order by e.raw_ref,e.locator) from library_activity_evidence e where e.activity_id=r.id),'[]'::jsonb))`
-const libraryFileJSON = `(to_jsonb(r)-'search_text'-'ingested_at') || jsonb_build_object('item_ids',coalesce((select jsonb_agg(f.item_id order by f.item_id) from library_item_files f where f.file_id=r.id),'[]'::jsonb),'text_status',coalesce((select status from blob_text where sha256=r.sha256),'pending'))`
+const libraryItemJSON = `(to_jsonb(r)-'seq'-'state_notes'-'state_tags') || jsonb_build_object('evidence',coalesce((select jsonb_agg(jsonb_build_object('raw_input',e.raw_input_id,'locator',e.locator) order by e.raw_input_id,e.locator) from library_item_evidence e where e.item_id=r.id),'[]'::jsonb),'state',coalesce((select to_jsonb(st)-'item_id' from library_state st where st.item_id=r.id),'{"revision":0,"status":"","favorite":false,"progress":0,"progress_unit":"","notes":"","tags":[]}'::jsonb),'file_ids',coalesce((select jsonb_agg(f.file_id order by f.file_id) from library_item_files f where f.item_id=r.id),'[]'::jsonb))`
+const libraryCollectionJSON = `(to_jsonb(r)-'seq') || jsonb_build_object('snapshot',(select ` + librarySnapshotJSON + ` from library_snapshots s where ` + libraryCurrentSnapshot + ` order by ` + librarySnapshotOrder + ` limit 1))`
+const libraryCollectionSummaryJSON = `(to_jsonb(r)-'seq') || jsonb_build_object('snapshot',(select ` + librarySnapshotSummaryJSON + ` from library_snapshots s where ` + libraryCurrentSnapshot + ` order by ` + librarySnapshotOrder + ` limit 1))`
+const libraryActivityJSON = `(to_jsonb(r)-'seq'-'occurred_at'-'occurred_precision') || jsonb_build_object('occurred',bank_library_date(r.occurred_at,r.occurred_precision),'evidence',coalesce((select jsonb_agg(jsonb_build_object('raw_input',e.raw_input_id,'locator',e.locator) order by e.raw_input_id,e.locator) from library_activity_evidence e where e.activity_id=r.id),'[]'::jsonb))`
+const libraryFileJSON = `(to_jsonb(r)-'seq'-'ingested_at'-'content_id') || (select jsonb_build_object('blake3',encode(c.blake3,'hex'),'size_bytes',c.size_bytes) from contents c where c.id=r.content_id) || jsonb_build_object('item_ids',coalesce((select jsonb_agg(f.item_id order by f.item_id) from library_item_files f where f.file_id=r.id),'[]'::jsonb),'text_status',coalesce((select status from texts t where t.content_id=r.content_id),'pending'))`
 
 func libraryProjection(table string) string {
 	switch table {
@@ -32,14 +35,14 @@ func libraryProjection(table string) string {
 		return libraryActivityJSON
 	case "library_files":
 		return libraryFileJSON
-	case "library_pages":
-		return "to_jsonb(r)-'search_text'-'search_vector'"
 	default:
-		return "to_jsonb(r)-'search_text'"
+		return "to_jsonb(r)-'seq'"
 	}
 }
 
-func libraryBoundary(v string) (time.Time, error) {
+// ParseBoundary reads a date filter: a day, which starts at its midnight in
+// UTC, or an RFC 3339 instant.
+func ParseBoundary(v string) (time.Time, error) {
 	if at, err := time.Parse("2006-01-02", v); err == nil {
 		return at, nil
 	}
@@ -55,87 +58,58 @@ func listLibrary[T any](ctx context.Context, s *Store, table string, o library.L
 	if err := o.Validate(); err != nil {
 		return out, err
 	}
-	if o.Limit == 0 {
-		o.Limit = 50
+	o.Limit = page.Limit(o.Limit)
+	f, err := libraryFilters(o)
+	if err != nil {
+		return out, err
 	}
-	args := []any{}
-	next := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
+	var a args
 	clauses := []string{"true"}
-	ctes := ""
-	from := table + " r"
 	if o.Source != "" {
-		clauses = append(clauses, "r.source="+next(o.Source))
+		clauses = append(clauses, "r.source="+a.next(o.Source))
 	}
 	if o.Account != "" {
-		clauses = append(clauses, "r.account="+next(o.Account))
+		clauses = append(clauses, "r.account="+a.next(o.Account))
 	}
-	if o.Kind != "" && table != "library_files" && table != "library_pages" {
-		clauses = append(clauses, "r.kind="+next(o.Kind))
+	if kind := f.Subkind(); kind != "" && table != "library_files" && table != "library_pages" {
+		clauses = append(clauses, "r.kind="+a.next(kind))
 	}
 	if o.ItemID != "" {
-		if table == "library_activity" {
-			clauses = append(clauses, "r.item_id="+next(o.ItemID))
-		}
-		if table == "library_files" {
-			clauses = append(clauses, "exists(select 1 from library_item_files f where f.file_id=r.id and f.item_id="+next(o.ItemID)+")")
-		}
-	}
-	if o.Query != "" {
-		q := next(o.Query)
-		match := libraryTextQuery(o.Match, q)
-		predicate := "to_tsvector('simple',r.search_text) @@ " + match
-		if table == "library_files" {
-			ctes = "with candidate_files as materialized(select r.* from library_files r where " + strings.Join(clauses, " and ") + "), " + libraryTextMatches(q, "select distinct sha256 from candidate_files") + " "
-			from = "candidate_files r left join text_matches bt on bt.sha256=r.sha256"
-			clauses = []string{"true"}
-			predicate = "(to_tsvector('simple',r.search_text || ' ' || regexp_replace(r.filename,'[._-]+',' ','g')) || coalesce(bt.search_vector,''::tsvector)) @@ " + match
-		}
-		if table == "library_items" {
-			document := "st.notes || ' ' || array_to_string(st.tags,' ')"
-			if o.Match == "all" {
-				document = "r.search_text || ' ' || " + document
-			}
-			stateVector := "coalesce(blob_text_search_vector(" + document + "),blob_text_query_vector(" + document + "," + q + "))"
-			predicate = "(" + predicate + " or exists(select 1 from library_state st where st.item_id=r.id and " + stateVector + " @@ " + match + "))"
-		}
-		if table == "library_pages" {
-			filters := strings.Join(clauses, " and ")
-			ctes = "with oversized_pages as materialized(select r.id,r.search_text from library_pages r where " + filters + " and r.search_vector is null), page_matches as materialized(select r.id from library_pages r where " + filters + " and r.search_vector @@ " + match + " union all select id from oversized_pages where blob_text_query_vector(search_text," + q + ") @@ " + match + ") "
-			from = "library_pages r join page_matches matched on matched.id=r.id"
-			clauses = []string{"true"}
-			predicate = "true"
-		}
-		clauses = append(clauses, predicate)
+		clauses = append(clauses, libraryItemFilter(table, a.next(o.ItemID)))
 	}
 	if table == "library_activity" {
-		for _, boundary := range []struct{ value, operator string }{{o.Since, ">="}, {o.Until, "<"}} {
-			if boundary.value == "" {
-				continue
-			}
-			at, err := libraryBoundary(boundary.value)
-			if err != nil {
-				return out, err
-			}
-			day, instant := next(at.Format("2006-01-02")), next(at)
-			clauses = append(clauses, "(case r.occurred->>'precision' when 'day' then (r.occurred->>'value')::date "+boundary.operator+" "+day+"::date when 'instant' then (r.occurred->>'value')::timestamptz "+boundary.operator+" "+instant+"::timestamptz else false end)")
-		}
+		clauses = append(clauses, "true"+occurredBetween("r", f.Since, f.Until, &a))
 	}
 	order := "r.id"
-	if table == "library_items" || table == "library_collections" || table == "library_pages" {
+	switch table {
+	case "library_items", "library_collections", "library_pages":
 		order = "lower(r.title),r.id"
-	}
-	if table == "library_files" {
+	case "library_files":
 		order = "lower(r.filename),r.id"
+	case "library_activity":
+		order = "r.occurred_at desc nulls last,r.id"
 	}
-	if table == "library_activity" {
-		order = "case r.occurred->>'precision' when 'instant' then (r.occurred->>'value')::timestamptz when 'day' then (r.occurred->>'value')::date::timestamp at time zone 'UTC' end desc nulls last,r.id"
+	var window string
+	if o.Query == "" {
+		window = " limit " + a.next(o.Limit) + " offset " + a.next(o.Offset)
+	} else {
+		ranked, err := s.rankLibrary(ctx, table, o, f)
+		if err != nil {
+			return out, err
+		}
+		column := "r.id"
+		if table == "library_files" {
+			column = "r.content_id"
+		}
+		position := "array_position(" + a.next(ranked) + "::" + map[bool]string{true: "bigint", false: "text"}[table == "library_files"] + "[]," + column + ")"
+		clauses, order = append(clauses, position+" is not null"), position+","+order
 	}
 	projection := libraryProjection(table)
 	if len(projections) > 0 {
 		projection = projections[0]
 	}
-	query := ctes + "select " + projection + " from " + from + " where " + strings.Join(clauses, " and ") + " order by " + order + " limit " + next(o.Limit) + " offset " + next(o.Offset)
-	rows, err := s.pool.Query(ctx, query, args...)
+	query := "select " + projection + " from " + table + " r where " + strings.Join(clauses, " and ") + " order by " + order + window
+	rows, err := s.pool.Query(ctx, query, a...)
 	if err != nil {
 		return out, err
 	}
@@ -152,6 +126,90 @@ func listLibrary[T any](ctx context.Context, s *Store, table string, o library.L
 		out = append(out, v)
 	}
 	return out, rows.Err()
+}
+
+func libraryItemFilter(table, item string) string {
+	switch table {
+	case "library_activity":
+		return "r.item_id=" + item
+	case "library_files":
+		return "exists(select 1 from library_item_files f where f.file_id=r.id and f.item_id=" + item + ")"
+	}
+	return "true"
+}
+
+func libraryFilters(o library.ListOptions) (search.Filters, error) {
+	f := search.Filters{Source: o.Source, Account: o.Account, Kind: o.Kind}
+	for _, boundary := range []struct {
+		value string
+		at    *time.Time
+	}{{o.Since, &f.Since}, {o.Until, &f.Until}} {
+		if boundary.value == "" {
+			continue
+		}
+		at, err := ParseBoundary(boundary.value)
+		if err != nil {
+			return f, err
+		}
+		*boundary.at = at
+	}
+	return f, nil
+}
+
+// rankLibrary ranks a library table's records for a list with a query: the
+// page o asks for, as record ids, or as content ids for files, which match
+// by name or by the text read from them.
+func (s *Store) rankLibrary(ctx context.Context, table string, o library.ListOptions, f search.Filters) (any, error) {
+	q, err := search.Parse(o.Query, search.Mode(o.Match))
+	if err != nil {
+		return nil, err
+	}
+	q.Exact = o.Exact
+	f.Kind = f.Subkind()
+	n := o.Offset + o.Limit
+	item := func(a *args) string {
+		if o.ItemID == "" {
+			return ""
+		}
+		return " and " + libraryItemFilter(table, a.next(o.ItemID))
+	}
+	hits, _, err := search.Rank(q, o.Offset, o.Limit, func(q search.Query) (lists []search.List, err error) {
+		add := func(list search.List, err error) error {
+			lists = append(lists, list)
+			return err
+		}
+		switch table {
+		case "library_items":
+			err = add(s.searchLibrary(ctx, ItemList, q, f, n, item))
+		case "library_activity":
+			err = add(s.searchLibrary(ctx, ActivityList, q, f, n, item))
+		case "library_collections":
+			err = add(s.searchLibrary(ctx, CollectionList, q, f, n, item))
+		case "library_pages":
+			err = add(s.searchLibrary(ctx, PageList, q, f, n, item))
+		case "library_files":
+			err = errors.Join(add(s.searchLibrary(ctx, LibraryFileList, q, f, n, item)), add(s.searchTexts(ctx, q, search.Filters{}, n, func(a *args) string {
+				where, _ := LibraryFileList.filters(f, a)
+				return " and exists (select 1 from library_files r where r.content_id = t.content_id" + where + item(a) + ")"
+			})))
+		}
+		return lists, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if table == "library_files" {
+		ids := make([]int64, len(hits))
+		for i, h := range hits {
+			ids[i] = h.ContentID
+		}
+		return ids, nil
+	}
+	ids := make([]string, len(hits))
+	for i, h := range hits {
+		ids[i] = h.Ref
+	}
+	return ids, nil
 }
 
 func getLibrary[T any](ctx context.Context, s *Store, table, id string) (T, error) {
@@ -225,9 +283,7 @@ func collectionSnapshots[T any](ctx context.Context, s *Store, id, projection st
 	query := `select ` + projection + ` from library_snapshots s where collection_id=$1 order by id desc`
 	args := []any{id}
 	if paginated {
-		if o.Limit == 0 {
-			o.Limit = 50
-		}
+		o.Limit = page.Limit(o.Limit)
 		query += ` limit $2 offset $3`
 		args = append(args, o.Limit, o.Offset)
 	}
@@ -282,79 +338,4 @@ func (s *Store) LibraryItemSummaries(ctx context.Context, ids []string) ([]libra
 		out = append(out, item)
 	}
 	return out, rows.Err()
-}
-
-func (s *Store) SearchLibrary(ctx context.Context, o library.ListOptions) (library.SearchResult, error) {
-	result := library.SearchResult{Items: []library.Item{}, Activity: []library.Activity{}, Collections: []library.CollectionSummary{}, Files: []library.File{}, Pages: []library.Page{}, Coverage: []string{"Imported records only; an absent activity is not evidence that an item was not watched.", "Playlist snapshots retain complete, partial or unknown coverage individually."}}
-	if err := o.Validate(); err != nil {
-		return result, err
-	}
-	groups := map[string]bool{}
-	switch o.Kind {
-	case "":
-		groups = map[string]bool{"item": true, "activity": true, "collection": true, "file": true, "page": true}
-	case "item", "activity", "collection", "file", "page":
-		groups[o.Kind] = true
-		o.Kind = ""
-	case "video", "movie", "series", "episode", "track", "album", "podcast", "book", "article":
-		groups["item"] = true
-	case "watch", "listen", "read", "play", "view", "purchase":
-		groups["activity"] = true
-	case "playlist", "library", "watchlist", "list":
-		groups["collection"] = true
-	case "other":
-		groups["item"] = true
-		groups["activity"] = true
-	default:
-		return result, fmt.Errorf("unsupported library kind %q", o.Kind)
-	}
-	var err error
-	if groups["item"] {
-		if result.Items, err = s.ListLibraryItems(ctx, o); err != nil {
-			return result, err
-		}
-	}
-	if groups["activity"] {
-		if result.Activity, err = s.ListLibraryActivity(ctx, o); err != nil {
-			return result, err
-		}
-	}
-	if groups["collection"] {
-		if result.Collections, err = s.ListLibraryCollectionSummaries(ctx, o); err != nil {
-			return result, err
-		}
-	}
-	if groups["file"] {
-		if result.Files, err = s.ListLibraryFiles(ctx, o); err != nil {
-			return result, err
-		}
-	}
-	if groups["page"] {
-		if result.Pages, err = s.ListLibraryPages(ctx, o); err != nil {
-			return result, err
-		}
-	}
-	return result, nil
-}
-
-func libraryTextQuery(mode, parameter string) string {
-	switch mode {
-	case "all":
-		return "plainto_tsquery('simple'," + parameter + ")"
-	case "phrase":
-		return "phraseto_tsquery('simple'," + parameter + ")"
-	default:
-		return "to_tsquery('simple',replace(plainto_tsquery('simple'," + parameter + ")::text,' & ',' | '))"
-	}
-}
-
-func libraryTextMatches(parameter, digests string) string {
-	return `candidate_digests as materialized (` + digests + `), oversized_text as materialized (
- select b.sha256,b.text from blob_text b join candidate_digests d on d.sha256=b.sha256
- where b.status in ('ok','manual') and b.search_vector is null
- ), text_matches as materialized (
- select b.sha256,b.search_vector from blob_text b join candidate_digests d on d.sha256=b.sha256
- where b.status in ('ok','manual') and b.search_vector @@ ` + libraryTextQuery("any", parameter) + `
- union all select sha256,blob_text_query_vector(text,` + parameter + `) from oversized_text
- )`
 }

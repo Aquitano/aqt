@@ -31,12 +31,12 @@ const ORDERS: { value: Order; label: string }[] = [
 function groupTitle(g: ThreadGroup) {
   return g.thread_id
     ? threadTitle(g.thread_id, g.subject, g.members)
-    : g.subject || g.sender || "—";
+    : g.subject || g.sender || "Untitled";
 }
 
 function groupSelection(g: ThreadGroup): Selection {
   return !g.thread_id
-    ? { kind: "message", id: String(g.last_id) }
+    ? { kind: "message", ref: g.last_ref }
     : { kind: "thread", source: g.source, threadId: g.thread_id };
 }
 
@@ -84,6 +84,8 @@ function GroupRow({
   );
 }
 
+const firstPage: string | undefined = undefined;
+
 export function BrowseView({
   stats,
   selection,
@@ -103,16 +105,15 @@ export function BrowseView({
 
   const q = useInfiniteQuery({
     queryKey: ["browse", source, order, mailboxId],
-    initialPageParam: 0,
+    initialPageParam: firstPage,
     queryFn: ({ pageParam }) =>
       browseThreads({
         source: source === ALL_SOURCES ? undefined : source,
         mailbox_id: mailboxId,
         order,
-        offset: pageParam,
+        after: pageParam,
       }),
-    getNextPageParam: (last, pages) =>
-      last.length === BROWSE_PAGE ? pages.length * BROWSE_PAGE : undefined,
+    getNextPageParam: (last) => (last.length === BROWSE_PAGE ? last.at(-1)?.last_ref : undefined),
   });
 
   const groups = q.data?.pages.flat() ?? [];
@@ -186,12 +187,10 @@ export function BrowseView({
                   ? Boolean(g.thread_id) &&
                     selection.source === g.source &&
                     selection.threadId === g.thread_id
-                  : selection?.kind === "message" &&
-                    !g.thread_id &&
-                    selection.id === String(g.last_id);
+                  : selection?.kind === "message" && !g.thread_id && selection.ref === g.last_ref;
               return (
                 <GroupRow
-                  key={JSON.stringify([g.source, g.thread_id, g.thread_id ? null : g.last_id])}
+                  key={JSON.stringify([g.source, g.thread_id, g.thread_id ? null : g.last_ref])}
                   g={g}
                   selected={selected}
                   onClick={() => onSelect(sel)}

@@ -1,10 +1,9 @@
 package server
 
 import (
-	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -13,115 +12,37 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
 func TestHealthChecksDatabase(t *testing.T) {
-	db := storetest.New(t)
-	server := New(db, nil, t.TempDir(), t.TempDir())
+	pool := storetest.Pool(t, storetest.Migrated(t))
+	server := New(store.New(pool), nil, t.TempDir(), nil)
 	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
 		if status == http.StatusServiceUnavailable {
-			db.Close()
+			pool.Close()
 		}
 		response := httptest.NewRecorder()
 		server.Handler().ServeHTTP(response, httptest.NewRequest("GET", "/healthz", nil))
 		if response.Code != status {
 			t.Fatalf("status %d, want %d", response.Code, status)
 		}
+		if status == http.StatusOK && !strings.Contains(response.Body.String(), `"schema_version":1`) {
+			t.Fatalf("health does not report the schema version: %s", response.Body)
+		}
 	}
 }
 
 func TestInternalErrorsDoNotExposeDetails(t *testing.T) {
-	response := httptest.NewRecorder()
-	writeErr(response, 500, "connection failed: postgres://private:password@db")
-	if strings.Contains(response.Body.String(), "password") || !strings.Contains(response.Body.String(), "Internal Server Error") {
-		t.Fatal(response.Body.String())
-	}
-}
-
-func newJSONTestServer(t *testing.T, timeout time.Duration) (*httptest.Server, string) {
-	t.Helper()
-	dir := t.TempDir()
-	token, err := NewToken(dir, "test")
+	body, err := json.Marshal(failure(errors.New("connection failed: postgres://private:password@db")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{dataDir: dir, jsonReadTimeout: timeout}
-	srv := httptest.NewServer(s.Handler())
-	t.Cleanup(srv.Close)
-	srv.Client().Timeout = 5 * time.Second
-	return srv, token
-}
-
-func postOversizedJSON(t *testing.T, srv *httptest.Server, token string, contentLength int64) {
-	t.Helper()
-	request, err := http.NewRequest("POST", srv.URL+"/v1/import/json", io.LimitReader(zeroReader{}, maxJSONUpload+1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Header.Set("Authorization", "Bearer "+token)
-	request.ContentLength = contentLength
-	response, err := srv.Client().Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusRequestEntityTooLarge {
-		t.Fatalf("status %d, want 413", response.StatusCode)
+	if strings.Contains(string(body), "password") || !strings.Contains(string(body), "Internal Server Error") {
+		t.Fatal(string(body))
 	}
 }
-
-func TestJSONUploadLimit(t *testing.T) {
-	srv, token := newJSONTestServer(t, 0)
-	postOversizedJSON(t, srv, token, maxJSONUpload+1)
-	// Chunked uploads with no advertised length must hit the same cap.
-	postOversizedJSON(t, srv, token, -1)
-}
-
-func TestStalledJSONUploadsReleaseImportSlots(t *testing.T) {
-	srv, token := newJSONTestServer(t, 2*time.Second)
-	var stalled []net.Conn
-	for range cap(jsonImports) {
-		conn, err := net.DialTimeout("tcp", strings.TrimPrefix(srv.URL, "http://"), time.Second)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = conn.Close() })
-		if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-			t.Fatal(err)
-		}
-		_, err = fmt.Fprintf(conn, "POST /v1/import/json HTTP/1.1\r\nHost: bank\r\nAuthorization: Bearer %s\r\nContent-Length: 100\r\n\r\n{", token)
-		if err != nil {
-			t.Fatal(err)
-		}
-		stalled = append(stalled, conn)
-	}
-	deadline := time.Now().Add(time.Second)
-	for len(jsonImports) != cap(jsonImports) {
-		if time.Now().After(deadline) {
-			t.Fatal("stalled requests did not occupy both import slots")
-		}
-		time.Sleep(time.Millisecond)
-	}
-	// This complete chunked body must acquire a slot before reaching its size
-	// limit. It needs no database and cannot pass while both slots stay held.
-	postOversizedJSON(t, srv, token, -1)
-	for _, conn := range stalled {
-		response, err := http.ReadResponse(bufio.NewReader(conn), nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		body, err := io.ReadAll(response.Body)
-		response.Body.Close()
-		if err != nil || response.StatusCode != http.StatusRequestTimeout {
-			t.Fatalf("stalled upload response: status=%d body=%q err=%v", response.StatusCode, body, err)
-		}
-	}
-}
-
-type zeroReader struct{}
-
-func (zeroReader) Read(p []byte) (int, error) { clear(p); return len(p), nil }
 
 func TestShutdownDrainsActiveRequest(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

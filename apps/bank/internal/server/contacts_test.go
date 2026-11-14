@@ -81,8 +81,8 @@ func TestSearchByUnknownPersonIsABadRequest(t *testing.T) {
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 	status, body := authedGet(t, srv, token, "/v1/search?q=hi&person=nobody")
-	if status != http.StatusBadRequest {
-		t.Fatalf("status %d, want 400 (%s)", status, body)
+	if status != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422 (%s)", status, body)
 	}
 	if !strings.Contains(body, "nobody") {
 		t.Errorf("the error should name the contact: %s", body)
@@ -96,7 +96,7 @@ func TestSearchPassesPersonThrough(t *testing.T) {
 	if status, body := authedGet(t, srv, token, "/v1/search?q=hi&person=bjoern"); status != http.StatusOK {
 		t.Fatalf("status %d (%s)", status, body)
 	}
-	if got := s.read.(*fakeReader).opts.Person; got != "bjoern" {
+	if got := s.read.(*fakeReader).filters.Person; got != "bjoern" {
 		t.Errorf("person = %q, want it forwarded to the store", got)
 	}
 }

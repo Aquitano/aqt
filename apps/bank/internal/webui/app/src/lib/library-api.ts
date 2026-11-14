@@ -1,9 +1,9 @@
 import { type } from "arktype";
 
-import { api, message, libraryFile, type SearchParams } from "@/lib/api";
+import { api, rawInput } from "@/lib/api";
 
 const identity = { source: "string", account: "string", external_id: "string" } as const;
-const provenance = type({ raw_ref: "string", locator: "string" });
+const provenance = type({ raw_input: "number", locator: "string" });
 const date = type({ value: "string", precision: "string" });
 const state = type({
   revision: "number",
@@ -78,7 +78,7 @@ const itemSummary = item.pick("id", "title", "kind", "source");
 const mediaFileSchema = type({
   ...identity,
   id: "string",
-  sha256: "string",
+  blake3: "string",
   filename: "string",
   mime_type: "string",
   size_bytes: "number",
@@ -99,24 +99,6 @@ const page = type({
   revision: "string",
   sensitivity: "string",
   provenance,
-});
-const groups = {
-  items: item.array(),
-  activity: activity.array(),
-  collections: collectionSummary.array(),
-  files: mediaFileSchema.array(),
-  pages: page.array(),
-  coverage: "string[]",
-} as const;
-const importResult = type({
-  items: "number",
-  activity: "number",
-  collections: "number",
-  files: "number",
-  pages: "number",
-  "skipped?": "number",
-  "ads?": "number",
-  "diagnostics?": "string[] | null",
 });
 export type MediaItem = typeof item.infer;
 export type MediaState = typeof state.infer;
@@ -170,6 +152,9 @@ export function saveState(id: string, edit: StateEdit) {
 export function getActivity(filters: LibraryFilters = {}, offset = 0) {
   return api(`/v1/library/activity?${query(filters, offset)}`, activity.array());
 }
+export function getActivityRecord(id: string) {
+  return api(`/v1/library/activity/${encodeURIComponent(id)}`, activity);
+}
 export function getCollections(filters: LibraryFilters = {}, offset = 0) {
   return api(`/v1/library/collections?${query(filters, offset)}`, collectionSummary.array());
 }
@@ -189,7 +174,7 @@ export function createCollection(
         external_id: "",
         captured: { value: "", precision: "unknown" },
         completeness: "complete",
-        provenance: { raw_ref: "", locator: "" },
+        provenance: { raw_input: 0, locator: "" },
         entries,
       },
     }),
@@ -204,27 +189,18 @@ export function getMediaFiles(filters: LibraryFilters = {}, offset = 0) {
 export function uploadFiles(files: File[], itemId?: string) {
   const body = new FormData();
   for (const file of files) body.append("file", file);
-  if (itemId) body.append("item_id", itemId);
-  return api("/v1/library/files", mediaFileSchema.array(), { method: "POST", body });
+  const params = itemId ? `?${new URLSearchParams({ item_id: itemId })}` : "";
+  return api(`/v1/library/files${params}`, mediaFileSchema.array(), { method: "POST", body });
 }
 export function getPage(id: string) {
   return api(`/v1/library/pages/${encodeURIComponent(id)}`, page);
 }
-export function find(params: SearchParams, offset = 0) {
-  const search = new URLSearchParams({ limit: String(LIBRARY_PAGE), offset: String(offset) });
-  for (const [key, value] of Object.entries(params))
-    if (value !== undefined) search.set(key, String(value));
-  return api(
-    `/v1/find?${search}`,
-    type({ messages: message.array(), attachments: libraryFile.array(), ...groups }),
-  );
-}
+// Options go before the file: the server checks them before it stores bytes.
 export function importLibrary(kind: string, file: File, account: string) {
   const body = new FormData();
+  body.append("options", JSON.stringify(account.trim() ? { account: account.trim() } : {}));
   body.append("file", file);
-  const params = new URLSearchParams();
-  if (account.trim()) params.set("account", account.trim());
-  return api(`/v1/import/${encodeURIComponent(kind)}?${params}`, importResult, {
+  return api(`/v1/import/${encodeURIComponent(kind)}`, rawInput, {
     method: "POST",
     body,
   });

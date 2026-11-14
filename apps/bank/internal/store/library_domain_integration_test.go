@@ -2,11 +2,12 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
@@ -15,6 +16,15 @@ import (
 func libraryItem(external string) library.Item {
 	identity := library.Identity{Source: "youtube", Account: "owner", ExternalID: external}
 	return library.Item{Identity: identity, ID: library.StableID("item", identity), Kind: "video", Title: "A careful voyage", Provider: "youtube", ProviderID: external}
+}
+
+func rawInput(t *testing.T, st *store.Store, name string) int64 {
+	t.Helper()
+	id, err := st.AddRawInput(context.Background(), "test", name, content.Sum([]byte(name)), int64(len(name)), json.RawMessage("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
 
 func TestLibraryImportKeepsObservationsAndSnapshots(t *testing.T) {
@@ -80,7 +90,7 @@ func TestLibraryReplayConflictsCaptureOrderAndSearchModes(t *testing.T) {
 	item := libraryItem("quiet")
 	item.Title = "Quiet ocean"
 	item.Creators = []string{"Named creator"}
-	item.Provenance = library.Provenance{RawRef: "youtube/history.json", Locator: "watch:1"}
+	item.Provenance = library.Provenance{RawInput: rawInput(t, st, "youtube/history.json"), Locator: "watch:1"}
 	second := libraryItem("forest")
 	second.Title = "Quiet forest"
 	event := library.Activity{Identity: library.Identity{Source: "netflix", Account: "owner", ExternalID: "observation"}, ItemID: item.ID, Kind: "watch", Occurred: library.Date{Precision: "day", Value: "2026-10-02"}}
@@ -89,7 +99,7 @@ func TestLibraryReplayConflictsCaptureOrderAndSearchModes(t *testing.T) {
 	}
 	partial := libraryItem("quiet")
 	partial.Title = partial.ProviderID
-	partial.Provenance = library.Provenance{RawRef: "youtube/playlist.csv", Locator: "entry:1"}
+	partial.Provenance = library.Provenance{RawInput: rawInput(t, st, "youtube/playlist.csv"), Locator: "entry:1"}
 	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Items: []library.Item{partial}}); err != nil {
 		t.Fatal(err)
 	}
@@ -105,15 +115,15 @@ func TestLibraryReplayConflictsCaptureOrderAndSearchModes(t *testing.T) {
 		t.Fatalf("changed event silently accepted: %v", err)
 	}
 	for _, test := range []struct {
-		match string
-		count int
-	}{{"any", 2}, {"all", 1}, {"phrase", 1}} {
-		results, err := st.SearchLibrary(ctx, library.ListOptions{Query: "quiet ocean", Kind: "item", Match: test.match})
+		query, match string
+		count        int
+	}{{"quiet ocean", "any", 2}, {"quiet ocean", "all", 1}, {`"quiet ocean"`, "all", 1}} {
+		results, err := st.ListLibraryItems(ctx, library.ListOptions{Query: test.query, Match: test.match})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(results.Items) != test.count || len(results.Activity) != 0 {
-			t.Fatalf("%s: %+v", test.match, results)
+		if len(results) != test.count {
+			t.Fatalf("%s %s: %+v", test.match, test.query, results)
 		}
 	}
 	collection := library.Collection{Identity: library.Identity{Source: "youtube", Account: "owner", ExternalID: "dated"}, Kind: "playlist", Title: "Dated", Snapshot: &library.Snapshot{ExternalID: "new", Captured: library.Date{Precision: "day", Value: "2026-10-02"}, Completeness: "complete", Entries: []library.Entry{}}}
@@ -222,13 +232,13 @@ func TestLibraryItemSearchMatchesMetadataAndPersonalState(t *testing.T) {
 	for _, test := range []struct {
 		query, match string
 		count        int
-	}{{"arrival clever weekend", "all", 1}, {"arrival missing", "all", 0}, {"clever missing", "any", 1}, {"clever story", "phrase", 1}, {"story clever", "phrase", 0}} {
-		result, err := st.SearchLibrary(ctx, library.ListOptions{Query: test.query, Match: test.match, Kind: "item"})
+	}{{"arrival clever weekend", "all", 1}, {"arrival missing", "all", 0}, {"clever missing", "any", 1}, {`"clever story"`, "all", 1}, {`"story clever"`, "all", 0}} {
+		result, err := st.ListLibraryItems(ctx, library.ListOptions{Query: test.query, Match: test.match})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(result.Items) != test.count {
-			t.Errorf("%s %q: got %d want %d", test.match, test.query, len(result.Items), test.count)
+		if len(result) != test.count {
+			t.Errorf("%s %q: got %d want %d", test.match, test.query, len(result), test.count)
 		}
 	}
 }
@@ -240,28 +250,24 @@ func TestLibraryPublishedPagesAndStandaloneFilesAreSearchable(t *testing.T) {
 	if _, err := st.PublishLibraryPages(ctx, "brain", "vault", []library.Page{page}); err != nil {
 		t.Fatal(err)
 	}
-	found, err := st.SearchLibrary(ctx, library.ListOptions{Query: "moon"})
+	found, err := st.ListLibraryPages(ctx, library.ListOptions{Query: "moon"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(found.Pages) != 1 || found.Items == nil || found.Activity == nil {
-		t.Fatalf("search contract: %+v", found)
+	if len(found) != 1 {
+		t.Fatalf("pages: %+v", found)
 	}
 	if _, err = st.PublishLibraryPages(ctx, "brain", "vault", []library.Page{}); err != nil {
 		t.Fatal(err)
 	}
-	found, err = st.SearchLibrary(ctx, library.ListOptions{Query: "moon"})
-	if err != nil {
-		t.Fatal(err)
+	if found, err = st.ListLibraryPages(ctx, library.ListOptions{Query: "moon"}); err != nil || len(found) != 0 {
+		t.Fatalf("deleted publication remains searchable: %+v, %v", found, err)
 	}
-	if len(found.Pages) != 0 {
-		t.Fatal("deleted publication remains searchable")
-	}
-	file := library.File{Identity: library.Identity{Source: "manual", Account: "owner", ExternalID: "document"}, SHA256: strings.Repeat("a", 64), Filename: "paper.txt", MimeType: "text/plain", SizeBytes: 12}
+	file := library.File{Identity: library.Identity{Source: "manual", Account: "owner", ExternalID: "document"}, BLAKE3: content.Sum([]byte("a")), Filename: "paper.txt", MimeType: "text/plain", SizeBytes: 12}
 	if _, err = st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: []library.File{file}}); err != nil {
 		t.Fatal(err)
 	}
-	known, err := st.KnownAttachment(ctx, file.SHA256)
+	known, err := st.KnownAttachment(ctx, file.BLAKE3)
 	if err != nil || !known {
 		t.Fatalf("standalone digest not fetchable: %v %v", known, err)
 	}
@@ -269,18 +275,17 @@ func TestLibraryPublishedPagesAndStandaloneFilesAreSearchable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(blobs) != 1 || blobs[0].SHA256 != file.SHA256 || blobs[0].Messages != 0 {
+	if len(blobs) != 1 || blobs[0].BLAKE3 != file.BLAKE3 || blobs[0].Messages != 0 {
 		t.Fatalf("standalone extraction queue: %+v", blobs)
 	}
-	if err = st.PutBlobText(ctx, store.BlobText{SHA256: file.SHA256, Text: "Quasar evidence", Status: "ok", Extractor: "text"}); err != nil {
+	if err = st.PutBlobText(ctx, store.BlobText{BLAKE3: file.BLAKE3, Text: "Quasar evidence", Status: "ok", Extractor: "text"}); err != nil {
 		t.Fatal(err)
 	}
-	found, err = st.SearchLibrary(ctx, library.ListOptions{Query: "paper quasar", Match: "all"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(found.Files) != 1 {
-		t.Fatalf("extracted content missing: %+v", found)
+	for _, query := range []string{"paper", "quasar"} {
+		files, err := st.ListLibraryFiles(ctx, library.ListOptions{Query: query})
+		if err != nil || len(files) != 1 {
+			t.Fatalf("%s: %+v, %v; want the file by its name and by its text", query, files, err)
+		}
 	}
 }
 
@@ -291,17 +296,17 @@ func TestLibraryAttachmentQueryMatchesAcrossFilenameAndText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sum := strings.Repeat("b", 64)
-	if err = st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "red-bird.txt", MimeType: "text/plain", SizeBytes: 20, SHA256: sum}); err != nil {
+	sum := content.Sum([]byte("b"))
+	if err = st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "red-bird.txt", MimeType: "text/plain", SizeBytes: 20, BLAKE3: sum}); err != nil {
 		t.Fatal(err)
 	}
-	if err = st.PutBlobText(ctx, store.BlobText{SHA256: sum, Text: "Blue meadow", Status: "ok"}); err != nil {
+	if err = st.PutBlobText(ctx, store.BlobText{BLAKE3: sum, Text: "Blue meadow", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
 		query, match string
 		count        int
-	}{{"red-bird.txt", "all", 1}, {"red violet", "any", 1}, {"red blue", "all", 1}, {"red violet", "all", 0}, {"red bird", "phrase", 1}, {"bird red", "phrase", 0}} {
+	}{{"red-bird.txt", "all", 1}, {"red violet", "any", 1}, {"meadow", "all", 1}, {"red violet", "all", 0}, {`"red bird"`, "all", 1}, {`"bird red"`, "all", 0}} {
 		files, err := st.AttachmentLibrary(ctx, store.AttachmentFilter{Query: test.query, Match: test.match, Source: "mail"})
 		if err != nil {
 			t.Fatal(err)

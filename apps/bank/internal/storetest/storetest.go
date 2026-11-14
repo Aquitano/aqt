@@ -7,28 +7,38 @@ package storetest
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/peterldowns/pgtestdb"
 
+	"github.com/aquitano/aqt/apps/bank/internal/db"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 const urlVar = "BANK_TEST_DATABASE_URL"
 
-var migrator = pgschematest.Migrator(store.Migrations, func(ctx context.Context, dsn string) error {
-	st, err := store.Open(ctx, dsn)
+var migrator = withRiver{pgschematest.Migrator(db.Migrations, db.Migrate)}
+
+// withRiver rebuilds the template when River brings new migrations, which the
+// embedded files do not show.
+type withRiver struct{ pgtestdb.Migrator }
+
+func (m withRiver) Hash() (string, error) {
+	hash, err := m.Migrator.Hash()
 	if err != nil {
-		return err
+		return "", err
 	}
-	st.Close()
-	return nil
-})
+	version, err := db.RiverVersion()
+	return fmt.Sprintf("%s-river-%d", hash, version), err
+}
 
 // New returns a Store on a migrated database of its own, dropped when the
 // test passes.
@@ -43,15 +53,31 @@ func New(t *testing.T) *store.Store {
 // does not expose.
 func NewNamed(t *testing.T) (*store.Store, string) {
 	t.Helper()
-	dsn := pgschematest.Database(t, urlVar, migrator)
+	dsn := Migrated(t)
 	return Open(t, dsn), dsn
 }
 
-// NewEmpty returns a database no migration has touched, for tests that need
-// to seed a pre-migration state before opening a Store.
+// Migrated returns the connection string of a migrated database of its own.
+func Migrated(t *testing.T) string {
+	t.Helper()
+	return pgschematest.Database(t, urlVar, migrator)
+}
+
+// NewEmpty returns a database no migration has touched.
 func NewEmpty(t *testing.T) string {
 	t.Helper()
 	return pgschematest.Database(t, urlVar, pgtestdb.NoopMigrator{})
+}
+
+// Pool opens a pool on an existing test database, closed when the test ends.
+func Pool(t *testing.T, dsn string) *pgxpool.Pool {
+	t.Helper()
+	pool, err := db.Open(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
 }
 
 // Exec runs setup SQL against a test database before or beside a Store.
@@ -68,14 +94,12 @@ func Exec(t *testing.T, dsn, sql string, args ...any) {
 	}
 }
 
-// Open migrates and returns a Store for an existing test database.
+// Open returns a Store, with its query connection, for an existing test
+// database.
 func Open(t *testing.T, dsn string) *store.Store {
 	t.Helper()
-	st, err := store.Open(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	t.Cleanup(st.Close)
+	st := store.New(Pool(t, dsn))
+	t.Cleanup(st.CloseQuery)
 	queryDSN := QueryDSN(t, dsn)
 	Exec(t, dsn, `grant usage on schema public to bank_query_test; grant select on all tables in schema public to bank_query_test; grant select on all sequences in schema public to bank_query_test`)
 	if err := st.ConfigureQuery(context.Background(), queryDSN); err != nil {
@@ -131,3 +155,18 @@ var provisionQueryRole = sync.OnceValue(func() error {
 	}
 	return tx.Commit(ctx)
 })
+
+// Messages runs a message search for query, every word required, and returns
+// its hits; a failing search fails the test.
+func Messages(t *testing.T, st *store.Store, query string, f search.Filters) []search.SearchHit {
+	t.Helper()
+	q, err := search.Parse(query, search.All)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := st.SearchMessages(t.Context(), q, f, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return list.Hits
+}

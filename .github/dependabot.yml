@@ -10,7 +10,7 @@ updates:
       # vite-plus and its vite alias move together by hand; see the README's dependency updates.
       - dependency-name: "vite-plus"
       - dependency-name: "vite"
-      # attic's Executor app pins the framework version its Executor host runs; bump it by hand with the host.
+      # bank's Executor app pins the framework version its Executor host runs; bump it by hand with the host.
       - dependency-name: "apps"
     groups:
       tooling:
@@ -39,8 +39,7 @@ updates:
         applies-to: security-updates
         patterns: ["*"]
   - package-ecosystem: gomod
-    directories:
-      [/apps/attic, /apps/bank, /apps/tracker, /packages/go/extract, /packages/go/pgschema]
+    directories: [/apps/bank, /apps/tracker, /packages/go/extract, /packages/go/pgschema]
     schedule: { interval: weekly }
     groups:
       go:
@@ -58,7 +57,6 @@ updates:
     directories:
       [
         /apps/bank,
-        /apps/attic,
         /apps/tracker,
         /apps/tracker/deploy,
         /apps/gallery/apps/server,

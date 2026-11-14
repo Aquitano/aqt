@@ -11,13 +11,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
+	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
 
 func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 	s, st := attachmentServer(t)
-	token, err := NewToken(s.dataDir, "test")
+	token, err := Tokens(s.dataDir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,12 +32,12 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
-	for _, path := range []string{"/v1/attachment-library?type=pdf", "/v1/attachments/" + testDigest + "/messages", "/v1/import-reports"} {
+	for _, path := range []string{"/v1/attachment-library?type=pdf", "/v1/attachments/" + testDigest.String() + "/messages", "/v1/raw-inputs"} {
 		if w := request(path); w.Code != 200 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
 	}
-	if err := st.PutBlobText(context.Background(), store.BlobText{SHA256: testDigest, Text: "Payment due tomorrow", Status: "ok"}); err != nil {
+	if err := st.PutBlobText(context.Background(), store.BlobText{BLAKE3: testDigest, Text: "Payment due tomorrow", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, query := range []string{"payment", "missing"} {
@@ -47,24 +50,31 @@ func TestLibraryRoutesValidateFiltersAndKeepPreviewInert(t *testing.T) {
 			t.Fatalf("text=%s: %+v", query, files)
 		}
 	}
-	for _, path := range []string{"/v1/attachment-library?since=invalid", "/v1/attachment-library?offset=-1", "/v1/attachment-library?person=absent", "/v1/import-reports?before=-1", "/v1/attachments/invalid/messages"} {
-		if w := request(path); w.Code != 400 {
+	for _, path := range []string{"/v1/attachment-library?since=invalid", "/v1/attachment-library?offset=-1", "/v1/attachment-library?person=absent", "/v1/attachments/invalid/messages"} {
+		if w := request(path); w.Code != 422 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
 		}
+	}
+	if w := request("/v1/raw-inputs?before=-1"); w.Code != 422 {
+		t.Fatalf("raw inputs: %d %s", w.Code, w.Body)
+	}
+	// The web UI sends every filter, set or not.
+	if w := request("/v1/attachment-library?q=&text=&type=&person=&since=&until=&match=&offset=0"); w.Code != 200 {
+		t.Fatalf("empty filters: %d %s", w.Code, w.Body)
 	}
 	id, err := st.FindMessageID(context.Background(), "proton", "m1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, content := range []string{"<html><script>alert(1)</script></html>", "%PDF-1.4\npreview"} {
-		sum, size, err := s.blobs.Put(strings.NewReader(content))
+	for i, content := range []string{"<html><script>alert(1)</script></html>", "%PDF-1.4\npreview"} {
+		sum, size, err := s.blobs.Put(context.Background(), strings.NewReader(content))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: "untrusted.pdf", MimeType: "application/pdf", SHA256: sum, SizeBytes: size}); err != nil {
+		if err := st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Position: i + 1, Filename: "untrusted.pdf", MimeType: "application/pdf", BLAKE3: sum, SizeBytes: size}); err != nil {
 			t.Fatal(err)
 		}
-		w := request("/v1/attachments/" + sum + "/preview")
+		w := request("/v1/attachments/" + sum.String() + "/preview")
 		if strings.HasPrefix(content, "<html>") {
 			if w.Code != 415 {
 				t.Fatalf("active content preview: %d", w.Code)
@@ -81,7 +91,7 @@ func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
 	if _, err := st.ImportLibrary(context.Background(), library.ImportBatch{Version: 1, Items: []library.Item{item}}); err != nil {
 		t.Fatal(err)
 	}
-	token, err := NewToken(s.dataDir, "test")
+	token, err := Tokens(s.dataDir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +99,7 @@ func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
 	for _, test := range []struct {
 		notes string
 		code  int
-	}{{"bad\x00notes", 400}, {"valid notes", 200}} {
+	}{{"bad\x00notes", 422}, {"valid notes", 200}} {
 		body, err := json.Marshal(library.StateEdit{Notes: test.notes})
 		if err != nil {
 			t.Fatal(err)
@@ -106,7 +116,7 @@ func TestLibraryStateRejectsInvalidTextWithoutAdvancingRevision(t *testing.T) {
 
 func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 	s, st := attachmentServer(t)
-	token, err := NewToken(s.dataDir, "test")
+	token, err := Tokens(s.dataDir).New("test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +124,7 @@ func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, test := range []struct{ filename, mime string }{{"soundtrack.flac", "audio/flac"}, {"raw.mp3", "audio/mpeg"}, {"soundtrack.aac", "audio/aac"}} {
+	for i, test := range []struct{ filename, mime string }{{"soundtrack.flac", "audio/flac"}, {"raw.mp3", "audio/mpeg"}, {"soundtrack.aac", "audio/aac"}} {
 		encoded, err := os.ReadFile(filepath.Join("testdata", "preview", test.filename+".base64"))
 		if err != nil {
 			t.Fatal(err)
@@ -123,14 +133,14 @@ func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sum, size, err := s.blobs.Put(bytes.NewReader(raw))
+		sum, size, err := s.blobs.Put(context.Background(), bytes.NewReader(raw))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Filename: test.filename, MimeType: "application/octet-stream", SHA256: sum, SizeBytes: size}); err != nil {
+		if err = st.InsertAttachment(context.Background(), store.Attachment{MessageID: id, Position: i + 1, Filename: test.filename, MimeType: "application/octet-stream", BLAKE3: sum, SizeBytes: size}); err != nil {
 			t.Fatal(err)
 		}
-		r := httptest.NewRequest("GET", "/v1/attachments/"+sum+"/preview", nil)
+		r := httptest.NewRequest("GET", "/v1/attachments/"+sum.String()+"/preview", nil)
 		r.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()
 		s.Handler().ServeHTTP(w, r)
@@ -143,25 +153,17 @@ func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 func TestLibraryRemoteNetflixDateOrder(t *testing.T) {
 	ctx := context.Background()
 	c, _ := libraryClient(t)
-	input := filepath.Join(t.TempDir(), "viewing.csv")
-	if err := os.WriteFile(input, []byte("Title,Date\nA Film,03/04/2024\n"), 0600); err != nil {
+	if _, err := importUpload(ctx, c, "netflix", "viewing.csv", strings.NewReader("Title,Date\nA Film,03/04/2024\n"), json.RawMessage(`{"account": "dates", "date_order": "dmy"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.ImportMediaFile(ctx, "netflix", "", "dates", input, "dmy"); err != nil {
-		t.Fatal(err)
-	}
-	rows, err := c.ListLibraryActivity(ctx, library.ListOptions{Source: "netflix", Account: "dates"})
+	rows, err := client.Call(ctx, c, ListLibraryActivity, LibraryFilters{Source: "netflix", Account: "dates", Page: httpapi.Page{PageSize: httpapi.PageSize{Limit: 100}}})
 	if err != nil || len(rows) != 1 || rows[0].Occurred.Value != "2024-04-03" {
 		t.Fatalf("remote day-first date: %+v %v", rows, err)
 	}
-	s, token := testServer(t)
-	for _, path := range []string{"/v1/import/netflix?date_order=ymd", "/v1/import/youtube-media?date_order=dmy"} {
-		r := httptest.NewRequest("POST", path, nil)
-		r.Header.Set("Authorization", "Bearer "+token)
-		w := httptest.NewRecorder()
-		s.Handler().ServeHTTP(w, r)
-		if w.Code != 400 || !strings.Contains(w.Body.String(), "date_order") {
-			t.Fatalf("%s: %d %s", path, w.Code, w.Body)
+	for kind, options := range map[string]string{"netflix": `{"date_order": "ymd"}`, "youtube-media": `{"date_order": "dmy"}`} {
+		_, err := importUpload(ctx, c, kind, "viewing.csv", strings.NewReader("Title,Date\n"), json.RawMessage(options))
+		if err == nil || !strings.Contains(err.Error(), "date") {
+			t.Fatalf("%s %s: %v, want the date order refused", kind, options, err)
 		}
 	}
 }

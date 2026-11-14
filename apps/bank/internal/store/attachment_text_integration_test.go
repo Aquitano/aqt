@@ -3,30 +3,31 @@ package store_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
-const (
-	digestA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	digestB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+var (
+	digestA = content.Sum([]byte("a"))
+	digestB = content.Sum([]byte("b"))
 )
 
 // seedMessage inserts one message with one attachment and returns the row id.
-func seedMessage(t *testing.T, st *store.Store, externalID, body, filename, digest string) int64 {
+func seedMessage(t *testing.T, st *store.Store, externalID, body, filename string, digest content.Digest) int64 {
 	t.Helper()
 	return seedMessageSized(t, st, externalID, body, filename, digest, 1024)
 }
 
 // seedMessageSized is seedMessage with the attachment's size, which is what
 // the default listing order is built on.
-func seedMessageSized(t *testing.T, st *store.Store, externalID, body, filename, digest string, size int64) int64 {
+func seedMessageSized(t *testing.T, st *store.Store, externalID, body, filename string, digest content.Digest, size int64) int64 {
 	t.Helper()
 	ctx := context.Background()
 	id, err := st.InsertMessage(ctx, store.Message{
@@ -38,7 +39,7 @@ func seedMessageSized(t *testing.T, st *store.Store, externalID, body, filename,
 	}
 	if err := st.InsertAttachment(ctx, store.Attachment{
 		MessageID: id, Filename: filename, MimeType: "application/pdf",
-		SizeBytes: size, SHA256: digest,
+		SizeBytes: size, BLAKE3: digest,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ func TestBlobTextRoundTrip(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNotFound before extraction", err)
 	}
 	if err := st.PutBlobText(ctx, store.BlobText{
-		SHA256: digestA, Text: "invoice total 4200 EUR", Extractor: "pdf", Status: "ok",
+		BLAKE3: digestA, Text: "invoice total 4200 EUR", Extractor: "pdf", Status: "ok",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +68,7 @@ func TestBlobTextRoundTrip(t *testing.T) {
 	}
 
 	// Re-extraction replaces rather than duplicates.
-	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Text: "better text", Status: "manual"}); err != nil {
+	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Text: "better text", Status: "manual"}); err != nil {
 		t.Fatal(err)
 	}
 	if bt, _ = st.GetBlobText(ctx, digestA); bt.Status != "manual" || bt.Text != "better text" {
@@ -80,136 +81,68 @@ func TestBlobTextRoundTrip(t *testing.T) {
 	if err := st.DeleteBlobText(ctx, digestA); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound on a second delete", err)
 	}
+
+	long := strings.Repeat("x", extract.MaxChars+1)
+	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Text: long, Status: "ok"}); err != nil {
+		t.Fatal(err)
+	}
+	if bt, err = st.GetBlobText(ctx, digestA); err != nil || bt.Status != "truncated" || bt.Chars != extract.MaxChars {
+		t.Fatalf("text over the cap: %s with %d characters, %v; want truncated at the cap", bt.Status, bt.Chars, err)
+	}
 }
 
-func TestListBlobsNewestFirstAcrossLibraryAndMail(t *testing.T) {
-	ctx := context.Background()
-	st, dsn := storetest.NewNamed(t)
-	id := seedMessage(t, st, "old", "Old message", "old.pdf", digestA)
-	storetest.Exec(t, dsn, `update messages set ingested_at='1999-01-01'`)
-	storetest.Exec(t, dsn, `update attachments set ingested_at=null`)
-	files := []library.File{}
-	for i := range 201 {
-		files = append(files, library.File{Identity: library.Identity{Source: "files", Account: "owner", ExternalID: fmt.Sprint(i)}, SHA256: fmt.Sprintf("%064x", i+1), Filename: fmt.Sprintf("old-%d.txt", i), MimeType: "text/plain", SizeBytes: 1})
-	}
-	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
-		t.Fatal(err)
-	}
-	storetest.Exec(t, dsn, `update library_files set ingested_at='2000-01-01'`)
-	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Filename: "fresh.pdf", MimeType: "application/pdf", SizeBytes: 1, SHA256: digestB}); err != nil {
-		t.Fatal(err)
-	}
-	rows, err := st.ListBlobs(ctx, store.ListBlobsOpts{Statuses: []string{store.StatusPending}, Limit: 200, NewestFirst: true})
+func searchTexts(t *testing.T, st *store.Store, query string) []search.SearchHit {
+	t.Helper()
+	q, err := search.Parse(query, search.All)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 200 || rows[0].SHA256 != digestB {
-		t.Fatalf("new attachment to an old message was displaced: %+v", rows)
-	}
-	file := library.File{Identity: library.Identity{Source: "files", Account: "owner", ExternalID: "fresh"}, SHA256: strings.Repeat("c", 64), Filename: "fresh.txt", MimeType: "text/plain", SizeBytes: 1}
-	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: []library.File{file}}); err != nil {
-		t.Fatal(err)
-	}
-	rows, err = st.ListBlobs(ctx, store.ListBlobsOpts{NewestFirst: true, Limit: 1})
+	list, err := st.SearchTexts(t.Context(), q, search.Filters{}, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0].SHA256 != file.SHA256 {
-		t.Fatalf("new library file was displaced: %+v", rows)
-	}
+	return list.Hits
 }
 
 // The whole point of keying on the digest: one extraction serves every message
 // carrying that content, however many there are.
-func TestRefreshAttachmentTextSharesOneExtractionAcrossMessages(t *testing.T) {
+func TestStoredTextReachesEveryMessageCarryingIt(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
 	seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
 	seedMessage(t, st, "m2", "forwarded", "invoice.pdf", digestA)
 
 	if err := st.PutBlobText(ctx, store.BlobText{
-		SHA256: digestA, Text: "netherfield consulting invoice", Extractor: "pdf", Status: "ok",
+		BLAKE3: digestA, Text: "netherfield consulting invoice", Extractor: "pdf", Status: "ok",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	n, err := st.RefreshAttachmentText(ctx, time.Time{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 2 {
-		t.Fatalf("reindexed %d messages, want 2", n)
-	}
 
-	// Idempotent: a second refresh with nothing changed must touch no rows,
-	// or every import would rewrite the whole table.
-	if n, err = st.RefreshAttachmentText(ctx, time.Time{}); err != nil || n != 0 {
-		t.Fatalf("second refresh: %d rows, %v; want 0, nil", n, err)
+	hits := searchTexts(t, st, "netherfield")
+	if len(hits) != 1 || !strings.Contains(strings.ToLower(hits[0].Snippet), "netherfield") {
+		t.Fatalf("found %+v by a word only in the attachment, want its content with a snippet", hits)
 	}
-
-	msgs, err := st.Search(ctx, "netherfield", store.SearchOpts{Fuzzy: 0, Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(msgs) != 2 {
-		t.Fatalf("found %d messages by a word only in the attachment, want 2", len(msgs))
-	}
-	if msgs[0].AttachmentSnippet == "" {
-		t.Errorf("no attachment snippet: a hit inside a PDF should say what matched")
-	}
-	if !strings.Contains(strings.ToLower(msgs[0].AttachmentSnippet), "netherfield") {
-		t.Errorf("attachment snippet = %q", msgs[0].AttachmentSnippet)
-	}
-}
-
-// A scoped refresh reaches recent messages and older ones sharing freshly
-// extracted content, and leaves the rest to a full refresh.
-func TestRefreshAttachmentTextSinceCoversRecentChanges(t *testing.T) {
-	ctx := context.Background()
-	st, dsn := storetest.NewNamed(t)
-	sharing := seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
-	seedMessage(t, st, "m2", "forwarded", "invoice.pdf", digestA)
-	untouched := seedMessage(t, st, "m3", "old mail", "scan.pdf", digestB)
-	for _, digest := range []string{digestA, digestB} {
-		if err := st.PutBlobText(ctx, store.BlobText{SHA256: digest, Text: "netherfield", Extractor: "pdf", Status: "ok"}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	storetest.Exec(t, dsn, `update attachments set ingested_at = now() - interval '1 hour' where message_id in ($1, $2)`, sharing, untouched)
-	storetest.Exec(t, dsn, `update blob_text set extracted_at = now() - interval '1 hour' where sha256 = $1`, digestB)
-
-	if n, err := st.RefreshAttachmentText(ctx, time.Now().Add(-time.Minute)); err != nil || n != 2 {
-		t.Fatalf("scoped refresh: %d rows, %v; want the recent message and the one sharing its content", n, err)
-	}
-	if n, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil || n != 1 {
-		t.Fatalf("full refresh: %d rows, %v; want only the untouched message left", n, err)
+	places, err := st.ContentPlaces(ctx, []int64{hits[0].ContentID})
+	if err != nil || len(places[hits[0].ContentID].Places) != 2 {
+		t.Fatalf("places %+v, %v; want the two messages", places, err)
 	}
 }
 
 // Clearing text has to reach the index too, or a bad transcription stays
 // searchable after being deleted.
-func TestRefreshAttachmentTextRemovesClearedText(t *testing.T) {
+func TestClearedTextLeavesTheIndex(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
 	seedMessage(t, st, "m1", "body text", "scan.pdf", digestA)
 
-	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Text: "kedleston", Status: "manual"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil {
+	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Text: "kedleston", Status: "manual"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.DeleteBlobText(ctx, digestA); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil {
-		t.Fatal(err)
-	}
-	msgs, err := st.Search(ctx, "kedleston", store.SearchOpts{Fuzzy: 0, Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(msgs) != 0 {
-		t.Fatalf("found %d messages by cleared attachment text, want 0", len(msgs))
+	if hits := searchTexts(t, st, "kedleston"); len(hits) != 0 {
+		t.Fatalf("found %d contents by cleared text, want 0", len(hits))
 	}
 }
 
@@ -227,14 +160,14 @@ func TestListBlobsByStatus(t *testing.T) {
 		t.Fatalf("pending = %d, want both blobs before anything ran", len(pending))
 	}
 
-	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestB, Status: "needs_ocr"}); err != nil {
+	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestB, Status: "needs_ocr"}); err != nil {
 		t.Fatal(err)
 	}
 	pending, err = st.ListBlobs(ctx, store.ListBlobsOpts{Statuses: []string{store.StatusPending}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pending) != 1 || pending[0].SHA256 != digestA {
+	if len(pending) != 1 || pending[0].BLAKE3 != digestA {
 		t.Fatalf("pending = %+v, want only the untouched blob", pending)
 	}
 
@@ -251,33 +184,6 @@ func TestListBlobsByStatus(t *testing.T) {
 	}
 }
 
-// The pass that runs after an import is bounded, so what just landed has to be
-// at the front of the batch rather than behind a backlog of bigger files.
-func TestListBlobsNewestFirst(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
-	seedMessage(t, st, "m1", "old", "backlog.pdf", digestA)
-	seedMessageSized(t, st, "m2", "new", "receipt.pdf", digestB, 16)
-
-	newest, err := st.ListBlobs(ctx, store.ListBlobsOpts{NewestFirst: true, Limit: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(newest) != 1 || newest[0].SHA256 != digestB {
-		t.Fatalf("newest first = %+v, want the just-stored attachment", newest)
-	}
-
-	// The default stays largest first: a bounded manual run and the worker
-	// should spend their budget on the documents with the most text in them.
-	largest, err := st.ListBlobs(ctx, store.ListBlobsOpts{Limit: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(largest) != 1 || largest[0].SHA256 != digestA {
-		t.Fatalf("default order = %+v, want the largest blob", largest)
-	}
-}
-
 func TestExtractionStatsCountsDistinctContent(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
@@ -287,7 +193,7 @@ func TestExtractionStatsCountsDistinctContent(t *testing.T) {
 	seedMessage(t, st, "m2", "two", "invoice.pdf", digestA)
 	seedMessage(t, st, "m3", "three", "scan.png", digestB)
 
-	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Text: "abcdef", Status: "ok"}); err != nil {
+	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Text: "abcdef", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	stats, err := st.ExtractionStats(ctx)
@@ -319,7 +225,7 @@ func TestGetMessageReportsAttachmentTextStatus(t *testing.T) {
 		t.Fatalf("attachments = %+v, want one pending", atts)
 	}
 
-	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Text: "hello", Status: "ok"}); err != nil {
+	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Text: "hello", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, atts, err = st.GetMessage(ctx, id); err != nil {
@@ -330,25 +236,15 @@ func TestGetMessageReportsAttachmentTextStatus(t *testing.T) {
 	}
 }
 
-func TestValidSHA256(t *testing.T) {
-	if err := store.ValidSHA256(digestA); err != nil {
-		t.Fatal(err)
-	}
-	for _, bad := range []string{"", "abc", strings.Repeat("z", 64), digestA + "0"} {
-		if err := store.ValidSHA256(bad); err == nil {
-			t.Errorf("ValidSHA256(%q) accepted", bad)
-		}
-	}
-}
-
 func TestLateExtractionCannotOverwriteManualText(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
-	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Status: "manual", Text: "corrected"}); err != nil {
+	seedMessage(t, st, "m1", "see attached", "scan.pdf", digestA)
+	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Status: "manual", Text: "corrected"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, status := range []string{"ok", "empty", "needs_ocr", "failed"} {
-		if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Status: status, Text: "late worker"}); err != nil {
+		if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Status: status, Text: "late worker"}); err != nil {
 			t.Fatal(err)
 		}
 		got, err := st.GetBlobText(ctx, digestA)
@@ -356,7 +252,7 @@ func TestLateExtractionCannotOverwriteManualText(t *testing.T) {
 			t.Fatalf("manual text overwritten: %+v, %v", got, err)
 		}
 	}
-	if err := st.PutBlobText(ctx, store.BlobText{SHA256: digestA, Status: "manual", Text: "second correction"}); err != nil {
+	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Status: "manual", Text: "second correction"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := st.GetBlobText(ctx, digestA)

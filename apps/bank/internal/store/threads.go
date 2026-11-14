@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -8,40 +9,39 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-)
 
-const MaxThreadMessages = 2000
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
+)
 
 type Thread struct {
 	ThreadID  string          `json:"thread_id"`
 	Source    string          `json:"source"`
 	Messages  []MessageDetail `json:"messages"`
-	Truncated bool            `json:"truncated"`
-	HasBefore bool            `json:"has_before"`
-	HasAfter  bool            `json:"has_after"`
+	Truncated bool            `json:"truncated" doc:"The page is not the whole conversation: has_before or has_after is set."`
+	HasBefore bool            `json:"has_before" doc:"Older messages exist; pass the first message's ref as before."`
+	HasAfter  bool            `json:"has_after" doc:"Newer messages exist; pass the last message's ref as after."`
 }
 
-// Cursors name messages in this thread. Pages use (sent_at, id), so messages
-// with equal timestamps are neither repeated nor skipped.
+// Cursors name messages in this thread. Pages use (sort_at, id), so messages
+// with equal timestamps are neither repeated nor skipped, and undated
+// messages come first.
 type ThreadOpts struct {
-	Limit   int
-	Before  int64
-	After   int64
-	Around  int64
-	Latest  bool
-	Current bool
+	Limit  int
+	Before ref.Message
+	After  ref.Message
+	Around ref.Message
+	Latest bool
 }
 
 func (o ThreadOpts) Validate() error {
-	if o.Limit < 0 || o.Limit > MaxThreadMessages {
-		return fmt.Errorf("limit must be 0-%d", MaxThreadMessages)
+	if err := page.Check(page.Limit(o.Limit), 0); err != nil {
+		return err
 	}
 	positions := 0
-	for _, id := range []int64{o.Before, o.After, o.Around} {
-		if id < 0 {
-			return fmt.Errorf("message cursors must be positive")
-		}
-		if id > 0 {
+	for _, cursor := range []ref.Message{o.Before, o.After, o.Around} {
+		if !cursor.IsZero() {
 			positions++
 		}
 	}
@@ -49,7 +49,7 @@ func (o ThreadOpts) Validate() error {
 		positions++
 	}
 	if positions > 1 {
-		return fmt.Errorf("use only one of before, after, around, or latest")
+		return fail.Invalidf("use only one of before, after, around, or latest")
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func (e *AmbiguousThreadError) Error() string {
 }
 
 func (s *Store) threadSources(ctx context.Context, threadID string) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `select source from messages where thread_id = $1 union select source from mail_thread_aliases where old_id=$1 order by source`, threadID)
+	rows, err := s.pool.Query(ctx, `select distinct source from messages where thread_id = $1 order by source`, threadID)
 	if err != nil {
 		return nil, err
 	}
@@ -78,16 +78,14 @@ func (s *Store) GetThread(ctx context.Context, source, threadID string, limit in
 }
 
 func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o ThreadOpts) (Thread, error) {
-	out := Thread{ThreadID: cleanText(threadID), Source: source, Messages: []MessageDetail{}}
+	out := Thread{ThreadID: CleanText(threadID), Source: source, Messages: []MessageDetail{}}
 	if err := o.Validate(); err != nil {
 		return out, err
 	}
 	if out.ThreadID == "" {
-		return out, fmt.Errorf("thread id must not be empty")
+		return out, fail.Invalidf("thread id must not be empty")
 	}
-	if o.Limit == 0 {
-		o.Limit = MaxThreadMessages
-	}
+	o.Limit = page.Limit(o.Limit)
 	if source == "" {
 		sources, err := s.threadSources(ctx, out.ThreadID)
 		if err != nil {
@@ -102,17 +100,10 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 			return out, &AmbiguousThreadError{ThreadID: threadID, Sources: sources}
 		}
 	}
-	if !o.Current {
-		resolved, resolveErr := s.resolveMailThread(ctx, out.Source, out.ThreadID)
-		if resolveErr != nil {
-			return out, resolveErr
-		}
-		out.ThreadID = resolved
-	}
 	var anchor Message
-	id := max(o.Before, o.After, o.Around)
-	if id > 0 {
-		err := anchor.scanFull(s.pool.QueryRow(ctx, `select `+messageColumns+` from messages m where m.id = $1 and m.source = $2 and m.thread_id = $3`, id, out.Source, out.ThreadID))
+	cursor := cmp.Or(o.Before, o.After, o.Around)
+	if !cursor.IsZero() {
+		err := anchor.scanFull(s.pool.QueryRow(ctx, `select `+messageColumns+` from messages m where m.ref = $1 and m.source = $2 and m.thread_id = $3`, cursor.String(), out.Source, out.ThreadID))
 		if errors.Is(err, pgx.ErrNoRows) {
 			return out, ErrNotFound
 		}
@@ -122,7 +113,7 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 	}
 	var err error
 	switch {
-	case o.Around > 0:
+	case !o.Around.IsZero():
 		older, e := s.threadRows(ctx, out, anchor, "<", true, o.Limit/2)
 		if e != nil {
 			return out, e
@@ -133,9 +124,9 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 		}
 		out.Messages = append(out.Messages, older...)
 		out.Messages = append(out.Messages, newer...)
-	case o.Before > 0:
+	case !o.Before.IsZero():
 		out.Messages, err = s.threadRows(ctx, out, anchor, "<", true, o.Limit)
-	case o.After > 0:
+	case !o.After.IsZero():
 		out.Messages, err = s.threadRows(ctx, out, anchor, ">", false, o.Limit)
 	default:
 		out.Messages, err = s.threadRows(ctx, out, anchor, "", o.Latest, o.Limit)
@@ -144,16 +135,16 @@ func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o Th
 		return out, err
 	}
 	if len(out.Messages) == 0 {
-		if id == 0 {
+		if cursor.IsZero() {
 			return out, ErrNotFound
 		}
-		out.HasBefore, out.HasAfter = o.After > 0, o.Before > 0
+		out.HasBefore, out.HasAfter = !o.After.IsZero(), !o.Before.IsZero()
 	} else {
 		first, last := out.Messages[0], out.Messages[len(out.Messages)-1]
 		err = s.pool.QueryRow(ctx, `select
-			exists(select 1 from messages where source=$1 and thread_id=$2 and (sent_at,id)<($3,$4)),
-			exists(select 1 from messages where source=$1 and thread_id=$2 and (sent_at,id)>($5,$6))`,
-			out.Source, out.ThreadID, first.SentAt, first.ID, last.SentAt, last.ID).Scan(&out.HasBefore, &out.HasAfter)
+			exists(select 1 from messages where source=$1 and thread_id=$2 and (sort_at,id)<((select sort_at from messages where id=$3),$3)),
+			exists(select 1 from messages where source=$1 and thread_id=$2 and (sort_at,id)>((select sort_at from messages where id=$4),$4))`,
+			out.Source, out.ThreadID, first.ID, last.ID).Scan(&out.HasBefore, &out.HasAfter)
 		if err != nil {
 			return out, err
 		}
@@ -173,14 +164,14 @@ func (s *Store) threadRows(ctx context.Context, thread Thread, anchor Message, o
 	query := `select ` + messageColumns + ` from messages m where m.source=$1 and m.thread_id=$2`
 	args := []any{thread.Source, thread.ThreadID, limit}
 	if op != "" {
-		query += ` and (m.sent_at,m.id) ` + op + ` ($4,$5)`
-		args = append(args, anchor.SentAt, anchor.ID)
+		query += ` and (m.sort_at,m.id) ` + op + ` ((select sort_at from messages where id=$4),$4)`
+		args = append(args, anchor.ID)
 	}
 	order := "asc"
 	if descending {
 		order = "desc"
 	}
-	query += ` order by m.sent_at ` + order + `, m.id ` + order + ` limit $3`
+	query += ` order by m.sort_at ` + order + `, m.id ` + order + ` limit $3`
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -209,17 +200,17 @@ func (s *Store) loadAttachments(ctx context.Context, messages []MessageDetail) e
 	for i, m := range messages {
 		ids[i], byID[m.ID] = m.ID, i
 	}
-	rows, err := s.pool.Query(ctx, `select a.id, a.message_id, a.filename, a.mime_type, a.size_bytes, a.sha256,
-		coalesce(t.status, 'pending'), coalesce(length(t.text),0)
-		from attachments a left join blob_text t on t.sha256=a.sha256
-		where a.message_id=any($1) order by a.id`, ids)
+	rows, err := s.pool.Query(ctx, `select a.position, a.message_id, a.filename, a.mime_type, c.size_bytes, c.blake3,
+		coalesce(t.status, 'pending'), coalesce(t.chars, 0)
+		from attachments a join contents c on c.id = a.content_id left join texts t on t.content_id = a.content_id
+		where a.message_id=any($1) order by a.message_id, a.position`, ids)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var a Attachment
-		if err := rows.Scan(&a.ID, &a.MessageID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.SHA256, &a.TextStatus, &a.TextChars); err != nil {
+		if err := rows.Scan(&a.Position, &a.MessageID, &a.Filename, &a.MimeType, &a.SizeBytes, &a.BLAKE3, &a.TextStatus, &a.TextChars); err != nil {
 			return err
 		}
 		i := byID[a.MessageID]

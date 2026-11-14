@@ -8,6 +8,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
+	"github.com/aquitano/aqt/apps/bank/internal/ref"
 )
 
 // Contact is the owner's own name for one person, plus the source-specific
@@ -18,6 +22,7 @@ type Contact struct {
 	ID        int64          `json:"id"`
 	Name      string         `json:"name"`
 	Note      string         `json:"note,omitempty"`
+	Self      bool           `json:"self,omitempty" doc:"The archive's owner, whom browse leaves out of a thread's members."`
 	CreatedAt time.Time      `json:"created_at"`
 	Aliases   []ContactAlias `json:"aliases"`
 }
@@ -68,32 +73,26 @@ func (e *ErrConflict) Error() string {
 
 // aliasMatch is the predicate deciding whether message m belongs to the
 // contact named by the given placeholder. An alias matches when any form of
-// the sender, or of any recipient, equals it — and, for a scoped alias, when
-// the source agrees too.
+// the sender, or of any recipient, equals it and, for a scoped alias, when
+// the source agrees too: m.participants holds both spellings, which the GIN
+// index on it finds.
 func aliasMatch(contactPlaceholder string) string {
-	return `
-	exists (
-		select 1 from contact_aliases a
-		where a.contact_id = ` + contactPlaceholder + `
-		  and (a.source = '' or a.source = m.source)
-		  and (a.value_norm = any (bank_identity_keys(m.sender))
-		       or exists (select 1 from unnest(m.recipients) r
-		                  where a.value_norm = any (bank_identity_keys(r))))
-	)`
+	return ` m.participants && array(select case when a.source = '' then a.value_norm else a.source || chr(31) || a.value_norm end
+		from contact_aliases a where a.contact_id = ` + contactPlaceholder + `)`
 }
 
 func (s *Store) CreateContact(ctx context.Context, name, note string) (Contact, error) {
-	name = strings.TrimSpace(cleanText(name))
+	name = strings.TrimSpace(CleanText(name))
 	if name == "" {
-		return Contact{}, fmt.Errorf("contact name must not be empty")
+		return Contact{}, fail.Invalidf("contact name must not be empty")
 	}
-	c := Contact{Name: name, Note: cleanText(note), Aliases: []ContactAlias{}}
+	c := Contact{Name: name, Note: CleanText(note), Aliases: []ContactAlias{}}
 	err := s.pool.QueryRow(ctx,
 		`insert into contacts (name, note) values ($1, $2)
 		 on conflict (name) do nothing
 		 returning id, created_at`, name, c.Note).Scan(&c.ID, &c.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Contact{}, fmt.Errorf("contact %q already exists", name)
+		return Contact{}, fail.Invalidf("contact %q already exists", name)
 	}
 	return c, err
 }
@@ -160,7 +159,7 @@ func (s *Store) ImportContacts(ctx context.Context, in []ContactImport) ([]Conta
 }
 
 func (s *Store) DeleteContact(ctx context.Context, name string) error {
-	tag, err := s.pool.Exec(ctx, `delete from contacts where name = $1`, strings.TrimSpace(cleanText(name)))
+	tag, err := s.pool.Exec(ctx, `delete from contacts where name = $1`, strings.TrimSpace(CleanText(name)))
 	if err != nil {
 		return err
 	}
@@ -174,8 +173,8 @@ func (s *Store) DeleteContact(ctx context.Context, name string) error {
 func (s *Store) GetContact(ctx context.Context, name string) (Contact, error) {
 	var c Contact
 	err := s.pool.QueryRow(ctx,
-		`select id, name, note, created_at from contacts where name = $1`,
-		strings.TrimSpace(cleanText(name))).Scan(&c.ID, &c.Name, &c.Note, &c.CreatedAt)
+		`select id, name, note, self, created_at from contacts where name = $1`,
+		strings.TrimSpace(CleanText(name))).Scan(&c.ID, &c.Name, &c.Note, &c.Self, &c.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -227,7 +226,7 @@ func (s *Store) contactAliases(ctx context.Context, contactID int64) ([]ContactA
 
 func (s *Store) ListContacts(ctx context.Context) ([]Contact, error) {
 	rows, err := s.pool.Query(ctx, `
-		select c.id, c.name, c.note, c.created_at,
+		select c.id, c.name, c.note, c.self, c.created_at,
 		       a.value is not null, coalesce(a.source, ''), coalesce(a.value, ''), coalesce(a.value_norm, '')
 		from contacts c
 		left join contact_aliases a on a.contact_id = c.id
@@ -241,7 +240,7 @@ func (s *Store) ListContacts(ctx context.Context) ([]Contact, error) {
 		var c Contact
 		var a ContactAlias
 		var hasAlias bool
-		if err := rows.Scan(&c.ID, &c.Name, &c.Note, &c.CreatedAt,
+		if err := rows.Scan(&c.ID, &c.Name, &c.Note, &c.Self, &c.CreatedAt,
 			&hasAlias, &a.Source, &a.Value, &a.Normalized); err != nil {
 			return nil, err
 		}
@@ -260,9 +259,9 @@ func (s *Store) ListContacts(ctx context.Context) ([]Contact, error) {
 // the stored form and the matching form can never drift apart.
 func (s *Store) AddAlias(ctx context.Context, name, source, value string) (ContactAlias, error) {
 	var a ContactAlias
-	value = strings.TrimSpace(cleanText(value))
+	value = strings.TrimSpace(CleanText(value))
 	if value == "" {
-		return a, fmt.Errorf("alias must not be empty")
+		return a, fail.Invalidf("alias must not be empty")
 	}
 	c, err := s.GetContact(ctx, name)
 	if err != nil {
@@ -273,7 +272,7 @@ func (s *Store) AddAlias(ctx context.Context, name, source, value string) (Conta
 		return a, err
 	}
 	if norm == "" {
-		return a, fmt.Errorf("alias %q normalizes to nothing", value)
+		return a, fail.Invalidf("alias %q normalizes to nothing", value)
 	}
 	// An overlap would make one identity resolve to two people, silently. Refuse
 	// it here rather than at the unique index, so the error can say who has it.
@@ -318,12 +317,12 @@ func (s *Store) RemoveAlias(ctx context.Context, name, source, value string) err
 	tag, err := s.pool.Exec(ctx, `
 		delete from contact_aliases
 		where contact_id = $1 and source = $2 and value_norm = bank_identity_key($3)`,
-		c.ID, source, strings.TrimSpace(cleanText(value)))
+		c.ID, source, strings.TrimSpace(CleanText(value)))
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("contact %q has no alias %q in scope %q", name, value, scopeName(source))
+		return fail.Invalidf("contact %q has no alias %q in scope %q", name, value, scopeName(source))
 	}
 	return nil
 }
@@ -333,6 +332,21 @@ func scopeName(source string) string {
 		return "all sources"
 	}
 	return source
+}
+
+// SetSelf marks the contact as the archive's owner, so browse leaves the
+// owner's aliases out of a thread's members. One contact at most is the owner.
+func (s *Store) SetSelf(ctx context.Context, name string) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `update contacts set self = false where self`); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `update contacts set self = true where name = $1`, strings.TrimSpace(CleanText(name)))
+		if err == nil && tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return err
+	})
 }
 
 // ContactSourceCounts reports how many messages each source contributes, the
@@ -358,7 +372,7 @@ func (s *Store) ContactSourceCounts(ctx context.Context, contactID int64) ([]Con
 
 // ContactMessagesOpts narrows a contact's history the same way search does.
 type ContactMessagesOpts struct {
-	Before int64
+	Before ref.Message
 	Source string
 	Since  time.Time
 	Until  time.Time
@@ -370,28 +384,18 @@ type ContactMessagesOpts struct {
 }
 
 // ContactMessages returns one person's messages across every source, newest
-// first. There is no full-text index behind this — it is a scan over a
-// personal archive, which is fast enough and keeps the matching rule in one
-// readable place.
+// first.
 func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessagesOpts) ([]MessageDetail, error) {
 	c, err := s.GetContact(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	if o.Limit <= 0 {
-		o.Limit = 50
+	o.Limit = page.Limit(o.Limit)
+	if err := page.Check(o.Limit, o.Offset); err != nil {
+		return nil, err
 	}
-	if o.Limit > MaxSearchLimit {
-		return nil, fmt.Errorf("limit must be at most %d", MaxSearchLimit)
-	}
-	if o.Offset < 0 {
-		return nil, fmt.Errorf("offset must not be negative")
-	}
-	if o.Offset > MaxSearchOffset {
-		return nil, fmt.Errorf("offset must be at most %d; narrow with --source or --since instead", MaxSearchOffset)
-	}
-	if o.Before < 0 || (o.Before > 0 && o.Offset > 0) {
-		return nil, fmt.Errorf("use a positive before cursor without offset")
+	if !o.Before.IsZero() && o.Offset > 0 {
+		return nil, fail.Invalidf("use a before cursor without offset")
 	}
 	sql := `select ` + messageColumns + ` from messages m where` + aliasMatch("$1")
 	args := []any{c.ID}
@@ -408,18 +412,19 @@ func (s *Store) ContactMessages(ctx context.Context, name string, o ContactMessa
 	if !o.Until.IsZero() {
 		sql += " and m.sent_at < " + next(o.Until)
 	}
-	if o.Before > 0 {
-		var at time.Time
-		err := s.pool.QueryRow(ctx, `select m.sent_at from messages m where m.id=$2 and`+aliasMatch("$1"), c.ID, o.Before).Scan(&at)
+	if !o.Before.IsZero() {
+		var id int64
+		err := s.pool.QueryRow(ctx, `select m.id from messages m where m.ref=$2 and`+aliasMatch("$1"), c.ID, o.Before.String()).Scan(&id)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("before cursor is not a message for this contact")
 		}
 		if err != nil {
 			return nil, err
 		}
-		sql += " and (m.sent_at,m.id)<(" + next(at) + "," + next(o.Before) + ")"
+		anchor := next(id)
+		sql += " and (m.sort_at,m.id)<((select sort_at from messages where id=" + anchor + ")," + anchor + ")"
 	}
-	sql += " order by m.sent_at desc, m.id desc limit " + next(o.Limit)
+	sql += " order by m.sort_at desc, m.id desc limit " + next(o.Limit)
 	if o.Offset > 0 {
 		sql += " offset " + next(o.Offset)
 	}
@@ -460,11 +465,9 @@ var (
 // mail they account for, so attaching the people who actually matter does not
 // start with guessing what the archive calls them.
 func (s *Store) SuggestIdentities(ctx context.Context, limit int) ([]IdentitySuggestion, error) {
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > MaxSearchLimit {
-		return nil, fmt.Errorf("limit must be at most %d", MaxSearchLimit)
+	limit = page.Limit(limit)
+	if err := page.Check(limit, 0); err != nil {
+		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `
 		with seen as (

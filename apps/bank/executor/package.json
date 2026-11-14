@@ -1,0 +1,12 @@
+{
+  "name": "@aqt/bank-executor",
+  "private": true,
+  "description": "Search the owner's archive and the catalogue of files on disks through bank serve.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "apps": "0.0.1-beta.101"
+  }
+}

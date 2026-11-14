@@ -5,7 +5,7 @@ const attachment = type({
   filename: "string",
   "mime_type?": "string",
   "size_bytes?": "number",
-  sha256: "string",
+  blake3: "string",
   "text_status?": "string",
   "text_chars?": "number",
 });
@@ -24,18 +24,17 @@ const mailProvenance = type({
   message_id: "string",
   in_reply_to: "string[]",
   references: "string[]",
-  raw_ref: "string",
-  native_thread_id: "string",
-  has_reply_links: "boolean",
-  incomplete: "boolean",
-  conflict_key: "string",
+  native: "boolean",
 });
 
+// A message ref, the only way a message is named outside the server.
+export const messageRef = /^msg:[0-9a-f]{16}$/;
+
 export const message = type({
-  id: "number",
+  ref: "string",
   source: "string",
-  "ref?": "string",
-  "raw_ref?": "string",
+  "raw_input?": "number",
+  "raw_locator?": "string",
   "message_id?": "string",
   "mail?": mailProvenance,
   "external_id?": "string",
@@ -49,7 +48,8 @@ export const message = type({
   "body?": "string",
   "snippet?": "string",
   "attachment_snippet?": "string",
-  sent_at: "string",
+  // Absent when the source did not say when the message was sent.
+  "sent_at?": "string",
   "attachments?": attachment.array().or("null"),
   "mailboxes?": mailbox.array().or("null"),
 });
@@ -68,11 +68,12 @@ export type Contact = typeof contact.infer;
 const sourceStat = type({
   source: "string",
   messages: "number",
-  earliest: "string",
-  latest: "string",
+  undated: "number",
+  "earliest?": "string",
+  "latest?": "string",
   last_ingest: "string",
   last_sync: "string | null",
-  "coverage?": "string",
+  "note?": "string",
   stale: "boolean",
 });
 export type SourceStat = typeof sourceStat.infer;
@@ -89,8 +90,8 @@ const threadGroup = type({
   source: "string",
   thread_id: "string",
   n: "number",
-  last_at: "string",
-  last_id: "number",
+  "last_at?": "string",
+  last_ref: "string",
   sender: "string",
   subject: "string",
   preview: "string",
@@ -98,43 +99,25 @@ const threadGroup = type({
 });
 export type ThreadGroup = typeof threadGroup.infer;
 
-// Failed /v1 requests answer with `{"error": "..."}` in place of the payload.
-const errorBody = type({ error: "string" });
+// Every failed /v1 request answers with a `_tag` naming the failure and a
+// `message`; some tags carry fields of their own.
+const errorBody = type({ _tag: "string", message: "string" });
 export class RequestError extends Error {
   readonly status: number;
-  constructor(status: number, description: string) {
+  readonly tag: string;
+  constructor(status: number, tag: string, description: string) {
     super(description);
     this.status = status;
+    this.tag = tag;
   }
 }
-const mailConflict = type({
-  code: "'mail_thread_conflict'",
-  source: "string",
-  conflict_key: "string",
-  choices: "string[]",
-  unanchored_path: "string",
-});
-export class MailConflictError extends Error {
-  readonly conflict: typeof mailConflict.infer;
-  constructor(conflict: typeof mailConflict.infer) {
-    super("This conversation contains conflicting provider threads.");
-    this.conflict = conflict;
-  }
-}
-
 async function send(path: string, init?: RequestInit) {
   const r = await fetch(path, init);
   const body: unknown = await r.json().catch(() => undefined);
   if (r.ok) return body;
-  if (r.status === 409) {
-    const conflict = mailConflict(body);
-    if (!(conflict instanceof type.errors)) throw new MailConflictError(conflict);
-  }
   const failure = errorBody(body);
-  throw new RequestError(
-    r.status,
-    failure instanceof type.errors ? r.statusText : failure.error || r.statusText,
-  );
+  if (failure instanceof type.errors) throw new RequestError(r.status, "", r.statusText);
+  throw new RequestError(r.status, failure._tag, failure.message || r.statusText);
 }
 
 export async function api<T extends Type>(
@@ -159,56 +142,69 @@ export interface SearchParams {
   since?: string;
   until?: string;
   offset?: number;
-  match?: "any" | "all" | "phrase";
-  fuzzy?: number;
+  match?: "best" | "all" | "any";
   to?: string;
   person?: string;
 }
 
-export function search({
-  q,
-  mailbox_id,
-  subject,
-  has_attachment,
-  source,
-  from,
-  since,
-  until,
-  offset = 0,
-  match = "any",
-  fuzzy = 1,
-  to,
-  person,
-}: SearchParams) {
-  const p = new URLSearchParams({
-    q,
-    limit: "50",
-    offset: String(offset),
-    match,
-    fuzzy: String(fuzzy),
-  });
-  if (source) p.set("source", source);
-  if (mailbox_id) p.set("mailbox_id", String(mailbox_id));
-  if (subject) p.set("subject", subject);
-  if (has_attachment !== undefined) p.set("has_attachment", String(has_attachment));
-  if (from) p.set("from", from);
-  if (to) p.set("to", to);
-  if (person) p.set("person", person);
-  if (since) p.set("since", since);
-  if (until) p.set("until", until);
-  return api(`/v1/search?${p}`, message.array());
+const filePlace = type({
+  kind: "'message' | 'library_file' | 'disk'",
+  "ref?": "string",
+  name: "string",
+  "at?": "string",
+  "source?": "string",
+  "thread_id?": "string",
+  "entry_id?": "number",
+  "volume?": "string",
+  "path?": "string",
+  "missing?": "boolean",
+  "previous?": "boolean",
+});
+export type FilePlace = typeof filePlace.infer;
+
+const searchHit = type({
+  kind: "'message' | 'file' | 'item' | 'activity' | 'collection' | 'page'",
+  "ref?": "string",
+  "blake3?": "string",
+  "type?": "string",
+  title: "string",
+  "snippet?": "string",
+  "at?": "string",
+  "day_only?": "boolean",
+  "source?": "string",
+  "thread_id?": "string",
+  "places?": filePlace.array(),
+  "place_count?": "number",
+  score: "number",
+  matched: "string[]",
+  "partial?": "boolean",
+});
+export type SearchHit = typeof searchHit.infer;
+
+const searchResult = type({
+  hits: searchHit.array(),
+  counts: type({ kind: "string", matches: "number" }).array(),
+  coverage: "string[]",
+});
+export type SearchResult = typeof searchResult.infer;
+
+// One ranked list of every kind of record, a page at a time.
+export function find(params: SearchParams, offset = 0) {
+  const p = new URLSearchParams({ limit: String(SEARCH_PAGE), offset: String(offset) });
+  for (const [key, value] of Object.entries(params))
+    if (value !== undefined && key !== "offset") p.set(key, String(value));
+  return api(`/v1/search?${p}`, searchResult);
 }
 
-export function getMessage(id: string) {
-  return api(`/v1/messages/${id}`, message);
+export function getMessage(ref: string) {
+  return api(`/v1/messages/${ref}`, message);
 }
 
 export interface ThreadPosition {
-  before?: number;
-  after?: number;
-  around?: number;
+  before?: string;
+  after?: string;
+  around?: string;
   latest?: boolean;
-  current?: boolean;
 }
 export function getThread(source: string, threadId: string, position: ThreadPosition) {
   const p = new URLSearchParams({ source, limit: "100" });
@@ -251,7 +247,7 @@ export function removeContactAlias(name: string, value: string, source = "") {
   );
 }
 
-export function getContactMessages(name: string, before?: number) {
+export function getContactMessages(name: string, before?: string) {
   return api(
     `/v1/contacts/${encodeURIComponent(name)}/messages?limit=100${before ? `&before=${before}` : ""}`,
     message.array(),
@@ -266,17 +262,15 @@ export function getMailboxes(source: string) {
   return api(`/v1/mailboxes?${new URLSearchParams({ source })}`, mailbox.array());
 }
 
+// A page of conversations; after is the last_ref of the previous page's last row.
 export function browseThreads(
-  opts: Omit<SearchParams, "q" | "match" | "fuzzy" | "offset"> & {
+  opts: Omit<SearchParams, "q" | "match" | "offset"> & {
     order: "asc" | "desc";
-    offset: number;
+    after?: string;
   },
 ) {
-  const p = new URLSearchParams({
-    order: opts.order,
-    offset: String(opts.offset),
-    limit: String(BROWSE_PAGE),
-  });
+  const p = new URLSearchParams({ order: opts.order, limit: String(BROWSE_PAGE) });
+  if (opts.after) p.set("after", opts.after);
   if (opts.source) p.set("source", opts.source);
   if (opts.mailbox_id) p.set("mailbox_id", String(opts.mailbox_id));
   if (opts.has_attachment !== undefined) p.set("has_attachment", String(opts.has_attachment));
@@ -290,19 +284,13 @@ export const BROWSE_PAGE = 50;
 export const SEARCH_PAGE = 50;
 export const CONTEXT_PAGE = 100;
 
-export function getMailConflict(source: string, key: string, before?: number) {
-  const params = new URLSearchParams({ source, limit: String(CONTEXT_PAGE) });
-  if (before) params.set("before", String(before));
-  return api(`/v1/mail-conflicts/${encodeURIComponent(key)}?${params}`, thread);
-}
-
 export const libraryFile = type({
-  sha256: "string",
+  blake3: "string",
   filename: "string",
   mime_type: "string",
   size_bytes: "number",
   messages: "number",
-  last_at: "string",
+  "last_at?": "string",
   "snippet?": "string",
 });
 export type LibraryFile = typeof libraryFile.infer;
@@ -322,41 +310,44 @@ const blobText = type({ text: "string", status: "string" });
 export function getFileText(sum: string) {
   return api(`/v1/attachments/${sum}/text`, blobText);
 }
-const importReport = type({
+export const rawInput = type({
   id: "number",
   kind: "string",
-  input: "string",
-  started_at: "string",
+  name: "string",
+  size_bytes: "number",
+  received_at: "string",
   finished_at: "string | null",
-  status: "string",
+  status: "'running' | 'complete' | 'gaps' | 'failed'",
   error: "string",
-  result: type({
-    "inserted?": "number",
-    "duplicates?": "number",
-    "files_preserved?": "number",
-    "missing_media?": "number",
-    "unsupported_content?": "number",
-    "skipped?": "number",
-    "rejected?": "number",
-    "damaged?": "number",
-    "empty_conversations?": "number",
-    "failed_sessions?": "string[]",
-    "failed_channels?": "string[]",
-    "issues?": "string[]",
-    "warnings?": "string[]",
+  report: type({
+    inserted: "number",
+    duplicates: "number",
+    retired: "number",
+    attachments: "number",
+    library: type({
+      items: "number",
+      activity: "number",
+      collections: "number",
+      files: "number",
+      pages: "number",
+      duplicates: "number",
+    }),
+    issues: "Record<string, number> | null",
+    details: type({ kind: "string", detail: "string" }).array().or("null"),
   }),
 });
-export function getImportReports(before = 0) {
-  return api(`/v1/import-reports?before=${before}`, importReport.array());
+export type RawInput = typeof rawInput.infer;
+export function getRawInputs(before = 0) {
+  return api(`/v1/raw-inputs?before=${before}`, rawInput.array());
 }
 
-export function getMessageParent(id: number) {
-  return api(`/v1/messages/${id}/parent`, message);
+export function getMessageParent(ref: string) {
+  return api(`/v1/messages/${ref}/parent`, message);
 }
 
-export function getMessageBranch(id: number) {
+export function getMessageBranch(ref: string) {
   return api(
-    `/v1/messages/${id}/branch`,
+    `/v1/messages/${ref}/branch`,
     type({ messages: message.array(), incomplete: "boolean" }),
   );
 }

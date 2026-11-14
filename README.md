@@ -67,5 +67,5 @@ in XcodeGen `project.yml` files. It skips dependencies pinned to audited Git rev
 which require manual review. Dependabot does not read XcodeGen manifests.
 
 Database images share the same ParadeDB extension version. Keep each deployment's
-PostgreSQL major unchanged when updating an image: turnstash uses 17, and bank,
-attic and tracker use 18. Changing the major needs a separate data migration.
+PostgreSQL major unchanged when updating an image: turnstash uses 17, and bank
+and tracker use 18. Changing the major needs a separate data migration.

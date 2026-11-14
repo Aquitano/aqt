@@ -615,7 +615,7 @@ export function CollectionDetail({ id }: { id: string }) {
           {collection.snapshot && (
             <p className="text-xs text-muted-foreground">
               {recordedDate(collection.snapshot.captured)} · {collection.snapshot.completeness}{" "}
-              coverage · {collection.snapshot.entries?.length ?? 0} entries
+              snapshot · {collection.snapshot.entries?.length ?? 0} entries
             </p>
           )}
         </header>

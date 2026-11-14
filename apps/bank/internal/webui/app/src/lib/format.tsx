@@ -96,14 +96,18 @@ export function Linkified({ text }: { text: string }) {
   );
 }
 
-export const fmtDay = (d: string) =>
-  new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+// A message whose source gave no date has no sent_at.
+export const fmtDay = (d?: string) =>
+  d
+    ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "Undated";
 
-export const fmtTime = (d: string) =>
-  new Date(d).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+export const fmtTime = (d?: string) =>
+  d ? new Date(d).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
 
 // Compact list-row date: time today, day+month this year, month+year otherwise.
-export function fmtDate(d: string) {
+export function fmtDate(d?: string) {
+  if (!d) return "Undated";
   const t = new Date(d);
   const now = new Date();
   if (t.toDateString() === now.toDateString()) return fmtTime(d);

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
@@ -90,23 +91,30 @@ func TestContactResolvesOnePersonAcrossSources(t *testing.T) {
 		}
 	})
 
-	t.Run("search --person spans sources", func(t *testing.T) {
-		got, err := st.Search(ctx, "invoice", store.SearchOpts{Limit: 20, Fuzzy: 0, Person: "bjoern"})
+	t.Run("search --person finds the contact under each alias", func(t *testing.T) {
+		keys, err := st.ContactKeys(ctx, "bjoern")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(got) < 2 {
-			t.Fatalf("got %d results: %+v", len(got), got)
+		got := storetest.Messages(t, st, "invoice", search.Filters{Person: "bjoern", Participants: keys})
+		theirs := map[string]bool{}
+		for _, m := range msgs {
+			theirs[m.Ref] = true
 		}
-		for _, m := range got {
-			if m.Sender == "Carol" {
-				t.Error("--person let another person's message through")
+		sources := map[string]bool{}
+		for _, h := range got {
+			sources[h.Source] = true
+			if !theirs[h.Ref] {
+				t.Errorf("--person let %s, another person's message, through", h.Ref)
 			}
+		}
+		if len(sources) < 2 {
+			t.Fatalf("got %+v, want the contact's invoices from more than one source", got)
 		}
 	})
 
 	t.Run("an unknown person is a usage error", func(t *testing.T) {
-		if _, err := st.Search(ctx, "invoice", store.SearchOpts{Limit: 20, Person: "nobody"}); err == nil {
+		if _, err := st.ContactKeys(ctx, "nobody"); err == nil {
 			t.Error("searching for an unknown contact should say so, not return nothing")
 		}
 	})
@@ -219,9 +227,8 @@ func TestRemovingAnAliasFullyReversesTheAttribution(t *testing.T) {
 	if _, err := st.GetContact(ctx, "bjoern"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
 	}
-	msgs, err := st.Search(ctx, "invoice", store.SearchOpts{Limit: 20, Fuzzy: 0})
-	if err != nil || len(msgs) == 0 {
-		t.Fatalf("messages did not survive deleting the contact: %d, %v", len(msgs), err)
+	if msgs := storetest.Messages(t, st, "invoice", search.Filters{}); len(msgs) == 0 {
+		t.Fatal("messages did not survive deleting the contact")
 	}
 }
 

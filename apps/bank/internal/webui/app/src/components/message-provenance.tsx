@@ -6,14 +6,10 @@ import { useId, useState } from "react";
 import type { Message } from "@/lib/api";
 
 function groupingReason(mail: NonNullable<Message["mail"]>) {
-  if (mail.incomplete)
-    return "Grouping reached a configured limit. The saved headers may not yet match the conversation. Raise the limit and rebuild to retry.";
-  if (mail.conflict_key)
-    return "Reply headers connect conflicting provider threads. Provider groups are preserved and unanchored messages stay separate.";
-  if (mail.native_thread_id) return "This message has an explicit provider thread ID.";
-  if (mail.has_reply_links)
-    return "Reply headers connect this message to its conversation. The connection may come from another message.";
-  return "No reply links or provider thread ID were recorded.";
+  if (mail.native) return "The provider filed this message under its thread.";
+  if (mail.in_reply_to.length || mail.references.length)
+    return "Reply headers connect this message to its conversation. Other mail's headers can connect it too.";
+  return "No reply headers or provider thread were recorded. Replies to it can still join it.";
 }
 
 export function MessageProvenance({ message }: { message: Message }) {
@@ -24,16 +20,19 @@ export function MessageProvenance({ message }: { message: Message }) {
     ["Source", message.source],
     ["Message ref", message.ref || "Not recorded"],
     ["External ID", message.external_id || "Not recorded"],
-    ["Original archived input", message.raw_ref || "Not recorded"],
+    [
+      "Raw input",
+      message.raw_input
+        ? `#${message.raw_input}${message.raw_locator ? `, at ${message.raw_locator}` : ""}`
+        : "Not recorded",
+    ],
     ["Current conversation", message.thread_id || "None"],
     ...(mail
       ? [
-          ["Header archived input", mail.raw_ref || "Not recorded for these headers"],
           ["Normalized Message-ID", mail.message_id || "None usable"],
           ["In-Reply-To", mail.in_reply_to.join(", ") || "None"],
           ["References", mail.references.join(", ") || "None"],
-          ["Provider thread ID", mail.native_thread_id || "None recorded"],
-          ["Conflict key", mail.conflict_key || "None"],
+          ["Thread from provider", mail.native ? "Yes" : "No"],
         ]
       : []),
   ];
@@ -54,13 +53,7 @@ export function MessageProvenance({ message }: { message: Message }) {
         {open && (
           <Card className="mt-2 py-3 text-xs">
             <CardContent className="space-y-3 px-3">
-              {mail && (
-                <p
-                  className={mail.incomplete || mail.conflict_key ? "text-destructive" : undefined}
-                >
-                  {groupingReason(mail)}
-                </p>
-              )}
+              {mail && <p>{groupingReason(mail)}</p>}
               <dl className="grid gap-2">
                 {fields.map(([label, value]) => (
                   <div key={label}>

@@ -106,6 +106,8 @@ describe("mise registration", () => {
         const all = await run("check");
         expect(all.map((entry) => entry.task).toSorted()).toEqual([
           "bank:go",
+          "bank:go:unix",
+          "bank:go:windows",
           "bank:ts",
           "example:ts",
           "gallery:ts",

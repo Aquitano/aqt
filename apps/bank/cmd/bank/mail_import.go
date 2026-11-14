@@ -2,82 +2,43 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/aquitano/aqt/apps/bank/internal/archive"
-	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
-	"github.com/aquitano/aqt/apps/bank/internal/client"
-	"github.com/aquitano/aqt/apps/bank/internal/eml"
-	"github.com/aquitano/aqt/apps/bank/internal/importer"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/sources/eml"
 )
 
 type importMailTreeCmd struct {
-	Root      string `arg:""`
-	Source    string `required:"" help:"Mail account source."`
-	Layout    string `required:"" enum:"eml,thunderbird" help:"eml or thunderbird."`
-	NoExtract bool   `help:"Skip attachment text extraction."`
+	Root   string `arg:""`
+	Source string `required:"" help:"Mail account source."`
+	Layout string `required:"" enum:"eml,thunderbird" help:"eml or thunderbird."`
 }
 
+// Run imports each mail file of the tree as its own raw input, with its
+// folder as the input's mailbox.
 func (c *importMailTreeCmd) Run(ctx context.Context) error {
-	if err := archive.ValidSource(c.Source); err != nil {
+	if err := ingest.ValidSource(c.Source); err != nil {
 		return err
 	}
-	return withMailImporter(ctx, c.Source, c.NoExtract, func(importFile func(string, string, eml.MailImportContext) error) error {
-		return eml.WalkMailTree(filepath.Clean(c.Root), c.Layout, importFile, func(path, reason string) {
-			fmt.Fprintf(os.Stderr, "bank: skip %s: %s\n", path, reason)
-		})
-	})
-}
-
-func importMailboxFiles(ctx context.Context, kind, source, mailbox string, paths []string, noExtract bool) error {
-	for _, path := range paths {
-		info, err := os.Lstat(path)
+	api, closeAPI, err := connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer closeAPI()
+	return eml.WalkMailTree(filepath.Clean(c.Root), c.Layout, func(kind, path, mailbox string) error {
+		var options any = eml.EMLOptions{Source: c.Source, Mailbox: mailbox}
+		if kind == "mbox" {
+			options = eml.MboxOptions{Source: c.Source, Mailbox: mailbox}
+		}
+		raw, err := json.Marshal(options)
 		if err != nil {
 			return err
 		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("--mailbox takes regular files; use mail-tree for directories")
-		}
-		if err := (eml.MailImportContext{Version: 1, Kind: "export", Mailbox: mailbox, RelativePath: filepath.Base(path)}).Validate(); err != nil {
-			return err
-		}
-	}
-	return withMailImporter(ctx, source, noExtract, func(importFile func(string, string, eml.MailImportContext) error) error {
-		for _, path := range paths {
-			if err := importFile(kind, path, eml.MailImportContext{Version: 1, Kind: "export", Mailbox: mailbox, RelativePath: filepath.Base(path)}); err != nil {
-				return err
-			}
-		}
-		return nil
+		return importPath(ctx, api, kind, path, raw)
+	}, func(path, reason string) {
+		fmt.Fprintf(os.Stderr, "bank: skip %s: %s\n", path, reason)
 	})
-}
-
-func withMailImporter(ctx context.Context, source string, noExtract bool, run func(func(string, string, eml.MailImportContext) error) error) error {
-	if remote := client.FromEnv(); remote != nil {
-		return run(func(kind, path string, observation eml.MailImportContext) error {
-			result, err := client.ImportFile[eml.Result](ctx, remote, kind, source, path, &observation)
-			if err == nil {
-				printEmlResult(source, path, result)
-			}
-			return err
-		})
-	}
-	d, closeStore, err := openLocal(ctx)
-	if err != nil {
-		return err
-	}
-	defer closeStore()
-	err = run(func(kind, path string, observation eml.MailImportContext) error {
-		result, err := importer.Run(ctx, *d, kind, importer.Input{Path: path, Source: source, Mail: &observation})
-		if err == nil {
-			printImportResult(kind, source, path, result)
-		}
-		return err
-	})
-	if err != nil {
-		return err
-	}
-	return extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, noExtract)
 }

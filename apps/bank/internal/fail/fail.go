@@ -30,6 +30,23 @@ func Opf(format string, args ...any) error {
 	return Op(fmt.Errorf(format, args...))
 }
 
+// ErrInvalid is what an error from Invalidf matches: the caller's input is
+// wrong, so repeating the request unchanged cannot succeed. The HTTP API
+// answers it as InvalidRequest; an error marked neither like this nor by
+// another documented sentinel is the server's fault.
+var ErrInvalid = errors.New("invalid input")
+
+type invalidError struct{ msg string }
+
+func (e invalidError) Error() string        { return e.msg }
+func (e invalidError) Is(target error) bool { return target == ErrInvalid }
+
+// Invalidf is an error that matches ErrInvalid and reads as the formatted
+// message alone.
+func Invalidf(format string, args ...any) error {
+	return invalidError{fmt.Sprintf(format, args...)}
+}
+
 // IsOp reports whether err is operational. Context cancellation always is:
 // the input was never reached, so nothing about it can be blamed.
 func IsOp(err error) bool {

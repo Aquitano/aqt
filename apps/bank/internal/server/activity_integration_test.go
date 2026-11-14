@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -27,14 +28,14 @@ func TestLibraryGetFetchesOneActivity(t *testing.T) {
 	c, s := libraryClient(t)
 	activity := importWatch(t, s)
 
-	got, err := c.LibraryActivity(ctx, activity.ID)
+	got, err := client.Call(ctx, c, GetLibraryActivity, LibraryIDInput{ID: activity.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.ID != activity.ID || got.ItemID != activity.ItemID || got.Occurred != activity.Occurred {
 		t.Fatalf("activity = %+v", got)
 	}
-	if _, err := c.LibraryActivity(ctx, "activity_missing"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := client.Call(ctx, c, GetLibraryActivity, LibraryIDInput{ID: "activity_missing"}); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("missing activity: %v", err)
 	}
 }

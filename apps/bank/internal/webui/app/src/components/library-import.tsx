@@ -27,7 +27,7 @@ export function LibraryImportForm() {
       await Promise.all([
         client.invalidateQueries({ queryKey: ["library"] }),
         client.invalidateQueries({ queryKey: ["find"] }),
-        client.invalidateQueries({ queryKey: ["import-reports"] }),
+        client.invalidateQueries({ queryKey: ["raw-inputs"] }),
         client.invalidateQueries({ queryKey: ["stats"] }),
       ]);
     },
@@ -120,16 +120,21 @@ export function LibraryImportForm() {
               <AlertTitle>Import completed</AlertTitle>
               <AlertDescription>
                 <p>
-                  {mutation.data.items} items, {mutation.data.activity} activity records,{" "}
-                  {mutation.data.collections} collections, {mutation.data.files} files and{" "}
-                  {mutation.data.pages} pages processed.
+                  {mutation.data.report.library.items} new items,{" "}
+                  {mutation.data.report.library.activity} activity records,{" "}
+                  {mutation.data.report.library.collections} collections,{" "}
+                  {mutation.data.report.library.files} files and{" "}
+                  {mutation.data.report.library.pages} pages;{" "}
+                  {mutation.data.report.library.duplicates} already present.
                 </p>
-                {(mutation.data.skipped ?? 0) > 0 && (
-                  <p>{mutation.data.skipped} records skipped.</p>
-                )}
-                {(mutation.data.ads ?? 0) > 0 && <p>{mutation.data.ads} advertisements skipped.</p>}
-                {[...new Set(mutation.data.diagnostics ?? [])].map((diagnostic) => (
-                  <p key={diagnostic}>{diagnostic}</p>
+                {[
+                  ...new Set(
+                    (mutation.data.report.details ?? []).map(
+                      (issue) => `${issue.kind}: ${issue.detail}`,
+                    ),
+                  ),
+                ].map((detail) => (
+                  <p key={detail}>{detail}</p>
                 ))}
               </AlertDescription>
             </Alert>

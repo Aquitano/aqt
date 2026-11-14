@@ -5,6 +5,8 @@ import (
 	"os"
 	"sync"
 	"testing"
+
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 func TestConcurrentSameContentPut(t *testing.T) {
@@ -12,15 +14,15 @@ func TestConcurrentSameContentPut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := bytes.Repeat([]byte("concurrent upload\n"), 4096)
+	data := bytes.Repeat([]byte("concurrent upload\n"), 4096)
 	start := make(chan struct{})
 	results := make(chan error, 32)
-	digests := make(chan string, 32)
+	digests := make(chan content.Digest, 32)
 	var workers sync.WaitGroup
 	for range 32 {
 		workers.Go(func() {
 			<-start
-			digest, _, err := store.Put(bytes.NewReader(content))
+			digest, _, err := store.Put(t.Context(), bytes.NewReader(data))
 			results <- err
 			digests <- digest
 		})
@@ -39,7 +41,7 @@ func TestConcurrentSameContentPut(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(got, content) {
+		if !bytes.Equal(got, data) {
 			t.Fatal("concurrent upload corrupted bytes")
 		}
 	}

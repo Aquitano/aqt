@@ -1,13 +1,15 @@
 package library
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
+	"github.com/aquitano/aqt/apps/bank/internal/page"
 )
 
 var ErrConflict = errors.New("library revision conflict")
@@ -25,9 +27,11 @@ type Date struct {
 	Precision string `json:"precision"`
 }
 
+// Provenance names the raw input a record was read from and where inside it.
+// RawInput is zero for a record nobody imported, such as a manual item.
 type Provenance struct {
-	RawRef  string `json:"raw_ref"`
-	Locator string `json:"locator"`
+	RawInput int64  `json:"raw_input"`
+	Locator  string `json:"locator"`
 }
 
 type Item struct {
@@ -165,14 +169,14 @@ type CollectionEdit struct {
 
 type File struct {
 	Identity
-	ID         string     `json:"id"`
-	SHA256     string     `json:"sha256"`
-	Filename   string     `json:"filename"`
-	MimeType   string     `json:"mime_type"`
-	SizeBytes  int64      `json:"size_bytes"`
-	ItemIDs    []string   `json:"item_ids"`
-	Provenance Provenance `json:"provenance"`
-	TextStatus string     `json:"text_status"`
+	ID         string         `json:"id"`
+	BLAKE3     content.Digest `json:"blake3"`
+	Filename   string         `json:"filename"`
+	MimeType   string         `json:"mime_type"`
+	SizeBytes  int64          `json:"size_bytes"`
+	ItemIDs    []string       `json:"item_ids"`
+	Provenance Provenance     `json:"provenance"`
+	TextStatus string         `json:"text_status"`
 }
 
 type Page struct {
@@ -210,6 +214,7 @@ type ImportResult struct {
 
 type ListOptions struct {
 	Match   string
+	Exact   bool
 	Query   string
 	Source  string
 	Account string
@@ -230,9 +235,10 @@ type SearchResult struct {
 	Coverage    []string            `json:"coverage"`
 }
 
+// StableID derives a record's id from its identity. For the record kinds the id
+// is also the record's ref, such as item:<32 hex>.
 func StableID(kind string, identity Identity) string {
-	sum := sha256.Sum256([]byte(kind + "\x00" + identity.Source + "\x00" + identity.Account + "\x00" + identity.ExternalID))
-	return kind + "_" + hex.EncodeToString(sum[:16])
+	return kind + ":" + fieldhash.Hex(kind, identity.Source, identity.Account, identity.ExternalID)[:32]
 }
 
 func (d Date) Validate() error {
@@ -256,26 +262,26 @@ func (d Date) Validate() error {
 }
 
 func (o ListOptions) Validate() error {
-	if !in(o.Match, "", "any", "all", "phrase") {
-		return fmt.Errorf("match must be any, all or phrase")
+	if !in(o.Match, "", "best", "all", "any") {
+		return fail.Invalidf("match must be best, all or any")
 	}
 	if !in(o.Kind, "", "message", "item", "activity", "collection", "file", "page", "video", "movie", "series", "episode", "track", "album", "podcast", "book", "article", "other", "watch", "listen", "read", "play", "view", "purchase", "playlist", "library", "watchlist", "list") {
-		return fmt.Errorf("unsupported kind %q", o.Kind)
+		return fail.Invalidf("unsupported kind %q", o.Kind)
 	}
-	if o.Limit < 0 || o.Limit > 500 || o.Offset < 0 || o.Offset > 100000 {
-		return fmt.Errorf("limit must be 0-500 and offset 0-100000")
+	if err := page.Check(page.Limit(o.Limit), o.Offset); err != nil {
+		return err
 	}
 	for _, v := range []string{o.Since, o.Until} {
 		if v != "" {
 			if _, err := time.Parse("2006-01-02", v); err != nil {
 				if _, err = time.Parse(time.RFC3339Nano, v); err != nil {
-					return fmt.Errorf("date filters require YYYY-MM-DD or RFC3339")
+					return fail.Invalidf("date filters require YYYY-MM-DD or RFC3339")
 				}
 			}
 		}
 	}
 	if len(o.Query) > 4096 {
-		return fmt.Errorf("query exceeds 4096 bytes")
+		return fail.Invalidf("query exceeds 4096 bytes")
 	}
 	return nil
 }
@@ -432,8 +438,8 @@ func (b ImportBatch) Validate() error {
 		if err := validIdentity(v.Identity); err != nil {
 			return err
 		}
-		if len(v.SHA256) != 64 || strings.TrimLeft(v.SHA256, "0123456789abcdef") != "" || v.SizeBytes < 0 || v.Filename == "" {
-			return fmt.Errorf("file requires SHA256, filename and nonnegative size")
+		if v.BLAKE3.IsZero() || v.SizeBytes < 0 || v.Filename == "" {
+			return fmt.Errorf("file requires BLAKE3, filename and nonnegative size")
 		}
 	}
 	for _, v := range b.Pages {
@@ -451,18 +457,8 @@ func (b ImportBatch) Validate() error {
 }
 
 func (p Provenance) Validate() error {
-	if p.RawRef == "" {
-		return nil
-	}
-	reference := strings.ReplaceAll(p.RawRef, "\\", "/")
-	reference = strings.TrimPrefix(reference, "input:")
-	if !filepath.IsLocal(reference) || reference == "" || strings.HasPrefix(reference, "/") || strings.ContainsAny(reference, ":\x00") {
-		return fmt.Errorf("raw_ref must be a relative archive reference")
-	}
-	for _, part := range strings.Split(reference, "/") {
-		if part == ".." {
-			return fmt.Errorf("raw_ref cannot contain parent traversal")
-		}
+	if p.RawInput < 0 || len(p.Locator) > 4096 || strings.ContainsRune(p.Locator, 0) {
+		return fmt.Errorf("provenance needs a raw input id and a locator under 4096 bytes")
 	}
 	return nil
 }
