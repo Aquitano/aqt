@@ -41,7 +41,7 @@ COPY --from=build /out/bank /usr/local/bin/bank
 USER 65532:65532
 ENV BANK_DATA_DIR=/data
 ENTRYPOINT ["/usr/local/bin/bank"]
-CMD ["extract", "--ocr"]
+CMD ["worker", "--queue", "ocr"]
 
 # distroless/static carries the CA bundle Gmail's API needs and nothing else.
 # The tz database is compiled into the binary instead (see cmd/bank/main.go).

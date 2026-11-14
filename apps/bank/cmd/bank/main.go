@@ -44,6 +44,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/jobs"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
@@ -53,6 +54,8 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 	"github.com/aquitano/aqt/apps/bank/internal/verify"
 	"github.com/aquitano/aqt/apps/bank/internal/webui"
+	"github.com/aquitano/aqt/apps/bank/internal/worker"
+	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 const description = `bank — personal message archive
@@ -94,7 +97,8 @@ type cli struct {
 	Retire      retireCmd      `cmd:"" help:"Delete messages by external id prefix, keeping tombstones."`
 	Healthcheck healthcheckCmd `cmd:"" help:"Check server and database health."`
 	Migrate     migrateCmd     `cmd:"" help:"Bring the database schema up to this build; serve also does on start."`
-	Serve       serveCmd       `cmd:"" help:"HTTP API; logs JSON to stderr at BANK_LOG_LEVEL (default info)."`
+	Serve       serveCmd       `cmd:"" help:"HTTP API and the default job queue; logs JSON to stderr at BANK_LOG_LEVEL (default info)."`
+	Worker      workerCmd      `cmd:"" help:"Work one job queue, such as ocr, beside a running serve."`
 	UI          uiCmd          `cmd:"" name:"ui" help:"Local archive browser (needs BANK_URL)."`
 	Token       tokenCmd       `cmd:"" help:"API tokens."`
 }
@@ -903,11 +907,7 @@ type serveCmd struct {
 }
 
 func (c *serveCmd) Run(ctx context.Context) error {
-	var level slog.Level
-	if err := level.UnmarshalText([]byte(os.Getenv("BANK_LOG_LEVEL"))); err != nil {
-		level = slog.LevelInfo
-	}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+	logJSON()
 	if err := db.Migrate(ctx, databaseURL()); err != nil {
 		return err
 	}
@@ -920,12 +920,78 @@ func (c *serveCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	queue, err := worker.Serve(st.pool, workerDeps(st.Store, blobs, ""))
+	if err != nil {
+		return err
+	}
 	if listed, err := server.Tokens(dataDir()).List(); err == nil && len(listed) == 0 {
 		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
 	srv := server.New(st.Store, st.catalogue, blobs, dataDir(), sources.All)
 	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
-	return srv.ListenAndServe(ctx, c.Listen)
+	return worker.Run(ctx, queue, server.Drain, func(ctx context.Context) error {
+		return srv.ListenAndServe(ctx, c.Listen)
+	})
+}
+
+func workerDeps(st *store.Store, blobs *blob.Store, ocrLang string) worker.Deps {
+	return worker.Deps{
+		Target:  importer.Target{Store: st, Blobs: blobs, Kinds: sources.All},
+		DataDir: dataDir(), TempDir: stagingDir(), OCRLang: ocrLang,
+	}
+}
+
+// workerCmd works a queue in another process: the ocr queue in the image that
+// carries tesseract, which the server's image does not.
+type workerCmd struct {
+	Queue   string `default:"ocr" enum:"ocr,default" help:"The queue to work: ocr or default."`
+	Workers int    `default:"1" help:"Jobs worked at once."`
+	Lang    string `default:"eng" help:"OCR language, tesseract syntax (\"deu+eng\" for two)."`
+}
+
+func (c *workerCmd) Run(ctx context.Context) error {
+	if client.FromEnv() != nil {
+		return fmt.Errorf("worker reads blobs and writes text on the server's own box; run it there, not through BANK_URL")
+	}
+	if c.Workers < 1 {
+		return fmt.Errorf("--workers must be at least 1")
+	}
+	logJSON()
+	if c.Queue == jobs.OCRQueue {
+		o := extract.DefaultOptions()
+		o.OCRLang = c.Lang
+		if err := extract.OCRAvailable(o); err != nil {
+			return err
+		}
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
+	if err != nil {
+		return err
+	}
+	queue, err := worker.Queue(st.pool, workerDeps(st.Store, blobs, c.Lang), c.Queue, c.Workers)
+	if err != nil {
+		return err
+	}
+	slog.Info("working", "version", buildVersion(), "queue", c.Queue, "workers", c.Workers)
+	return worker.Run(ctx, queue, server.Drain, func(ctx context.Context) error {
+		<-ctx.Done()
+		return nil
+	})
+}
+
+// logJSON sends slog's JSON to stderr at BANK_LOG_LEVEL, for the processes
+// that run unattended.
+func logJSON() {
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(os.Getenv("BANK_LOG_LEVEL"))); err != nil {
+		level = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 }
 
 // uiCmd starts the local archive browser: the embedded page plus a proxy that

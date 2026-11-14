@@ -171,6 +171,7 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 			}
 		}
 	}
+	var fileContents []int64
 	for _, v := range b.Files {
 		id, err := libraryID("file", v.Identity, v.ID)
 		if err != nil {
@@ -191,6 +192,7 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 		}
 		if inserted {
 			r.Files++
+			fileContents = append(fileContents, contentID)
 		} else {
 			r.Duplicates++
 		}
@@ -199,6 +201,9 @@ func importLibrary(ctx context.Context, tx pgx.Tx, b library.ImportBatch) (libra
 				return r, err
 			}
 		}
+	}
+	if err := queueText(ctx, tx, fileContents); err != nil {
+		return r, err
 	}
 	for _, v := range b.Items {
 		for _, fileID := range v.FileIDs {

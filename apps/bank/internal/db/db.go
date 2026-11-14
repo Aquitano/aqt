@@ -8,9 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivermigrate"
 
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/packages/go/pgschema"
@@ -40,7 +44,8 @@ var (
 	ErrAhead  = errors.New("this binary is older than the database; install a newer build")
 )
 
-// Migrate brings the database up to the last embedded migration.
+// Migrate brings the database up to the last embedded migration, then River's
+// job tables up to the version this binary's River expects.
 func Migrate(ctx context.Context, databaseURL string) error {
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
@@ -59,7 +64,39 @@ func Migrate(ctx context.Context, databaseURL string) error {
 	if _, err := pool.Exec(ctx, atticstore.RecordTokenizers); err != nil {
 		return fmt.Errorf("record search tokenizers: %w", err)
 	}
-	return nil
+	return migrateRiver(ctx, pool)
+}
+
+// migrateRiver runs River's own migrator under the same lock. The pool holds
+// one connection, so the session that takes the lock is the one River's
+// migrator runs on, and closing the pool releases it.
+func migrateRiver(ctx context.Context, pool *pgxpool.Pool) error {
+	if _, err := pool.Exec(ctx, `select pg_advisory_lock($1)`, migrationLock); err != nil {
+		return err
+	}
+	migrator, err := riverMigrator(pool)
+	if err != nil {
+		return err
+	}
+	if _, err := migrator.Migrate(ctx, rivermigrate.DirectionUp, nil); err != nil {
+		return fmt.Errorf("migrate job queue: %w", err)
+	}
+	_, err = pool.Exec(ctx, `select pg_advisory_unlock($1)`, migrationLock)
+	return err
+}
+
+func riverMigrator(pool *pgxpool.Pool) (*rivermigrate.Migrator[pgx.Tx], error) {
+	return rivermigrate.New(riverpgxv5.New(pool), &rivermigrate.Config{Logger: slog.New(slog.DiscardHandler)})
+}
+
+// RiverVersion is the last migration of the River this binary is built with.
+func RiverVersion() (int, error) {
+	migrator, err := riverMigrator(nil)
+	if err != nil {
+		return 0, err
+	}
+	all := migrator.AllVersions()
+	return all[len(all)-1].Version, nil
 }
 
 // Open connects to a database at exactly the embedded version.
@@ -93,16 +130,41 @@ func open(ctx context.Context, config *pgxpool.Config) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// checkVersion fails unless the database is at the embedded version.
+// checkVersion fails unless the database is at the embedded version and its
+// job tables at this binary's River version.
 func checkVersion(ctx context.Context, pool *pgxpool.Pool) error {
 	current, latest, err := pgschema.Version(ctx, pool, Migrations)
-	switch {
-	case err != nil:
+	if err != nil {
 		return err
+	}
+	if err := compareVersions("database schema", int(current), int(latest)); err != nil {
+		return err
+	}
+	migrator, err := riverMigrator(pool)
+	if err != nil {
+		return err
+	}
+	applied, err := migrator.ExistingVersions(ctx)
+	if err != nil {
+		return err
+	}
+	river := 0
+	if len(applied) > 0 {
+		river = applied[len(applied)-1].Version
+	}
+	riverLatest, err := RiverVersion()
+	if err != nil {
+		return err
+	}
+	return compareVersions("job queue schema", river, riverLatest)
+}
+
+func compareVersions(what string, current, latest int) error {
+	switch {
 	case current < latest:
-		return fmt.Errorf("database schema is at version %d, this binary expects %d: %w", current, latest, ErrBehind)
+		return fmt.Errorf("%s is at version %d, this binary expects %d: %w", what, current, latest, ErrBehind)
 	case current > latest:
-		return fmt.Errorf("database schema is at version %d, this binary knows %d: %w", current, latest, ErrAhead)
+		return fmt.Errorf("%s is at version %d, this binary knows %d: %w", what, current, latest, ErrAhead)
 	}
 	return nil
 }

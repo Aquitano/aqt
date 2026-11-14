@@ -3,14 +3,12 @@ package client
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
@@ -69,22 +67,6 @@ func (c *Client) DeleteBlobText(ctx context.Context, d content.Digest) error {
 		return err
 	}
 	return resp.Body.Close()
-}
-
-func (c *Client) RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error) {
-	q := url.Values{}
-	if !since.IsZero() {
-		q.Set("since", since.Format(time.RFC3339Nano))
-	}
-	resp, err := c.request(ctx, http.MethodPost, "/v1/attachments/refresh", q, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	var out struct {
-		Reindexed int64 `json:"messages_reindexed"`
-	}
-	return out.Reindexed, json.NewDecoder(resp.Body).Decode(&out)
 }
 
 // OpenBlob downloads the bytes to a temp file, because the extractors seek and

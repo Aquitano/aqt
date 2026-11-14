@@ -45,7 +45,6 @@ func attachmentServer(t *testing.T) (*Server, *store.Store) {
 		t.Fatal(err)
 	}
 	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, sources.All)
-	t.Cleanup(s.extraction.done.Wait)
 	return s, st
 }
 
@@ -68,9 +67,6 @@ func TestAttachmentTextRoundTripOverHTTP(t *testing.T) {
 
 	if w = authed(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text", "chatsworth deed of sale"); w.Code != http.StatusOK {
 		t.Fatalf("put: %d %s", w.Code, w.Body)
-	}
-	if w = authed(t, s, http.MethodPost, "/v1/attachments/refresh", ""); w.Code != http.StatusOK {
-		t.Fatalf("refresh: %d %s", w.Code, w.Body)
 	}
 
 	msgs, err := st.Search(context.Background(), "chatsworth", store.SearchOpts{Fuzzy: 0, Limit: 10})

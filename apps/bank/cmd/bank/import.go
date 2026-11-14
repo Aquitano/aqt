@@ -13,15 +13,11 @@ import (
 
 	"github.com/alecthomas/kong"
 
-	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
-	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
-	"github.com/aquitano/aqt/apps/bank/internal/inbox"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
-	"github.com/aquitano/aqt/packages/go/extract"
 )
 
 // importCmd holds one subcommand per registered kind, built from the kind's
@@ -79,16 +75,7 @@ func (b *importBackend) importReader(ctx context.Context, kind, name string, r i
 	return nil
 }
 
-// extract reads text out of what the imports stored; the server does that
-// itself after each upload.
-func (b *importBackend) extract(ctx context.Context, skip bool) error {
-	if b.local == nil {
-		return nil
-	}
-	return extractAfterImport(ctx, blobtext.Local{Store: b.local.Store, Blobs: b.local.Blobs}, skip)
-}
-
-func runImport(ctx context.Context, kind string, paths []string, options json.RawMessage, noExtract bool) error {
+func runImport(ctx context.Context, kind string, paths []string, options json.RawMessage) error {
 	k, err := sources.All.Lookup(kind)
 	if err != nil {
 		return err
@@ -106,7 +93,7 @@ func runImport(ctx context.Context, kind string, paths []string, options json.Ra
 			return err
 		}
 	}
-	return b.extract(ctx, noExtract)
+	return nil
 }
 
 // printRawInput says what one import did: one line on stdout, and the
@@ -133,41 +120,8 @@ func printRawInput(r store.RawInput) {
 	}
 }
 
-// extractAfterImport reads text out of whatever the import just stored, so a
-// PDF is searchable the moment it lands rather than after a command nobody
-// remembers to run. Newest content first: the batch is bounded, and a backlog
-// of large pending blobs would otherwise consume all of it before reaching the
-// file that just arrived.
-//
-// Only the cheap extractors run: OCR is minutes per document and needs tools
-// that are deliberately absent from the deployed image, so it stays an
-// explicit `bank extract --ocr`. Failures here are reported and not fatal —
-// the messages are already archived, and text is rebuildable.
-//
-// What it did goes to stderr, not stdout: this runs inside `bank import inbox
-// --json`, whose stdout is a JSON document an agent parses.
-func extractAfterImport(ctx context.Context, a blobtext.Archive, skip bool) error {
-	if skip || os.Getenv("BANK_EXTRACT") == "off" {
-		return nil
-	}
-	o := extract.DefaultOptions()
-	o.TempDir = stagingDir()
-	sel := blobtext.Selection{Limit: blobtext.PostImportLimit, NewestFirst: true}
-	sum, err := blobtext.Run(ctx, a, sel, o, nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "bank: reading attachment text: %v\n", err)
-		return nil
-	}
-	if sum.Considered > 0 {
-		fmt.Fprintf(os.Stderr, "attachment text: %d read, %d need OCR, %d messages reindexed\n",
-			sum.ByStatus[string(extract.StatusOK)], sum.ByStatus[string(extract.StatusNeedsOCR)], sum.Reindexed)
-	}
-	return nil
-}
-
 type importInboxCmd struct {
-	JSON      bool `help:"JSON output."`
-	NoExtract bool `help:"Skip reading text out of attachments."`
+	JSON bool `help:"JSON output."`
 }
 
 func (c *importInboxCmd) Run(ctx context.Context) error {
@@ -181,17 +135,7 @@ func (c *importInboxCmd) Run(ctx context.Context) error {
 	defer closeStore()
 
 	inboxDir := filepath.Join(dataDir(), "inbox")
-	res, sweepErr := inbox.Sweep(ctx, inboxDir, d.Kinds.Names(), func(ctx context.Context, kind, path string) (store.RawInput, error) {
-		name, r, err := importer.Open(path)
-		if err != nil {
-			return store.RawInput{}, fail.Op(err)
-		}
-		defer r.Close()
-		return importer.Import(ctx, *d, kind, name, r, nil)
-	})
-	if err := extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, c.NoExtract); err != nil {
-		return err
-	}
+	res, sweepErr := importer.SweepInbox(ctx, *d, inboxDir)
 	if c.JSON {
 		if err := printJSON(res); err != nil {
 			return err
@@ -224,9 +168,8 @@ func (c *importInboxCmd) Run(ctx context.Context) error {
 // idempotent, so the only visible effect is whatever today's source does
 // better than the one that first read the input.
 type reimportCmd struct {
-	Kinds     []string `arg:"" optional:"" name:"kind" help:"Kinds to replay; every kind when none is given."`
-	NoExtract bool     `help:"Skip reading text out of attachments."`
-	JSON      bool     `help:"JSON output."`
+	Kinds []string `arg:"" optional:"" name:"kind" help:"Kinds to replay; every kind when none is given."`
+	JSON  bool     `help:"JSON output."`
 }
 
 func (c *reimportCmd) Run(ctx context.Context) error {
@@ -264,9 +207,6 @@ func (c *reimportCmd) Run(ctx context.Context) error {
 		}
 	} else if len(out) == 0 {
 		fmt.Println("no raw inputs to replay")
-	}
-	if err := extractAfterImport(ctx, blobtext.Local{Store: d.Store, Blobs: d.Blobs}, c.NoExtract); err != nil {
-		return err
 	}
 	if failed > 0 {
 		return fmt.Errorf("%d of %d raw inputs failed to replay", failed, len(out))

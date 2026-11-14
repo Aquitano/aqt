@@ -1,6 +1,6 @@
 # Deploying to the VPS
 
-Target: one VPS running everything in containers, Postgres data and the message archive on a LUKS-encrypted volume, encrypted offsite backups with restic, cron-driven sync.
+Target: one VPS running everything in containers, Postgres data and the message archive on a LUKS-encrypted volume, encrypted offsite backups with restic, sync and text extraction as jobs inside the server.
 
 Trust model, unchanged by any of this: encryption protects disks at rest and backups, and a running box is readable by whoever runs the hardware. What the container buys is narrower and worth being precise about — the process serving a lifetime of private correspondence over a network port runs as a non-root user, with a read-only root filesystem, no capabilities, and an image that contains one static binary and no shell. It reduces what a bug in that process can reach. It does not make the box trustworthy.
 
@@ -71,7 +71,7 @@ Start the server:
 ```sh
 BANK_VERSION=$(git rev-parse HEAD) docker compose up -d --build
 docker compose ps
-curl -s http://100.x.y.z:8480/healthz     # {"ok":true,"schema_version":1}
+curl -s http://100.x.y.z:8480/healthz     # {"ok":true,"schema_version":1,"queues":[...]}
 ```
 
 `COMPOSE_PROFILES` decides what that starts. Unset it and `docker compose up` starts only Postgres, which is what local development wants.
@@ -130,12 +130,14 @@ The ingestion connection still runs migrations and imports. The separate query
 connection is validated at startup. A missing query URL disables ad-hoc SQL; an
 unsafe configured login fails startup.
 
-Tern records the schema version in `public.schema_version`. Restore the
-pre-upgrade dump to roll back a schema change.
+Tern records the schema version in `public.schema_version`, and River records
+its job tables' version in `river_migration`. Restore the pre-upgrade dump to
+roll back a schema change.
 
-Migrations run in `bank migrate` and when the server starts. Every other command,
-including `attic`'s, stops with an error while the database is behind its binary,
-and an older binary stops instead of writing to a newer schema. A second migrator
+Migrations run in `bank migrate` and when the server starts, River's after the
+app's. Every other command, including `attic`'s and `bank worker`, stops with an
+error while the schema or the job tables are behind its binary, and an older
+binary stops instead of writing to newer ones. A second migrator
 gives up after ten seconds instead of waiting for the first. Take the dump before
 migrating, because no migration has a down step. A failed dump cannot replace the
 last good backup or reach the migration.
@@ -143,18 +145,22 @@ last good backup or reach the migration.
 ### Health and shutdown
 
 `/healthz` checks the database with a three-second deadline, reports the schema
-version it runs on, and returns 503 when it cannot connect. The image runs `bank healthcheck` itself, so Compose can probe
+version it runs on, and returns 503 when it cannot connect. Its `queues` list
+counts each job queue's `waiting`, `running` and `failed` jobs, with
+`oldest_waiting`, the time the longest-waiting job became due. A queue whose
+oldest job keeps aging has no worker. Failed jobs stay counted for seven days. The image runs `bank healthcheck` itself, so Compose can probe
 the distroless server. `bank version` reports the build revision supplied through
 `GIT_SHA`, which `ops/deploy.sh` sets, or else `BANK_VERSION`. SIGTERM and Ctrl-C
-stop new requests and allow active requests up to 30 seconds before the database
-pools close.
+stop new requests and new jobs, and allow active requests and running jobs up
+to 30 seconds before the database pools close. A job still running then is
+cancelled: a text job is tried again later, a scheduled one at its next tick.
 
 At most two imports parse at once, whatever their kind. An upload streams
 straight into the blob store, up to 16 GiB per file.
 
 ### Text inside attachments
 
-Importing already reads PDFs with a text layer, Office and OpenDocument files, HTML and plain text, so those are searchable without doing anything. Scanned pages and images are recorded as `needs_ocr`, because the tools that read pixels are deliberately not in the server's image.
+The server reads PDFs with a text layer, Office and OpenDocument files, HTML and plain text in text jobs that each import queues, so those are searchable moments after they land, without doing anything. Scanned pages and images are recorded as `needs_ocr` and queued for OCR, because the tools that read pixels are deliberately not in the server's image.
 
 Check what OCR would actually buy before turning it on. Documents produced by software carry text layers already, and if that is most of the archive the answer is nothing:
 
@@ -166,14 +172,13 @@ If the `needs_ocr` row is worth it, one setting turns it on. In `.env`:
 
 ```sh
 COMPOSE_PROFILES=server,ocr
-#BANK_OCR_INTERVAL=30m
 ```
 
 ```sh
 docker compose up -d --build
 ```
 
-That starts `bank-ocr`, a worker that drains the queue every half hour and stores the text it reads. Nothing else changes: an import records a scanned page as `needs_ocr`, the worker picks it up on its next pass, and the document becomes searchable without anyone running a command.
+That starts `bank-ocr`, which runs `bank worker --queue ocr`: it works the OCR jobs one at a time and stores the text it reads. Nothing else changes: an import records a scanned page as `needs_ocr`, which queues its OCR job, the worker takes it, and the document becomes searchable without anyone running a command. While the profile is off the jobs wait in the `ocr` queue, and `/healthz` shows them there. The worker leaves scheduling and retries to the server, so it only makes progress while `bank` runs too.
 
 `bank-ocr` shares the data directory and the database with the server, runs as the same non-root uid on a read-only rootfs, and publishes nothing. It is built from its own image because tesseract and poppler are a C++ image stack and a libc, which the process listening on a port should not carry. DESIGN.md has the rest of the reasoning.
 
@@ -194,7 +199,7 @@ bank fetch <blake3> -o page.png                    # the bytes
 bank attachment text <blake3> --set transcript.txt # store it, marked "manual"
 ```
 
-Text stored that way is never overwritten by a later automatic pass. `bank extract --ocr` also works straight from the laptop against `BANK_URL`, which is the option worth knowing if you have better tools there than tesseract: it downloads each pending file, runs whatever is installed locally, and stores only the text.
+Text stored that way is never overwritten by a job. `bank extract --ocr` also works straight from the laptop against `BANK_URL`, which is the option worth knowing if you have better tools there than tesseract: it downloads each pending file, runs whatever is installed locally, and stores only the text.
 
 ## 3. Gmail authorization on a headless box
 
@@ -264,7 +269,7 @@ bank contact list
 bank fetch <blake3> -o invoice.pdf
 ```
 
-`sync`, `token`, `verify`, `reimport`, `import inbox` and `mail rebuild` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
+`sync`, `worker`, `token`, `verify`, `reimport`, `import inbox` and `mail rebuild` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
 
 ### Scanning disks from the PC
 
@@ -279,20 +284,19 @@ attic scan E:\
 
 Build `attic.exe` from the commit the server runs. The server holds each scan's volume between its requests and records a scan that sends nothing for five minutes, or that is still open when the server stops, as interrupted; the next scan continues it. Archive listings that span several requests wait under `$BANK_DATA_DIR/scans` until they are complete. [attic's README](attic/README.md#scan-through-bank-serve) has the rest, including which attic commands still need `DATABASE_URL`.
 
-## 6. Cron
+## 6. Scheduled work
 
-Every scheduled job runs the same image as a one-off container, so it sees the same volume, the same database and the same timezone as the server.
+The server runs the Gmail sync every hour and sweeps the inbox every 15 minutes, as jobs in its own process, and logs each run to its JSON log (`docker compose logs bank`). A run never overlaps the previous one, and a failed run is retried by the next. `docker compose run --rm bank sync` and `docker compose run --rm bank import inbox` still work by hand, for example for a first Gmail backfill, which can outlast the job's three-hour limit.
+
+Cron keeps what has no job: the weekly Proton export and the backups in section 7. A cron entry runs the same image as a one-off container, so it sees the same volume, the same database and the same timezone as the server.
 
 ```cron
-17 *  * * *  cd /opt/aqt/apps/bank && docker compose run --rm -T bank sync >> /var/log/bank.log 2>&1
-40 3  * * *  cd /opt/aqt/apps/bank && docker compose run --rm -T bank extract >> /var/log/bank.log 2>&1
-*/15 * * * *  cd /opt/aqt/apps/bank && docker compose run --rm -T bank import inbox >> /var/log/bank.log 2>&1
 0 5  * * 0  cd /opt/aqt/apps/bank && docker compose run --rm -T bank import eml /data/inbox/proton >> /var/log/bank.log 2>&1
 ```
 
 `-T` matters in cron: without a TTY to allocate, Docker otherwise fails.
 
-The nightly `bank extract` is a backstop, not the main path — imports already read what they can. It catches whatever a bounded post-import batch left behind, and picks up content whose extractor only arrived with a later version. It does not do OCR; that is the `ocr` profile above.
+To read text again after an extractor improved, run `docker compose run --rm bank extract --status unsupported`, or `--status failed` for files whose jobs gave up.
 
 Manual sources (WhatsApp zips, Discord package, LinkedIn export, YouTube Takeout): scp into `/data/aqt-bank/inbox/<kind>/` and let the sweep pick them up, or run the import from the laptop with `BANK_URL` set (section 5) so rows and blobs still land together. Swept files move to `inbox/.done/<kind>/`; ones no importer could read move to `inbox/.rejected/<kind>/`. A file left in place means the import failed operationally (database down, disk full) and the next sweep retries it.
 

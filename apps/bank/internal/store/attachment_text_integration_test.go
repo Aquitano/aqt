@@ -3,16 +3,15 @@ package store_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
-	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/extract"
+	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 )
 
 var (
@@ -92,46 +91,9 @@ func TestBlobTextRoundTrip(t *testing.T) {
 	}
 }
 
-func TestListBlobsNewestFirstAcrossLibraryAndMail(t *testing.T) {
-	ctx := context.Background()
-	st, dsn := storetest.NewNamed(t)
-	id := seedMessage(t, st, "old", "Old message", "old.pdf", digestA)
-	storetest.Exec(t, dsn, `update messages set ingested_at='1999-01-01'`)
-	storetest.Exec(t, dsn, `update attachments set ingested_at='1999-01-01'`)
-	files := []library.File{}
-	for i := range 201 {
-		files = append(files, library.File{Identity: library.Identity{Source: "files", Account: "owner", ExternalID: fmt.Sprint(i)}, BLAKE3: content.Sum([]byte(fmt.Sprint(i))), Filename: fmt.Sprintf("old-%d.txt", i), MimeType: "text/plain", SizeBytes: 1})
-	}
-	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
-		t.Fatal(err)
-	}
-	storetest.Exec(t, dsn, `update library_files set ingested_at='2000-01-01'`)
-	if err := st.InsertAttachment(ctx, store.Attachment{MessageID: id, Position: 1, Filename: "fresh.pdf", MimeType: "application/pdf", SizeBytes: 1, BLAKE3: digestB}); err != nil {
-		t.Fatal(err)
-	}
-	rows, err := st.ListBlobs(ctx, store.ListBlobsOpts{Statuses: []string{store.StatusPending}, Limit: 200, NewestFirst: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 200 || rows[0].BLAKE3 != digestB {
-		t.Fatalf("new attachment to an old message was displaced: %+v", rows)
-	}
-	file := library.File{Identity: library.Identity{Source: "files", Account: "owner", ExternalID: "fresh"}, BLAKE3: content.Sum([]byte("c")), Filename: "fresh.txt", MimeType: "text/plain", SizeBytes: 1}
-	if _, err := st.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: []library.File{file}}); err != nil {
-		t.Fatal(err)
-	}
-	rows, err = st.ListBlobs(ctx, store.ListBlobsOpts{NewestFirst: true, Limit: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 1 || rows[0].BLAKE3 != file.BLAKE3 {
-		t.Fatalf("new library file was displaced: %+v", rows)
-	}
-}
-
 // The whole point of keying on the digest: one extraction serves every message
 // carrying that content, however many there are.
-func TestRefreshAttachmentTextSharesOneExtractionAcrossMessages(t *testing.T) {
+func TestStoredTextReachesEveryMessageCarryingIt(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
 	seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
@@ -141,19 +103,6 @@ func TestRefreshAttachmentTextSharesOneExtractionAcrossMessages(t *testing.T) {
 		BLAKE3: digestA, Text: "netherfield consulting invoice", Extractor: "pdf", Status: "ok",
 	}); err != nil {
 		t.Fatal(err)
-	}
-	n, err := st.RefreshAttachmentText(ctx, time.Time{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 2 {
-		t.Fatalf("reindexed %d messages, want 2", n)
-	}
-
-	// Idempotent: a second refresh with nothing changed must touch no rows,
-	// or every import would rewrite the whole table.
-	if n, err = st.RefreshAttachmentText(ctx, time.Time{}); err != nil || n != 0 {
-		t.Fatalf("second refresh: %d rows, %v; want 0, nil", n, err)
 	}
 
 	msgs, err := st.Search(ctx, "netherfield", store.SearchOpts{Fuzzy: 0, Limit: 10})
@@ -171,33 +120,30 @@ func TestRefreshAttachmentTextSharesOneExtractionAcrossMessages(t *testing.T) {
 	}
 }
 
-// A scoped refresh reaches recent messages and older ones sharing freshly
-// extracted content, and leaves the rest to a full refresh.
-func TestRefreshAttachmentTextSinceCoversRecentChanges(t *testing.T) {
+// Storing text refreshes the messages carrying that content and no others: a
+// stale row elsewhere stays as it was, where a whole-archive pass would fix it.
+func TestStoredTextRefreshesOnlyTheMessagesCarryingIt(t *testing.T) {
 	ctx := context.Background()
 	st, dsn := storetest.NewNamed(t)
-	sharing := seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
+	seedMessage(t, st, "m1", "first mail", "invoice.pdf", digestA)
 	seedMessage(t, st, "m2", "forwarded", "invoice.pdf", digestA)
-	untouched := seedMessage(t, st, "m3", "old mail", "scan.pdf", digestB)
-	for _, digest := range []content.Digest{digestA, digestB} {
-		if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digest, Text: "netherfield", Extractor: "pdf", Status: "ok"}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	storetest.Exec(t, dsn, `update attachments set ingested_at = now() - interval '1 hour' where message_id in ($1, $2)`, sharing, untouched)
-	storetest.Exec(t, dsn, `update texts t set extracted_at = now() - interval '1 hour' from contents c where c.id = t.content_id and c.blake3 = $1`, digestB)
+	other := seedMessage(t, st, "m3", "old mail", "scan.pdf", digestB)
+	storetest.Exec(t, dsn, `update messages set attachment_text = 'stale' where id = $1`, other)
 
-	if n, err := st.RefreshAttachmentText(ctx, time.Now().Add(-time.Minute)); err != nil || n != 2 {
-		t.Fatalf("scoped refresh: %d rows, %v; want the recent message and the one sharing its content", n, err)
+	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Text: "netherfield", Status: "ok"}); err != nil {
+		t.Fatal(err)
 	}
-	if n, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil || n != 1 {
-		t.Fatalf("full refresh: %d rows, %v; want only the untouched message left", n, err)
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from messages where attachment_text = 'netherfield'`); n != 2 {
+		t.Fatalf("%d messages carry the new text, want the two with the content", n)
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from messages where id = $1 and attachment_text = 'stale'`, other); n != 1 {
+		t.Fatal("a message without the content was rewritten")
 	}
 }
 
 // Clearing text has to reach the index too, or a bad transcription stays
 // searchable after being deleted.
-func TestRefreshAttachmentTextRemovesClearedText(t *testing.T) {
+func TestClearedTextLeavesTheIndex(t *testing.T) {
 	ctx := context.Background()
 	st := storetest.New(t)
 	seedMessage(t, st, "m1", "body text", "scan.pdf", digestA)
@@ -205,13 +151,7 @@ func TestRefreshAttachmentTextRemovesClearedText(t *testing.T) {
 	if err := st.PutBlobText(ctx, store.BlobText{BLAKE3: digestA, Text: "kedleston", Status: "manual"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil {
-		t.Fatal(err)
-	}
 	if err := st.DeleteBlobText(ctx, digestA); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := st.RefreshAttachmentText(ctx, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	msgs, err := st.Search(ctx, "kedleston", store.SearchOpts{Fuzzy: 0, Limit: 10})
@@ -258,33 +198,6 @@ func TestListBlobsByStatus(t *testing.T) {
 
 	if none, err := st.ListBlobs(ctx, store.ListBlobsOpts{Source: "whatsapp"}); err != nil || len(none) != 0 {
 		t.Fatalf("source filter: %d blobs, %v", len(none), err)
-	}
-}
-
-// The pass that runs after an import is bounded, so what just landed has to be
-// at the front of the batch rather than behind a backlog of bigger files.
-func TestListBlobsNewestFirst(t *testing.T) {
-	ctx := context.Background()
-	st := storetest.New(t)
-	seedMessage(t, st, "m1", "old", "backlog.pdf", digestA)
-	seedMessageSized(t, st, "m2", "new", "receipt.pdf", digestB, 16)
-
-	newest, err := st.ListBlobs(ctx, store.ListBlobsOpts{NewestFirst: true, Limit: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(newest) != 1 || newest[0].BLAKE3 != digestB {
-		t.Fatalf("newest first = %+v, want the just-stored attachment", newest)
-	}
-
-	// The default stays largest first: a bounded manual run and the worker
-	// should spend their budget on the documents with the most text in them.
-	largest, err := st.ListBlobs(ctx, store.ListBlobsOpts{Limit: 1})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(largest) != 1 || largest[0].BLAKE3 != digestA {
-		t.Fatalf("default order = %+v, want the largest blob", largest)
 	}
 }
 

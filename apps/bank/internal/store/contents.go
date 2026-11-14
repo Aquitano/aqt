@@ -25,15 +25,15 @@ func upsertContent(ctx context.Context, tx pgx.Tx, d content.Digest, size int64)
 
 // insertAttachment stores one attachment row and the contents row it names,
 // unless the message already holds an attachment at that position.
-func insertAttachment(ctx context.Context, tx pgx.Tx, a Attachment) (bool, error) {
-	contentID, err := upsertContent(ctx, tx, a.BLAKE3, a.SizeBytes)
+func insertAttachment(ctx context.Context, tx pgx.Tx, a Attachment) (contentID int64, added bool, err error) {
+	contentID, err = upsertContent(ctx, tx, a.BLAKE3, a.SizeBytes)
 	if err != nil {
-		return false, err
+		return 0, false, err
 	}
 	tag, err := tx.Exec(ctx, `insert into attachments (message_id, position, filename, mime_type, content_id) values ($1, $2, $3, $4, $5)
 		on conflict (message_id, position) do nothing`,
 		a.MessageID, a.Position, cleanText(a.Filename), cleanText(a.MimeType), contentID)
-	return tag.RowsAffected() == 1, err
+	return contentID, tag.RowsAffected() == 1, err
 }
 
 // UpsertContent records bytes already in the blob store and returns their

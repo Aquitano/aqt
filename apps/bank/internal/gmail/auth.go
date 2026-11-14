@@ -33,6 +33,12 @@ const scope = "https://www.googleapis.com/auth/gmail.readonly"
 func secretPath(dataDir string) string { return filepath.Join(dataDir, "gmail", "client_secret.json") }
 func tokenPath(dataDir string) string  { return filepath.Join(dataDir, "gmail", "token.json") }
 
+// Authorized reports whether `bank auth gmail` stored a token under dataDir.
+func Authorized(dataDir string) bool {
+	_, err := os.Stat(tokenPath(dataDir))
+	return err == nil
+}
+
 func loadOAuthConfig(dataDir string) (*oauth2.Config, error) {
 	raw, err := os.ReadFile(secretPath(dataDir))
 	if err != nil {

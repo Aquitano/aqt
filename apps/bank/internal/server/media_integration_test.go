@@ -86,7 +86,10 @@ func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 	if err != nil || len(snapshots) != 2 {
 		t.Fatalf("snapshot history: %+v %v", snapshots, err)
 	}
-	s.extraction.done.Wait()
+	// What the upload's text job stores; receipt.txt matches by its text alone.
+	if err = s.db.PutBlobText(ctx, store.BlobText{BLAKE3: files[0].BLAKE3, Text: "Invoice evidence for the library", Status: "ok"}); err != nil {
+		t.Fatal(err)
+	}
 	result, err := c.Find(ctx, "invoice", store.SearchOpts{Limit: 20}, library.ListOptions{Limit: 20})
 	if err != nil || len(result.Messages) != 1 || len(result.Items) != 1 || len(result.Files) != 2 || len(result.Collections) != 1 {
 		t.Fatalf("combined search: %+v %v", result, err)

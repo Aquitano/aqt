@@ -3,7 +3,6 @@ package blobtext
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
@@ -24,10 +23,6 @@ func (l Local) PutBlobText(ctx context.Context, bt store.BlobText) error {
 	return l.Store.PutBlobText(ctx, bt)
 }
 
-func (l Local) RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error) {
-	return l.Store.RefreshAttachmentText(ctx, since)
-}
-
 func (l Local) BlobText(ctx context.Context, d content.Digest) (store.BlobText, error) {
 	return l.Store.GetBlobText(ctx, d)
 }
@@ -42,8 +37,8 @@ func (l Local) ExtractionStats(ctx context.Context) ([]store.ExtractionStat, err
 
 // SetText stores text produced outside any extractor. The server checks the
 // digest is one the archive actually carries; against a local store there is
-// nobody else to check, and text no message points at would be reachable by
-// nothing and swept up by no refresh.
+// nobody else to check, and text nothing in the archive points at would be
+// reachable by nothing.
 func (l Local) SetText(ctx context.Context, bt store.BlobText) error {
 	known, err := l.Store.KnownAttachment(ctx, bt.BLAKE3)
 	if err != nil {

@@ -579,7 +579,7 @@ func TestReadTokensReadAndOnlyWriteTokensWrite(t *testing.T) {
 		{"a read token runs read-only SQL", reader, http.MethodPost, "/v1/query", `{"sql": "select 1"}`, http.StatusOK},
 		// The handler refuses the empty ID, which shows the token was let through.
 		{"a read token looks items up by POST", reader, http.MethodPost, "/v1/library/items/summaries", `{"ids": [""]}`, http.StatusUnprocessableEntity},
-		{"a read token cannot write", reader, http.MethodPost, "/v1/attachments/refresh", "", http.StatusForbidden},
+		{"a read token cannot write", reader, http.MethodDelete, "/v1/attachments/" + strings.Repeat("ab", 32) + "/text", "", http.StatusForbidden},
 		{"a read token cannot import", reader, http.MethodPost, "/v1/import/json", "[]", http.StatusForbidden},
 		{"a read token cannot record coverage", reader, http.MethodPut, "/v1/sources/gmail/coverage", `{"text": "x"}`, http.StatusForbidden},
 		{"a write token may write", writer, http.MethodPut, "/v1/sources/gmail/coverage", `{"text": 5}`, http.StatusUnprocessableEntity},

@@ -30,7 +30,6 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, sources.All)
-	t.Cleanup(s.extraction.done.Wait)
 	token, err := Tokens(dir).New("refs-test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +46,6 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 	if err != nil || len(files) != 1 {
 		t.Fatalf("upload: %+v, %v", files, err)
 	}
-	s.extraction.done.Wait()
 	digest := content.Sum(bytes)
 	sent := time.Date(2026, 8, 14, 8, 0, 0, 0, time.UTC)
 	id, err := s.db.InsertMessage(ctx, store.Message{Source: "whatsapp", ExternalID: "in", Sender: "alice", Body: "lunch?", SentAt: sent})

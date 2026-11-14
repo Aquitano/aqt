@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -18,12 +17,11 @@ import (
 // fakeArchive stands in for Postgres plus the blob store, so the pass itself
 // can be tested without either.
 type fakeArchive struct {
-	blobs     map[content.Digest]string // file path
-	names     map[content.Digest]string
-	refs      []store.BlobRef
-	stored    map[string]store.BlobText
-	refreshed int
-	openErr   error
+	blobs   map[content.Digest]string // file path
+	names   map[content.Digest]string
+	refs    []store.BlobRef
+	stored  map[string]store.BlobText
+	openErr error
 }
 
 func (f *fakeArchive) ListBlobs(_ context.Context, o store.ListBlobsOpts) ([]store.BlobRef, error) {
@@ -55,11 +53,6 @@ func (f *fakeArchive) PutBlobText(_ context.Context, bt store.BlobText) error {
 	}
 	f.stored[f.names[bt.BLAKE3]] = bt
 	return nil
-}
-
-func (f *fakeArchive) RefreshAttachmentText(context.Context, time.Time) (int64, error) {
-	f.refreshed++
-	return int64(len(f.stored)), nil
 }
 
 func (f *fakeArchive) OpenBlob(_ context.Context, d content.Digest) (string, func(), error) {
@@ -113,9 +106,6 @@ func TestRunExtractsAndRecordsEveryOutcome(t *testing.T) {
 	// one they would be retried forever.
 	if len(a.stored) != 3 {
 		t.Errorf("stored %d rows, want one per blob", len(a.stored))
-	}
-	if a.refreshed != 1 {
-		t.Errorf("refreshed %d times, want exactly one sweep at the end", a.refreshed)
 	}
 }
 
@@ -180,18 +170,6 @@ func TestRunNeverTouchesManualText(t *testing.T) {
 	}
 	if _, ok := a.stored["notes.txt"]; ok {
 		t.Error("a manual transcription was overwritten by an automatic pass")
-	}
-}
-
-// Nothing to do still has to refresh: a message imported after its
-// attachment's text was already known needs that text copied onto its row.
-func TestRunRefreshesEvenWithNothingToExtract(t *testing.T) {
-	a := &fakeArchive{}
-	if _, err := Run(context.Background(), a, Selection{}, extract.Options{}, nil); err != nil {
-		t.Fatal(err)
-	}
-	if a.refreshed != 1 {
-		t.Fatalf("refreshed %d times, want 1", a.refreshed)
 	}
 }
 

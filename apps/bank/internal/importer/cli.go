@@ -9,17 +9,16 @@ import (
 
 // RunFunc imports paths of one kind with the options given on the command
 // line.
-type RunFunc func(ctx context.Context, kind string, paths []string, options json.RawMessage, noExtract bool) error
+type RunFunc func(ctx context.Context, kind string, paths []string, options json.RawMessage) error
 
 // command is the `bank import <kind>` command of one kind. Its flags are the
 // fields of the kind's options type, so a source declares its flags by
 // declaring its options.
 type command[O any] struct {
-	Paths     []string `arg:"" name:"path" help:"Input files or directories; a directory is packed into one zip. - reads stdin."`
-	Options   O        `embed:""`
-	NoExtract bool     `help:"Skip reading text out of attachments."`
-	kind      string
-	run       RunFunc
+	Paths   []string `arg:"" name:"path" help:"Input files or directories; a directory is packed into one zip. - reads stdin."`
+	Options O        `embed:""`
+	kind    string
+	run     RunFunc
 }
 
 func (c *command[O]) Run(ctx context.Context) error {
@@ -27,7 +26,7 @@ func (c *command[O]) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.run(ctx, c.kind, c.Paths, options, c.NoExtract)
+	return c.run(ctx, c.kind, c.Paths, options)
 }
 
 func newCommand[O any](kind string) func(RunFunc) any {

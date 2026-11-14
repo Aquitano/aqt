@@ -17,7 +17,6 @@ import (
 	"github.com/alecthomas/kong"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
-	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
@@ -104,7 +103,6 @@ type libraryCmd struct {
 	JSON              bool   `help:"Accepted for symmetry; library output is always JSON."`
 	MaxSensitivity    string `default:"normal" help:"Maximum Markdown sensitivity for index: normal, personal or confidential."`
 	AllowConfidential bool   `help:"Explicitly publish confidential Markdown pages."`
-	NoExtract         bool   `help:"Skip file text extraction after upload."`
 
 	List             libraryListCmd             `cmd:"" help:"Items matching a query."`
 	Activity         libraryListCmd             `cmd:"" help:"Activity matching a query."`
@@ -305,7 +303,7 @@ func (c *libraryUploadCmd) Run(ctx context.Context, lib *libraryCmd) error {
 	if err != nil {
 		return err
 	}
-	return uploadLibrary(ctx, c.Paths, o, lib.NoExtract)
+	return uploadLibrary(ctx, c.Paths, o)
 }
 
 type libraryIndexCmd struct {
@@ -338,7 +336,7 @@ func (c *libraryIndexCmd) Run(ctx context.Context, lib *libraryCmd) error {
 	return b.importReader(ctx, "markdown", "publication.json", bytes.NewReader(encoded), nil)
 }
 
-func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, noExtract bool) error {
+func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions) error {
 	if len(paths) == 0 || len(paths) > 100 {
 		return fmt.Errorf("upload requires 1-100 files")
 	}
@@ -395,9 +393,6 @@ func uploadLibrary(ctx context.Context, paths []string, o library.ListOptions, n
 		files = append(files, value)
 	}
 	if _, err = local.Store.ImportLibrary(ctx, library.ImportBatch{Version: 1, Files: files}); err != nil {
-		return err
-	}
-	if err = extractAfterImport(ctx, blobtext.Local{Store: local.Store, Blobs: local.Blobs}, noExtract); err != nil {
 		return err
 	}
 	for i := range files {

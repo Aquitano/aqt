@@ -45,7 +45,7 @@ HTML timestamp parsing depends on the importing machine's timezone. Prefer JSON 
 
 The local inbox accepts `netflix`, `youtube-media`, and `library` directories in addition to its existing source directories. Use direct imports with `--account` for multiple profiles. The CLI packs a directory into one ZIP before it imports or uploads it.
 
-Files upload in batches of up to 100. The API streams their bytes into the existing blob store. PDF and Office text extraction uses the existing extraction queue. OCR still uses `bank extract --ocr`. Previews validate file bytes. Supported image and PDF files can preview in the UI. Audio previews include MP3, FLAC, and AAC, and playback depends on the browser's codec support. Supported video formats can also preview. Other files remain downloadable and searchable when text is available.
+Files upload in batches of up to 100. The API streams their bytes into the existing blob store. Each upload queues a text job that reads PDF and Office text. Scanned files wait in the OCR queue for `bank worker --queue ocr`. Previews validate file bytes. Supported image and PDF files can preview in the UI. Audio previews include MP3, FLAC, and AAC, and playback depends on the browser's codec support. Supported video formats can also preview. Other files remain downloadable and searchable when text is available.
 
 ## Publish Brain pages for search
 

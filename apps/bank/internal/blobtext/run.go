@@ -1,20 +1,14 @@
-// Package blobtext is bank's extraction pass: it turns attachment bytes into
-// searchable text with packages/go/extract and records the outcome per
-// content.
-//
-// Extraction is deliberately not part of importing. It is derived data —
-// rebuildable from the blobs at any time — and it is keyed on the content, so
-// a PDF attached to forty messages, or already read by a disk scan, is read
-// once. Keeping it a
-// separate pass is also what lets the expensive half (OCR) run somewhere other
-// than the process that serves the archive over a network port.
+// Package blobtext is `bank extract`, the manual extraction pass: it turns
+// attachment bytes into searchable text with packages/go/extract and records
+// the outcome per content. The job queue reads every new content on its own;
+// this pass re-reads a status by hand, or runs the tools on a laptop against
+// a remote archive.
 package blobtext
 
 import (
 	"context"
 	"fmt"
 	"slices"
-	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -24,11 +18,11 @@ import (
 // Archive is the part of the archive an extraction run touches. The local
 // Postgres store and the HTTP client both satisfy it, which is what lets the
 // same pass run on the server or on a laptop against a remote `bank serve` —
-// the laptop being where a heavier OCR model would live.
+// the laptop being where a heavier OCR model would live. Storing text also
+// updates the messages that carry it.
 type Archive interface {
 	ListBlobs(ctx context.Context, o store.ListBlobsOpts) ([]store.BlobRef, error)
 	PutBlobText(ctx context.Context, bt store.BlobText) error
-	RefreshAttachmentText(ctx context.Context, since time.Time) (int64, error)
 	// OpenBlob makes the bytes available as a local file, because every
 	// extractor here either seeks or is a subprocess taking a path.
 	OpenBlob(ctx context.Context, d content.Digest) (path string, cleanup func(), err error)
@@ -42,15 +36,6 @@ type Selection struct {
 	Statuses []string
 	Source   string
 	Limit    int
-	// NewestFirst works on the most recently attached content first instead of
-	// the largest. The post-import pass sets it: what just landed has to be
-	// searchable now, and with a backlog of large pending blobs the default
-	// order would spend the whole batch before reaching it.
-	NewestFirst bool
-	StoredSince time.Time
-	// RefreshSince limits the closing refresh to messages whose attachments
-	// were stored or extracted since it; zero refreshes every message.
-	RefreshSince time.Time
 }
 
 // Summary is what a run did, in the shape `--json` prints.
@@ -58,19 +43,12 @@ type Summary struct {
 	Considered int            `json:"considered"`
 	ByStatus   map[string]int `json:"by_status"`
 	Chars      int64          `json:"chars_extracted"`
-	Reindexed  int64          `json:"messages_reindexed"`
 	// Errors keeps the first few failures. A run over thousands of blobs
 	// should report what broke without printing a wall of it.
 	Errors []string `json:"errors,omitempty"`
 }
 
 const maxReportedErrors = 10
-
-// PostImportLimit bounds the batch an import reads, so importing three files
-// into an archive with a large unextracted backlog stays quick — and so an
-// upload cannot end up extracting a whole backlog.
-// Whatever is left over is what a full `bank extract` is for.
-const PostImportLimit = 200
 
 // defaultStatuses picks what an unqualified run works on. Asking for OCR has
 // to imply the files that need it, or the obvious command does nothing and the
@@ -85,9 +63,9 @@ func defaultStatuses(named []string, ocr bool) []string {
 	return []string{store.StatusPending}
 }
 
-// Run extracts text for the selected content and reindexes the messages that
-// carry it. Individual failures are recorded against their blob and the run
-// continues; only a broken archive aborts it.
+// Run extracts text for the selected content. Individual failures are
+// recorded against their blob and the run continues; only a broken archive
+// aborts it.
 func Run(ctx context.Context, a Archive, sel Selection, o extract.Options, progress func(store.BlobRef, extract.Result)) (Summary, error) {
 	sum := Summary{ByStatus: map[string]int{}}
 	if o.OCR {
@@ -96,13 +74,7 @@ func Run(ctx context.Context, a Archive, sel Selection, o extract.Options, progr
 		}
 	}
 	statuses := defaultStatuses(sel.Statuses, o.OCR)
-	blobs, err := a.ListBlobs(ctx, store.ListBlobsOpts{
-		Statuses:    statuses,
-		Source:      sel.Source,
-		Limit:       sel.Limit,
-		NewestFirst: sel.NewestFirst,
-		StoredSince: sel.StoredSince,
-	})
+	blobs, err := a.ListBlobs(ctx, store.ListBlobsOpts{Statuses: statuses, Source: sel.Source, Limit: sel.Limit})
 	if err != nil {
 		return sum, err
 	}
@@ -136,13 +108,6 @@ func Run(ctx context.Context, a Archive, sel Selection, o extract.Options, progr
 		if progress != nil {
 			progress(b, res)
 		}
-	}
-
-	// Always refresh, even when nothing was extracted: a message imported
-	// after its attachment's text was already known still needs the text
-	// copied onto its row.
-	if sum.Reindexed, err = a.RefreshAttachmentText(ctx, sel.RefreshSince); err != nil {
-		return sum, err
 	}
 	return sum, nil
 }

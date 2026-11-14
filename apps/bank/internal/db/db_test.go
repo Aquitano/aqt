@@ -30,6 +30,11 @@ func TestOpenRefusesADatabaseAtAnotherVersion(t *testing.T) {
 			t.Fatalf("%s: %v, want %v", tc.shift, err, tc.want)
 		}
 	}
+	dsn := storetest.Migrated(t)
+	storetest.Exec(t, dsn, `delete from river_migration where version = (select max(version) from river_migration)`)
+	if _, err := db.Open(t.Context(), dsn); !errors.Is(err, db.ErrBehind) {
+		t.Fatalf("job queue a migration behind: %v", err)
+	}
 }
 
 func TestConcurrentMigrationsSerialize(t *testing.T) {

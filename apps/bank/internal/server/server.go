@@ -58,13 +58,12 @@ type Catalogue interface {
 }
 
 type Server struct {
-	db         *store.Store // importers need the concrete store
-	read       reader
-	blobs      *blob.Store
-	kinds      importer.Registry
-	dataDir    string
-	extraction extraction
-	catalogue  Catalogue
+	db        *store.Store // importers need the concrete store
+	read      reader
+	blobs     *blob.Store
+	kinds     importer.Registry
+	dataDir   string
+	catalogue Catalogue
 }
 
 // New serves the archive in db and the files on disks in catalogue. The
@@ -98,12 +97,13 @@ func (s *Server) Handler() http.Handler {
 }
 
 type healthReport struct {
-	OK            bool  `json:"ok"`
-	SchemaVersion int32 `json:"schema_version"`
+	OK            bool              `json:"ok"`
+	SchemaVersion int32             `json:"schema_version"`
+	Queues        []store.QueueStat `json:"queues"`
 }
 
 // health checks the database with a short deadline and says which schema
-// version the server runs on.
+// version the server runs on and how much work waits in each job queue.
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
@@ -117,24 +117,21 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 		httpapi.Write(w, errUnavailable.New("the database does not answer"))
 		return
 	}
+	queues, err := s.db.QueueStats(ctx)
+	if err != nil {
+		slog.Error("health check", "error", err)
+		httpapi.Write(w, errUnavailable.New("the job queue does not answer"))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(healthReport{OK: true, SchemaVersion: version})
+	_ = json.NewEncoder(w).Encode(healthReport{OK: true, SchemaVersion: version, Queues: queues})
 }
 
 // ListenAndServe serves until ctx ends, then drains: the listener stops,
-// requests in flight get their time, background extraction stops, open scans
-// end as interrupted, and only then does the caller close the database pools.
+// requests in flight get their time, open scans end as interrupted, and only
+// then does the caller close the database pools.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) (err error) {
-	workCtx, cancelWork := context.WithCancel(context.Background())
-	s.extraction.ctx = workCtx
-	defer func() {
-		s.extraction.mu.Lock()
-		s.extraction.stopping = true
-		cancelWork()
-		s.extraction.mu.Unlock()
-		s.extraction.done.Wait()
-		err = errors.Join(err, s.catalogue.Close())
-	}()
+	defer func() { err = errors.Join(err, s.catalogue.Close()) }()
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           s.Handler(),

@@ -219,22 +219,37 @@ func insertMessages(ctx context.Context, tx pgx.Tx, messages []Message, out []Wr
 }
 
 func insertAttachments(ctx context.Context, tx pgx.Tx, records []Record, out []Written) error {
+	var messageIDs, contentIDs []int64
 	for i, r := range records {
 		if out[i].ID == 0 {
 			continue
 		}
 		for _, a := range r.Attachments {
 			a.MessageID = out[i].ID
-			added, err := insertAttachment(ctx, tx, a)
+			contentID, added, err := insertAttachment(ctx, tx, a)
 			if err != nil {
 				return err
 			}
 			if added {
 				out[i].Attachments++
+				messageIDs = append(messageIDs, a.MessageID)
+				contentIDs = append(contentIDs, contentID)
 			}
 		}
 	}
-	return nil
+	return attachmentsWritten(ctx, tx, messageIDs, contentIDs)
+}
+
+// attachmentsWritten queues text work for the contents that new attachment
+// rows name and copies the text already known onto their messages.
+func attachmentsWritten(ctx context.Context, tx pgx.Tx, messageIDs, contentIDs []int64) error {
+	if len(messageIDs) == 0 {
+		return nil
+	}
+	if err := queueText(ctx, tx, contentIDs); err != nil {
+		return err
+	}
+	return refreshAttachmentText(ctx, tx, messagesIn, messageIDs)
 }
 
 // InsertMessages writes messages without attachments and returns one id per
@@ -269,8 +284,11 @@ func (s *Store) InsertMessage(ctx context.Context, m Message) (int64, error) {
 // already holds one there.
 func (s *Store) InsertAttachment(ctx context.Context, a Attachment) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		_, err := insertAttachment(ctx, tx, a)
-		return err
+		contentID, added, err := insertAttachment(ctx, tx, a)
+		if err != nil || !added {
+			return err
+		}
+		return attachmentsWritten(ctx, tx, []int64{a.MessageID}, []int64{contentID})
 	})
 }
 

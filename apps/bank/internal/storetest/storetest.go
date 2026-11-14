@@ -7,6 +7,7 @@ package storetest
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"sync"
@@ -24,7 +25,20 @@ import (
 
 const urlVar = "BANK_TEST_DATABASE_URL"
 
-var migrator = pgschematest.Migrator(db.Migrations, db.Migrate)
+var migrator = withRiver{pgschematest.Migrator(db.Migrations, db.Migrate)}
+
+// withRiver rebuilds the template when River brings new migrations, which the
+// embedded files do not show.
+type withRiver struct{ pgtestdb.Migrator }
+
+func (m withRiver) Hash() (string, error) {
+	hash, err := m.Migrator.Hash()
+	if err != nil {
+		return "", err
+	}
+	version, err := db.RiverVersion()
+	return fmt.Sprintf("%s-river-%d", hash, version), err
+}
 
 // New returns a Store on a migrated database of its own, dropped when the
 // test passes.

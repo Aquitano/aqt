@@ -88,14 +88,15 @@ services:
       start_period: 30s
     stop_grace_period: 35s
 
-  # The OCR worker. It drains the needs_ocr queue in texts on a timer and
-  # writes the text back — nothing calls it and it calls nothing, so the
-  # server needs no docker socket, no sidecar API and no knowledge that it
-  # exists. It cannot be on the import path: a forty-page scan is minutes, and
-  # an upload must not wait for it.
+  # The OCR worker. It works the job queue's ocr queue, where a text job puts
+  # each content that came back needs_ocr, and writes the text back through
+  # the database. Nothing calls it and it calls nothing, so the server needs no
+  # docker socket, no sidecar API and no knowledge that it exists. It cannot
+  # be on the import path: a forty-page scan is minutes, and an upload must
+  # not wait for it.
   #
-  # Off unless COMPOSE_PROFILES names "ocr" (see .env.example). It is also
-  # usable as a one-off, which overrides the command below:
+  # Off unless COMPOSE_PROFILES names "ocr" (see .env.example). Jobs wait in
+  # the queue while it is off. A one-off pass over needs_ocr still works:
   #
   #   docker compose run --rm bank-ocr extract --ocr
   #
@@ -111,22 +112,14 @@ services:
       target: ocr
     image: aqt-bank-ocr:local
     mem_limit: 2g
-    command:
-      [
-        "extract",
-        "--ocr",
-        "--lang",
-        "${BANK_OCR_LANG:-eng}",
-        "--watch",
-        "--interval",
-        "${BANK_OCR_INTERVAL:-30m}",
-      ]
+    command: ["worker", "--queue", "ocr", "--lang", "${BANK_OCR_LANG:-eng}"]
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://bank:${POSTGRES_PASSWORD:-bank}@db:5432/bank?sslmode=disable
       BANK_DATA_DIR: /data
+      BANK_LOG_LEVEL: ${BANK_LOG_LEVEL:-info}
       TZ: ${TZ:-UTC}
     volumes:
       - ${BANK_DATA_DIR:-./.bankdata}:/data
@@ -138,6 +131,8 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # A running OCR job gets the same 30 seconds as the server's requests.
+    stop_grace_period: 35s
 
 volumes:
   pgdata:

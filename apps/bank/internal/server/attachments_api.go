@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -56,20 +55,14 @@ func (s *Server) registerAttachmentsAPI(api huma.API) {
 	huma.Register(api, httpapi.Operation{ID: "getAttachmentStats", Method: http.MethodGet, Path: "/v1/attachments/stats", Tag: "attachments",
 		Summary: "Count attachment content, bytes and text characters per text status",
 	}.For(api), s.attachmentStats)
-	huma.Register(api, httpapi.Operation{ID: "refreshAttachmentText", Method: http.MethodPost, Path: "/v1/attachments/refresh", Tag: "attachments",
-		Summary: "Copy stored attachment text onto the messages that carry it, so search finds it",
-		Description: "Call it once after storing or deleting text, not after every file: without since it sweeps " +
-			"every message.",
-		Writes: true,
-	}.For(api), s.refreshAttachmentText)
 	huma.Register(api, httpapi.Operation{ID: "getAttachmentText", Method: http.MethodGet, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
 		Summary: "Return the text read from a file",
 		Errors:  []httpapi.Kind{httpapi.NotFound},
 	}.For(api), s.attachmentText)
 	putText := httpapi.Operation{ID: "setAttachmentText", Method: http.MethodPut, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
 		Summary: "Store text read from a file somewhere else, such as a transcription",
-		Description: "The body is the text. status defaults to manual, which no automatic pass overwrites. Text over " +
-			"the 4 MiB a row holds is refused rather than cut. Call refreshAttachmentText afterwards so search finds it.",
+		Description: "The body is the text. status defaults to manual, which no job overwrites. Text over " +
+			"the 4 MiB a row holds is refused rather than cut. Messages carrying the file search the new text at once.",
 		Errors: []httpapi.Kind{httpapi.NotFound},
 		Writes: true,
 	}.For(api)
@@ -78,8 +71,8 @@ func (s *Server) registerAttachmentsAPI(api huma.API) {
 	// An empty body is text too: a status such as needs_ocr carries none.
 	httpapi.Registered(api, putText.Method, putText.Path).RequestBody.Required = false
 	huma.Register(api, httpapi.Operation{ID: "deleteAttachmentText", Method: http.MethodDelete, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
-		Summary:     "Drop the text stored for a file, which makes the file pending again",
-		Description: "Messages keep the old text in search until the next refresh.",
+		Summary:     "Drop the text stored for a file and queue it to be read again",
+		Description: "Messages carrying the file stop finding the old text at once.",
 		Errors:      []httpapi.Kind{httpapi.NotFound},
 		Writes:      true,
 	}.For(api), s.deleteAttachmentText)
@@ -162,26 +155,6 @@ func (s *Server) attachments(ctx context.Context, in *attachmentsInput) (*httpap
 
 func (s *Server) attachmentStats(ctx context.Context, _ *struct{}) (*httpapi.Body[[]store.ExtractionStat], error) {
 	return list(s.db.ExtractionStats(ctx))
-}
-
-type refreshAttachmentTextInput struct {
-	Since string `query:"since" format:"date-time" doc:"Only messages with an attachment stored or read at or after this RFC 3339 time. Default: every message."`
-}
-
-type attachmentTextRefreshed struct {
-	MessagesReindexed int64 `json:"messages_reindexed" doc:"Messages whose searchable attachment text changed."`
-}
-
-func (s *Server) refreshAttachmentText(ctx context.Context, in *refreshAttachmentTextInput) (*httpapi.Body[attachmentTextRefreshed], error) {
-	var since time.Time
-	if in.Since != "" {
-		var err error
-		if since, err = time.Parse(time.RFC3339Nano, in.Since); err != nil {
-			return nil, httpapi.Invalid.New("since must be an RFC 3339 time")
-		}
-	}
-	n, err := s.db.RefreshAttachmentText(ctx, since)
-	return reply(attachmentTextRefreshed{MessagesReindexed: n}, err)
 }
 
 func (s *Server) attachmentText(ctx context.Context, in *digestInput) (*httpapi.Body[store.BlobText], error) {

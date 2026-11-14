@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -98,7 +97,6 @@ var imports = make(chan struct{}, 2)
 const maxOptions = 64 << 10
 
 func (s *Server) importInput(ctx context.Context, kind importer.Kind, in *importInput) (*httpapi.Body[store.RawInput], error) {
-	received := time.Now()
 	parts, err := in.Multipart(maxUpload)
 	if err != nil {
 		return nil, err
@@ -147,7 +145,6 @@ func (s *Server) importInput(ctx context.Context, kind importer.Kind, in *import
 	if err != nil {
 		return nil, importFailure(err)
 	}
-	s.extractAfterImport(received)
 	return &httpapi.Body[store.RawInput]{Body: raw}, nil
 }
 
@@ -172,7 +169,6 @@ type uploadLibraryFilesInput struct {
 // uploadLibraryFiles checks everything the request names before it stores a
 // byte, so a refused upload leaves no blob that nothing refers to.
 func (s *Server) uploadLibraryFiles(ctx context.Context, in *uploadLibraryFilesInput) (*httpapi.Body[[]library.File], error) {
-	received := time.Now()
 	source, account := cmp.Or(in.Source, "files"), cmp.Or(in.Account, "owner")
 	if err := ingest.ValidSource(source); err != nil {
 		return nil, httpapi.Invalid.New(err.Error())
@@ -222,7 +218,6 @@ func (s *Server) uploadLibraryFiles(ctx context.Context, in *uploadLibraryFilesI
 	if _, err := s.db.ImportLibrary(ctx, batch); err != nil {
 		return nil, libraryError(err)
 	}
-	s.extractAfterImport(received)
 	for i := range files {
 		row, err := s.db.LibraryFile(ctx, files[i].ID)
 		if err != nil {

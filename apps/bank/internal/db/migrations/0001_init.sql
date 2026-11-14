@@ -18,8 +18,8 @@ create table contents (
 -- A ref is the first eight bytes of the digest, printed as 16 hex characters.
 create index contents_ref_idx on contents (substr(blake3, 1, 8));
 
--- Text read from documents by a disk scan or by `bank extract`, or written
--- by hand. It belongs to the content, so a PDF attached to forty messages and
+-- Text read from documents by a disk scan or by a text job, or written by
+-- hand. It belongs to the content, so a PDF attached to forty messages and
 -- copied to three disks is read once and found in every place. Each reader
 -- skips a content that already has a row.
 create table texts (
@@ -100,8 +100,9 @@ create table messages (
     message_id         text not null default '',
     -- Text read out of the message's attachments, denormalized so one BM25
     -- index gives one score, one ranking and working snippets. Two indexes
-    -- would need a fusion rule. store.RefreshAttachmentText maintains it
-    -- wholesale, so there is no trigger to keep in sync.
+    -- would need a fusion rule. The store refreshes it for the messages each
+    -- attachment or text write touches, so there is no trigger and no
+    -- archive-wide pass.
     attachment_text    text not null default '',
     parent_external_id text not null default '',
     branch_id          text not null default '',

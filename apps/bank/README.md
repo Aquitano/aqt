@@ -19,7 +19,7 @@ go build -o bank ./cmd/bank
 ./bank migrate                # create or upgrade the schema
 
 ./bank auth gmail             # once; then:
-./bank sync                   # incremental Gmail pull (cron this)
+./bank sync                   # incremental Gmail pull (bank serve runs it hourly)
 
 ./bank imap --config imap.json --check   # check IMAP login and folders
 ./bank imap --config imap.json          # collect Proton Bridge/Gmail IMAP continuously
@@ -44,9 +44,11 @@ go build -o bank ./cmd/bank
 echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -
 
 ./bank import inbox                             # sweep $BANK_DATA_DIR/inbox/<kind>/
+                                                #  (bank serve sweeps every 15 minutes)
 
-./bank extract                                  # read text out of attachments
-./bank extract --ocr                            # scanned documents (needs tesseract)
+./bank serve                                    # the API, text jobs, sync and sweep
+./bank worker --queue ocr                       # OCR jobs for scanned documents (needs tesseract)
+./bank extract --status failed                  # re-read text by hand
 ./bank attachment stats                         # how much is searchable inside
 
 ./bank contact add alice                        # one person, many identities
@@ -106,7 +108,7 @@ assets against Git. Commit the rebuilt `dist/` with its source changes. CI and
 
 Agents on a client machine get the CLI handed to them by a Claude Code skill: [skill/README.md](skill/README.md).
 
-Deployment (VPS, LUKS, containerized server, restic, cron): [DEPLOY.md](DEPLOY.md).
+Deployment (VPS, LUKS, containerized server, OCR worker, restic, cron): [DEPLOY.md](DEPLOY.md).
 
 Attachments can contain any file type. Gmail sync and EML/MBOX imports preserve MIME attachments, including inline images. A link to a cloud-hosted file is still a link; Bank does not download its target.
 
@@ -114,11 +116,13 @@ Gmail retries reconcile attachments even when the message row already exists. To
 
 ChatGPT imports preserve referenced assets included in the full export ZIP or directory. Importing only `conversations.json` imports text without the asset files. Missing files appear in the import's missing-media count. Reimporting a fuller export fills missing attachments even when a message already has some files, without duplicating those files.
 
-Attachment storage and text extraction have different coverage. Audio, video, archives, and other binary files can be stored and downloaded without searchable contents. Supported document attachments are searchable inside. Importing reads text out of PDFs, Office and OpenDocument files, HTML and plain text, keyed on the content so a document attached to forty messages, or already read by an attic scan, is read once.
+Attachment storage and text extraction have different coverage. Audio, video, archives, and other binary files can be stored and downloaded without searchable contents. Supported document attachments are searchable inside. A text job reads PDFs, Office and OpenDocument files, HTML and plain text, keyed on the content so a document attached to forty messages, or already read by an attic scan, is read once.
 
-Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at. `bank extract --ocr` reads them wherever tesseract is installed: on the deployed box that is a worker draining the queue on a timer, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <blake3> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no later pass overwrites it. `BANK_EXTRACT=off` or `bank import --no-extract` leaves attachment text alone entirely.
+Background work runs as jobs in a [River](https://riverqueue.com) queue in the same database. Storing an attachment or a library file whose bytes have no text yet queues a text job in the same transaction, so the job exists exactly when the row does, and the content is queued once however many messages carry it. `bank serve` works the default queue, four jobs at a time, and schedules the Gmail sync every hour and the inbox sweep every 15 minutes. A tick that finds the previous run still going is skipped, and a failed run is retried by the next tick. A text job stores the text and updates the messages that carry the content. A text or OCR job that fails or panics is tried three times and then recorded as `failed`; `bank extract --status failed` reads those again by hand. Imports on a machine without a running `bank serve` queue their text jobs until one starts. `/healthz` reports how many jobs wait, run and have failed in each queue.
 
-Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, which include raw inputs, and the inbox; default `~/.local/share/aqt-bank`), `BANK_EXTRACT`.
+Scanned pages and images hold no text layer, so they are recorded as `needs_ocr` rather than guessed at, which queues an OCR job on the `ocr` queue. Only `bank worker --queue ocr` works that queue, wherever tesseract is installed: on the deployed box that is the `bank-ocr` service, turned on by adding `ocr` to `COMPOSE_PROFILES`. `bank attachment text <blake3> --set` takes a transcription from anywhere else, including a model running on the client, and marks it `manual` so no job overwrites it. `--clear` drops the text and queues the content to be read again.
+
+Config via env (see `.env.example`): `DATABASE_URL`, `BANK_DATA_DIR` (blobs, which include raw inputs, and the inbox; default `~/.local/share/aqt-bank`).
 
 For automatic IMAP collection from Proton Bridge, Gmail or another provider,
 see [IMAP.md](IMAP.md) and [imap.example.json](imap.example.json). The collector
@@ -126,9 +130,10 @@ runs beside Bridge or on another client machine and uploads to `BANK_URL`.
 It keeps local checkpoints, retries failures and preserves mailbox read flags.
 
 Schema migrations are embedded and run through Tern in `bank migrate` and when
-`bank serve` starts. Every other command of `bank` and `attic` stops with an
-error when the database is at another schema version. See [DEPLOY.md](DEPLOY.md)
-before upgrading.
+`bank serve` starts, followed by River's own migrations for its job tables.
+Every other command of `bank` and `attic` stops with an error when either the
+schema or the job tables are at another version than the binary's. See
+[DEPLOY.md](DEPLOY.md) before upgrading.
 
 Ad-hoc SQL requires `BANK_QUERY_DATABASE_URL`, a separate restricted login created
 with [deploy/query-role.sql](deploy/query-role.sql). It never falls back to the
