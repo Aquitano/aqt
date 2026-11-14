@@ -63,7 +63,7 @@ export const RequestFailure = ({
 export const Pending = () => (
   <div
     role="status"
-    className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"
+    className="flex animate-in items-center justify-center gap-2 py-16 text-sm text-muted-foreground duration-300 fade-in-0 fill-mode-backwards [animation-delay:150ms] motion-reduce:animate-none"
   >
     <Spinner aria-hidden="true" className="size-5 motion-reduce:animate-none" />
     <span>Loading…</span>

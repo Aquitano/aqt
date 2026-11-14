@@ -15,8 +15,9 @@ const Delta = ({ now, previous }: { readonly now: number; readonly previous: num
   if (!Number.isFinite(change) || Math.abs(change) < 0.005) return null;
   return (
     <span
+      title="Compared with the previous period of the same length"
       className={cn(
-        "inline-flex items-center gap-0.5 text-sm font-medium tracking-normal",
+        "inline-flex items-center gap-0.5 text-sm font-medium tracking-normal whitespace-nowrap",
         change > 0 ? "text-destructive" : "text-success",
       )}
     >
@@ -66,9 +67,9 @@ const Figure = ({
   readonly value: ReactNode;
   readonly sub?: ReactNode;
 }) => (
-  <div className="flex min-w-0 flex-col gap-0.5">
+  <div className="flex min-w-0 flex-col gap-1 lg:px-5 lg:first:pl-0">
     <dt className="text-xs text-muted-foreground">{label}</dt>
-    <dd className="flex flex-wrap items-baseline gap-2 text-[15px] leading-snug font-medium">
+    <dd className="flex flex-wrap items-baseline gap-2 text-lg leading-tight font-semibold tracking-tight">
       {value}
     </dd>
     {sub !== undefined && <dd className="text-xs text-muted-foreground">{sub}</dd>}
@@ -104,17 +105,18 @@ export const StatTiles = ({
     ].join(", ");
 
   return (
-    <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-4">
+    <div className="flex min-w-0 flex-col gap-5">
       <div className="min-w-0">
-        <h2 className="text-[15px] font-medium tracking-tight">API-equivalent cost</h2>
-        <p className="mt-1.5 flex flex-wrap items-baseline gap-2.5">
-          <span className="text-[44px] leading-none font-semibold tracking-tight">
+        <h2 className="text-sm font-medium text-muted-foreground">API-equivalent cost</h2>
+        <p className="mt-2 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+          <span className="text-4xl leading-none font-semibold tracking-tight sm:text-[44px]">
             {usd(overall.costUsd)}
           </span>
           <Delta now={overall.costUsd} previous={previous === null ? null : previous.costUsd} />
         </p>
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {usd(perConversation)} per conversation
+        <p className="mt-2 text-xs text-muted-foreground">
+          What these requests would cost at pay-as-you-go API rates. {usd(perConversation)} per
+          conversation
           {overall.unpricedRequests > 0 && (
             <>
               ,{" "}
@@ -126,9 +128,10 @@ export const StatTiles = ({
               </Link>
             </>
           )}
+          .
         </p>
       </div>
-      <dl className="grid min-w-0 flex-1 grid-cols-2 gap-x-7 gap-y-3 sm:grid-cols-3 lg:flex lg:flex-none lg:flex-wrap lg:justify-end">
+      <dl className="grid min-w-0 grid-cols-2 gap-x-6 gap-y-4 border-t pt-4 sm:grid-cols-3 lg:grid-cols-5 lg:gap-x-0 lg:divide-x lg:divide-border">
         {subscriptions.length > 0 && (
           <Figure
             label="Subscriptions"

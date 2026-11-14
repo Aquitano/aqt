@@ -2,6 +2,7 @@ import type { BookmarkTarget } from "@aqt/turnstash-api";
 import { Button } from "@aqt/ui/components/button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Effect } from "effect";
+import { BookmarkCheckIcon, BookmarkIcon } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../api";
@@ -38,6 +39,11 @@ export const BookmarkButton = ({
           save.reset();
         }}
       >
+        {save.isSuccess ? (
+          <BookmarkCheckIcon data-icon="inline-start" className="text-primary" />
+        ) : (
+          <BookmarkIcon data-icon="inline-start" />
+        )}
         {save.isSuccess ? "Bookmarked" : "Bookmark"}
       </Button>
       {editing && (

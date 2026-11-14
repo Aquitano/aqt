@@ -33,9 +33,17 @@ export const SubscriptionValueTable = ({
             <Th>Provider</Th>
             <Th numeric>Plan cost</Th>
             <Th numeric>API-equivalent</Th>
-            <Th numeric>Value</Th>
-            <Th numeric>Saved</Th>
-            {showExpired && <Th numeric>Expired unused</Th>}
+            <Th numeric secondary>
+              Value
+            </Th>
+            <Th numeric secondary>
+              Saved
+            </Th>
+            {showExpired && (
+              <Th numeric secondary>
+                Expired unused
+              </Th>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -51,16 +59,24 @@ export const SubscriptionValueTable = ({
                 <Td numeric>{moneyList(row.planCosts)}</Td>
                 <Td numeric>{usd(row.apiUsd)}</Td>
                 {planUsd === null ? (
-                  <Td numeric colSpan={2} className="text-xs text-muted-foreground">
+                  <Td numeric secondary colSpan={2} className="text-xs text-muted-foreground">
                     plan not billed in USD
                   </Td>
                 ) : (
                   <>
-                    <Td numeric>{planUsd > 0 ? `${(row.apiUsd / planUsd).toFixed(1)}x` : ""}</Td>
-                    <Td numeric>{usd(row.apiUsd - planUsd)}</Td>
+                    <Td numeric secondary>
+                      {planUsd > 0 ? `${(row.apiUsd / planUsd).toFixed(1)}x` : ""}
+                    </Td>
+                    <Td numeric secondary>
+                      {usd(row.apiUsd - planUsd)}
+                    </Td>
                   </>
                 )}
-                {showExpired && <Td numeric>{moneyList(expired?.get(row.provider) ?? [])}</Td>}
+                {showExpired && (
+                  <Td numeric secondary>
+                    {moneyList(expired?.get(row.provider) ?? [])}
+                  </Td>
+                )}
               </TableRow>
             );
           })}

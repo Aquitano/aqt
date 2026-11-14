@@ -5,6 +5,7 @@ import { Label } from "@aqt/ui/components/label";
 import { Spinner } from "@aqt/ui/components/spinner";
 import { useMutation } from "@tanstack/react-query";
 import { Effect } from "effect";
+import { DownloadIcon } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../api";
@@ -48,7 +49,11 @@ export const MarkdownExportButton = ({
           disabled={download.isPending}
           onClick={() => download.mutate()}
         >
-          {download.isPending && <Spinner data-icon="inline-start" />}
+          {download.isPending ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <DownloadIcon data-icon="inline-start" />
+          )}
           {label}
         </Button>
         <Label className="gap-1.5 text-xs font-normal whitespace-nowrap">

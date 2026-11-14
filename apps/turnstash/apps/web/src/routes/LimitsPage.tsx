@@ -6,6 +6,7 @@ import {
   type ProviderId,
   type ProviderLimits,
 } from "@aqt/turnstash-api";
+import { Badge } from "@aqt/ui/components/badge";
 import { Button, buttonVariants } from "@aqt/ui/components/button";
 import {
   Empty,
@@ -37,7 +38,7 @@ import { DrainRange } from "../components/DrainRange";
 import { DrainChart, type LimitSelection, RemainingChart } from "../components/LimitChart";
 import { Page, PageHead } from "../components/Page";
 import { ProviderIcon } from "../components/ProviderIcon";
-import { Section, surface } from "../components/Section";
+import { Section, sectionTitle, surface } from "../components/Section";
 import { quietControl, Segmented } from "../components/Segmented";
 import { useCollapse } from "../components/Tables";
 import { UseFirstLine } from "../components/UseFirstLine";
@@ -94,14 +95,40 @@ const percent = (value: number) => `${Math.round(value)}%`;
 const dayLabel = (ms: number) =>
   new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
-const Kpi = ({ label, children }: { readonly label: string; readonly children: ReactNode }) => (
-  <div className="min-w-0">
+const Kpi = ({
+  label,
+  sub,
+  children,
+}: {
+  readonly label: string;
+  readonly sub?: ReactNode;
+  readonly children: ReactNode;
+}) => (
+  <div className="flex min-w-0 flex-col gap-0.5 rounded-lg bg-muted/50 px-3 py-2.5">
     <dt className="text-xs text-muted-foreground">{label}</dt>
-    <dd className="mt-0.5 font-medium whitespace-nowrap">{children}</dd>
+    <dd className="font-semibold whitespace-nowrap">{children}</dd>
+    {sub !== undefined && <dd className="text-xs text-muted-foreground">{sub}</dd>}
   </div>
 );
 
-const paceText = { ahead: "ahead of pace", on: "on pace", under: "under pace" } as const;
+const paceBadge = {
+  ahead: { label: "Ahead of pace", variant: "warning" },
+  on: { label: "On pace", variant: "secondary" },
+  under: { label: "Under pace", variant: "success" },
+} as const;
+
+const ControlGroup = ({
+  label,
+  children,
+}: {
+  readonly label: string;
+  readonly children: ReactNode;
+}) => (
+  <div className="flex min-w-0 flex-col gap-1.5">
+    <span className="text-xs text-muted-foreground">{label}</span>
+    {children}
+  </div>
+);
 
 const DrainDetails = ({
   provider,
@@ -303,7 +330,7 @@ const LimitCard = ({
   return (
     <section className={cn(surface, "p-4 sm:p-6")}>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <h2 className="flex min-w-0 items-center gap-2 text-[15px] font-medium tracking-tight">
+        <h2 className={cn(sectionTitle, "flex min-w-0 items-center gap-2")}>
           <ProviderIcon provider={limits.provider} />
           {name}
           {limits.plan !== null && (
@@ -325,22 +352,49 @@ const LimitCard = ({
         )}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-end justify-between gap-x-10 gap-y-3">
-        <div className="min-w-0">
-          <p className="flex items-baseline gap-2">
+      <div className="mt-4 grid gap-x-8 gap-y-4 lg:grid-cols-[minmax(240px,1fr)_2fr]">
+        <div className="flex min-w-0 flex-col gap-2.5">
+          <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-[44px] leading-none font-semibold tracking-tight">
               {percent(remaining)}
             </span>
-            <span className="text-muted-foreground">of 100% left</span>
+            <span className="text-muted-foreground">
+              left of the {windowLabel(series.windowMinutes).toLowerCase()} window
+            </span>
           </p>
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {open === null
-              ? "The next window starts with your next request"
-              : `${percent(open.usedPercent)} used with ${percent((pace?.elapsedShare ?? 0) * 100)} of the window gone, ${paceText[pace?.pace ?? "on"]}. Latest reading ${relativeTime(open.lastObservedAt)}.`}
-          </p>
+          <span
+            className="block h-1.5 overflow-hidden rounded-full bg-muted"
+            role="meter"
+            aria-label={`${name} quota left`}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(remaining)}
+          >
+            <span
+              className="block h-full rounded-full"
+              style={{ width: `${Math.max(0, remaining)}%`, background: color }}
+            />
+          </span>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {pace !== null && (
+              <Badge variant={paceBadge[pace.pace].variant}>{paceBadge[pace.pace].label}</Badge>
+            )}
+            <span>
+              {open === null
+                ? "The next window starts with your next request"
+                : `${percent(open.usedPercent)} used with ${percent((pace?.elapsedShare ?? 0) * 100)} of the window gone. Latest reading ${relativeTime(open.lastObservedAt)}.`}
+            </span>
+          </div>
         </div>
-        <dl className="grid grid-cols-2 gap-x-7 gap-y-2.5 sm:flex sm:flex-wrap">
-          <Kpi label="Runs out">
+        <dl className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
+          <Kpi
+            label="Runs out"
+            sub={
+              projection.emptyAtMs === null || remaining <= 0
+                ? undefined
+                : "at the chosen burn rate"
+            }
+          >
             {remaining <= 0
               ? "Out now"
               : projection.emptyAtMs === null
@@ -349,32 +403,37 @@ const LimitCard = ({
                   : "Not before reset"
                 : weekdayTime(projection.emptyAtMs)}
           </Kpi>
-          <Kpi label="Projected unused">
-            {atReset === null ? "Nothing" : percent(atReset)}
-            {atReset !== null && atReset > 0 && costPerPercent !== null && (
-              <span className="block text-xs font-normal text-muted-foreground">
-                {usd(atReset * costPerPercent)} at API rates
-              </span>
-            )}
-          </Kpi>
-          <Kpi label="Next reset">
-            {open === null ? (
-              "On first use"
-            ) : (
-              <>
-                {`+${Math.round(100 - (atReset ?? remaining))}%`}{" "}
-                <span className="font-normal">{weekdayTime(Date.parse(open.resetsAt))}</span>
-              </>
-            )}
+          <Kpi
+            label="Next reset"
+            sub={
+              open === null ? undefined : `gives back +${Math.round(100 - (atReset ?? remaining))}%`
+            }
+          >
+            {open === null ? "On first use" : weekdayTime(Date.parse(open.resetsAt))}
           </Kpi>
           <Kpi
-            label={burnMode === "window" ? "Burn, this window" : `Burn, last ${burnMode}`}
+            label="Projected unused"
+            sub={
+              atReset !== null && atReset > 0 && costPerPercent !== null
+                ? `${usd(atReset * costPerPercent)} at API rates`
+                : "left when the window resets"
+            }
+          >
+            {atReset === null ? "Nothing" : percent(atReset)}
+          </Kpi>
+          <Kpi
+            label="Burn rate"
+            sub={burnMode === "window" ? "average this window" : `last ${burnMode}`}
           >{`${baseBurn.toFixed(1)}%/h`}</Kpi>
-          {costPerPercent !== null && <Kpi label="API cost per 1%">{usd(costPerPercent)}</Kpi>}
+          {costPerPercent !== null && (
+            <Kpi label="API cost per 1%" sub="latest window with usage">
+              {usd(costPerPercent)}
+            </Kpi>
+          )}
         </dl>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-5 border-t pt-4">
         <p className="mb-2 text-xs text-muted-foreground">
           {dayLabel(span.fromMs)} to {dayLabel(span.toMs)}
         </p>
@@ -556,9 +615,15 @@ const WindowLedger = ({
             <Th>Window</Th>
             <Th numeric>Used</Th>
             <Th numeric>Left</Th>
-            <Th numeric>API value</Th>
-            <Th numeric>API cost per 1%</Th>
-            <Th numeric>Plan cost expired</Th>
+            <Th numeric secondary>
+              API value
+            </Th>
+            <Th numeric secondary>
+              API cost per 1%
+            </Th>
+            <Th numeric secondary>
+              Plan cost expired
+            </Th>
             <Th numeric>Ended</Th>
           </TableRow>
         </TableHeader>
@@ -580,11 +645,13 @@ const WindowLedger = ({
               </Td>
               <Td numeric>{percent(window.usedPercent)}</Td>
               <Td numeric>{percent(100 - window.usedPercent)}</Td>
-              <Td numeric>{window.requests === 0 ? "" : usd(window.costUsd)}</Td>
-              <Td numeric>
+              <Td numeric secondary>
+                {window.requests === 0 ? "" : usd(window.costUsd)}
+              </Td>
+              <Td numeric secondary>
                 {window.costPerPercentUsd === null ? "" : usd(window.costPerPercentUsd)}
               </Td>
-              <Td numeric>
+              <Td numeric secondary>
                 {window.expiredValue.length > 0 ? moneyList(window.expiredValue) : ""}
               </Td>
               <Td numeric className="text-muted-foreground">
@@ -687,69 +754,68 @@ export const LimitsPage = () => {
       <PageHead
         title="Limits"
         note={
-          providerCount > 0
-            ? `${providerCount} ${providerCount === 1 ? "provider" : "providers"}, read from your agents`
-            : undefined
+          <span role="status">
+            {report.isPlaceholderData
+              ? "Updating limits…"
+              : weekOffset < 0
+                ? "Browsing history. The figures on each card show current limits."
+                : providerCount > 0
+                  ? `Subscription quota for ${providerCount} ${providerCount === 1 ? "provider" : "providers"}, read from your agents.`
+                  : "Subscription quota read from your agents."}
+          </span>
+        }
+        actions={
+          <div role="group" aria-label="History week" className="flex items-center gap-1">
+            <span className="mr-1.5 text-[13px] whitespace-nowrap text-muted-foreground">
+              {dayLabel(page.fromMs)} to {dayLabel(page.toMs)}
+            </span>
+            <Link
+              to="/limits"
+              search={historySearch(weekOffset - 1)}
+              resetScroll={false}
+              disabled={weekOffset <= -5200}
+              aria-label="Previous week"
+              className={cn(
+                buttonVariants({ size: "icon-sm", variant: "ghost" }),
+                "aria-disabled:pointer-events-none aria-disabled:opacity-50",
+              )}
+            >
+              <ChevronLeftIcon />
+            </Link>
+            <Link
+              to="/limits"
+              search={historySearch(undefined)}
+              resetScroll={false}
+              disabled={weekOffset === 0}
+              className={cn(
+                buttonVariants({ size: "sm", variant: "ghost" }),
+                quietControl,
+                "aria-disabled:pointer-events-none aria-disabled:opacity-50",
+              )}
+            >
+              Today
+            </Link>
+            <Link
+              to="/limits"
+              search={historySearch(weekOffset + 1)}
+              resetScroll={false}
+              disabled={weekOffset >= 0}
+              aria-label="Next week"
+              className={cn(
+                buttonVariants({ size: "icon-sm", variant: "ghost" }),
+                "aria-disabled:pointer-events-none aria-disabled:opacity-50",
+              )}
+            >
+              <ChevronRightIcon />
+            </Link>
+          </div>
         }
       />
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p role="status" className="text-xs text-muted-foreground">
-          {report.isPlaceholderData
-            ? "Updating limits…"
-            : weekOffset < 0
-              ? "Browsing history. Summary figures show current limits."
-              : "Current limits and usage history"}
-        </p>
-        <div className="ml-auto flex items-center gap-1">
-          <span className="mr-1.5 text-[13px] text-muted-foreground">
-            {dayLabel(page.fromMs)} to {dayLabel(page.toMs)}
-          </span>
-          <Link
-            to="/limits"
-            search={historySearch(weekOffset - 1)}
-            resetScroll={false}
-            disabled={weekOffset <= -5200}
-            aria-label="Previous week"
-            className={cn(
-              buttonVariants({ size: "icon-sm", variant: "ghost" }),
-              "aria-disabled:pointer-events-none aria-disabled:opacity-50",
-            )}
-          >
-            <ChevronLeftIcon />
-          </Link>
-          <Link
-            to="/limits"
-            search={historySearch(undefined)}
-            resetScroll={false}
-            disabled={weekOffset === 0}
-            className={cn(
-              buttonVariants({ size: "sm", variant: "ghost" }),
-              quietControl,
-              "aria-disabled:pointer-events-none aria-disabled:opacity-50",
-            )}
-          >
-            Today
-          </Link>
-          <Link
-            to="/limits"
-            search={historySearch(weekOffset + 1)}
-            resetScroll={false}
-            disabled={weekOffset >= 0}
-            aria-label="Next week"
-            className={cn(
-              buttonVariants({ size: "icon-sm", variant: "ghost" }),
-              "aria-disabled:pointer-events-none aria-disabled:opacity-50",
-            )}
-          >
-            <ChevronRightIcon />
-          </Link>
-        </div>
-      </div>
       <Async query={report}>
         {(data) => {
           if (data.providers.length === 0)
             return (
-              <Empty>
+              <Empty className="border border-dashed">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     <GaugeIcon />
@@ -773,31 +839,33 @@ export const LimitsPage = () => {
           );
           return (
             <>
-              <ProviderTabs
-                providers={data.providers}
-                value={tab}
-                onChange={(value) =>
-                  update({ provider: providerIds.find((provider) => provider === value) })
-                }
-              />
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <Segmented
-                  label="Chart"
-                  options={viewOptions}
-                  value={view}
-                  onChange={(view) => update({ view })}
-                />
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] text-muted-foreground">Burn rate</span>
+              <div className={cn(surface, "flex flex-wrap items-end gap-x-6 gap-y-3 p-3 sm:px-4")}>
+                <ControlGroup label="Provider">
+                  <ProviderTabs
+                    providers={data.providers}
+                    value={tab}
+                    onChange={(value) =>
+                      update({ provider: providerIds.find((provider) => provider === value) })
+                    }
+                  />
+                </ControlGroup>
+                <ControlGroup label="Chart">
+                  <Segmented
+                    label="Chart"
+                    options={viewOptions}
+                    value={view}
+                    onChange={(view) => update({ view })}
+                  />
+                </ControlGroup>
+                <ControlGroup label="Burn rate from">
                   <Segmented
                     label="Burn rate"
                     options={burnOptions}
                     value={burnMode}
                     onChange={(burn) => update({ burn })}
                   />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] text-muted-foreground">Future usage</span>
+                </ControlGroup>
+                <ControlGroup label="Projection assumes">
                   <Select
                     items={futureOptions}
                     value={future}
@@ -805,7 +873,11 @@ export const LimitsPage = () => {
                       if (next !== null) update({ future: next });
                     }}
                   >
-                    <SelectTrigger size="sm" aria-label="Future usage" className={quietControl}>
+                    <SelectTrigger
+                      size="sm"
+                      aria-label="Future usage"
+                      className={cn("w-36", quietControl)}
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -816,7 +888,7 @@ export const LimitsPage = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </ControlGroup>
               </div>
               <UseFirstLine
                 providers={data.providers}

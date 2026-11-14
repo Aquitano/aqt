@@ -40,10 +40,14 @@ export const CacheBreaks = ({ report }: { readonly report: CacheBreakReport }) =
             <TableHeader>
               <TableRow>
                 <Th>Conversation</Th>
-                <Th>When</Th>
+                <Th secondary>When</Th>
                 <Th>Cache</Th>
-                <Th numeric>Written</Th>
-                <Th numeric>Read</Th>
+                <Th numeric secondary>
+                  Written
+                </Th>
+                <Th numeric secondary>
+                  Read
+                </Th>
                 <Th numeric>Rewrite cost</Th>
               </TableRow>
             </TableHeader>
@@ -59,7 +63,9 @@ export const CacheBreaks = ({ report }: { readonly report: CacheBreakReport }) =
                       {row.conversationTitle ?? row.modelId}
                     </Link>
                   </PrimaryTd>
-                  <Td title={row.requestedAt}>{dateTime(row.requestedAt)}</Td>
+                  <Td secondary title={row.requestedAt}>
+                    {dateTime(row.requestedAt)}
+                  </Td>
                   <Td>
                     {row.withinLifetime === null
                       ? "Lifetime unknown, "
@@ -68,10 +74,10 @@ export const CacheBreaks = ({ report }: { readonly report: CacheBreakReport }) =
                         : "Expired, "}
                     <span className="text-muted-foreground">{idleText(row)}</span>
                   </Td>
-                  <Td numeric title={int(row.cacheWriteTokens)}>
+                  <Td numeric secondary title={int(row.cacheWriteTokens)}>
                     {compact(row.cacheWriteTokens)}
                   </Td>
-                  <Td numeric title={int(row.cacheReadTokens)}>
+                  <Td numeric secondary title={int(row.cacheReadTokens)}>
                     {compact(row.cacheReadTokens)}
                   </Td>
                   <Td numeric>{usd(row.rewriteCostUsd)}</Td>

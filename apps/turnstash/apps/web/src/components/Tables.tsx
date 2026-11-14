@@ -49,9 +49,30 @@ export const ModelsTable = ({ rows }: { readonly rows: ReadonlyArray<ModelRow> }
         <TableHeader>
           <TableRow>
             <SortHeader label="Model" column="modelId" sort={sort} onToggle={toggle} />
-            <SortHeader label="Requests" column="requests" sort={sort} onToggle={toggle} numeric />
-            <SortHeader label="In" column="inputTokens" sort={sort} onToggle={toggle} numeric />
-            <SortHeader label="Out" column="outputTokens" sort={sort} onToggle={toggle} numeric />
+            <SortHeader
+              label="Requests"
+              column="requests"
+              sort={sort}
+              onToggle={toggle}
+              numeric
+              secondary
+            />
+            <SortHeader
+              label="In"
+              column="inputTokens"
+              sort={sort}
+              onToggle={toggle}
+              numeric
+              secondary
+            />
+            <SortHeader
+              label="Out"
+              column="outputTokens"
+              sort={sort}
+              onToggle={toggle}
+              numeric
+              secondary
+            />
             <SortHeader label="Cost" column="costUsd" sort={sort} onToggle={toggle} numeric />
           </TableRow>
         </TableHeader>
@@ -63,11 +84,13 @@ export const ModelsTable = ({ rows }: { readonly rows: ReadonlyArray<ModelRow> }
                 share={shareOf(row.costUsd, total)}
                 sub={row.route === null ? null : routeLabel(row.route)}
               />
-              <Td numeric>{int(row.requests)}</Td>
-              <Td numeric title={int(row.inputTokens)}>
+              <Td numeric secondary>
+                {int(row.requests)}
+              </Td>
+              <Td numeric secondary title={int(row.inputTokens)}>
                 {compact(row.inputTokens)}
               </Td>
-              <Td numeric title={int(row.outputTokens)}>
+              <Td numeric secondary title={int(row.outputTokens)}>
                 {compact(row.outputTokens)}
               </Td>
               <Td numeric>{usd(row.costUsd)}</Td>
@@ -103,8 +126,16 @@ export const ProjectsTable = ({ rows }: { readonly rows: ReadonlyArray<ProjectRo
               sort={sort}
               onToggle={toggle}
               numeric
+              secondary
             />
-            <SortHeader label="Requests" column="requests" sort={sort} onToggle={toggle} numeric />
+            <SortHeader
+              label="Requests"
+              column="requests"
+              sort={sort}
+              onToggle={toggle}
+              numeric
+              secondary
+            />
             <SortHeader label="Cost" column="costUsd" sort={sort} onToggle={toggle} numeric />
           </TableRow>
         </TableHeader>
@@ -123,8 +154,12 @@ export const ProjectsTable = ({ rows }: { readonly rows: ReadonlyArray<ProjectRo
                 }
                 share={shareOf(row.costUsd, total)}
               />
-              <Td numeric>{int(row.conversations)}</Td>
-              <Td numeric>{int(row.requests)}</Td>
+              <Td numeric secondary>
+                {int(row.conversations)}
+              </Td>
+              <Td numeric secondary>
+                {int(row.requests)}
+              </Td>
               <Td numeric>{usd(row.costUsd)}</Td>
             </TableRow>
           ))}
@@ -143,8 +178,12 @@ export const ProvidersTable = ({ rows }: { readonly rows: ReadonlyArray<Provider
         <TableHeader>
           <TableRow>
             <Th>Provider</Th>
-            <Th numeric>Conversations</Th>
-            <Th numeric>Requests</Th>
+            <Th numeric secondary>
+              Conversations
+            </Th>
+            <Th numeric secondary>
+              Requests
+            </Th>
             <Th numeric>Cost</Th>
           </TableRow>
         </TableHeader>
@@ -152,8 +191,12 @@ export const ProvidersTable = ({ rows }: { readonly rows: ReadonlyArray<Provider
           {rows.map((row) => (
             <TableRow key={row.provider}>
               <ShareCell label={providerLabels[row.provider]} share={shareOf(row.costUsd, total)} />
-              <Td numeric>{int(row.conversations)}</Td>
-              <Td numeric>{int(row.requests)}</Td>
+              <Td numeric secondary>
+                {int(row.conversations)}
+              </Td>
+              <Td numeric secondary>
+                {int(row.requests)}
+              </Td>
               <Td numeric>{usd(row.costUsd)}</Td>
             </TableRow>
           ))}
@@ -163,20 +206,17 @@ export const ProvidersTable = ({ rows }: { readonly rows: ReadonlyArray<Provider
   );
 };
 
-const Freshness = ({ lastSeenAt }: { readonly lastSeenAt: string | null }) => {
+const freshnessDot = (lastSeenAt: string | null) => {
   const hours = hoursSince(lastSeenAt);
-  return (
-    <Badge variant="outline">
-      <span
-        className={cn(
-          "size-1.5 rounded-full",
-          hours <= 24 ? "bg-success" : hours <= 24 * 7 ? "bg-warning" : "bg-destructive",
-        )}
-      />
-      {relativeTime(lastSeenAt)}
-    </Badge>
-  );
+  return hours <= 24 ? "bg-success" : hours <= 24 * 7 ? "bg-warning" : "bg-destructive";
 };
+
+const Freshness = ({ lastSeenAt }: { readonly lastSeenAt: string | null }) => (
+  <Badge variant="outline" title={lastSeenAt === null ? "Never synced" : dateTime(lastSeenAt)}>
+    <span className={cn("size-1.5 rounded-full", freshnessDot(lastSeenAt))} />
+    {lastSeenAt === null ? "never synced" : relativeTime(lastSeenAt)}
+  </Badge>
+);
 
 export const MachinesTable = ({
   rows,
@@ -202,11 +242,19 @@ export const MachinesTable = ({
       <TableHeader>
         <TableRow>
           <Th>Machine</Th>
-          {platform && <Th>Platform</Th>}
+          {platform && <Th secondary>Platform</Th>}
           <Th>Last sync</Th>
-          {enrolled && <Th>Enrolled</Th>}
-          {agent === "column" && <Th numeric>Agent</Th>}
-          {conversations && <Th numeric>Conversations</Th>}
+          {enrolled && <Th secondary>Enrolled</Th>}
+          {agent === "column" && (
+            <Th numeric secondary>
+              Agent
+            </Th>
+          )}
+          {conversations && (
+            <Th numeric secondary>
+              Conversations
+            </Th>
+          )}
           <Th numeric>Cost</Th>
         </TableRow>
       </TableHeader>
@@ -227,20 +275,24 @@ export const MachinesTable = ({
                 )}
               </PrimaryTd>
               {platform && (
-                <Td>
+                <Td secondary>
                   <Badge variant="secondary">{platformName}</Badge>
                 </Td>
               )}
               <Td>
                 <Freshness lastSeenAt={machine.lastSeenAt} />
               </Td>
-              {enrolled && <Td>{dateTime(machine.enrolledAt)}</Td>}
+              {enrolled && <Td secondary>{dateTime(machine.enrolledAt)}</Td>}
               {agent === "column" && (
-                <Td numeric className="text-xs text-muted-foreground">
+                <Td numeric secondary className="text-xs text-muted-foreground">
                   {machine.agentVersion ?? "none"}
                 </Td>
               )}
-              {conversations && <Td numeric>{int(machine.conversations)}</Td>}
+              {conversations && (
+                <Td numeric secondary>
+                  {int(machine.conversations)}
+                </Td>
+              )}
               <Td numeric>{usd(machine.costUsd)}</Td>
             </TableRow>
           );

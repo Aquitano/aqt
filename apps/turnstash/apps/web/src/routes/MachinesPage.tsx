@@ -10,7 +10,10 @@ export const MachinesPage = () => {
 
   return (
     <Page>
-      <PageHead title="Machines" />
+      <PageHead
+        title="Machines"
+        note="Computers that sync their agent transcripts to this archive."
+      />
       <Async query={machines}>
         {(rows) => (
           <MachinesTable
