@@ -24,8 +24,9 @@ type ScanStart struct {
 }
 
 type StartedScan struct {
-	ScanID      int64 `json:"scan_id"`
-	IdleSeconds int   `json:"idle_seconds" doc:"A scan that sends nothing for this long is recorded as interrupted and its volume released."`
+	ScanID           int64 `json:"scan_id"`
+	IdleSeconds      int   `json:"idle_seconds" doc:"A scan that sends nothing for this long is recorded as interrupted and its volume released."`
+	KeepAliveSeconds int   `json:"keepalive_seconds" doc:"How often the scan calls keepDiskScanAlive while it sends nothing else. A new scan of the volume replaces an open one that has sent nothing for two of these."`
 }
 
 // Batch is the work a scan did since its last batch, in the order it did

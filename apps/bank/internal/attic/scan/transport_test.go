@@ -44,7 +44,9 @@ type server struct {
 	write, read string
 	sessions    *session.Manager
 	requests    atomic.Int64
-	scan        Catalogue
+	// down drops every request's connection unanswered, as an outage does.
+	down atomic.Bool
+	scan Catalogue
 }
 
 func serve(t *testing.T, st *store.Store) *server {
@@ -65,10 +67,16 @@ func serve(t *testing.T, st *store.Store) *server {
 	atticapi.Register(api, st, s.sessions)
 	listener := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.requests.Add(1)
+		if s.down.Load() {
+			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+				conn.Close()
+			}
+			return
+		}
 		mux.ServeHTTP(w, r)
 	}))
 	s.url = listener.URL
-	s.scan = Remote(client.New(s.url, write))
+	s.scan = Remote(client.New(s.url, write), func(Wait) {})
 	served.Store(st, s)
 	t.Cleanup(func() {
 		served.Delete(st)

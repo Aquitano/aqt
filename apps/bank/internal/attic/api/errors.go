@@ -29,7 +29,7 @@ var (
 			"candidates":  reflect.TypeFor[[]store.Volume](),
 		}}
 	errScanRunning = httpapi.Kind{Tag: "ScanRunning", Status: http.StatusConflict,
-		Doc: "Another scan of this volume is open. It ends when it finishes, or when it has sent nothing for its idle time."}
+		Doc: "Another scan of this volume is open and still sending. A scan that has sent nothing for two keepalive intervals is replaced by a new one instead; any open scan ends when it finishes or has sent nothing for its idle time."}
 	errClaimLost = httpapi.Kind{Tag: "ClaimLost", Status: http.StatusConflict,
 		Doc: "The lease ran out and another worker holds the work now, or the result was saved already. Nothing changed."}
 )

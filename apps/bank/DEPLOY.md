@@ -282,7 +282,7 @@ bank fetch <blake3> -o invoice.pdf
 bank disk scan E:\
 ```
 
-Build `bank.exe` (`GOOS=windows go build ./cmd/bank`) from the commit the server runs. The server holds each scan's volume between its requests and records a scan that sends nothing for five minutes, or that is still open when the server stops, as interrupted; the next scan continues it. Archive listings that span several requests wait under `$BANK_DATA_DIR/scans` until they are complete. An enrichment lease that the PC stops renewing runs out after two minutes. [DISKS.md](DISKS.md#through-bank-serve) has the rest.
+Build `bank.exe` (`GOOS=windows go build ./cmd/bank`) from the commit the server runs. The server holds each scan's volume between its requests and records a scan that sends nothing for 30 minutes, or that is still open when the server stops, as interrupted; the next scan continues it. A scan whose connection drops waits for the server that long, and a new scan of the volume replaces one that has sent nothing for two minutes. Archive listings that span several requests wait under `$BANK_DATA_DIR/scans` until they are complete. An enrichment lease that the PC stops renewing runs out after two minutes. [DISKS.md](DISKS.md#through-bank-serve) has the rest.
 
 ## 6. Scheduled work
 

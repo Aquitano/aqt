@@ -687,3 +687,54 @@ func TestCancelledDocumentReadRemainsPending(t *testing.T) {
 		t.Errorf("resumed scan read %d documents, want one", again.Counts.Texts)
 	}
 }
+
+// A scan stopped partway keeps what it finished. Running it again walks the
+// tree again but opens only the files it did not hash and the documents it
+// did not read.
+func TestRerunAfterInterruptionReadsOnlyUnfinishedWork(t *testing.T) {
+	eachTransport(t, testRerunAfterInterruptionReadsOnlyUnfinishedWork)
+}
+
+func testRerunAfterInterruptionReadsOnlyUnfinishedWork(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
+	root := t.TempDir()
+	for _, name := range []string{"a", "b", "c", "d"} {
+		write(t, root, name+".txt", "notes about "+name)
+	}
+	// run scans until its stopAt-th file open, which it cancels.
+	run := func(stopAt int) (Result, []string) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var opened []string
+		o := at(root)
+		o.hold = func(path string) (*disk.Held, error) {
+			opened = append(opened, filepath.Base(path))
+			if len(opened) == stopAt {
+				cancel()
+				return nil, ctx.Err()
+			}
+			return disk.Hold(path)
+		}
+		res, err := Run(ctx, catalogueOf(st), o)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res, opened
+	}
+	first, opened := run(3)
+	if first.Status != "interrupted" || first.Counts.Hashed != 2 || !slices.Equal(opened, []string{"a.txt", "b.txt", "c.txt"}) {
+		t.Fatalf("first scan %s hashed %d, opened %q; want it stopped while opening c.txt", first.Status, first.Counts.Hashed, opened)
+	}
+	second, opened := run(4)
+	if second.Status != "interrupted" || second.Counts.Hashed != 2 || second.Counts.Texts != 1 ||
+		!slices.Equal(opened, []string{"c.txt", "d.txt", "a.txt", "b.txt"}) {
+		t.Fatalf("second scan %s hashed %d, read %d, opened %q; want c and d hashed, a read", second.Status,
+			second.Counts.Hashed, second.Counts.Texts, opened)
+	}
+	third, opened := run(0)
+	if third.Status != "complete" || third.Counts.Hashed != 0 || third.Counts.Texts != 3 ||
+		!slices.Equal(opened, []string{"b.txt", "c.txt", "d.txt"}) {
+		t.Errorf("third scan %s hashed %d, read %d, opened %q; want b, c and d read and nothing hashed", third.Status,
+			third.Counts.Hashed, third.Counts.Texts, opened)
+	}
+}

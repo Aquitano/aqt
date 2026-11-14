@@ -97,3 +97,30 @@ func TestIdleScanIsInterruptedAndReleasesItsVolume(t *testing.T) {
 		t.Fatal("closing the manager left its scan open")
 	}
 }
+
+func TestQuietScanIsReplacedAndALiveOneRefused(t *testing.T) {
+	m, s, v, dsn := started(t)
+	open, err := m.session(s.ScanID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quietFor := func(d time.Duration) { open.seen.Store(time.Now().Add(-d).UnixNano()) }
+	quietFor(2*m.keepAlive - time.Second)
+	if _, err := m.Start(t.Context(), ScanStart{VolumeID: v.ID}); !errors.Is(err, store.ErrScanRunning) {
+		t.Fatalf("a scan still sending keepalives was replaced: %v", err)
+	}
+	quietFor(2*m.keepAlive + time.Second)
+	next, err := m.Start(t.Context(), ScanStart{VolumeID: v.ID})
+	if err != nil {
+		t.Fatalf("a quiet scan kept its volume: %v", err)
+	}
+	if _, err := m.Apply(t.Context(), s.ScanID, Batch{Seq: 1}); !errors.Is(err, ErrNotOpen) {
+		t.Fatalf("batch for the replaced scan: %v", err)
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from scans where id = $1 and status = 'interrupted' and finished_at is not null`, s.ScanID); n != 1 {
+		t.Fatal("the replaced scan is not recorded as interrupted")
+	}
+	if err := m.Touch(next.ScanID); err != nil {
+		t.Fatalf("the new scan is not open: %v", err)
+	}
+}

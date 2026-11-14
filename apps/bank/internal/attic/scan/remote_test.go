@@ -1,10 +1,15 @@
 package scan
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
@@ -24,7 +29,7 @@ func TestReadTokenCannotScan(t *testing.T) {
 	s := serve(t, st)
 	root := t.TempDir()
 	write(t, root, "a.txt", "a")
-	_, err := Run(t.Context(), Remote(client.New(s.url, s.read)), at(root))
+	_, err := Run(t.Context(), Remote(client.New(s.url, s.read), func(Wait) {}), at(root))
 	if e, ok := errors.AsType[*client.Error](err); !ok || e.Status != http.StatusForbidden {
 		t.Fatalf("scan with a read token: %v", err)
 	}
@@ -78,5 +83,73 @@ func TestUnchangedRescanRequestsDoNotGrowWithFiles(t *testing.T) {
 	t.Logf("first scan: %d requests for 100 files, %d for 3000; unchanged rescan: %d and %d", smallFirst, largeFirst, small, large)
 	if large != small {
 		t.Errorf("an unchanged rescan of 3000 files made %d requests, of 100 files %d", large, small)
+	}
+}
+
+// outageClock waits by moving its time forward, and ends the outage once the
+// time passes until.
+type outageClock struct {
+	mu     sync.Mutex
+	now    time.Time
+	until  time.Time
+	down   *atomic.Bool
+	pauses []time.Duration
+}
+
+func (c *outageClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *outageClock) After(d time.Duration) <-chan time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+	c.pauses = append(c.pauses, d)
+	if !c.now.Before(c.until) {
+		c.down.Store(false)
+	}
+	done := make(chan time.Time, 1)
+	done <- c.now
+	return done
+}
+
+// goesDown takes the server down once the scan has started.
+type goesDown struct {
+	Catalogue
+	down *atomic.Bool
+}
+
+func (g goesDown) StartScan(ctx context.Context, v store.Volume, root string) (Session, error) {
+	sc, err := g.Catalogue.StartScan(ctx, v, root)
+	g.down.Store(true)
+	return sc, err
+}
+
+// A scan waits out an outage of ten minutes, far past the 15 seconds of
+// retries it once had, and finishes in the session it started.
+func TestScanWaitsOutAnOutageInItsSession(t *testing.T) {
+	st, dsn := storetest.NewCatalogue(t)
+	s := serve(t, st)
+	root := t.TempDir()
+	write(t, root, "a.txt", "a")
+	start := time.Now()
+	clock := &outageClock{now: start, until: start.Add(10 * time.Minute), down: &s.down}
+	waits := 0
+	scan := remote{c: client.New(s.url, s.write), waiting: func(Wait) { waits++ }, clock: clock}
+	res, err := Run(t.Context(), goesDown{scan, &s.down}, at(root))
+	if err != nil || res.Status != "complete" || res.Counts.Hashed != 1 {
+		t.Fatalf("scan through an outage: %+v, %v", res, err)
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from scans where id = $1 and status = 'complete'`, res.ScanID); n != 1 {
+		t.Error("the scan did not finish in its own session")
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from scans`); n != 1 {
+		t.Errorf("%d scans, want the one that waited", n)
+	}
+	waited := clock.Now().Sub(start)
+	if waits != len(clock.pauses) || waits <= 5 || waited < 10*time.Minute || slices.Max(clock.pauses) > maxPause {
+		t.Errorf("%d waits over %s, pauses %v; want more than 5 of at most %s over the outage", waits, waited, clock.pauses, maxPause)
 	}
 }

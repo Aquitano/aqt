@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net"
 	"slices"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -36,13 +37,48 @@ const (
 	// requestTimeout bounds one request, so a connection that stalls is
 	// retried instead of holding the scan forever.
 	requestTimeout = 5 * time.Minute
+	// A request without an answer is sent again after a pause that doubles
+	// from firstPause up to maxPause.
+	firstPause = time.Second
+	maxPause   = 30 * time.Second
+	// finishAfterCancel bounds the last batch of a scan the user stopped, so
+	// Ctrl+C does not wait out an outage. A scan that cannot send it goes
+	// quiet, and the server ends it as interrupted.
+	finishAfterCancel = 30 * time.Second
 )
 
 // Remote writes the catalogue through bank serve's API, with a client whose
-// token writes.
-func Remote(c *client.Client) Catalogue { return remote{c} }
+// token writes. waiting hears of each request bank serve did not answer,
+// before the scan sends it again.
+func Remote(c *client.Client, waiting func(Wait)) Catalogue {
+	return remote{c: c, waiting: waiting, clock: systemClock{}}
+}
 
-type remote struct{ c *client.Client }
+// Wait is a request that got no answer: the error, the pause before it is
+// sent again, and when the scan's session on the server ends unless a
+// request reaches it first.
+type Wait struct {
+	Err       error
+	Pause     time.Duration
+	OpenUntil time.Time
+}
+
+// clock is what a remote scan waits by; a test moves it without waiting.
+type clock interface {
+	Now() time.Time
+	After(time.Duration) <-chan time.Time
+}
+
+type systemClock struct{}
+
+func (systemClock) Now() time.Time                         { return time.Now() }
+func (systemClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
+
+type remote struct {
+	c       *client.Client
+	waiting func(Wait)
+	clock   clock
+}
 
 func (r remote) ResolveVolume(ctx context.Context, mounted disk.Volume, forceID string, forceNew bool) (store.Volume, error) {
 	mounted.Label, mounted.Root = store.CleanText(mounted.Label), store.CleanText(mounted.Root)
@@ -59,9 +95,11 @@ func (r remote) StartScan(ctx context.Context, v store.Volume, root string) (Ses
 		return nil, err
 	}
 	s := &remoteScan{c: r.c, id: started.ScanID, stableIDs: v.StableIDs, lastFlush: time.Now(),
+		idle: time.Duration(started.IdleSeconds) * time.Second, waiting: r.waiting, clock: r.clock,
 		reusable: map[int64]bool{}, linked: map[int64][]linkStamp{}, listed: map[int64]bool{},
 		stop: make(chan struct{}), stopped: make(chan struct{})}
-	go s.keepAlive(max(time.Duration(started.IdleSeconds)*time.Second/4, time.Second))
+	s.answered()
+	go s.keepAlive(max(time.Duration(started.KeepAliveSeconds)*time.Second, time.Second))
 	return s, nil
 }
 
@@ -70,6 +108,13 @@ type remoteScan struct {
 	id        int64
 	stableIDs bool
 	holds     func(string, int64) bool
+
+	// idle is how long the server keeps the session open without a request;
+	// lastAnswer is when one last got an answer, in the clock's nanoseconds.
+	idle       time.Duration
+	lastAnswer atomic.Int64
+	waiting    func(Wait)
+	clock      clock
 
 	// counts are the server's as of the last batch. skipped and members are
 	// what this side added since, so progress moves between batches.
@@ -110,6 +155,8 @@ func (s *remoteScan) Counts() store.ScanCounts {
 	return c
 }
 
+func (s *remoteScan) answered() { s.lastAnswer.Store(s.clock.Now().UnixNano()) }
+
 func (s *remoteScan) keepAlive(every time.Duration) {
 	defer close(s.stopped)
 	tick := time.NewTicker(every)
@@ -120,7 +167,9 @@ func (s *remoteScan) keepAlive(every time.Duration) {
 			return
 		case <-tick.C:
 			ctx, cancel := context.WithTimeout(context.Background(), every)
-			_, _ = client.Call(ctx, s.c, api.KeepDiskScanAlive, api.ScanIDInput{ID: s.id})
+			if _, err := client.Call(ctx, s.c, api.KeepDiskScanAlive, api.ScanIDInput{ID: s.id}); err == nil {
+				s.answered()
+			}
 			cancel()
 		}
 	}
@@ -181,7 +230,7 @@ func (s *remoteScan) applied(res session.BatchResult) {
 func (s *remoteScan) send(ctx context.Context, b session.Batch) (session.BatchResult, error) {
 	answered := map[store.Location]bool{}
 	for {
-		res, err := retry(ctx, func(ctx context.Context) (session.BatchResult, error) {
+		res, err := retry(ctx, s, func(ctx context.Context) (session.BatchResult, error) {
 			return client.Call(ctx, s.c, api.WriteDiskScan, api.BatchInput{ID: s.id, Body: b})
 		})
 		if err != nil || len(res.Questions) == 0 {
@@ -197,27 +246,44 @@ func (s *remoteScan) send(ctx context.Context, b session.Batch) (session.BatchRe
 	}
 }
 
-// retry repeats a call whose connection failed or stalled. A call the server
-// answered, even with an error, is not repeated.
-func retry[T any](ctx context.Context, call func(context.Context) (T, error)) (T, error) {
-	for attempt := 0; ; attempt++ {
+// retry repeats a call whose connection failed or stalled for as long as the
+// scan's session can still be open on the server, so a scan outlasts a lost
+// connection. A call the server answered, even with an error, is not repeated.
+func retry[T any](ctx context.Context, s *remoteScan, call func(context.Context) (T, error)) (T, error) {
+	for pause := firstPause; ; pause = min(2*pause, maxPause) {
 		attemptCtx, cancel := context.WithTimeout(ctx, requestTimeout)
 		v, err := call(attemptCtx)
 		cancel()
-		if err == nil || attempt == 4 || ctx.Err() != nil ||
-			!errors.As(err, new(net.Error)) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		if err == nil {
+			s.answered()
+			return v, nil
+		}
+		if ctx.Err() != nil || !errors.As(err, new(net.Error)) && !errors.Is(err, io.ErrUnexpectedEOF) {
 			return v, err
 		}
+		openUntil := time.Unix(0, s.lastAnswer.Load()).Add(s.idle)
+		left := openUntil.Sub(s.clock.Now())
+		if left <= 0 {
+			return v, fmt.Errorf("bank serve has not answered for %s, after which it ends scan %d as interrupted: %w", s.idle, s.id, err)
+		}
+		pause = min(pause, left)
+		s.waiting(Wait{Err: err, Pause: pause, OpenUntil: openUntil})
 		select {
 		case <-ctx.Done():
 			return v, err
-		case <-time.After(time.Second << attempt):
+		case <-s.clock.After(pause):
 		}
 	}
 }
 
 func (s *remoteScan) Finish(ctx context.Context, status string, phases store.PhaseTimes, failure error) (int64, error) {
+	stopped := ctx.Err() != nil
 	ctx = context.WithoutCancel(ctx)
+	if stopped {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, finishAfterCancel)
+		defer cancel()
+	}
 	close(s.stop)
 	<-s.stopped
 	finish := &session.FinishRequest{Status: status, Phases: phases}
@@ -322,7 +388,7 @@ func (p *pages[T]) next(ctx context.Context, s *remoteScan, start bool, limit in
 		if err := s.flush(ctx); err != nil {
 			return nil, err
 		}
-		items, err := retry(ctx, fetch)
+		items, err := retry(ctx, s, fetch)
 		if err != nil {
 			return nil, err
 		}
@@ -338,7 +404,7 @@ func (s *remoteScan) PendingTotals(ctx context.Context) (int64, int64, error) {
 	if err := s.flush(ctx); err != nil {
 		return 0, 0, err
 	}
-	w, err := retry(ctx, func(ctx context.Context) (session.Work[session.HashWork], error) {
+	w, err := retry(ctx, s, func(ctx context.Context) (session.Work[session.HashWork], error) {
 		return client.Call(ctx, s.c, api.ListDiskScanHashWork, api.WorkInput{ID: s.id, Body: session.WorkRequest{Count: true}})
 	})
 	return w.Total, w.Bytes, err
@@ -428,7 +494,7 @@ func (s *remoteScan) ArchiveTotals(ctx context.Context, ranges []config.ArchiveR
 	}
 	r := archiveWork(ranges, unpackMaxBytes)
 	r.Count = true
-	w, err := retry(ctx, func(ctx context.Context) (session.Work[store.PendingArchive], error) {
+	w, err := retry(ctx, s, func(ctx context.Context) (session.Work[store.PendingArchive], error) {
 		return client.Call(ctx, s.c, api.ListDiskScanArchiveWork, api.WorkInput{ID: s.id, Body: r})
 	})
 	return w.Total, err
@@ -452,7 +518,7 @@ func (s *remoteScan) StartListing(ctx context.Context, contentID int64, depth in
 			return nil, err
 		}
 		check := session.ListingCheck{ContentID: contentID, Depth: depth, UnpackMaxBytes: unpackMaxBytes}
-		n, err := retry(ctx, func(ctx context.Context) (session.ListingNeeded, error) {
+		n, err := retry(ctx, s, func(ctx context.Context) (session.ListingNeeded, error) {
 			return client.Call(ctx, s.c, api.CheckDiskScanListing, api.ListingInput{ID: s.id, Body: check})
 		})
 		if err != nil || !n.Needed {
@@ -514,7 +580,7 @@ func (s *remoteScan) ArchivePart(ctx context.Context, path string) (store.Stamp,
 	if err := s.flush(ctx); err != nil {
 		return store.Stamp{}, err
 	}
-	stamp, err := retry(ctx, func(ctx context.Context) (store.Stamp, error) {
+	stamp, err := retry(ctx, s, func(ctx context.Context) (store.Stamp, error) {
 		return client.Call(ctx, s.c, api.GetDiskScanArchivePart, api.PartInput{ID: s.id, Body: session.ArchivePartRequest{Path: path}})
 	})
 	if e, ok := errors.AsType[*client.Error](err); ok && e.Tag == "NotFound" {
@@ -533,7 +599,7 @@ func (s *remoteScan) TextTotals(ctx context.Context, exts []string) (int64, erro
 	if err := s.flush(ctx); err != nil {
 		return 0, err
 	}
-	w, err := retry(ctx, func(ctx context.Context) (session.Work[store.PendingText], error) {
+	w, err := retry(ctx, s, func(ctx context.Context) (session.Work[store.PendingText], error) {
 		return client.Call(ctx, s.c, api.ListDiskScanTextWork, api.WorkInput{ID: s.id, Body: session.WorkRequest{Count: true, Extensions: exts}})
 	})
 	return w.Total, err
@@ -555,7 +621,7 @@ func (s *remoteScan) MetadataTotals(ctx context.Context) (int64, error) {
 	if err := s.flush(ctx); err != nil {
 		return 0, err
 	}
-	w, err := retry(ctx, func(ctx context.Context) (session.Work[session.MetadataWork], error) {
+	w, err := retry(ctx, s, func(ctx context.Context) (session.Work[session.MetadataWork], error) {
 		return client.Call(ctx, s.c, api.ListDiskScanMetadataWork, api.WorkInput{ID: s.id, Body: session.WorkRequest{Count: true}})
 	})
 	return w.Total, err

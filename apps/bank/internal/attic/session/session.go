@@ -24,17 +24,25 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 )
 
-// IdleTimeout is how long a session waits for its scan's next request.
-// Hashing one large file can take minutes, so the scan sends keepalives.
-const IdleTimeout = 5 * time.Minute
+// IdleTimeout is how long a session waits for its scan's next request. It
+// outlasts a laptop's sleep or a lost Wi-Fi connection, which the scan waits
+// out by sending its request again, so the scan carries on in its session.
+const IdleTimeout = 30 * time.Minute
+
+// KeepAlive is how often a scan reports while it sends nothing else, such as
+// while it hashes one large file for minutes. A session that missed two is
+// presumed gone: a new scan of its volume replaces it instead of waiting for
+// IdleTimeout.
+const KeepAlive = time.Minute
 
 // ErrNotOpen means a request named a scan that has no open session.
 var ErrNotOpen = errors.New("not open")
 
 type Manager struct {
-	store *store.Store
-	spool string
-	idle  time.Duration
+	store     *store.Store
+	spool     string
+	idle      time.Duration
+	keepAlive time.Duration
 
 	mu       sync.Mutex
 	sessions map[int64]*session
@@ -46,7 +54,7 @@ type Manager struct {
 // New keeps sessions on st and spools archive listings that span batches in
 // spool, a directory created when first needed.
 func New(st *store.Store, spool string) *Manager {
-	return &Manager{store: st, spool: spool, idle: IdleTimeout, sessions: map[int64]*session{}}
+	return &Manager{store: st, spool: spool, idle: IdleTimeout, keepAlive: KeepAlive, sessions: map[int64]*session{}}
 }
 
 type session struct {
@@ -77,12 +85,15 @@ type session struct {
 
 func (s *session) touch() { s.seen.Store(time.Now().UnixNano()) }
 
+func (s *session) quiet(now time.Time) time.Duration { return now.Sub(time.Unix(0, s.seen.Load())) }
+
 func (m *Manager) Resolve(ctx context.Context, r VolumeRequest) (store.Volume, error) {
 	return m.store.ResolveVolume(ctx, disk.Volume(r.Mounted), r.VolumeID, r.NewVolume)
 }
 
 // Start opens a scan of a folder of a resolved volume. Only one scan of a
-// volume runs at a time, here or in any other process.
+// volume runs at a time, here or in any other process; an open session of the
+// volume that missed two keepalives ends as interrupted to make way.
 func (m *Manager) Start(ctx context.Context, r ScanStart) (StartedScan, error) {
 	if r.Root != "" && (!strings.HasPrefix(r.Root, "/") || strings.HasSuffix(r.Root, "/")) {
 		return StartedScan{}, fail.Invalidf("root %q is not empty or a volume-relative folder such as /Files", r.Root)
@@ -96,6 +107,7 @@ func (m *Manager) Start(ctx context.Context, r ScanStart) (StartedScan, error) {
 	if m.closed {
 		return StartedScan{}, errors.New("bank serve is stopping")
 	}
+	m.replaceQuiet(v.ID, time.Now())
 	sc, err := m.store.StartScan(ctx, v, r.Root)
 	if err != nil {
 		return StartedScan{}, err
@@ -115,7 +127,25 @@ func (m *Manager) Start(ctx context.Context, r ScanStart) (StartedScan, error) {
 			}
 		}
 	}
-	return StartedScan{ScanID: sc.ID, IdleSeconds: int(m.idle / time.Second)}, nil
+	return StartedScan{ScanID: sc.ID, IdleSeconds: int(m.idle / time.Second), KeepAliveSeconds: int(m.keepAlive / time.Second)}, nil
+}
+
+// replaceQuiet ends the open sessions of a volume whose scan missed two
+// keepalives, so a scan restarted after its client crashed or lost the
+// connection is not refused until the session's idle time runs out. A
+// session busy with a request is left alone. The caller holds m.mu.
+func (m *Manager) replaceQuiet(volumeID string, now time.Time) {
+	for _, s := range m.sessions {
+		quiet := s.quiet(now)
+		if s.sc.Volume.ID != volumeID || quiet <= 2*m.keepAlive || !s.mu.TryLock() {
+			continue
+		}
+		err := s.end("interrupted", fmt.Errorf("the scanning machine sent nothing for %s, and a new scan of the volume started", quiet.Round(time.Second)))
+		if err != nil {
+			slog.Error("end a quiet scan", "scan", s.sc.ID, "error", err)
+		}
+		s.mu.Unlock()
+	}
 }
 
 // Touch keeps a session open while its scan reads a file for a long time.
@@ -216,7 +246,7 @@ func (m *Manager) expire(now time.Time) {
 	sessions := slices.Collect(maps.Values(m.sessions))
 	m.mu.Unlock()
 	for _, s := range sessions {
-		if now.Sub(time.Unix(0, s.seen.Load())) < m.idle || !s.mu.TryLock() {
+		if s.quiet(now) < m.idle || !s.mu.TryLock() {
 			continue
 		}
 		if err := s.end("interrupted", fmt.Errorf("the scanning machine sent nothing for %s", m.idle)); err != nil {

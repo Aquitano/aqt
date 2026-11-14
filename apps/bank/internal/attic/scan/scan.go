@@ -51,6 +51,7 @@ type Options struct {
 
 	locate func(string) (disk.Volume, []string, error)
 	list   func(string) ([]disk.Entry, error)
+	hold   func(string) (*disk.Held, error)
 }
 
 type Progress struct {
@@ -560,7 +561,7 @@ func (r *run) hashOne(ctx context.Context, p store.Pending) error {
 		return r.sc.SkipHash(ctx, p, "too_big", "", fmt.Sprintf("%d bytes", p.Size))
 	}
 	started := time.Now()
-	f, err := disk.Hold(r.osPath(p.Path))
+	f, err := r.holdFile(r.osPath(p.Path))
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()

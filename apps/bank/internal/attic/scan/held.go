@@ -17,10 +17,17 @@ import (
 
 var errChanged = errors.New("file does not match its catalogued hash or stamp")
 
+func (r *run) holdFile(path string) (*disk.Held, error) {
+	if r.o.hold != nil {
+		return r.o.hold(path)
+	}
+	return disk.Hold(path)
+}
+
 // Legacy digests have no proven timestamp baseline. Verify them through the
 // held handle, as on file systems without reliable change times.
 func (r *run) hold(ctx context.Context, path string, stamp store.Stamp) (*disk.Held, error) {
-	f, err := disk.Hold(path)
+	f, err := r.holdFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +57,7 @@ func (r *run) release(f *disk.Held) {
 }
 
 func (r *run) toolCopy(ctx context.Context, source string, stamp store.Stamp, maxBytes int64) (*scratch.Workspace, string, error) {
-	f, err := disk.Hold(source)
+	f, err := r.holdFile(source)
 	if err != nil {
 		return nil, "", err
 	}

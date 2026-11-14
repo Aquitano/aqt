@@ -19,8 +19,10 @@ const MaxBatchBytes = 64 << 20
 const scanProtocol = `bank disk scan, on the machine the disks attach to, writes the catalogue through
 these operations: resolveDiskVolume, startDiskScan, then batches of its work with
 writeDiskScan, interleaved with the list*Work operations that say what is left to
-hash, list, read or tag, and a last batch that finishes the scan. A scan that sends
-nothing for idle_seconds is recorded as interrupted.`
+hash, list, read or tag, and a last batch that finishes the scan. A scan calls
+keepDiskScanAlive every keepalive_seconds while it sends nothing else. A scan that
+sends nothing for idle_seconds is recorded as interrupted, and a new scan of the
+volume replaces one that has sent nothing for two keepalive intervals.`
 
 func scanOp(o httpapi.Operation) httpapi.Operation {
 	o.Tag, o.Writes = Tag, true

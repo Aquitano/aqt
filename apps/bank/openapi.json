@@ -4589,7 +4589,7 @@
         "type": "object"
       },
       "ScanRunningError": {
-        "description": "Another scan of this volume is open. It ends when it finishes, or when it has sent nothing for its idle time.",
+        "description": "Another scan of this volume is open and still sending. A scan that has sent nothing for two keepalive intervals is replaced by a new one instead; any open scan ends when it finishes or has sent nothing for its idle time.",
         "properties": {
           "_tag": {
             "enum": [
@@ -5065,6 +5065,11 @@
             "format": "int64",
             "type": "integer"
           },
+          "keepalive_seconds": {
+            "description": "How often the scan calls keepDiskScanAlive while it sends nothing else. A new scan of the volume replaces an open one that has sent nothing for two of these.",
+            "format": "int64",
+            "type": "integer"
+          },
           "scan_id": {
             "format": "int64",
             "type": "integer"
@@ -5072,7 +5077,8 @@
         },
         "required": [
           "scan_id",
-          "idle_seconds"
+          "idle_seconds",
+          "keepalive_seconds"
         ],
         "type": "object"
       },
@@ -9201,7 +9207,7 @@
         ]
       },
       "post": {
-        "description": "bank disk scan, on the machine the disks attach to, writes the catalogue through\nthese operations: resolveDiskVolume, startDiskScan, then batches of its work with\nwriteDiskScan, interleaved with the list*Work operations that say what is left to\nhash, list, read or tag, and a last batch that finishes the scan. A scan that sends\nnothing for idle_seconds is recorded as interrupted.",
+        "description": "bank disk scan, on the machine the disks attach to, writes the catalogue through\nthese operations: resolveDiskVolume, startDiskScan, then batches of its work with\nwriteDiskScan, interleaved with the list*Work operations that say what is left to\nhash, list, read or tag, and a last batch that finishes the scan. A scan calls\nkeepDiskScanAlive every keepalive_seconds while it sends nothing else. A scan that\nsends nothing for idle_seconds is recorded as interrupted, and a new scan of the\nvolume replaces one that has sent nothing for two keepalive intervals.",
         "operationId": "startDiskScan",
         "requestBody": {
           "content": {
@@ -9262,7 +9268,7 @@
                 }
               }
             },
-            "description": "ScanRunning: another scan of this volume is open. It ends when it finishes, or when it has sent nothing for its idle time."
+            "description": "ScanRunning: another scan of this volume is open and still sending. A scan that has sent nothing for two keepalive intervals is replaced by a new one instead; any open scan ends when it finishes or has sent nothing for its idle time."
           },
           "422": {
             "content": {

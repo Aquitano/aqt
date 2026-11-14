@@ -56,7 +56,14 @@ func (cmd *scanCmd) Run(ctx context.Context, connect Connect) error {
 	defer closeLog()
 	log.Info("scan started", "build", buildRevision(), "args", os.Args[1:], "pid", os.Getpid())
 	p := &progressLine{tty: stderrIsTerminal(), started: time.Now()}
-	res, err := scan.Run(ctx, scan.Remote(bank), scan.Options{
+	waiting := func(w scan.Wait) {
+		log.Warn("bank serve did not answer", "err", w.Err, "pause_ms", w.Pause.Milliseconds(), "open_until", w.OpenUntil)
+		p.clear()
+		p.width = 0
+		fmt.Fprintf(os.Stderr, "bank: bank serve did not answer (%v); trying again in %s. The scan stays open there until %s.\n",
+			w.Err, w.Pause.Round(time.Second), w.OpenUntil.Format("15:04"))
+	}
+	res, err := scan.Run(ctx, scan.Remote(bank, waiting), scan.Options{
 		Path: cmd.Folder, Config: cfg, NoHash: cmd.NoHash, VolumeID: cmd.Volume, NewVolume: cmd.NewVolume, Progress: p.update, Log: log,
 		RebuildContent: cmd.RebuildContent,
 	})
