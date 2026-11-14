@@ -14,6 +14,8 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/imapsync"
+	"github.com/aquitano/aqt/apps/bank/internal/server"
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -49,6 +51,10 @@ func (c *imapCmd) Run(ctx context.Context) error {
 		return fmt.Errorf("bank imap requires BANK_URL (http/https, without credentials, query or fragment) and BANK_TOKEN")
 	}
 	remote := client.New(destination, os.Getenv("BANK_TOKEN"))
+	emlKind, err := sources.All.Lookup("eml")
+	if err != nil {
+		return err
+	}
 	importer := func(ctx context.Context, path string, opts eml.EMLOptions) (store.RawInput, error) {
 		options, err := json.Marshal(opts)
 		if err != nil {
@@ -59,7 +65,7 @@ func (c *imapCmd) Run(ctx context.Context) error {
 			return store.RawInput{}, err
 		}
 		defer f.Close()
-		return remote.Import(ctx, "eml", filepath.Base(path), f, options)
+		return client.Upload(ctx, remote, server.ImportOp(emlKind), server.ImportInput{}, client.ImportFile(filepath.Base(path), f, options))
 	}
 	err = imapsync.Run(ctx, config, destination, importer, c.Once, func(event imapsync.Event) {
 		if err := encoder.Encode(event); err != nil {

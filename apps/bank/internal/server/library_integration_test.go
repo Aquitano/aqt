@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
@@ -151,15 +153,15 @@ func TestLibraryPreviewRecognizesAudioBytes(t *testing.T) {
 func TestLibraryRemoteNetflixDateOrder(t *testing.T) {
 	ctx := context.Background()
 	c, _ := libraryClient(t)
-	if _, err := c.Import(ctx, "netflix", "viewing.csv", strings.NewReader("Title,Date\nA Film,03/04/2024\n"), json.RawMessage(`{"account": "dates", "date_order": "dmy"}`)); err != nil {
+	if _, err := importUpload(ctx, c, "netflix", "viewing.csv", strings.NewReader("Title,Date\nA Film,03/04/2024\n"), json.RawMessage(`{"account": "dates", "date_order": "dmy"}`)); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := c.ListLibraryActivity(ctx, library.ListOptions{Source: "netflix", Account: "dates"})
+	rows, err := client.Call(ctx, c, ListLibraryActivity, LibraryFilters{Source: "netflix", Account: "dates", Page: httpapi.Page{PageSize: httpapi.PageSize{Limit: 100}}})
 	if err != nil || len(rows) != 1 || rows[0].Occurred.Value != "2024-04-03" {
 		t.Fatalf("remote day-first date: %+v %v", rows, err)
 	}
 	for kind, options := range map[string]string{"netflix": `{"date_order": "ymd"}`, "youtube-media": `{"date_order": "dmy"}`} {
-		_, err := c.Import(ctx, kind, "viewing.csv", strings.NewReader("Title,Date\n"), json.RawMessage(options))
+		_, err := importUpload(ctx, c, kind, "viewing.csv", strings.NewReader("Title,Date\n"), json.RawMessage(options))
 		if err == nil || !strings.Contains(err.Error(), "date") {
 			t.Fatalf("%s %s: %v, want the date order refused", kind, options, err)
 		}

@@ -1,8 +1,8 @@
 package main
 
 import (
+	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -15,8 +15,9 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
-	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
+	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
 )
@@ -29,7 +30,7 @@ type extractCmd struct {
 	OCR    bool     `name:"ocr" help:"Read images and text-layer-less PDFs (needs tesseract, poppler)."`
 	Lang   string   `default:"eng" help:"OCR language, tesseract syntax (\"deu+eng\" for two)."`
 	Source string   `help:"Only content carried by this source."`
-	Limit  int      `help:"Stop after this many files."`
+	Limit  int      `help:"Stop after this many files, 1-${max_limit} (default ${max_limit}); run again for the rest."`
 	JSON   bool     `help:"JSON output."`
 }
 
@@ -37,11 +38,6 @@ func (c *extractCmd) Run(ctx context.Context) error {
 	statuses := c.Status
 	for _, s := range statuses {
 		if err := blobtext.ValidRunStatus(s); err != nil {
-			return err
-		}
-	}
-	if c.Source != "" {
-		if err := ingest.ValidSource(c.Source); err != nil {
 			return err
 		}
 	}
@@ -60,13 +56,13 @@ func (c *extractCmd) Run(ctx context.Context) error {
 		}
 	}
 
-	backend, closeBackend, err := openAttachments(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
+	defer closeAPI()
 
-	sum, err := blobtext.Run(ctx, backend, sel, o, progress)
+	sum, err := blobtext.Run(ctx, apiArchive{api}, sel, o, progress)
 	if err != nil {
 		return err
 	}
@@ -77,28 +73,45 @@ func (c *extractCmd) Run(ctx context.Context) error {
 	return nil
 }
 
-// attachmentBackend is the archive as the attachment commands use it: the
-// extraction pass's own interface, plus the reads and writes only the CLI
-// needs. Both the local store and a remote `bank serve` satisfy it, so no
-// command below has to know which it is talking to.
-type attachmentBackend interface {
-	blobtext.Archive
-	BlobText(ctx context.Context, d content.Digest) (store.BlobText, error)
-	SetText(ctx context.Context, bt store.BlobText) error
-	DeleteBlobText(ctx context.Context, d content.Digest) error
-	ExtractionStats(ctx context.Context) ([]store.ExtractionStat, error)
+// apiArchive is what an extraction run reads and writes, through the API.
+type apiArchive struct{ api *client.Client }
+
+// ListBlobs takes the largest page when no limit is given; the next run takes
+// the rest.
+func (a apiArchive) ListBlobs(ctx context.Context, o store.ListBlobsOpts) ([]store.BlobRef, error) {
+	return client.Call(ctx, a.api, server.ListAttachments, server.AttachmentsInput{Status: o.Statuses, Source: o.Source,
+		PageSize: httpapi.PageSize{Limit: cmp.Or(o.Limit, page.MaxLimit)}})
 }
 
-func openAttachments(ctx context.Context) (attachmentBackend, func(), error) {
-	if c := client.FromEnv(); c != nil {
-		c.SetTempDir(stagingDir())
-		return c, func() {}, nil
-	}
-	d, closeStore, err := openLocal(ctx)
+func (a apiArchive) PutBlobText(ctx context.Context, bt store.BlobText) error {
+	_, err := client.Call(ctx, a.api, server.SetAttachmentText, server.SetAttachmentTextInput{BLAKE3: bt.BLAKE3,
+		Status: bt.Status, Extractor: bt.Extractor, RawBody: []byte(bt.Text)})
+	return err
+}
+
+// OpenBlob downloads the bytes to the staging directory, because the
+// extractors seek and the OCR tools are subprocesses that take a path. The
+// cleanup removes the copy.
+func (a apiArchive) OpenBlob(ctx context.Context, d content.Digest) (string, func(), error) {
+	body, err := client.Open(ctx, a.api, server.GetBlob, server.DigestInput{BLAKE3: d})
 	if err != nil {
-		return nil, nil, err
+		return "", func() {}, err
 	}
-	return blobtext.Local{Store: d.Store, Blobs: d.Blobs}, closeStore, nil
+	defer body.Close()
+	f, err := os.CreateTemp(stagingDir(), "blob-*")
+	if err != nil {
+		return "", func() {}, err
+	}
+	cleanup := func() { os.Remove(f.Name()) }
+	_, err = io.Copy(f, body)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		cleanup()
+		return "", func() {}, err
+	}
+	return f.Name(), cleanup, nil
 }
 
 // stagingDir is where downloads and rasterized pages go: the data directory,
@@ -201,12 +214,12 @@ type attachmentStatsCmd struct {
 }
 
 func (c *attachmentStatsCmd) Run(ctx context.Context) error {
-	b, closeBackend, err := openAttachments(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	stats, err := b.ExtractionStats(ctx)
+	defer closeAPI()
+	stats, err := client.Call(ctx, api, server.GetAttachmentStats, struct{}{})
 	if err != nil {
 		return err
 	}
@@ -242,22 +255,13 @@ type attachmentListCmd struct {
 }
 
 func (c *attachmentListCmd) Run(ctx context.Context) error {
-	if err := page.Check(c.Limit, 0); err != nil {
-		return err
-	}
-	// The same check `bank extract --source` makes: a malformed source names
-	// nothing, and an empty listing reads as an archive with no attachments.
-	if c.Source != "" {
-		if err := ingest.ValidSource(c.Source); err != nil {
-			return err
-		}
-	}
-	b, closeBackend, err := openAttachments(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	blobs, err := b.ListBlobs(ctx, store.ListBlobsOpts{Statuses: c.Status, Source: c.Source, Limit: c.Limit})
+	defer closeAPI()
+	blobs, err := client.Call(ctx, api, server.ListAttachments, server.AttachmentsInput{Status: c.Status, Source: c.Source,
+		PageSize: httpapi.PageSize{Limit: c.Limit}})
 	if err != nil {
 		return err
 	}
@@ -290,48 +294,38 @@ func (c *attachmentTextCmd) Run(ctx context.Context) error {
 	if c.Set != "" && c.Clear {
 		return fmt.Errorf("--set and --clear do the opposite of each other")
 	}
+	var text []byte
+	if c.Set != "" {
+		var err error
+		if text, err = readInput(c.Set); err != nil {
+			return err
+		}
+	}
 
-	b, closeBackend, err := openAttachments(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
+	defer closeAPI()
 
 	switch {
 	case c.Clear:
-		if err := b.DeleteBlobText(ctx, sum); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				return fmt.Errorf("no extracted text for %s", sum)
-			}
+		if _, err := client.Call(ctx, api, server.DeleteAttachmentText, server.DigestInput{BLAKE3: sum}); err != nil {
 			return err
 		}
 		fmt.Printf("cleared the text of %s; it is queued to be read again\n", sum)
 		return nil
 
 	case c.Set != "":
-		text, err := readTextInput(c.Set)
-		if err != nil {
-			return err
-		}
-		// Refused rather than stored and silently cut in half: a transcription
-		// is the one kind of text nothing here can produce again.
-		if len(text) > extract.MaxChars {
-			return fmt.Errorf("%s holds %d bytes of text, over the %d a row keeps",
-				c.Set, len(text), extract.MaxChars)
-		}
-		if err := b.SetText(ctx, store.BlobText{
-			BLAKE3: sum, Text: text, Extractor: "manual", Status: string(extract.StatusManual),
-		}); err != nil {
+		if _, err := client.Call(ctx, api, server.SetAttachmentText, server.SetAttachmentTextInput{BLAKE3: sum,
+			Status: string(extract.StatusManual), Extractor: "manual", RawBody: text}); err != nil {
 			return err
 		}
 		fmt.Printf("stored manual text for %s\n", sum)
 		return nil
 	}
 
-	bt, err := b.BlobText(ctx, sum)
-	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("no extracted text for %s", sum)
-	}
+	bt, err := client.Call(ctx, api, server.GetAttachmentText, server.DigestInput{BLAKE3: sum})
 	if err != nil {
 		return err
 	}
@@ -342,15 +336,6 @@ func (c *attachmentTextCmd) Run(ctx context.Context) error {
 		bt.BLAKE3, bt.Status, bt.Extractor, bt.Chars, bt.ExtractedAt.Format(time.RFC1123))
 	fmt.Println(bt.Text)
 	return nil
-}
-
-func readTextInput(path string) (string, error) {
-	if path == "-" {
-		b, err := io.ReadAll(os.Stdin)
-		return string(b), err
-	}
-	b, err := os.ReadFile(path)
-	return string(b), err
 }
 
 func humanBytes(n int64) string {

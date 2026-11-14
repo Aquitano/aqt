@@ -85,7 +85,7 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 
 ## Remote use
 
-When Postgres lives on a VPS, run the server there in a container (`COMPOSE_PROFILES=server docker compose up -d`, published on a Tailscale address — there is no TLS) and set two env vars on the laptop. `search`, `show`, `stats`, `import` and `fetch` then go over HTTP, so rows, blobs and raw inputs always land on the same box.
+When Postgres lives on a VPS, run the server there in a container (`COMPOSE_PROFILES=server docker compose up -d`, published on a Tailscale address — there is no TLS) and set two env vars on the laptop. Every command that reads or changes the archive calls the API: over HTTP to that server when `BANK_URL` is set, and otherwise through the same handler served in process from `DATABASE_URL` and `BANK_DATA_DIR`, with no socket, no token and no jobs. Validation, defaults, errors and output are therefore the same either way, and an import lands its rows, blobs and raw input on one box. `worker`, `migrate`, `token`, `sync`, `verify`, `retire`, `reimport`, `import inbox` and `mail rebuild` work on the server's own database, blob store or token file, and refuse to run with `BANK_URL` set.
 
 ```sh
 export BANK_URL=http://vps.tailnet.ts.net:8480

@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/archive"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/config"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
@@ -45,7 +46,7 @@ type remote struct{ c *client.Client }
 
 func (r remote) ResolveVolume(ctx context.Context, mounted disk.Volume, forceID string, forceNew bool) (store.Volume, error) {
 	mounted.Label, mounted.Root = store.CleanText(mounted.Label), store.CleanText(mounted.Root)
-	return r.c.ResolveVolume(ctx, session.VolumeRequest{Mounted: session.MountedVolume(mounted), VolumeID: forceID, NewVolume: forceNew})
+	return client.Call(ctx, r.c, api.ResolveDiskVolume, api.VolumeInput{Body: session.VolumeRequest{Mounted: session.MountedVolume(mounted), VolumeID: forceID, NewVolume: forceNew}})
 }
 
 func (r remote) StartScan(ctx context.Context, v store.Volume, root string) (Session, error) {
@@ -53,7 +54,7 @@ func (r remote) StartScan(ctx context.Context, v store.Volume, root string) (Ses
 	if !utf8.ValidString(root) {
 		return nil, fmt.Errorf("%q is not valid Unicode, so the catalogue cannot record it as a scan root", root)
 	}
-	started, err := r.c.StartScan(ctx, session.ScanStart{VolumeID: v.ID, Root: root})
+	started, err := client.Call(ctx, r.c, api.StartDiskScan, api.StartInput{Body: session.ScanStart{VolumeID: v.ID, Root: root}})
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +120,7 @@ func (s *remoteScan) keepAlive(every time.Duration) {
 			return
 		case <-tick.C:
 			ctx, cancel := context.WithTimeout(context.Background(), every)
-			_ = s.c.KeepScanAlive(ctx, s.id)
+			_, _ = client.Call(ctx, s.c, api.KeepDiskScanAlive, api.ScanIDInput{ID: s.id})
 			cancel()
 		}
 	}
@@ -180,7 +181,9 @@ func (s *remoteScan) applied(res session.BatchResult) {
 func (s *remoteScan) send(ctx context.Context, b session.Batch) (session.BatchResult, error) {
 	answered := map[store.Location]bool{}
 	for {
-		res, err := retry(ctx, func(ctx context.Context) (session.BatchResult, error) { return s.c.WriteScan(ctx, s.id, b) })
+		res, err := retry(ctx, func(ctx context.Context) (session.BatchResult, error) {
+			return client.Call(ctx, s.c, api.WriteDiskScan, api.BatchInput{ID: s.id, Body: b})
+		})
 		if err != nil || len(res.Questions) == 0 {
 			return res, err
 		}
@@ -336,14 +339,14 @@ func (s *remoteScan) PendingTotals(ctx context.Context) (int64, int64, error) {
 		return 0, 0, err
 	}
 	w, err := retry(ctx, func(ctx context.Context) (session.Work[session.HashWork], error) {
-		return s.c.ScanHashWork(ctx, s.id, session.WorkRequest{Count: true})
+		return client.Call(ctx, s.c, api.ListDiskScanHashWork, api.WorkInput{ID: s.id, Body: session.WorkRequest{Count: true}})
 	})
 	return w.Total, w.Bytes, err
 }
 
 func (s *remoteScan) NextPending(ctx context.Context, after store.Pending, limit int) ([]store.Pending, error) {
 	return s.hashes.next(ctx, s, after.ID == 0, limit, func(ctx context.Context) ([]store.Pending, error) {
-		w, err := s.c.ScanHashWork(ctx, s.id, session.WorkRequest{AfterPath: after.Path, AfterID: after.ID, Limit: workPage})
+		w, err := client.Call(ctx, s.c, api.ListDiskScanHashWork, api.WorkInput{ID: s.id, Body: session.WorkRequest{AfterPath: after.Path, AfterID: after.ID, Limit: workPage}})
 		page := make([]store.Pending, len(w.Items))
 		for i, h := range w.Items {
 			page[i] = h.Pending
@@ -426,7 +429,7 @@ func (s *remoteScan) ArchiveTotals(ctx context.Context, ranges []config.ArchiveR
 	r := archiveWork(ranges, unpackMaxBytes)
 	r.Count = true
 	w, err := retry(ctx, func(ctx context.Context) (session.Work[store.PendingArchive], error) {
-		return s.c.ScanArchiveWork(ctx, s.id, r)
+		return client.Call(ctx, s.c, api.ListDiskScanArchiveWork, api.WorkInput{ID: s.id, Body: r})
 	})
 	return w.Total, err
 }
@@ -436,7 +439,7 @@ func (s *remoteScan) NextArchives(ctx context.Context, after store.PendingArchiv
 	return s.archives.next(ctx, s, after.ID == 0, limit, func(ctx context.Context) ([]store.PendingArchive, error) {
 		r := archiveWork(ranges, unpackMaxBytes)
 		r.AfterPath, r.AfterID, r.Limit = after.Path, after.ID, workPage
-		w, err := s.c.ScanArchiveWork(ctx, s.id, r)
+		w, err := client.Call(ctx, s.c, api.ListDiskScanArchiveWork, api.WorkInput{ID: s.id, Body: r})
 		return w.Items, err
 	})
 }
@@ -450,7 +453,7 @@ func (s *remoteScan) StartListing(ctx context.Context, contentID int64, depth in
 		}
 		check := session.ListingCheck{ContentID: contentID, Depth: depth, UnpackMaxBytes: unpackMaxBytes}
 		n, err := retry(ctx, func(ctx context.Context) (session.ListingNeeded, error) {
-			return s.c.CheckScanListing(ctx, s.id, check)
+			return client.Call(ctx, s.c, api.CheckDiskScanListing, api.ListingInput{ID: s.id, Body: check})
 		})
 		if err != nil || !n.Needed {
 			return nil, err
@@ -511,7 +514,9 @@ func (s *remoteScan) ArchivePart(ctx context.Context, path string) (store.Stamp,
 	if err := s.flush(ctx); err != nil {
 		return store.Stamp{}, err
 	}
-	stamp, err := retry(ctx, func(ctx context.Context) (store.Stamp, error) { return s.c.ScanArchivePart(ctx, s.id, path) })
+	stamp, err := retry(ctx, func(ctx context.Context) (store.Stamp, error) {
+		return client.Call(ctx, s.c, api.GetDiskScanArchivePart, api.PartInput{ID: s.id, Body: session.ArchivePartRequest{Path: path}})
+	})
 	if e, ok := errors.AsType[*client.Error](err); ok && e.Tag == "NotFound" {
 		return stamp, notFound{e}
 	}
@@ -529,14 +534,14 @@ func (s *remoteScan) TextTotals(ctx context.Context, exts []string) (int64, erro
 		return 0, err
 	}
 	w, err := retry(ctx, func(ctx context.Context) (session.Work[store.PendingText], error) {
-		return s.c.ScanTextWork(ctx, s.id, session.WorkRequest{Count: true, Extensions: exts})
+		return client.Call(ctx, s.c, api.ListDiskScanTextWork, api.WorkInput{ID: s.id, Body: session.WorkRequest{Count: true, Extensions: exts}})
 	})
 	return w.Total, err
 }
 
 func (s *remoteScan) NextTexts(ctx context.Context, after store.PendingText, exts []string, limit int) ([]store.PendingText, error) {
 	return s.texts.next(ctx, s, after.ID == 0, limit, func(ctx context.Context) ([]store.PendingText, error) {
-		w, err := s.c.ScanTextWork(ctx, s.id, session.WorkRequest{AfterPath: after.Path, AfterID: after.ID, Limit: workPage, Extensions: exts})
+		w, err := client.Call(ctx, s.c, api.ListDiskScanTextWork, api.WorkInput{ID: s.id, Body: session.WorkRequest{AfterPath: after.Path, AfterID: after.ID, Limit: workPage, Extensions: exts}})
 		return w.Items, err
 	})
 }
@@ -551,14 +556,14 @@ func (s *remoteScan) MetadataTotals(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	w, err := retry(ctx, func(ctx context.Context) (session.Work[session.MetadataWork], error) {
-		return s.c.ScanMetadataWork(ctx, s.id, session.WorkRequest{Count: true})
+		return client.Call(ctx, s.c, api.ListDiskScanMetadataWork, api.WorkInput{ID: s.id, Body: session.WorkRequest{Count: true}})
 	})
 	return w.Total, err
 }
 
 func (s *remoteScan) NextMetadata(ctx context.Context, after store.ContentFile, limit int) ([]store.ContentFile, error) {
 	return s.metadata.next(ctx, s, after.ID == 0, limit, func(ctx context.Context) ([]store.ContentFile, error) {
-		w, err := s.c.ScanMetadataWork(ctx, s.id, session.WorkRequest{AfterPath: after.Path, AfterID: after.ID, Limit: workPage})
+		w, err := client.Call(ctx, s.c, api.ListDiskScanMetadataWork, api.WorkInput{ID: s.id, Body: session.WorkRequest{AfterPath: after.Path, AfterID: after.ID, Limit: workPage}})
 		page := make([]store.ContentFile, len(w.Items))
 		for i, m := range w.Items {
 			page[i] = store.ContentFile{ID: m.ID, Path: m.Path, ContentID: m.ContentID, Size: m.Size, Stamp: m.Stamp}

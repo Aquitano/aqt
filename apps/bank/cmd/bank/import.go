@@ -16,6 +16,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
+	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -28,46 +29,25 @@ type importCmd struct {
 	Inbox    importInboxCmd    `cmd:"" help:"Sweep $BANK_DATA_DIR/inbox/<kind>/."`
 }
 
-// importBackend is where imports go: the server through BANK_URL, or this
-// machine's archive.
-type importBackend struct {
-	remote *client.Client
-	local  *importer.Target
-	close  func()
-}
-
-func openImportBackend(ctx context.Context) (*importBackend, error) {
-	if remote := client.FromEnv(); remote != nil {
-		return &importBackend{remote: remote, close: func() {}}, nil
-	}
-	local, closeLocal, err := openLocal(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &importBackend{local: local, close: closeLocal}, nil
-}
-
 // importPath imports one file or directory and prints what it did.
-func (b *importBackend) importPath(ctx context.Context, kind, path string, options json.RawMessage) error {
+func importPath(ctx context.Context, api *client.Client, kind, path string, options json.RawMessage) error {
 	name, r, err := importer.Open(path)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
-	if err := b.importReader(ctx, kind, name, r, options); err != nil {
+	if err := importReader(ctx, api, kind, name, r, options); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	return nil
 }
 
-func (b *importBackend) importReader(ctx context.Context, kind, name string, r io.Reader, options json.RawMessage) error {
-	var raw store.RawInput
-	var err error
-	if b.remote != nil {
-		raw, err = b.remote.Import(ctx, kind, name, r, options)
-	} else {
-		raw, err = importer.Import(ctx, *b.local, kind, name, r, options)
+func importReader(ctx context.Context, api *client.Client, kind, name string, r io.Reader, options json.RawMessage) error {
+	k, err := sources.All.Lookup(kind)
+	if err != nil {
+		return err
 	}
+	raw, err := client.Upload(ctx, api, server.ImportOp(k), server.ImportInput{}, client.ImportFile(name, r, options))
 	if err != nil {
 		return err
 	}
@@ -75,6 +55,8 @@ func (b *importBackend) importReader(ctx context.Context, kind, name string, r i
 	return nil
 }
 
+// runImport checks the options before anything is sent, so a mistyped flag
+// does not cost the upload of a whole export.
 func runImport(ctx context.Context, kind string, paths []string, options json.RawMessage) error {
 	k, err := sources.All.Lookup(kind)
 	if err != nil {
@@ -83,13 +65,13 @@ func runImport(ctx context.Context, kind string, paths []string, options json.Ra
 	if options, err = k.Normalize(options); err != nil {
 		return err
 	}
-	b, err := openImportBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer b.close()
+	defer closeAPI()
 	for _, path := range paths {
-		if err := b.importPath(ctx, kind, path, options); err != nil {
+		if err := importPath(ctx, api, kind, path, options); err != nil {
 			return err
 		}
 	}
@@ -125,8 +107,8 @@ type importInboxCmd struct {
 }
 
 func (c *importInboxCmd) Run(ctx context.Context) error {
-	if client.FromEnv() != nil {
-		return fmt.Errorf("import inbox reads the server's own drop zone; run it there, not through BANK_URL")
+	if err := onTheBox("import inbox", "reads the server's own drop zone"); err != nil {
+		return err
 	}
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
@@ -173,8 +155,8 @@ type reimportCmd struct {
 }
 
 func (c *reimportCmd) Run(ctx context.Context) error {
-	if client.FromEnv() != nil {
-		return fmt.Errorf("reimport replays the server's own raw inputs; run it there, not through BANK_URL")
+	if err := onTheBox("reimport", "replays the server's own raw inputs"); err != nil {
+		return err
 	}
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {

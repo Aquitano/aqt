@@ -15,4 +15,4 @@ export BANK_TOKEN=bank_...            # ssh vps bank token new <machine>, printe
 
 Verify with `bank stats`; the skill's own preflight uses the same command and knows how to read each failure.
 
-On the VPS the skill works unchanged: leave `BANK_URL` unset there and the CLI talks to `DATABASE_URL` directly.
+On the VPS the skill works unchanged: leave `BANK_URL` unset there and the CLI serves the same API in process from `DATABASE_URL`.

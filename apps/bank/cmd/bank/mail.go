@@ -10,9 +10,10 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
-	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -29,11 +30,11 @@ type mailRebuildCmd struct {
 }
 
 func (c *mailRebuildCmd) Run(ctx context.Context, mail *mailCmd) error {
-	if err := ingest.ValidSource(mail.Source); err != nil {
+	if err := onTheBox("mail rebuild", "rewrites the server's own mail metadata from its blobs"); err != nil {
 		return err
 	}
-	if client.FromEnv() != nil {
-		return fmt.Errorf("mail rebuild is owner-local; unset BANK_URL and run beside the archive database")
+	if err := ingest.ValidSource(mail.Source); err != nil {
+		return err
 	}
 	open := db.OpenReadOnly
 	if c.Apply {
@@ -55,15 +56,12 @@ func (c *mailRebuildCmd) Run(ctx context.Context, mail *mailCmd) error {
 type mailMailboxesCmd struct{}
 
 func (mailMailboxesCmd) Run(ctx context.Context, mail *mailCmd) error {
-	if err := ingest.ValidSource(mail.Source); err != nil {
-		return err
-	}
-	backend, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	mailboxes, err := backend.ListMailboxes(ctx, mail.Source)
+	defer closeAPI()
+	mailboxes, err := client.Call(ctx, api, server.ListMailboxes, server.MailboxesInput{Source: mail.Source})
 	if err != nil {
 		return err
 	}
@@ -83,18 +81,13 @@ type mailConflictCmd struct {
 }
 
 func (c *mailConflictCmd) Run(ctx context.Context, mail *mailCmd) error {
-	if err := ingest.ValidSource(mail.Source); err != nil {
-		return err
-	}
-	if err := page.Check(c.Limit, 0); err != nil {
-		return err
-	}
-	backend, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	messages, err := backend.MailConflictMessages(ctx, mail.Source, c.Key, c.Before, c.Limit)
+	defer closeAPI()
+	messages, err := client.Call(ctx, api, server.GetMailConflict, server.MailConflictInput{Key: c.Key, Source: mail.Source,
+		Before: c.Before, PageSize: httpapi.PageSize{Limit: c.Limit}})
 	if err != nil {
 		return err
 	}

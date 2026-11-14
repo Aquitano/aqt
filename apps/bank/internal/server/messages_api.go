@@ -32,56 +32,68 @@ var (
 		}}
 )
 
-// registerMessagesAPI describes the routes over single messages, threads, mail conflicts, source coverage, ad-hoc SQL and import reports.
-func (s *Server) registerMessagesAPI(api huma.API) {
-	huma.Register(api, httpapi.Operation{ID: "listThreads", Method: http.MethodGet, Path: "/v1/threads", Tag: "messages",
+var (
+	ListThreads = httpapi.Op[ListThreadsInput, []store.ThreadGroup]{Operation: httpapi.Operation{ID: "listThreads", Method: http.MethodGet, Path: "/v1/threads", Tag: "messages",
 		Summary: "List conversations by their latest message",
 		Description: "One row per thread, with its message count, latest sender and a preview. Read a row's " +
 			"messages with the thread route, passing its source and thread_id.",
-	}.For(api), s.browseThreads)
-	huma.Register(api, httpapi.Operation{ID: "getMessage", Method: http.MethodGet, Path: "/v1/messages/{ref}", Tag: "messages",
+	}}
+	GetMessage = httpapi.Op[MessageInput, store.MessageDetail]{Operation: httpapi.Operation{ID: "getMessage", Method: http.MethodGet, Path: "/v1/messages/{ref}", Tag: "messages",
 		Summary: "Read one message with its attachments",
 		Errors:  []httpapi.Kind{httpapi.NotFound, errRetired},
-	}.For(api), s.message)
-	huma.Register(api, httpapi.Operation{ID: "getThread", Method: http.MethodGet, Path: "/v1/threads/{id}", Tag: "messages",
+	}}
+	GetThread = httpapi.Op[ThreadInput, store.Thread]{Operation: httpapi.Operation{ID: "getThread", Method: http.MethodGet, Path: "/v1/threads/{id}", Tag: "messages",
 		Summary: "Read a page of one conversation, oldest first",
 		Description: "Without a position the page starts at the oldest message. Use at most one of before, after, " +
 			"around and latest. has_before and has_after say whether more messages exist on either side.",
 		Errors: []httpapi.Kind{httpapi.NotFound, errMailThreadConflict},
-	}.For(api), s.thread)
-	huma.Register(api, httpapi.Operation{ID: "getMailConflict", Method: http.MethodGet, Path: "/v1/mail-conflicts/{id}", Tag: "messages",
+	}}
+	GetMailConflict = httpapi.Op[MailConflictInput, store.Thread]{Operation: httpapi.Operation{ID: "getMailConflict", Method: http.MethodGet, Path: "/v1/mail-conflicts/{id}", Tag: "messages",
 		Summary:     "Read the messages of a mail thread conflict that belong to no current thread",
 		Description: "Newest first. A MailThreadConflict failure names this route in unanchored_path.",
 		Errors:      []httpapi.Kind{httpapi.NotFound},
-	}.For(api), s.mailConflict)
-	huma.Register(api, httpapi.Operation{ID: "getMessageBranch", Method: http.MethodGet, Path: "/v1/messages/{ref}/branch", Tag: "messages",
+	}}
+	GetMessageBranch = httpapi.Op[MessageInput, store.Branch]{Operation: httpapi.Operation{ID: "getMessageBranch", Method: http.MethodGet, Path: "/v1/messages/{ref}/branch", Tag: "messages",
 		Summary: "Read a message and the messages it answers, back to the start of the conversation",
 		Description: "For conversations that fork, such as AI chats with edited prompts: only the ancestors of " +
 			"this message, in reply order. incomplete is set when the oldest one answers a message that is not " +
 			"in the archive.",
 		Errors: []httpapi.Kind{httpapi.NotFound},
-	}.For(api), s.messageBranch)
-	huma.Register(api, httpapi.Operation{ID: "getMessageParent", Method: http.MethodGet, Path: "/v1/messages/{ref}/parent", Tag: "messages",
+	}}
+	GetMessageParent = httpapi.Op[MessageInput, store.Message]{Operation: httpapi.Operation{ID: "getMessageParent", Method: http.MethodGet, Path: "/v1/messages/{ref}/parent", Tag: "messages",
 		Summary: "Read the message a message answers",
 		Errors:  []httpapi.Kind{httpapi.NotFound},
-	}.For(api), s.messageParent)
-	huma.Register(api, httpapi.Operation{ID: "setSourceCoverage", Method: http.MethodPut, Path: "/v1/sources/{source}/coverage", Tag: "messages",
+	}}
+	SetSourceCoverage = httpapi.Op[CoverageInput, SourceCoverage]{Operation: httpapi.Operation{ID: "setSourceCoverage", Method: http.MethodPut, Path: "/v1/sources/{source}/coverage", Tag: "messages",
 		Summary:     "Record what a source is known to hold",
 		Description: "The note is shown with the source's statistics. It does not count as a sync.",
 		Writes:      true,
-	}.For(api), s.setCoverage)
-	huma.Register(api, httpapi.Operation{ID: "runQuery", Method: http.MethodPost, Path: "/v1/query", Tag: "messages",
+	}}
+	RunQuery = httpapi.Op[QueryInput, store.QueryResult]{Operation: httpapi.Operation{ID: "runQuery", Method: http.MethodPost, Path: "/v1/query", Tag: "messages",
 		Summary: "Run one read-only SQL query over the archive",
 		Description: "The query is declared as a cursor in a read-only transaction with a statement timeout, so it " +
 			"must be one SELECT, VALUES or TABLE, and a read token may call it. Reading stops at the row cap or at " +
 			"8 MiB of values, and truncated says so; a value over 64 KiB is cut and counted in cut_values.",
-	}.For(api), s.query)
-	huma.Register(api, httpapi.Operation{ID: "listRawInputs", Method: http.MethodGet, Path: "/v1/raw-inputs", Tag: "imports",
+	}}
+	ListRawInputs = httpapi.Op[RawInputsInput, []store.RawInput]{Operation: httpapi.Operation{ID: "listRawInputs", Method: http.MethodGet, Path: "/v1/raw-inputs", Tag: "imports",
 		Summary: "List stored raw inputs with the outcome of their latest import, newest first",
-	}.For(api), s.rawInputs)
+	}}
+)
+
+// registerMessagesAPI serves the routes over single messages, threads, mail conflicts, source coverage, ad-hoc SQL and import reports.
+func (s *Server) registerMessagesAPI(api huma.API) {
+	httpapi.Register(api, ListThreads, s.browseThreads)
+	httpapi.Register(api, GetMessage, s.message)
+	httpapi.Register(api, GetThread, s.thread)
+	httpapi.Register(api, GetMailConflict, s.mailConflict)
+	httpapi.Register(api, GetMessageBranch, s.messageBranch)
+	httpapi.Register(api, GetMessageParent, s.messageParent)
+	httpapi.Register(api, SetSourceCoverage, s.setCoverage)
+	httpapi.Register(api, RunQuery, s.query)
+	httpapi.Register(api, ListRawInputs, s.rawInputs)
 }
 
-type browseThreadsInput struct {
+type ListThreadsInput struct {
 	Source        string `query:"source" doc:"Only this source, such as gmail or whatsapp."`
 	Order         string `query:"order" enum:"asc,desc" doc:"By latest message: newest first (desc, the default) or oldest first."`
 	From          string `query:"from" doc:"Sender contains this, ignoring case."`
@@ -95,7 +107,7 @@ type browseThreadsInput struct {
 	httpapi.Page
 }
 
-func (s *Server) browseThreads(ctx context.Context, in *browseThreadsInput) (*httpapi.Body[[]store.ThreadGroup], error) {
+func (s *Server) browseThreads(ctx context.Context, in *ListThreadsInput) (*httpapi.Body[[]store.ThreadGroup], error) {
 	o := store.BrowseOpts{Source: in.Source, Order: in.Order, From: in.From, To: in.To, Person: in.Person,
 		Subject: in.Subject, Limit: in.Limit, Offset: in.Offset, MailboxID: in.MailboxID}
 	if in.MailboxID != 0 && in.Source == "" {
@@ -118,11 +130,11 @@ func (s *Server) browseThreads(ctx context.Context, in *browseThreadsInput) (*ht
 	return list(s.read.BrowseThreads(ctx, o))
 }
 
-type messageInput struct {
+type MessageInput struct {
 	Ref ref.Message `path:"ref" doc:"The message's ref, msg:<16 hex>."`
 }
 
-func (s *Server) message(ctx context.Context, in *messageInput) (*httpapi.Body[store.MessageDetail], error) {
+func (s *Server) message(ctx context.Context, in *MessageInput) (*httpapi.Body[store.MessageDetail], error) {
 	m, atts, err := s.read.GetMessageByRef(ctx, in.Ref)
 	if err != nil {
 		return nil, failure(fmt.Errorf("message %s: %w", in.Ref, err))
@@ -130,7 +142,7 @@ func (s *Server) message(ctx context.Context, in *messageInput) (*httpapi.Body[s
 	return &httpapi.Body[store.MessageDetail]{Body: store.MessageDetail{Message: m, Attachments: atts}}, nil
 }
 
-type threadInput struct {
+type ThreadInput struct {
 	ID      string      `path:"id" doc:"The thread_id of any of its messages."`
 	Source  string      `query:"source" doc:"The thread's source. Needed when several sources use this thread ID."`
 	Before  ref.Message `query:"before" doc:"The page that ends just before this message, by ref."`
@@ -141,7 +153,7 @@ type threadInput struct {
 	httpapi.PageSize
 }
 
-func (s *Server) thread(ctx context.Context, in *threadInput) (*httpapi.Body[store.Thread], error) {
+func (s *Server) thread(ctx context.Context, in *ThreadInput) (*httpapi.Body[store.Thread], error) {
 	o := store.ThreadOpts{Limit: in.Limit, Before: in.Before, After: in.After, Around: in.Around, Latest: in.Latest, Current: in.Current}
 	if err := o.Validate(); err != nil {
 		return nil, failure(err)
@@ -164,21 +176,21 @@ func mailThreadConflict(conflict *store.MailThreadConflictError) error {
 			"Request one of choices as the thread ID with current=true and this source, or request unanchored_path for the messages that belong to none of them.")
 }
 
-type mailConflictInput struct {
+type MailConflictInput struct {
 	Key    string      `path:"id" doc:"The conflict_key of a MailThreadConflict failure."`
 	Source string      `query:"source" required:"true" doc:"The mail source the conflict is in."`
 	Before ref.Message `query:"before" doc:"Only messages older than this message, by ref. Without it, the page starts at the newest."`
 	httpapi.PageSize
 }
 
-func (s *Server) mailConflict(ctx context.Context, in *mailConflictInput) (*httpapi.Body[store.Thread], error) {
+func (s *Server) mailConflict(ctx context.Context, in *MailConflictInput) (*httpapi.Body[store.Thread], error) {
 	if err := ingest.ValidSource(in.Source); err != nil {
 		return nil, httpapi.Invalid.New(err.Error())
 	}
 	return reply(s.read.MailConflictMessages(ctx, in.Source, in.Key, in.Before, in.Limit))
 }
 
-func (s *Server) messageBranch(ctx context.Context, in *messageInput) (*httpapi.Body[store.Branch], error) {
+func (s *Server) messageBranch(ctx context.Context, in *MessageInput) (*httpapi.Body[store.Branch], error) {
 	branch, err := s.db.MessageBranch(ctx, in.Ref)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpapi.NotFound.New("message is not in the archive")
@@ -186,7 +198,7 @@ func (s *Server) messageBranch(ctx context.Context, in *messageInput) (*httpapi.
 	return reply(branch, err)
 }
 
-func (s *Server) messageParent(ctx context.Context, in *messageInput) (*httpapi.Body[store.Message], error) {
+func (s *Server) messageParent(ctx context.Context, in *MessageInput) (*httpapi.Body[store.Message], error) {
 	m, err := s.db.MessageParent(ctx, in.Ref)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpapi.NotFound.New("parent message is not in the archive")
@@ -194,46 +206,53 @@ func (s *Server) messageParent(ctx context.Context, in *messageInput) (*httpapi.
 	return reply(m, err)
 }
 
-type coverageInput struct {
+type CoverageInput struct {
 	Source string `path:"source" doc:"The source the note is about, such as gmail or whatsapp."`
-	Body   struct {
-		Text string `json:"text,omitempty" doc:"What the source holds, in a sentence. Empty or absent clears the note."`
-	}
+	Body   CoverageInputBody
 }
 
-type sourceCoverage struct {
+type CoverageInputBody struct {
+	Text string `json:"text,omitempty" doc:"What the source holds, in a sentence. Empty or absent clears the note."`
+}
+
+type SourceCoverage struct {
 	Source   string `json:"source"`
 	Coverage string `json:"coverage"`
 }
 
-func (s *Server) setCoverage(ctx context.Context, in *coverageInput) (*httpapi.Body[sourceCoverage], error) {
+func (s *Server) setCoverage(ctx context.Context, in *CoverageInput) (*httpapi.Body[SourceCoverage], error) {
+	if err := ingest.ValidSource(in.Source); err != nil {
+		return nil, httpapi.Invalid.New(err.Error())
+	}
 	if err := s.db.SetCoverage(ctx, in.Source, in.Body.Text); err != nil {
 		return nil, failure(err)
 	}
-	return &httpapi.Body[sourceCoverage]{Body: sourceCoverage{Source: in.Source, Coverage: in.Body.Text}}, nil
+	return &httpapi.Body[SourceCoverage]{Body: SourceCoverage{Source: in.Source, Coverage: in.Body.Text}}, nil
 }
 
-type queryInput struct {
-	Body struct {
-		SQL   string `json:"sql" minLength:"1" doc:"One SQL query: SELECT, VALUES or TABLE."`
-		Limit int    `json:"limit,omitempty" minimum:"0" maximum:"10000" doc:"Maximum rows. 0 or absent means 100."`
-	}
+type QueryInput struct {
+	Body QueryInputBody
+}
+
+type QueryInputBody struct {
+	SQL   string `json:"sql" minLength:"1" doc:"One SQL query: SELECT, VALUES or TABLE."`
+	Limit int    `json:"limit,omitempty" minimum:"0" maximum:"10000" doc:"Maximum rows. 0 or absent means 100."`
 }
 
 // query leaves safety to the store (read-only cursor, statement timeout, row
 // and size caps) and only separates wrong SQL from a broken archive.
-func (s *Server) query(ctx context.Context, in *queryInput) (*httpapi.Body[store.QueryResult], error) {
+func (s *Server) query(ctx context.Context, in *QueryInput) (*httpapi.Body[store.QueryResult], error) {
 	if strings.TrimSpace(in.Body.SQL) == "" {
 		return nil, httpapi.Invalid.New("missing sql")
 	}
 	return reply(s.read.Query(ctx, in.Body.SQL, in.Body.Limit))
 }
 
-type rawInputsInput struct {
+type RawInputsInput struct {
 	Before int64 `query:"before" default:"0" minimum:"0" doc:"Only raw inputs with an ID below this one. 0 starts at the newest."`
 	httpapi.PageSize
 }
 
-func (s *Server) rawInputs(ctx context.Context, in *rawInputsInput) (*httpapi.Body[[]store.RawInput], error) {
+func (s *Server) rawInputs(ctx context.Context, in *RawInputsInput) (*httpapi.Body[[]store.RawInput], error) {
 	return list(s.db.RawInputs(ctx, in.Before, in.Limit))
 }

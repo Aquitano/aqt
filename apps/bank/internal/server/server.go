@@ -84,12 +84,23 @@ const maxUpload = 16 << 30
 var errUnavailable = httpapi.Kind{Tag: "Unavailable", Status: http.StatusServiceUnavailable,
 	Doc: "The server cannot reach its database."}
 
-// Handler serves every operation, the OpenAPI document at /openapi.json and
-// an unauthenticated /healthz.
+// Handler serves every operation to the holders of a token, the OpenAPI
+// document at /openapi.json and an unauthenticated /healthz.
 func (s *Server) Handler() http.Handler {
+	return s.handler(true)
+}
+
+// LocalHandler is Handler without tokens, for a client in this process. That
+// client opened the database itself, so it already holds full access; it must
+// never be served on a socket.
+func (s *Server) LocalHandler() http.Handler {
+	return s.handler(false)
+}
+
+func (s *Server) handler(requireToken bool) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
-	s.registerAPI(mux)
+	s.registerAPI(mux, requireToken)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		httpapi.Write(w, httpapi.NotFound.New("no route for "+r.Method+" "+r.URL.Path))
 	})

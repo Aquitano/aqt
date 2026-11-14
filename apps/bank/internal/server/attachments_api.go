@@ -17,6 +17,7 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/packages/go/extract"
@@ -31,78 +32,86 @@ var errUnpreviewable = httpapi.Kind{Tag: "Unpreviewable", Status: http.StatusUns
 // than as a truncated read.
 const maxTextUpload = 8 << 20
 
-// registerAttachmentsAPI describes the routes over attachments, the text read
-// from them and stored bytes. Attachment text is writable, not just readable,
-// because the machine that can run an OCR model is rarely the VPS: a laptop
-// lists what needs text, fetches the bytes, runs whatever it likes, and puts
-// the result back.
-func (s *Server) registerAttachmentsAPI(api huma.API) {
-	huma.Register(api, httpapi.Operation{ID: "searchAttachments", Method: http.MethodGet, Path: "/v1/attachment-library", Tag: "attachments",
+var (
+	SearchAttachments = httpapi.Op[SearchAttachmentsInput, []store.LibraryFile]{Operation: httpapi.Operation{ID: "searchAttachments", Method: http.MethodGet, Path: "/v1/attachment-library", Tag: "attachments",
 		Summary: "Search the files attached to messages, newest first",
 		Description: "One entry per distinct content, however many messages carry it. query searches the filename and " +
 			"the text read from the file. q and text are plain substring filters, and text adds a snippet around " +
 			"the match.",
-	}.For(api), s.searchAttachments)
-	huma.Register(api, httpapi.Operation{ID: "listAttachmentMessages", Method: http.MethodGet, Path: "/v1/attachments/{blake3}/messages", Tag: "attachments",
+	}}
+	ListAttachmentMessages = httpapi.Op[AttachmentMessagesInput, []store.Message]{Operation: httpapi.Operation{ID: "listAttachmentMessages", Method: http.MethodGet, Path: "/v1/attachments/{blake3}/messages", Tag: "attachments",
 		Summary: "List the messages that carry a file, newest first",
-	}.For(api), s.attachmentMessages)
-	huma.Register(api, httpapi.Operation{ID: "listAttachments", Method: http.MethodGet, Path: "/v1/attachments", Tag: "attachments",
+	}}
+	ListAttachments = httpapi.Op[AttachmentsInput, []store.BlobRef]{Operation: httpapi.Operation{ID: "listAttachments", Method: http.MethodGet, Path: "/v1/attachments", Tag: "attachments",
 		Summary: "List distinct attachment content with the state of its text, largest first",
 		Description: "This is the work list for reading text out of files somewhere other than the server: fetch the " +
 			"bytes from /v1/blobs/{blake3}, then store the result with PUT /v1/attachments/{blake3}/text. Content a " +
 			"disk scan already read is not pending.",
-	}.For(api), s.attachments)
-	huma.Register(api, httpapi.Operation{ID: "getAttachmentStats", Method: http.MethodGet, Path: "/v1/attachments/stats", Tag: "attachments",
+	}}
+	GetAttachmentStats = httpapi.Op[struct{}, []store.ExtractionStat]{Operation: httpapi.Operation{ID: "getAttachmentStats", Method: http.MethodGet, Path: "/v1/attachments/stats", Tag: "attachments",
 		Summary: "Count attachment content, bytes and text characters per text status",
-	}.For(api), s.attachmentStats)
-	huma.Register(api, httpapi.Operation{ID: "getAttachmentText", Method: http.MethodGet, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
+	}}
+	GetAttachmentText = httpapi.Op[DigestInput, store.BlobText]{Operation: httpapi.Operation{ID: "getAttachmentText", Method: http.MethodGet, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
 		Summary: "Return the text read from a file",
 		Errors:  []httpapi.Kind{httpapi.NotFound},
-	}.For(api), s.attachmentText)
-	putText := httpapi.Operation{ID: "setAttachmentText", Method: http.MethodPut, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
+	}}
+	SetAttachmentText = httpapi.Op[SetAttachmentTextInput, AttachmentTextStored]{Operation: httpapi.Operation{ID: "setAttachmentText", Method: http.MethodPut, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
 		Summary: "Store text read from a file somewhere else, such as a transcription",
 		Description: "The body is the text. status defaults to manual, which no job overwrites. Text over " +
 			"the 4 MiB a row holds is refused rather than cut. Messages carrying the file search the new text at once.",
 		Errors: []httpapi.Kind{httpapi.NotFound},
 		Writes: true,
-	}.For(api)
-	putText.MaxBodyBytes = maxTextUpload
-	huma.Register(api, putText, s.setAttachmentText)
-	// An empty body is text too: a status such as needs_ocr carries none.
-	httpapi.Registered(api, putText.Method, putText.Path).RequestBody.Required = false
-	huma.Register(api, httpapi.Operation{ID: "deleteAttachmentText", Method: http.MethodDelete, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
+	}}
+	DeleteAttachmentText = httpapi.Op[DigestInput, AttachmentTextDeleted]{Operation: httpapi.Operation{ID: "deleteAttachmentText", Method: http.MethodDelete, Path: "/v1/attachments/{blake3}/text", Tag: "attachments",
 		Summary:     "Drop the text stored for a file and queue it to be read again",
 		Description: "Messages carrying the file stop finding the old text at once.",
 		Errors:      []httpapi.Kind{httpapi.NotFound},
 		Writes:      true,
-	}.For(api), s.deleteAttachmentText)
-
-	preview := httpapi.Operation{ID: "previewAttachment", Method: http.MethodGet, Path: "/v1/attachments/{blake3}/preview", Tag: "attachments",
+	}}
+	PreviewAttachment = httpapi.StreamOp[DigestInput]{Operation: httpapi.Operation{ID: "previewAttachment", Method: http.MethodGet, Path: "/v1/attachments/{blake3}/preview", Tag: "attachments",
 		Summary: "Show a PDF, image, audio or video attachment inline",
 		Description: "Content-Type is detected from the bytes, and Range requests are answered, so a browser can " +
 			"seek in audio and video. Other files are Unpreviewable.",
 		Errors: []httpapi.Kind{httpapi.NotFound, errUnpreviewable},
-	}.For(api)
-	preview.Responses["200"] = bytesResponse("The file's bytes, inline.")
-	huma.Register(api, preview, s.attachmentPreview)
-	blobBytes := httpapi.Operation{ID: "getBlob", Method: http.MethodGet, Path: "/v1/blobs/{blake3}", Tag: "attachments",
+	}}
+	GetBlob = httpapi.StreamOp[DigestInput]{Operation: httpapi.Operation{ID: "getBlob", Method: http.MethodGet, Path: "/v1/blobs/{blake3}", Tag: "attachments",
 		Summary: "Download stored bytes: an attachment or a library file",
 		Errors:  []httpapi.Kind{httpapi.NotFound},
-	}.For(api)
-	blobBytes.Responses["200"] = bytesResponse("The bytes.")
-	huma.Register(api, blobBytes, s.blob)
+	}}
+)
+
+// registerAttachmentsAPI serves the routes over attachments, the text read
+// from them and stored bytes. Attachment text is writable, not just readable,
+// because the machine that can run an OCR model is rarely the VPS: a laptop
+// lists what needs text, fetches the bytes, runs whatever it likes, and puts
+// the result back.
+func (s *Server) registerAttachmentsAPI(api huma.API) {
+	httpapi.Register(api, SearchAttachments, s.searchAttachments)
+	httpapi.Register(api, ListAttachmentMessages, s.attachmentMessages)
+	httpapi.Register(api, ListAttachments, s.attachments)
+	httpapi.Register(api, GetAttachmentStats, s.attachmentStats)
+	httpapi.Register(api, GetAttachmentText, s.attachmentText)
+	// An empty body is text too: a status such as needs_ocr carries none.
+	httpapi.Register(api, SetAttachmentText, s.setAttachmentText, func(op *huma.Operation) {
+		op.MaxBodyBytes = maxTextUpload
+	}).RequestBody.Required = false
+	httpapi.Register(api, DeleteAttachmentText, s.deleteAttachmentText)
+	httpapi.RegisterStream(api, PreviewAttachment, s.attachmentPreview, bytesResponse("The file's bytes, inline."))
+	httpapi.RegisterStream(api, GetBlob, s.blob, bytesResponse("The bytes."))
 }
 
-func bytesResponse(description string) *huma.Response {
-	return &huma.Response{Description: description,
-		Content: map[string]*huma.MediaType{"application/octet-stream": {Schema: &huma.Schema{Type: "string", Format: "binary"}}}}
+func bytesResponse(description string) func(*huma.Operation) {
+	return func(op *huma.Operation) {
+		op.Responses["200"] = &huma.Response{Description: description,
+			Content: map[string]*huma.MediaType{"application/octet-stream": {Schema: &huma.Schema{Type: "string", Format: "binary"}}}}
+	}
 }
 
-type digestInput struct {
+type DigestInput struct {
 	BLAKE3 content.Digest `path:"blake3" pattern:"^[0-9a-f]{64}$" doc:"The content's BLAKE3 digest, as 64 lowercase hex characters."`
 }
 
-type searchAttachmentsInput struct {
+type SearchAttachmentsInput struct {
 	Query  string `query:"query" doc:"Words to find in the filename or in the text read from the file. At most 4096 bytes."`
 	Match  string `query:"match" enum:"any,all,phrase" doc:"For query: any word (the default), every word, or the words adjacent and in order."`
 	Source string `query:"source" doc:"Only attachments of messages from this source, such as gmail or whatsapp."`
@@ -115,7 +124,7 @@ type searchAttachmentsInput struct {
 	httpapi.Page
 }
 
-func (s *Server) searchAttachments(ctx context.Context, in *searchAttachmentsInput) (*httpapi.Body[[]store.LibraryFile], error) {
+func (s *Server) searchAttachments(ctx context.Context, in *SearchAttachmentsInput) (*httpapi.Body[[]store.LibraryFile], error) {
 	o := store.AttachmentFilter{Query: in.Query, Source: in.Source, Match: in.Match, Filename: in.Q, Text: in.Text,
 		FileType: in.Type, Person: in.Person, Limit: in.Limit, Offset: in.Offset}
 	if err := (library.ListOptions{Query: o.Query, Match: o.Match}).Validate(); err != nil {
@@ -134,22 +143,27 @@ func (s *Server) searchAttachments(ctx context.Context, in *searchAttachmentsInp
 	return list(s.read.AttachmentLibrary(ctx, o))
 }
 
-type attachmentMessagesInput struct {
+type AttachmentMessagesInput struct {
 	BLAKE3 content.Digest `path:"blake3" pattern:"^[0-9a-f]{64}$" doc:"The content's BLAKE3 digest, as 64 lowercase hex characters."`
 	httpapi.Page
 }
 
-func (s *Server) attachmentMessages(ctx context.Context, in *attachmentMessagesInput) (*httpapi.Body[[]store.Message], error) {
+func (s *Server) attachmentMessages(ctx context.Context, in *AttachmentMessagesInput) (*httpapi.Body[[]store.Message], error) {
 	return list(s.db.AttachmentMessages(ctx, in.BLAKE3, in.Offset, in.Limit))
 }
 
-type attachmentsInput struct {
+type AttachmentsInput struct {
 	Status []string `query:"status" doc:"Only these text statuses, separated by commas: pending (never tried), ok, truncated, empty, needs_ocr, unsupported, too_big, failed or manual. Default: all."`
 	Source string   `query:"source" doc:"Only content from this source."`
 	httpapi.PageSize
 }
 
-func (s *Server) attachments(ctx context.Context, in *attachmentsInput) (*httpapi.Body[[]store.BlobRef], error) {
+func (s *Server) attachments(ctx context.Context, in *AttachmentsInput) (*httpapi.Body[[]store.BlobRef], error) {
+	if in.Source != "" {
+		if err := ingest.ValidSource(in.Source); err != nil {
+			return nil, httpapi.Invalid.New(err.Error())
+		}
+	}
 	return list(s.db.ListBlobs(ctx, store.ListBlobsOpts{Statuses: in.Status, Source: in.Source, Limit: in.Limit}))
 }
 
@@ -157,7 +171,7 @@ func (s *Server) attachmentStats(ctx context.Context, _ *struct{}) (*httpapi.Bod
 	return list(s.db.ExtractionStats(ctx))
 }
 
-func (s *Server) attachmentText(ctx context.Context, in *digestInput) (*httpapi.Body[store.BlobText], error) {
+func (s *Server) attachmentText(ctx context.Context, in *DigestInput) (*httpapi.Body[store.BlobText], error) {
 	text, err := s.db.GetBlobText(ctx, in.BLAKE3)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpapi.NotFound.New("no extracted text for " + in.BLAKE3.String())
@@ -165,19 +179,19 @@ func (s *Server) attachmentText(ctx context.Context, in *digestInput) (*httpapi.
 	return reply(text, err)
 }
 
-type setAttachmentTextInput struct {
+type SetAttachmentTextInput struct {
 	BLAKE3    content.Digest `path:"blake3" pattern:"^[0-9a-f]{64}$" doc:"The content's BLAKE3 digest, as 64 lowercase hex characters."`
 	Status    string         `query:"status" doc:"What the text is: manual (the default) for a transcription, or the outcome of an extraction run elsewhere, such as ok or needs_ocr."`
 	Extractor string         `query:"extractor" doc:"What produced the text, such as a model's name."`
 	RawBody   []byte         `contentType:"text/plain"`
 }
 
-type attachmentTextStored struct {
+type AttachmentTextStored struct {
 	BLAKE3 content.Digest `json:"blake3"`
 	Status string         `json:"status"`
 }
 
-func (s *Server) setAttachmentText(ctx context.Context, in *setAttachmentTextInput) (*httpapi.Body[attachmentTextStored], error) {
+func (s *Server) setAttachmentText(ctx context.Context, in *SetAttachmentTextInput) (*httpapi.Body[AttachmentTextStored], error) {
 	status := in.Status
 	if status == "" {
 		status = string(extract.StatusManual)
@@ -203,20 +217,20 @@ func (s *Server) setAttachmentText(ctx context.Context, in *setAttachmentTextInp
 		return nil, httpapi.NotFound.New("no attachment with blake3 " + in.BLAKE3.String())
 	}
 	err = s.db.PutBlobText(ctx, store.BlobText{BLAKE3: in.BLAKE3, Text: string(in.RawBody), Extractor: in.Extractor, Status: status})
-	return reply(attachmentTextStored{BLAKE3: in.BLAKE3, Status: status}, err)
+	return reply(AttachmentTextStored{BLAKE3: in.BLAKE3, Status: status}, err)
 }
 
-type attachmentTextDeleted struct {
+type AttachmentTextDeleted struct {
 	BLAKE3 content.Digest `json:"blake3"`
 	Status string         `json:"status" enum:"deleted"`
 }
 
-func (s *Server) deleteAttachmentText(ctx context.Context, in *digestInput) (*httpapi.Body[attachmentTextDeleted], error) {
+func (s *Server) deleteAttachmentText(ctx context.Context, in *DigestInput) (*httpapi.Body[AttachmentTextDeleted], error) {
 	err := s.db.DeleteBlobText(ctx, in.BLAKE3)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, httpapi.NotFound.New("no extracted text for " + in.BLAKE3.String())
 	}
-	return reply(attachmentTextDeleted{BLAKE3: in.BLAKE3, Status: "deleted"}, err)
+	return reply(AttachmentTextDeleted{BLAKE3: in.BLAKE3, Status: "deleted"}, err)
 }
 
 // openBlob opens stored bytes, or says that they are missing.
@@ -236,7 +250,7 @@ func (s *Server) openBlob(d content.Digest, missing string) (*os.File, os.FileIn
 	return f, info, nil
 }
 
-func (s *Server) blob(_ context.Context, in *digestInput) (*huma.StreamResponse, error) {
+func (s *Server) blob(_ context.Context, in *DigestInput) (*huma.StreamResponse, error) {
 	f, info, err := s.openBlob(in.BLAKE3, "no stored bytes with blake3 "+in.BLAKE3.String())
 	if err != nil {
 		return nil, err
@@ -255,7 +269,7 @@ var previewable = map[string]bool{"application/pdf": true, "image/png": true, "i
 	"audio/wave": true, "audio/aiff": true, "audio/midi": true, "video/mp4": true, "video/webm": true, "video/ogg": true,
 	"video/avi": true}
 
-func (s *Server) attachmentPreview(ctx context.Context, in *digestInput) (*huma.StreamResponse, error) {
+func (s *Server) attachmentPreview(ctx context.Context, in *DigestInput) (*huma.StreamResponse, error) {
 	known, err := s.db.KnownAttachment(ctx, in.BLAKE3)
 	if err != nil {
 		return nil, failure(err)

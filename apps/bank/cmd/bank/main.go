@@ -37,15 +37,13 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/gmail"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
-	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/jobs"
-	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
@@ -64,7 +62,7 @@ Environment:
   DATABASE_URL             default ` + db.DefaultURL + `
   BANK_QUERY_DATABASE_URL  separate restricted login for ad-hoc SQL
   BANK_DATA_DIR            default ~/.local/share/aqt-bank (blobs/, inbox/)
-  BANK_URL                 talk to a remote 'bank serve' instead of Postgres
+  BANK_URL                 call a remote 'bank serve' instead of serving the API in process
   BANK_TOKEN               bearer token for BANK_URL (see 'bank token new')`
 
 type cli struct {
@@ -208,8 +206,8 @@ func databaseURL() string {
 	return cmp.Or(os.Getenv("DATABASE_URL"), db.DefaultURL)
 }
 
-// localDB is the archive and the file catalogue on one pool, for commands
-// that talk to Postgres directly rather than to a `bank serve`.
+// localDB is the archive and the file catalogue on one pool, for the API
+// served in process and the commands that work on the box itself.
 type localDB struct {
 	*store.Store
 	catalogue *attic.Catalogue
@@ -250,6 +248,40 @@ func openLocal(ctx context.Context) (*importer.Target, func(), error) {
 	return &importer.Target{Store: st.Store, Blobs: blobs, Kinds: sources.All}, st.Close, nil
 }
 
+// connect returns the API: a `bank serve` at BANK_URL, or the same handler
+// served in this process from DATABASE_URL and BANK_DATA_DIR. In process it
+// runs no jobs and listens on nothing; close releases the database.
+func connect(ctx context.Context) (*client.Client, func(), error) {
+	if remote := client.FromEnv(); remote != nil {
+		return remote, func() {}, nil
+	}
+	st, err := openStore(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	blobs, err := blob.New(filepath.Join(dataDir(), "blobs"))
+	if err != nil {
+		st.Close()
+		return nil, nil, err
+	}
+	srv := server.New(st.Store, st.catalogue, blobs, dataDir(), sources.All)
+	return client.InProcess(srv.LocalHandler()), st.Close, nil
+}
+
+// onTheBox refuses a command that works on the archive's own database, blob
+// store or token file when BANK_URL says this machine is a client: acting on
+// the wrong box is the split brain the API exists to prevent.
+func onTheBox(command, reason string) error {
+	if client.FromEnv() != nil {
+		return fmt.Errorf("%s %s; run it on the server, not through BANK_URL", command, reason)
+	}
+	return nil
+}
+
+func pageOf(limit, offset int) httpapi.Page {
+	return httpapi.Page{PageSize: httpapi.PageSize{Limit: limit}, Offset: offset}
+}
+
 type authCmd struct {
 	Gmail authGmailCmd `cmd:"" help:"Authorize Gmail (loopback OAuth)."`
 }
@@ -268,8 +300,8 @@ type syncCmd struct {
 }
 
 func (c *syncCmd) Run(ctx context.Context) error {
-	if client.FromEnv() != nil {
-		return fmt.Errorf("sync reads the OAuth token beside the blob store and writes rows, blobs and raw mail together; run it on the server, not through BANK_URL")
+	if err := onTheBox("sync", "reads the OAuth token beside the blob store and writes rows, blobs and raw mail together"); err != nil {
+		return err
 	}
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
@@ -319,44 +351,19 @@ type searchCmd struct {
 }
 
 func (c *searchCmd) Run(ctx context.Context) error {
-	o := store.SearchOpts{Source: c.Source, From: c.From, To: c.To, Person: c.Person, MailboxID: c.MailboxID, Subject: c.Subject, Match: c.Match, Fuzzy: c.Fuzzy, Limit: c.Limit, Offset: c.Offset}
 	query := strings.Join(c.Query, " ")
-	if c.HasAttachment != "" {
-		value, err := strconv.ParseBool(c.HasAttachment)
-		if err != nil || (c.HasAttachment != "true" && c.HasAttachment != "false") {
-			return fmt.Errorf("has-attachment must be true or false")
-		}
-		o.HasAttachment = &value
+	if query == "" && (c.Kind != "" || c.Account != "") {
+		return fmt.Errorf("kind/account require a search query; use bank library list to browse library records")
 	}
-	var err error
-	if o.Since, err = parseDate(c.Since); err != nil {
-		return err
-	}
-	if o.Until, err = parseDate(c.Until); err != nil {
-		return err
-	}
-	// Checked before the query so local and remote modes reject the same
-	// values with the same message, instead of one returning nothing and the
-	// other a database error.
-	if err := o.Validate(); err != nil {
-		return err
-	}
-	if query != "" {
-		if err := o.ValidateQuery(query); err != nil {
-			return err
-		}
-	}
-
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
+	defer closeAPI()
 	if query == "" {
-		if c.Kind != "" || c.Account != "" {
-			return fmt.Errorf("kind/account require a search query; use bank library list to browse library records")
-		}
-		groups, err := b.BrowseThreads(ctx, store.BrowseOpts{Source: o.Source, MailboxID: o.MailboxID, Subject: o.Subject, HasAttachment: o.HasAttachment, From: o.From, To: o.To, Person: o.Person, Since: o.Since, Until: o.Until, Limit: o.Limit, Offset: o.Offset})
+		groups, err := client.Call(ctx, api, server.ListThreads, server.ListThreadsInput{Source: c.Source, From: c.From, To: c.To,
+			Person: c.Person, Subject: c.Subject, Since: c.Since, Until: c.Until, MailboxID: c.MailboxID,
+			HasAttachment: c.HasAttachment, Page: pageOf(c.Limit, c.Offset)})
 		if err != nil {
 			return err
 		}
@@ -366,24 +373,21 @@ func (c *searchCmd) Run(ctx context.Context) error {
 		for _, group := range groups {
 			fmt.Printf("%s  %s  %-12s  %d matching messages  %s\n", group.LastRef, formatSent(group.LastAt, "2006-01-02"), group.Source, group.Count, group.Subject)
 		}
-		printMorePages(len(groups), o.Limit, o.Offset)
+		printMorePages(len(groups), c.Limit, c.Offset)
 		return nil
 	}
-	findOptions := library.ListOptions{Query: query, Source: o.Source, Account: c.Account, Kind: c.Kind, Since: c.Since, Until: c.Until, Limit: o.Limit, Offset: o.Offset}
-	var result catalog.Result
-	switch b := b.(type) {
-	case *client.Client:
-		result, err = b.Find(ctx, query, o, findOptions)
-	case *localDB:
-		result, err = catalog.Find(ctx, b, b.catalogue, query, o, findOptions)
-	}
+	result, err := client.Call(ctx, api, server.Search, server.SearchInput{
+		LibraryFilters: server.LibraryFilters{Q: query, Match: c.Match, Source: c.Source, Account: c.Account, Kind: c.Kind,
+			Since: c.Since, Until: c.Until, Page: pageOf(c.Limit, c.Offset)},
+		From: c.From, To: c.To, Person: c.Person, Subject: c.Subject, Fuzzy: c.Fuzzy, MailboxID: c.MailboxID,
+		HasAttachment: c.HasAttachment})
 	if err != nil {
 		return err
 	}
 	if c.JSON {
 		return printJSON(result)
 	}
-	return printCatalog(result, o.Limit, o.Offset)
+	return printCatalog(result, c.Limit, c.Offset)
 }
 
 // printMorePages says how to reach the next page. A full page is the signal
@@ -414,16 +418,13 @@ type threadCmd struct {
 }
 
 func (c *threadCmd) Run(ctx context.Context) error {
-	threadID := strings.Join(c.ID, " ")
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	thread, err := b.GetThreadPage(ctx, c.Source, threadID, store.ThreadOpts{Limit: c.Limit, Before: c.Before, After: c.After, Around: c.Around, Latest: c.Latest, Current: c.Current})
-	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("no thread %q", threadID)
-	}
+	defer closeAPI()
+	thread, err := client.Call(ctx, api, server.GetThread, server.ThreadInput{ID: strings.Join(c.ID, " "), Source: c.Source,
+		Before: c.Before, After: c.After, Around: c.Around, Latest: c.Latest, Current: c.Current, PageSize: httpapi.PageSize{Limit: c.Limit}})
 	if err != nil {
 		return err
 	}
@@ -478,13 +479,12 @@ type showCmd struct {
 }
 
 func (c *showCmd) Run(ctx context.Context) error {
-	remote := client.FromEnv() != nil
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	d, err := b.GetMessageDetailByRef(ctx, c.Ref)
+	defer closeAPI()
+	d, err := client.Call(ctx, api, server.GetMessage, server.MessageInput{Ref: c.Ref})
 	if retired, ok := errors.AsType[*store.RetiredError](err); ok {
 		return printRetired(retired.Retired, c.JSON)
 	}
@@ -514,16 +514,8 @@ func (c *showCmd) Run(ctx context.Context) error {
 	fmt.Printf("\n%s\n", m.Body)
 	if len(d.Attachments) > 0 {
 		fmt.Println()
-		var blobs *blob.Store
-		if !remote {
-			blobs, _ = blob.New(filepath.Join(dataDir(), "blobs"))
-		}
 		for _, a := range d.Attachments {
-			where := fmt.Sprintf("bank fetch %s", a.BLAKE3)
-			if blobs != nil {
-				where = blobs.Path(a.BLAKE3)
-			}
-			fmt.Printf("attachment: %s (%d bytes)  %s\n", a.Filename, a.SizeBytes, where)
+			fmt.Printf("attachment: %s (%d bytes)  bank fetch %s\n", a.Filename, a.SizeBytes, a.BLAKE3)
 			if a.TextStatus != "" {
 				fmt.Printf("            text: %s", a.TextStatus)
 				if a.TextChars > 0 {
@@ -595,54 +587,17 @@ func printProvenance(m store.Message) {
 	}
 }
 
-// backend is the archive as the read commands use it. The local store and a
-// remote `bank serve` answer to the same method names, so no command below
-// has to know which it is talking to.
-type backend interface {
-	ListMailboxes(context.Context, string) ([]store.Mailbox, error)
-	BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error)
-	MailConflictMessages(context.Context, string, string, ref.Message, int) (store.Thread, error)
-	RawInputs(context.Context, int64, int) ([]store.RawInput, error)
-	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
-	AttachmentMessages(context.Context, content.Digest, int, int) ([]store.Message, error)
-	GetMessageDetailByRef(ctx context.Context, cited ref.Message) (store.MessageDetail, error)
-	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
-	Stats(ctx context.Context) ([]store.SourceStats, error)
-	SetCoverage(ctx context.Context, source, text string) error
-	CreateContact(ctx context.Context, name, note string) (store.Contact, error)
-	ImportContacts(ctx context.Context, in []store.ContactImport) ([]store.ContactImportResult, error)
-	DeleteContact(ctx context.Context, name string) error
-	ListContacts(ctx context.Context) ([]store.Contact, error)
-	GetContactDetail(ctx context.Context, name string) (store.ContactDetail, error)
-	AddAlias(ctx context.Context, name, source, value string) (store.ContactAlias, error)
-	RemoveAlias(ctx context.Context, name, source, value string) error
-	ContactMessages(ctx context.Context, name string, o store.ContactMessagesOpts) ([]store.MessageDetail, error)
-	SuggestIdentities(ctx context.Context, limit int) ([]store.IdentitySuggestion, error)
-	Query(ctx context.Context, query string, limit int) (store.QueryResult, error)
-}
-
-func openBackend(ctx context.Context) (backend, func(), error) {
-	if c := client.FromEnv(); c != nil {
-		return c, func() {}, nil
-	}
-	st, err := openStore(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	return st, st.Close, nil
-}
-
 type statsCmd struct {
 	JSON bool `help:"JSON output."`
 }
 
 func (c *statsCmd) Run(ctx context.Context) error {
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	stats, err := b.Stats(ctx)
+	defer closeAPI()
+	stats, err := client.Call(ctx, api, server.GetStats, struct{}{})
 	if err != nil {
 		return err
 	}
@@ -682,12 +637,13 @@ func (c *statsCmd) Run(ctx context.Context) error {
 	// Coverage belongs in "how much of my archive can I actually search", but
 	// not in --json: that payload is a list of sources and agents already
 	// parse it. `bank attachment stats --json` is the machine-readable form.
-	if b, closeBackend, err := openAttachments(ctx); err == nil {
-		defer closeBackend()
-		if ext, err := b.ExtractionStats(ctx); err == nil && len(ext) > 0 {
-			fmt.Println()
-			printExtractionStats(ext)
-		}
+	ext, err := client.Call(ctx, api, server.GetAttachmentStats, struct{}{})
+	if err != nil {
+		return err
+	}
+	if len(ext) > 0 {
+		fmt.Println()
+		printExtractionStats(ext)
 	}
 	return nil
 }
@@ -706,15 +662,12 @@ type coverageCmd struct {
 
 func (c *coverageCmd) Run(ctx context.Context) error {
 	text := strings.Join(c.Text, " ")
-	if err := ingest.ValidSource(c.Source); err != nil {
-		return err
-	}
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	if err := b.SetCoverage(ctx, c.Source, text); err != nil {
+	defer closeAPI()
+	if _, err := client.Call(ctx, api, server.SetSourceCoverage, server.CoverageInput{Source: c.Source, Body: server.CoverageInputBody{Text: text}}); err != nil {
 		return err
 	}
 	if text == "" {
@@ -758,12 +711,12 @@ func (c *queryCmd) Run(ctx context.Context) error {
 		}
 		query = string(b)
 	}
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	res, err := b.Query(ctx, query, c.Limit)
+	defer closeAPI()
+	res, err := client.Call(ctx, api, server.RunQuery, server.QueryInput{Body: server.QueryInputBody{SQL: query, Limit: c.Limit}})
 	if err != nil {
 		return err
 	}
@@ -797,8 +750,6 @@ func queryCell(v any) string {
 		return "∅"
 	case string:
 		s = x
-	case time.Time:
-		return x.Format("2006-01-02 15:04:05")
 	default:
 		if b, err := json.Marshal(x); err == nil {
 			s = string(b)
@@ -824,18 +775,14 @@ func (c *fetchCmd) Run(ctx context.Context) error {
 		dest = c.BLAKE3.String()
 	}
 
-	var src io.ReadCloser
-	var err error
-	if remote := client.FromEnv(); remote != nil {
-		src, err = remote.Blob(ctx, c.BLAKE3)
-	} else {
-		var blobs *blob.Store
-		if blobs, err = blob.New(filepath.Join(dataDir(), "blobs")); err == nil {
-			src, err = os.Open(blobs.Path(c.BLAKE3))
-		}
-	}
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
-		return fmt.Errorf("%s: %w", c.BLAKE3, err)
+		return err
+	}
+	defer closeAPI()
+	src, err := client.Open(ctx, api, server.GetBlob, server.DigestInput{BLAKE3: c.BLAKE3})
+	if err != nil {
+		return err
 	}
 	defer src.Close()
 
@@ -859,8 +806,8 @@ type verifyCmd struct {
 }
 
 func (c *verifyCmd) Run(ctx context.Context) error {
-	if client.FromEnv() != nil {
-		return fmt.Errorf("verify reads the blob store directly; run it on the server, not through BANK_URL")
+	if err := onTheBox("verify", "reads the blob store directly"); err != nil {
+		return err
 	}
 	d, closeStore, err := openLocal(ctx)
 	if err != nil {
@@ -892,8 +839,8 @@ func (c *verifyCmd) Run(ctx context.Context) error {
 type migrateCmd struct{}
 
 func (migrateCmd) Run(ctx context.Context) error {
-	if client.FromEnv() != nil {
-		return fmt.Errorf("migrate changes the database directly; run it on the server, not through BANK_URL")
+	if err := onTheBox("migrate", "changes the database directly"); err != nil {
+		return err
 	}
 	if err := db.Migrate(ctx, databaseURL()); err != nil {
 		return err
@@ -950,8 +897,8 @@ type workerCmd struct {
 }
 
 func (c *workerCmd) Run(ctx context.Context) error {
-	if client.FromEnv() != nil {
-		return fmt.Errorf("worker reads blobs and writes text on the server's own box; run it there, not through BANK_URL")
+	if err := onTheBox("worker", "reads blobs and writes text on the server's own box"); err != nil {
+		return err
 	}
 	if c.Workers < 1 {
 		return fmt.Errorf("--workers must be at least 1")
@@ -1054,10 +1001,7 @@ type tokenCmd struct {
 // valid and 401s on every request. Being told the path afterwards is the
 // diagnosis; refusing is the cure.
 func refuseRemoteToken() error {
-	if client.FromEnv() != nil {
-		return fmt.Errorf("token writes the file the server checks on every request; run it there, not through BANK_URL")
-	}
-	return nil
+	return onTheBox("token", "writes the file the server checks on every request")
 }
 
 type tokenNewCmd struct {
@@ -1111,17 +1055,6 @@ func (c *tokenRevokeCmd) Run() error {
 		return err
 	}
 	return server.Tokens(dataDir()).Revoke(c.Name)
-}
-
-func parseDate(s string) (time.Time, error) {
-	if s == "" {
-		return time.Time{}, nil
-	}
-	t, err := time.ParseInLocation("2006-01-02", s, time.Local)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid date %q, want YYYY-MM-DD", s)
-	}
-	return t, nil
 }
 
 func printJSON(v any) error {

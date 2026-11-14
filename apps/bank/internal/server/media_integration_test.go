@@ -17,8 +17,10 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
+	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
@@ -35,20 +37,45 @@ func libraryClient(t *testing.T) (*client.Client, *Server) {
 	return client.New(host.URL, token), s
 }
 
+func importUpload(ctx context.Context, c *client.Client, kind, name string, r io.Reader, options json.RawMessage) (store.RawInput, error) {
+	k, err := sources.All.Lookup(kind)
+	if err != nil {
+		return store.RawInput{}, err
+	}
+	return client.Upload(ctx, c, ImportOp(k), ImportInput{}, client.ImportFile(name, r, options))
+}
+
+func uploadFiles(ctx context.Context, c *client.Client, paths []string, in UploadLibraryFilesInput) ([]library.File, error) {
+	return client.Upload(ctx, c, UploadLibraryFiles, in, client.Files(paths))
+}
+
+// decoded reads a list whose shape the projection picked.
+func decoded[T any](raw json.RawMessage, err error) (T, error) {
+	var v T
+	if err != nil {
+		return v, err
+	}
+	return v, json.Unmarshal(raw, &v)
+}
+
+func paged(limit, offset int) httpapi.Page {
+	return httpapi.Page{PageSize: httpapi.PageSize{Limit: limit}, Offset: offset}
+}
+
 func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 	ctx := context.Background()
 	c, s := libraryClient(t)
-	item, err := c.CreateLibraryItem(ctx, library.Item{Kind: "book", Title: "Invoice guide"})
+	item, err := client.Call(ctx, c, CreateLibraryItem, CreateLibraryItemInput{Body: Strict[library.Item]{Value: library.Item{Kind: "book", Title: "Invoice guide"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	rating := 4
 	edit := library.StateEdit{Status: "planned", Rating: &rating, Notes: "Useful reference", Tags: []string{"reference"}}
-	state, err := c.SetLibraryState(ctx, item.ID, edit)
+	state, err := client.Call(ctx, c, SetLibraryItemState, LibraryStateInput{ID: item.ID, Body: Strict[library.StateEdit]{Value: edit}})
 	if err != nil || state.Revision != 1 {
 		t.Fatalf("state: %+v %v", state, err)
 	}
-	if _, err = c.SetLibraryState(ctx, item.ID, edit); !errors.Is(err, library.ErrConflict) {
+	if _, err = client.Call(ctx, c, SetLibraryItemState, LibraryStateInput{ID: item.ID, Body: Strict[library.StateEdit]{Value: edit}}); !errors.Is(err, library.ErrConflict) {
 		t.Fatalf("stale edit: %v", err)
 	}
 	paths := []string{filepath.Join(t.TempDir(), "invoice.txt"), filepath.Join(t.TempDir(), "receipt.txt")}
@@ -57,32 +84,32 @@ func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	files, err := c.UploadLibraryFiles(ctx, paths, "files", "owner", item.ID)
+	files, err := uploadFiles(ctx, c, paths, UploadLibraryFilesInput{Source: "files", Account: "owner", ItemID: item.ID})
 	if err != nil || len(files) != 2 {
 		t.Fatalf("upload: %+v %v", files, err)
 	}
 	if files[0].BLAKE3 != files[1].BLAKE3 || files[0].ID == files[1].ID {
 		t.Fatalf("file occurrences versus shared bytes: %+v", files)
 	}
-	if _, err = c.UploadLibraryFiles(ctx, paths, "files", "owner", item.ID); err != nil {
+	if _, err = uploadFiles(ctx, c, paths, UploadLibraryFilesInput{Source: "files", Account: "owner", ItemID: item.ID}); err != nil {
 		t.Fatalf("repeat upload: %v", err)
 	}
-	item, err = c.LibraryItem(ctx, item.ID)
+	item, err = client.Call(ctx, c, GetLibraryItem, LibraryIDInput{ID: item.ID})
 	if err != nil || len(item.FileIDs) != 2 {
 		t.Fatalf("associations: %+v %v", item, err)
 	}
 	if _, err = os.Stat(s.blobs.Path(files[0].BLAKE3)); err != nil {
 		t.Fatal(err)
 	}
-	collection, err := c.CreateLibraryCollection(ctx, library.Collection{Kind: "watchlist", Title: "Invoice reading", Snapshot: &library.Snapshot{Entries: []library.Entry{{ItemID: item.ID, Position: 0}, {ItemID: item.ID, Position: 1}}}})
+	collection, err := client.Call(ctx, c, CreateLibraryCollection, CreateLibraryCollectionInput{Body: Strict[library.Collection]{Value: library.Collection{Kind: "watchlist", Title: "Invoice reading", Snapshot: &library.Snapshot{Entries: []library.Entry{{ItemID: item.ID, Position: 0}, {ItemID: item.ID, Position: 1}}}}}})
 	if err != nil || len(collection.Snapshot.Entries) != 2 {
 		t.Fatalf("duplicate entries: %+v %v", collection, err)
 	}
-	_, err = c.EditLibraryCollection(ctx, collection.ID, library.CollectionEdit{ExpectedRevision: collection.Revision, Title: "Invoice reading", Entries: []library.Entry{{ItemID: item.ID, Position: 0}}})
+	_, err = client.Call(ctx, c, EditLibraryCollection, CollectionEditInput{ID: collection.ID, Body: Strict[library.CollectionEdit]{Value: library.CollectionEdit{ExpectedRevision: collection.Revision, Title: "Invoice reading", Entries: []library.Entry{{ItemID: item.ID, Position: 0}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshots, err := c.LibraryCollectionSnapshots(ctx, collection.ID)
+	snapshots, err := decoded[[]library.Snapshot](client.Call(ctx, c, ListLibraryCollectionSnapshots, SnapshotsInput{ID: collection.ID, Projection: "full"}))
 	if err != nil || len(snapshots) != 2 {
 		t.Fatalf("snapshot history: %+v %v", snapshots, err)
 	}
@@ -90,15 +117,15 @@ func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 	if err = s.db.PutBlobText(ctx, store.BlobText{BLAKE3: files[0].BLAKE3, Text: "Invoice evidence for the library", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := c.Find(ctx, "invoice", store.SearchOpts{Limit: 20}, library.ListOptions{Limit: 20})
+	result, err := client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "invoice", Page: paged(20, 0)}})
 	if err != nil || len(result.Messages) != 1 || len(result.Items) != 1 || len(result.Files) != 2 || len(result.Collections) != 1 {
 		t.Fatalf("combined search: %+v %v", result, err)
 	}
-	result, err = c.Find(ctx, "scan.pdf", store.SearchOpts{Limit: 20}, library.ListOptions{Kind: "file", Limit: 20})
+	result, err = client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "scan.pdf", Kind: "file", Page: paged(20, 0)}})
 	if err != nil || len(result.Attachments) != 1 {
 		t.Fatalf("existing attachment name: %+v %v", result, err)
 	}
-	result, err = c.Find(ctx, "invoice", store.SearchOpts{Limit: 20, From: "alice@example.com"}, library.ListOptions{Limit: 20})
+	result, err = client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "invoice", Page: paged(20, 0)}, From: "alice@example.com"})
 	if err != nil || len(result.Messages) != 1 || len(result.Items) != 0 {
 		t.Fatalf("mail-specific filter: %+v %v", result, err)
 	}
@@ -109,15 +136,15 @@ func TestLibraryRemoteImportsAndMarkdownRetraction(t *testing.T) {
 	c, _ := libraryClient(t)
 	history := "Title,Date\nExample: Season 1: Pilot,2025-04-03\nExample: Season 1: Pilot,2025-04-03\n"
 	netflix := json.RawMessage(`{"account": "profile-one"}`)
-	raw, err := c.Import(ctx, "netflix", "NetflixViewingHistory.csv", strings.NewReader(history), netflix)
+	raw, err := importUpload(ctx, c, "netflix", "NetflixViewingHistory.csv", strings.NewReader(history), netflix)
 	if err != nil || raw.Report.Library.Activity != 2 || raw.Report.Library.Items != 1 {
 		t.Fatalf("Netflix import: %+v %v", raw, err)
 	}
-	raw, err = c.Import(ctx, "netflix", "NetflixViewingHistory.csv", strings.NewReader(history), netflix)
+	raw, err = importUpload(ctx, c, "netflix", "NetflixViewingHistory.csv", strings.NewReader(history), netflix)
 	if err != nil || raw.Report.Library.Activity != 0 {
 		t.Fatalf("Netflix replay: %+v %v", raw, err)
 	}
-	activity, err := c.ListLibraryActivity(ctx, library.ListOptions{Source: "netflix", Account: "profile-one", Limit: 20})
+	activity, err := client.Call(ctx, c, ListLibraryActivity, LibraryFilters{Source: "netflix", Account: "profile-one", Page: paged(20, 0)})
 	if err != nil || len(activity) != 2 || activity[0].Occurred.Precision != "day" {
 		t.Fatalf("Netflix precision: %+v %v", activity, err)
 	}
@@ -133,7 +160,7 @@ func TestLibraryRemoteImportsAndMarkdownRetraction(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		raw, err := c.Import(ctx, "markdown", "publication.json", bytes.NewReader(document), nil)
+		raw, err := importUpload(ctx, c, "markdown", "publication.json", bytes.NewReader(document), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +172,7 @@ func TestLibraryRemoteImportsAndMarkdownRetraction(t *testing.T) {
 	if raw = publish(); raw.Report.Library.Pages != 1 {
 		t.Fatalf("publication: %+v", raw)
 	}
-	found, err := c.Find(ctx, "violet telescope", store.SearchOpts{Limit: 20}, library.ListOptions{Limit: 20})
+	found, err := client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "violet telescope", Page: paged(20, 0)}})
 	if err != nil || len(found.Pages) != 1 {
 		t.Fatalf("Markdown answers: %+v %v", found, err)
 	}
@@ -153,7 +180,7 @@ func TestLibraryRemoteImportsAndMarkdownRetraction(t *testing.T) {
 		t.Fatal(err)
 	}
 	publish()
-	found, err = c.Find(ctx, "violet telescope", store.SearchOpts{Limit: 20}, library.ListOptions{Limit: 20})
+	found, err = client.Call(ctx, c, Search, SearchInput{LibraryFilters: LibraryFilters{Q: "violet telescope", Page: paged(20, 0)}})
 	if err != nil || len(found.Pages) != 0 {
 		t.Fatalf("revoked page is still searchable: %+v %v", found, err)
 	}

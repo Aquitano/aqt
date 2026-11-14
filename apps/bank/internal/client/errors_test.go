@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -10,7 +11,7 @@ import (
 
 	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/ref"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -36,12 +37,12 @@ func TestTaggedFailuresAreTheStoresErrors(t *testing.T) {
 	}))
 	defer server.Close()
 	c, ctx := New(server.URL, "secret"), context.Background()
-
-	cited, err := ref.Parse("content:1111111111111111")
-	if err != nil {
-		t.Fatal(err)
+	get := func(path string) error {
+		_, err := Call(ctx, c, httpapi.Op[struct{}, json.RawMessage]{Operation: httpapi.Operation{Method: http.MethodGet, Path: path}}, struct{}{})
+		return err
 	}
-	_, err = c.Resolve(ctx, cited)
+
+	err := get("/v1/refs/content:1111111111111111")
 	ambiguous, ok := errors.AsType[*atticstore.AmbiguousRefError](err)
 	if !ok || ambiguous.Ref != "content:1111111111111111" || len(ambiguous.Candidates) != 2 || ambiguous.Candidates[1].Path != "/b.txt" {
 		t.Fatalf("an ambiguous ref answered %#v", err)
@@ -51,22 +52,18 @@ func TestTaggedFailuresAreTheStoresErrors(t *testing.T) {
 		t.Fatalf("remote message %q, local %q", err, local)
 	}
 
-	_, err = c.GetThreadPage(ctx, "gmail", "old", store.ThreadOpts{})
+	err = get("/v1/threads/old")
 	if conflict, ok := errors.AsType[*store.MailThreadConflictError](err); !ok || len(conflict.Choices) != 2 {
 		t.Fatalf("a mail thread conflict answered %#v", err)
 	}
 
-	cite, err := ref.ParseMessage("msg:0123456789abcdef")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = c.GetMessageDetailByRef(ctx, cite); !errors.Is(err, store.ErrNotFound) {
+	if err = get("/v1/messages/msg:0123456789abcdef"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("a missing message outside the library answered %v", err)
 	}
-	if _, err = c.GetContactDetail(ctx, "nobody"); !errors.Is(err, fail.ErrInvalid) || err.Error() != "no contact" {
+	if err = get("/v1/contacts/nobody"); !errors.Is(err, fail.ErrInvalid) || err.Error() != "no contact" {
 		t.Fatalf("an invalid request answered %v", err)
 	}
-	if _, err = c.Stats(ctx); err == nil || errors.Is(err, store.ErrNotFound) || err.Error() != "502 Bad Gateway: upstream down" {
+	if err = get("/v1/stats"); err == nil || errors.Is(err, store.ErrNotFound) || err.Error() != "502 Bad Gateway: upstream down" {
 		t.Fatalf("an untagged failure answered %v", err)
 	}
 }

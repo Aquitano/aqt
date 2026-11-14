@@ -15,11 +15,10 @@ import (
 	"github.com/aquitano/aqt/packages/go/extract"
 )
 
-// Archive is the part of the archive an extraction run touches. The local
-// Postgres store and the HTTP client both satisfy it, which is what lets the
-// same pass run on the server or on a laptop against a remote `bank serve` —
-// the laptop being where a heavier OCR model would live. Storing text also
-// updates the messages that carry it.
+// Archive is the part of the archive an extraction run touches. `bank
+// extract` reaches it through the API, so the same pass runs on the server or
+// on a laptop against a remote `bank serve`, the laptop being where a heavier
+// OCR model would live. Storing text also updates the messages that carry it.
 type Archive interface {
 	ListBlobs(ctx context.Context, o store.ListBlobsOpts) ([]store.BlobRef, error)
 	PutBlobText(ctx context.Context, bt store.BlobText) error

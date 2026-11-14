@@ -42,7 +42,7 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 	if err = os.WriteFile(path, bytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	files, err := c.UploadLibraryFiles(ctx, []string{path}, "", "", "")
+	files, err := uploadFiles(ctx, c, []string{path}, UploadLibraryFilesInput{})
 	if err != nil || len(files) != 1 {
 		t.Fatalf("upload: %+v, %v", files, err)
 	}
@@ -78,7 +78,7 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return c.Resolve(ctx, parsed)
+		return client.Call(ctx, c, ResolveRef, ResolveInput{Ref: parsed})
 	}
 	file, err := resolve(files[0].ID)
 	if err != nil || file.Kind != "file" || !has(file, "on_disk", short, onDisk) {

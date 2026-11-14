@@ -11,21 +11,26 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
-// registerArchiveAPI describes the routes over message sources.
-func (s *Server) registerArchiveAPI(api huma.API) {
-	huma.Register(api, httpapi.Operation{ID: "listMailboxes", Method: http.MethodGet, Path: "/v1/mailboxes", Tag: "messages",
+var (
+	ListMailboxes = httpapi.Op[MailboxesInput, []store.Mailbox]{Operation: httpapi.Operation{ID: "listMailboxes", Method: http.MethodGet, Path: "/v1/mailboxes", Tag: "messages",
 		Summary: "List the mail folders a source was seen with",
-	}.For(api), s.mailboxes)
-	huma.Register(api, httpapi.Operation{ID: "getStats", Method: http.MethodGet, Path: "/v1/stats", Tag: "messages",
+	}}
+	GetStats = httpapi.Op[struct{}, []store.SourceStats]{Operation: httpapi.Operation{ID: "getStats", Method: http.MethodGet, Path: "/v1/stats", Tag: "messages",
 		Summary: "Count messages per source, with their date range and freshness",
-	}.For(api), s.stats)
+	}}
+)
+
+// registerArchiveAPI serves the routes over message sources.
+func (s *Server) registerArchiveAPI(api huma.API) {
+	httpapi.Register(api, ListMailboxes, s.mailboxes)
+	httpapi.Register(api, GetStats, s.stats)
 }
 
-type mailboxesInput struct {
+type MailboxesInput struct {
 	Source string `query:"source" doc:"The mail source, such as gmail or proton."`
 }
 
-func (s *Server) mailboxes(ctx context.Context, in *mailboxesInput) (*httpapi.Body[[]store.Mailbox], error) {
+func (s *Server) mailboxes(ctx context.Context, in *MailboxesInput) (*httpapi.Body[[]store.Mailbox], error) {
 	if err := ingest.ValidSource(in.Source); err != nil {
 		return nil, httpapi.Invalid.New(err.Error())
 	}

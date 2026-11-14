@@ -21,7 +21,7 @@ bank stats
 `bank stats` is the cheapest end-to-end check — if it prints a source table, everything works. Distinct failure modes, all of which mean stop and report rather than retry:
 
 - `command -v bank` prints nothing — the binary is not installed on this machine. Report that; do not try to build or download it.
-- `bank: migrate: failed to connect to ...: connection refused` — no `BANK_URL`, so the CLI fell back to a local Postgres that is not there. On a client machine that means `BANK_URL`/`BANK_TOKEN` are not exported into this shell; ask the owner to set them (see `skill/README.md` in the aqt-bank repo).
+- `bank: migrate: failed to connect to ...: connection refused` — no `BANK_URL`, so the CLI tried to serve the API in process from a local Postgres that is not there. On a client machine that means `BANK_URL`/`BANK_TOKEN` are not exported into this shell; ask the owner to set them (see `skill/README.md` in the aqt-bank repo).
 - `bank: send Authorization: Bearer <token>; the owner mints one with ...` — HTTP 401. `BANK_TOKEN` is unset, wrong or revoked. The owner has to run `bank token new <machine-name>` on the server and re-export the printed value; it is shown once.
 - `dial tcp ...: connect: connection refused`, or a hang ending in an i/o timeout — the server is down or Tailscale is disconnected. Report; retrying will not help.
 
@@ -183,5 +183,5 @@ Rules:
 
 - `bank fetch` writes a file to disk; pick an explicit `-o` under a temp dir, and remember the bytes are personal data.
 - Message bodies are private correspondence. Read what the task needs, quote the minimum, and do not paste whole threads into summaries or commit messages.
-- `sync`, `token`, `verify`, `reimport` and `import inbox` are server-side commands: they need the archive, the blob store or the token file on the server itself. Run from a client machine they refuse with `BANK_URL` set, so they fail loudly rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse — `bank auth gmail` on a client and copying the resulting `gmail/` directory to the server is a supported route.
+- `sync`, `worker`, `migrate`, `token`, `verify`, `retire`, `reimport`, `import inbox` and `mail rebuild` are server-side commands: they need the archive, the blob store or the token file on the server itself. Run from a client machine they refuse with `BANK_URL` set, so they fail loudly rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse — `bank auth gmail` on a client and copying the resulting `gmail/` directory to the server is a supported route.
 - `bank reimport [kind...]` replays the stored raw inputs through today's importers on the server. It adds messages and attachments an earlier run missed and leaves stored messages as they are. Suggest it to the owner rather than running it.

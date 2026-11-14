@@ -38,11 +38,30 @@ write role in its security requirement, and answers Forbidden to a read token.
 Lists and searches take limit, 100 by default and at most 500, and those that page by
 position take offset, at most 10000. Every failure is JSON with a _tag.`
 
+var (
+	GetTimeline = httpapi.Op[TimelineInput, catalog.Timeline]{Operation: httpapi.Operation{ID: "getTimeline", Method: http.MethodGet, Path: "/v1/timeline", Tag: "timeline",
+		Summary: "List what happened between two days, across messages, activity and files",
+		Description: "Messages by when they were sent, activity (watching, listening, reading) by when it happened, " +
+			"and files on disks by when they were last modified, merged oldest first. limit caps each group on " +
+			"its own; truncated names the groups that reached it.",
+	}}
+	ResolveRef = httpapi.Op[ResolveInput, catalog.Resolved]{Operation: httpapi.Operation{ID: "resolveRef", Method: http.MethodGet, Path: "/v1/refs/{ref}", Tag: "refs",
+		Summary: "Say what a cited ref names, whichever store holds it",
+		Description: "Takes msg:<16 hex> for a message, a library ID such as item:<32 hex> or file:<32 hex>, or " +
+			"content:<16 to 64 hex> for bytes. The answer names the record, the route that returns it in full, " +
+			"and where the same bytes are: a message attachment's or library file's copies on disks, and for " +
+			"bytes, the messages and library files that hold them as well as the places on disks.",
+		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef},
+	}}
+)
+
 // registerAPI adds every operation to mux. Their document is generated from
 // the Go types, and their failures carry a _tag.
-func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
+func (s *Server) registerAPI(mux *http.ServeMux, requireToken bool) huma.API {
 	api := humago.New(mux, httpapi.Config("bank", apiDescription, mintCommand))
-	api.UseMiddleware(httpapi.RequireToken(api, Tokens(s.dataDir), mintCommand))
+	if requireToken {
+		api.UseMiddleware(httpapi.RequireToken(api, Tokens(s.dataDir), mintCommand))
+	}
 	s.registerSearchAPI(api)
 	s.registerArchiveAPI(api)
 	s.registerMessagesAPI(api)
@@ -50,20 +69,8 @@ func (s *Server) registerAPI(mux *http.ServeMux) huma.API {
 	s.registerAttachmentsAPI(api)
 	s.registerLibraryAPI(api)
 	s.registerUploadsAPI(api)
-	huma.Register(api, httpapi.Operation{ID: "getTimeline", Method: http.MethodGet, Path: "/v1/timeline", Tag: "timeline",
-		Summary: "List what happened between two days, across messages, activity and files",
-		Description: "Messages by when they were sent, activity (watching, listening, reading) by when it happened, " +
-			"and files on disks by when they were last modified, merged oldest first. limit caps each group on " +
-			"its own; truncated names the groups that reached it.",
-	}.For(api), s.timeline)
-	huma.Register(api, httpapi.Operation{ID: "resolveRef", Method: http.MethodGet, Path: "/v1/refs/{ref}", Tag: "refs",
-		Summary: "Say what a cited ref names, whichever store holds it",
-		Description: "Takes msg:<16 hex> for a message, a library ID such as item:<32 hex> or file:<32 hex>, or " +
-			"content:<16 to 64 hex> for bytes. The answer names the record, the route that returns it in full, " +
-			"and where the same bytes are: a message attachment's or library file's copies on disks, and for " +
-			"bytes, the messages and library files that hold them as well as the places on disks.",
-		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef},
-	}.For(api), s.resolve)
+	httpapi.Register(api, GetTimeline, s.timeline)
+	httpapi.Register(api, ResolveRef, s.resolve)
 	s.catalogue.Register(api)
 	httpapi.Finish(api)
 	return api
@@ -127,25 +134,25 @@ func list[T any](v []T, err error) (*httpapi.Body[[]T], error) {
 
 // Spec is the OpenAPI document bank serve answers with, built without a database.
 func Spec(kinds importer.Registry) ([]byte, error) {
-	return json.MarshalIndent((&Server{catalogue: attic.New(nil, ""), kinds: kinds}).registerAPI(http.NewServeMux()).OpenAPI(), "", "  ")
+	return json.MarshalIndent((&Server{catalogue: attic.New(nil, ""), kinds: kinds}).registerAPI(http.NewServeMux(), true).OpenAPI(), "", "  ")
 }
 
-type resolveInput struct {
+type ResolveInput struct {
 	Ref ref.Ref `path:"ref" doc:"The ref as cited, such as msg:<16 hex>."`
 }
 
-func (s *Server) resolve(ctx context.Context, in *resolveInput) (*httpapi.Body[catalog.Resolved], error) {
+func (s *Server) resolve(ctx context.Context, in *ResolveInput) (*httpapi.Body[catalog.Resolved], error) {
 	return reply(catalog.Resolve(ctx, s.db, s.catalogue, in.Ref))
 }
 
-type timelineInput struct {
+type TimelineInput struct {
 	Since string   `query:"since" required:"true" format:"date" doc:"First day, as YYYY-MM-DD in the server's time zone."`
 	Until string   `query:"until" format:"date" doc:"The day after the last day. Default: the day after since."`
 	Group []string `query:"group" enum:"message,activity,file" doc:"Only these groups. Default: all three."`
 	httpapi.PageSize
 }
 
-func (s *Server) timeline(ctx context.Context, in *timelineInput) (*httpapi.Body[catalog.Timeline], error) {
+func (s *Server) timeline(ctx context.Context, in *TimelineInput) (*httpapi.Body[catalog.Timeline], error) {
 	since, err := time.ParseInLocation(time.DateOnly, in.Since, time.Local)
 	if err != nil {
 		return nil, httpapi.Invalid.New("since is not a YYYY-MM-DD date")

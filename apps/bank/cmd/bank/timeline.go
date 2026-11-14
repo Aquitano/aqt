@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
@@ -25,7 +25,7 @@ func period(s string) (since, until time.Time, err error) {
 		layout              string
 		years, months, days int
 	}{{"2006", 1, 0, 0}, {"2006-01", 0, 1, 0}, {time.DateOnly, 0, 0, 1}} {
-		if since, err = time.ParseInLocation(form.layout, s, time.Local); err == nil {
+		if since, err = time.Parse(form.layout, s); err == nil {
 			return since, since.AddDate(form.years, form.months, form.days), nil
 		}
 	}
@@ -37,17 +37,13 @@ func (c *timelineCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	var result catalog.Timeline
-	if remote := client.FromEnv(); remote != nil {
-		result, err = remote.Timeline(ctx, since, until, c.Group, c.Limit)
-	} else {
-		st, openErr := openStore(ctx)
-		if openErr != nil {
-			return openErr
-		}
-		defer st.Close()
-		result, err = catalog.BuildTimeline(ctx, st, st.catalogue, catalog.TimelineOptions{Since: since, Until: until, Groups: c.Group, Limit: c.Limit})
+	api, closeAPI, err := connect(ctx)
+	if err != nil {
+		return err
 	}
+	defer closeAPI()
+	result, err := client.Call(ctx, api, server.GetTimeline, server.TimelineInput{Since: since.Format(time.DateOnly), Until: until.Format(time.DateOnly),
+		Group: c.Group, PageSize: httpapi.PageSize{Limit: c.Limit}})
 	if err != nil {
 		return err
 	}
@@ -79,18 +75,12 @@ type refCmd struct {
 }
 
 func (c *refCmd) Run(ctx context.Context) error {
-	var resolved catalog.Resolved
-	var err error
-	if remote := client.FromEnv(); remote != nil {
-		resolved, err = remote.Resolve(ctx, c.Ref)
-	} else {
-		st, openErr := openStore(ctx)
-		if openErr != nil {
-			return openErr
-		}
-		defer st.Close()
-		resolved, err = catalog.Resolve(ctx, st.Store, st.catalogue, c.Ref)
+	api, closeAPI, err := connect(ctx)
+	if err != nil {
+		return err
 	}
+	defer closeAPI()
+	resolved, err := client.Call(ctx, api, server.ResolveRef, server.ResolveInput{Ref: c.Ref})
 	if err != nil {
 		return err
 	}

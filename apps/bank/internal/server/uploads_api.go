@@ -27,47 +27,51 @@ import (
 // maxUploadFiles bounds one library upload.
 const maxUploadFiles = 100
 
-// registerUploadsAPI describes the routes that take files: imports, library
+var UploadLibraryFiles = httpapi.Op[UploadLibraryFilesInput, []library.File]{Operation: httpapi.Operation{ID: "uploadLibraryFiles", Method: http.MethodPost, Path: "/v1/library/files", Tag: "library",
+	Summary: "Keep up to 100 files in the library",
+	Description: "multipart/form-data with one file or files field per file, up to 16 GiB in all. The query " +
+		"parameters are checked before any bytes are stored.",
+	Errors: []httpapi.Kind{httpapi.NotFound},
+	Writes: true,
+}}
+
+// registerUploadsAPI serves the routes that take files: imports, library
 // file uploads and page publications.
 func (s *Server) registerUploadsAPI(api huma.API) {
 	for _, kind := range s.kinds {
 		s.registerImport(api, kind)
 	}
-
-	upload := httpapi.Operation{ID: "uploadLibraryFiles", Method: http.MethodPost, Path: "/v1/library/files", Tag: "library",
-		Summary: "Keep up to 100 files in the library",
-		Description: "multipart/form-data with one file or files field per file, up to 16 GiB in all. The query " +
-			"parameters are checked before any bytes are stored.",
-		Errors: []httpapi.Kind{httpapi.NotFound},
-		Writes: true,
-	}.For(api)
-	upload.DefaultStatus = http.StatusCreated
-	huma.Register(api, upload, s.uploadLibraryFiles)
-	httpapi.Registered(api, upload.Method, upload.Path).RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
+	httpapi.Register(api, UploadLibraryFiles, s.uploadLibraryFiles, func(op *huma.Operation) {
+		op.DefaultStatus = http.StatusCreated
+	}).RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
 		"multipart/form-data": {Schema: &huma.Schema{Type: "object", Properties: map[string]*huma.Schema{
 			"file": {Type: "array", Items: &huma.Schema{Type: "string", Format: "binary"}},
 		}}},
 	}}
 }
 
-// registerImport describes one kind's import route. Its options field has
-// the kind's own options schema.
-func (s *Server) registerImport(api huma.API, kind importer.Kind) {
-	op := httpapi.Operation{ID: "import" + exportedName(kind.Name), Method: http.MethodPost, Path: "/v1/import/" + kind.Name, Tag: "imports",
+// ImportOp is the import operation of one kind.
+func ImportOp(kind importer.Kind) httpapi.Op[ImportInput, store.RawInput] {
+	return httpapi.Op[ImportInput, store.RawInput]{Operation: httpapi.Operation{ID: "import" + exportedName(kind.Name), Method: http.MethodPost, Path: "/v1/import/" + kind.Name, Tag: "imports",
 		Summary: kind.Help,
 		Description: "multipart/form-data with an optional options field, the kind's options as JSON, followed by the " +
 			"file field, up to 16 GiB. The input is stored as a raw input before it is parsed, and the answer is that " +
 			"raw input with the report of this import. An input the parser rejects stays stored, and the rejection " +
 			"is an InvalidRequest; `bank reimport` replays it once the parser reads it.",
 		Writes: true,
-	}.For(api)
-	huma.Register(api, op, func(ctx context.Context, in *importInput) (*httpapi.Body[store.RawInput], error) {
+	}}
+}
+
+// registerImport serves one kind's import route. Its options field has the
+// kind's own options schema.
+func (s *Server) registerImport(api huma.API, kind importer.Kind) {
+	registered := httpapi.Register(api, ImportOp(kind), func(ctx context.Context, in *ImportInput) (*httpapi.Body[store.RawInput], error) {
 		return s.importInput(ctx, kind, in)
 	})
 	// Every source names its type Options, so the schema is inlined from a
 	// registry of its own instead of named in the document's.
 	options := huma.NewMapRegistry("#/components/schemas/", huma.DefaultSchemaNamer).Schema(kind.Options, false, "")
-	httpapi.Registered(api, op.Method, op.Path).RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
+	registered.RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
 		"multipart/form-data": {Schema: &huma.Schema{Type: "object", Required: []string{"file"}, Properties: map[string]*huma.Schema{
 			"options": options,
 			"file":    {Type: "string", Format: "binary", Description: "The input, as one file. A directory is sent as a zip of it."},
@@ -84,7 +88,7 @@ func exportedName(kind string) string {
 	return b.String()
 }
 
-type importInput struct {
+type ImportInput struct {
 	httpapi.Stream
 }
 
@@ -96,7 +100,7 @@ var imports = make(chan struct{}, 2)
 // maxOptions bounds the options field, which is read into memory.
 const maxOptions = 64 << 10
 
-func (s *Server) importInput(ctx context.Context, kind importer.Kind, in *importInput) (*httpapi.Body[store.RawInput], error) {
+func (s *Server) importInput(ctx context.Context, kind importer.Kind, in *ImportInput) (*httpapi.Body[store.RawInput], error) {
 	parts, err := in.Multipart(maxUpload)
 	if err != nil {
 		return nil, err
@@ -159,7 +163,7 @@ func importFailure(err error) error {
 	return httpapi.Invalid.New(err.Error())
 }
 
-type uploadLibraryFilesInput struct {
+type UploadLibraryFilesInput struct {
 	Source  string `query:"source" maxLength:"4096" doc:"The source the files are filed under. Default: files."`
 	Account string `query:"account" maxLength:"4096" doc:"The account at the source. Default: owner."`
 	ItemID  string `query:"item_id" doc:"Link every file to this library item, which must exist."`
@@ -168,7 +172,7 @@ type uploadLibraryFilesInput struct {
 
 // uploadLibraryFiles checks everything the request names before it stores a
 // byte, so a refused upload leaves no blob that nothing refers to.
-func (s *Server) uploadLibraryFiles(ctx context.Context, in *uploadLibraryFilesInput) (*httpapi.Body[[]library.File], error) {
+func (s *Server) uploadLibraryFiles(ctx context.Context, in *UploadLibraryFilesInput) (*httpapi.Body[[]library.File], error) {
 	source, account := cmp.Or(in.Source, "files"), cmp.Or(in.Account, "owner")
 	if err := ingest.ValidSource(source); err != nil {
 		return nil, httpapi.Invalid.New(err.Error())

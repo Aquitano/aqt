@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
@@ -28,7 +29,7 @@ func TestMailboxObservationsAndThreadConflictHTTP(t *testing.T) {
 	child := "Message-ID: <child@example.com>\r\nIn-Reply-To: <root@example.com>\r\nSubject: Reply\r\n\r\nchild"
 	importMail := func(name, body, options string) store.RawInput {
 		t.Helper()
-		raw, err := remote.Import(ctx, "eml", name, strings.NewReader(body), json.RawMessage(options))
+		raw, err := importUpload(ctx, remote, "eml", name, strings.NewReader(body), json.RawMessage(options))
 		if err != nil {
 			t.Fatalf("import %s %s: %v", name, options, err)
 		}
@@ -40,16 +41,16 @@ func TestMailboxObservationsAndThreadConflictHTTP(t *testing.T) {
 			t.Fatalf("upload to %s: %+v", mailbox, raw.Report)
 		}
 	}
-	mailboxes, err := remote.ListMailboxes(ctx, "mail")
+	mailboxes, err := client.Call(ctx, remote, ListMailboxes, MailboxesInput{Source: "mail"})
 	if err != nil || len(mailboxes) != 2 {
 		t.Fatalf("mailboxes: %+v %v", mailboxes, err)
 	}
 	importMail("child.eml", child, `{"source": "mail"}`)
-	groups, err := remote.BrowseThreads(ctx, store.BrowseOpts{Source: "mail", MailboxID: mailboxes[0].ID, Subject: "invoice", Limit: 10})
+	groups, err := client.Call(ctx, remote, ListThreads, ListThreadsInput{Source: "mail", MailboxID: mailboxes[0].ID, Subject: "invoice", Page: httpapi.Page{PageSize: httpapi.PageSize{Limit: 10}}})
 	if err != nil || len(groups) != 1 || groups[0].Count != 1 {
 		t.Fatalf("filtered groups: %+v %v", groups, err)
 	}
-	thread, err := remote.GetThreadPage(ctx, "mail", groups[0].ThreadID, store.ThreadOpts{Limit: 10})
+	thread, err := client.Call(ctx, remote, GetThread, ThreadInput{Source: "mail", ID: groups[0].ThreadID, PageSize: httpapi.PageSize{Limit: 10}})
 	if err != nil || len(thread.Messages) != 2 {
 		t.Fatalf("full conversation: %+v %v", thread, err)
 	}
@@ -58,7 +59,7 @@ func TestMailboxObservationsAndThreadConflictHTTP(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		detail, err := remote.GetMessageDetailByRef(ctx, cited)
+		detail, err := client.Call(ctx, remote, GetMessage, MessageInput{Ref: cited})
 		if err != nil || detail.Mail == nil || message.Mail == nil || !detail.Mail.HasReplyLinks || !message.Mail.HasReplyLinks {
 			t.Fatalf("mail provenance missing over HTTP: %+v %v", detail, err)
 		}
@@ -68,18 +69,18 @@ func TestMailboxObservationsAndThreadConflictHTTP(t *testing.T) {
 	}
 	importMail("mail.eml", root, `{"source": "mail", "thread_id": "provider-one"}`)
 	importMail("child.eml", child, `{"source": "mail", "thread_id": "provider-two"}`)
-	_, err = remote.GetThreadPage(ctx, "mail", groups[0].ThreadID, store.ThreadOpts{Limit: 10})
+	_, err = client.Call(ctx, remote, GetThread, ThreadInput{Source: "mail", ID: groups[0].ThreadID, PageSize: httpapi.PageSize{Limit: 10}})
 	var conflict *store.MailThreadConflictError
 	if !errors.As(err, &conflict) || len(conflict.Choices) != 2 {
 		t.Fatalf("HTTP conflict not typed: %v", err)
 	}
 	for _, choice := range conflict.Choices {
-		page, err := remote.GetThreadPage(ctx, "mail", choice, store.ThreadOpts{Limit: 10, Current: true})
+		page, err := client.Call(ctx, remote, GetThread, ThreadInput{Source: "mail", ID: choice, Current: true, PageSize: httpapi.PageSize{Limit: 10}})
 		if err != nil || len(page.Messages) != 1 || page.Messages[0].Mail == nil || page.Messages[0].Mail.ConflictKey == "" || page.Messages[0].Mail.NativeThreadID != choice {
 			t.Fatalf("provider conflict provenance: %+v %v", page, err)
 		}
 	}
-	page, err := remote.MailConflictMessages(ctx, "mail", conflict.ConflictKey, ref.Message{}, 10)
+	page, err := client.Call(ctx, remote, GetMailConflict, MailConflictInput{Source: "mail", Key: conflict.ConflictKey, PageSize: httpapi.PageSize{Limit: 10}})
 	if err != nil || len(page.Messages) != 0 {
 		t.Fatalf("unanchored route: %+v %v", page, err)
 	}

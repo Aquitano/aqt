@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
-	"github.com/aquitano/aqt/apps/bank/internal/page"
+	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
+	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -17,18 +19,12 @@ type reportsCmd struct {
 }
 
 func (c *reportsCmd) Run(ctx context.Context) error {
-	if c.Before < 0 {
-		return fmt.Errorf("before must be nonnegative")
-	}
-	if err := page.Check(c.Limit, 0); err != nil {
-		return err
-	}
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	inputs, err := b.RawInputs(ctx, c.Before, c.Limit)
+	defer closeAPI()
+	inputs, err := client.Call(ctx, api, server.ListRawInputs, server.RawInputsInput{Before: c.Before, PageSize: httpapi.PageSize{Limit: c.Limit}})
 	if err != nil {
 		return err
 	}
@@ -58,29 +54,13 @@ type attachmentFindCmd struct {
 }
 
 func (c *attachmentFindCmd) Run(ctx context.Context) error {
-	o := store.AttachmentFilter{Filename: c.Filename, Text: c.Text, FileType: c.Type, Person: c.Person, Offset: c.Offset, Limit: c.Limit}
-	if err := page.Check(o.Limit, o.Offset); err != nil {
-		return err
-	}
-	var err error
-	if c.Since != "" {
-		o.Since, err = time.Parse("2006-01-02", c.Since)
-		if err != nil {
-			return err
-		}
-	}
-	if c.Until != "" {
-		o.Until, err = time.Parse("2006-01-02", c.Until)
-		if err != nil {
-			return err
-		}
-	}
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	files, err := b.AttachmentLibrary(ctx, o)
+	defer closeAPI()
+	files, err := client.Call(ctx, api, server.SearchAttachments, server.SearchAttachmentsInput{Q: c.Filename, Text: c.Text, Type: c.Type,
+		Person: c.Person, Since: c.Since, Until: c.Until, Page: pageOf(c.Limit, c.Offset)})
 	if err != nil {
 		return err
 	}
@@ -100,15 +80,12 @@ type attachmentMessagesCmd struct {
 }
 
 func (c *attachmentMessagesCmd) Run(ctx context.Context) error {
-	if err := page.Check(c.Limit, c.Offset); err != nil {
-		return err
-	}
-	b, closeBackend, err := openBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeBackend()
-	messages, err := b.AttachmentMessages(ctx, c.BLAKE3, c.Offset, c.Limit)
+	defer closeAPI()
+	messages, err := client.Call(ctx, api, server.ListAttachmentMessages, server.AttachmentMessagesInput{BLAKE3: c.BLAKE3, Page: pageOf(c.Limit, c.Offset)})
 	if err != nil {
 		return err
 	}

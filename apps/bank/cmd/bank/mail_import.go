@@ -23,11 +23,11 @@ func (c *importMailTreeCmd) Run(ctx context.Context) error {
 	if err := ingest.ValidSource(c.Source); err != nil {
 		return err
 	}
-	b, err := openImportBackend(ctx)
+	api, closeAPI, err := connect(ctx)
 	if err != nil {
 		return err
 	}
-	defer b.close()
+	defer closeAPI()
 	return eml.WalkMailTree(filepath.Clean(c.Root), c.Layout, func(kind, path, mailbox string) error {
 		var options any = eml.EMLOptions{Source: c.Source, Mailbox: mailbox}
 		if kind == "mbox" {
@@ -37,7 +37,7 @@ func (c *importMailTreeCmd) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		return b.importPath(ctx, kind, path, raw)
+		return importPath(ctx, api, kind, path, raw)
 	}, func(path, reason string) {
 		fmt.Fprintf(os.Stderr, "bank: skip %s: %s\n", path, reason)
 	})
