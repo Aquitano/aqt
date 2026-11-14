@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aquitano/aqt/apps/bank/internal/export"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
-	"github.com/aquitano/aqt/apps/bank/internal/inbox"
+	"github.com/aquitano/aqt/apps/bank/internal/importer/inbox"
+	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
@@ -29,7 +29,7 @@ func Open(path string) (string, io.ReadCloser, error) {
 		return name, f, err
 	}
 	r, w := io.Pipe()
-	go func() { w.CloseWithError(export.Pack(path, w)) }()
+	go func() { w.CloseWithError(ingest.Pack(path, w)) }()
 	return name + ".zip", r, nil
 }
 

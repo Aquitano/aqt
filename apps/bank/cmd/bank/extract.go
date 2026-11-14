@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/extraction"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
@@ -37,7 +37,7 @@ type extractCmd struct {
 func (c *extractCmd) Run(ctx context.Context) error {
 	statuses := c.Status
 	for _, s := range statuses {
-		if err := blobtext.ValidRunStatus(s); err != nil {
+		if err := extraction.ValidRunStatus(s); err != nil {
 			return err
 		}
 	}
@@ -47,7 +47,7 @@ func (c *extractCmd) Run(ctx context.Context) error {
 	o.OCRLang = c.Lang
 	o.TempDir = stagingDir()
 
-	sel := blobtext.Selection{Statuses: statuses, Source: c.Source, Limit: c.Limit}
+	sel := extraction.Selection{Statuses: statuses, Source: c.Source, Limit: c.Limit}
 
 	var progress func(store.BlobRef, extract.Result)
 	if !c.JSON {
@@ -62,7 +62,7 @@ func (c *extractCmd) Run(ctx context.Context) error {
 	}
 	defer closeAPI()
 
-	sum, err := blobtext.Run(ctx, apiArchive{api}, sel, o, progress)
+	sum, err := extraction.Run(ctx, apiArchive{api}, sel, o, progress)
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func pruneStaging(dir string, maxAge time.Duration) {
 	}
 }
 
-func printExtractSummary(sum blobtext.Summary) {
+func printExtractSummary(sum extraction.Summary) {
 	if sum.Considered == 0 {
 		fmt.Println("nothing to extract")
 		return

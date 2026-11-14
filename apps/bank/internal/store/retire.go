@@ -226,7 +226,7 @@ func (s *Store) RetireMessages(ctx context.Context, o RetireOptions) (RetireResu
 		select g.source, g.external_id, g.message_id, g.ref, g.sent_at, g.subject, g.raw_input_id, $3, coalesce(r.id, '')
 		from gone g left join unnest($4::text[], $5::text[]) as r(ref, id) on r.ref = g.ref
 		on conflict (source, external_id) do nothing`,
-		o.Source, o.ExternalPrefixes, cleanText(o.Reason), refs, ids)
+		o.Source, o.ExternalPrefixes, CleanText(o.Reason), refs, ids)
 	if err != nil {
 		return res, err
 	}

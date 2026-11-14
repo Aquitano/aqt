@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/search"
@@ -26,7 +25,7 @@ var testDigest = content.Sum([]byte("scan.pdf"))
 // does not model.
 func attachmentServer(t *testing.T) (*Server, *store.Store) {
 	t.Helper()
-	st, dsn := storetest.NewNamed(t)
+	st := storetest.New(t)
 	dir := t.TempDir()
 	blobs, err := blob.New(filepath.Join(dir, "blobs"))
 	if err != nil {
@@ -46,7 +45,7 @@ func attachmentServer(t *testing.T) (*Server, *store.Store) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, sources.All)
+	s := New(st, blobs, dir, sources.All)
 	return s, st
 }
 

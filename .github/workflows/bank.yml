@@ -54,7 +54,7 @@ jobs:
       - uses: jdx/mise-action@v5
         with:
           install_args: go golangci-lint
-      # attic's extraction tests call these tools.
+      # The disk scanner's extraction tests call these tools.
       - run: sudo apt-get update && sudo apt-get install -y libimage-exiftool-perl tesseract-ocr poppler-utils
       - run: "mise run bank:go ::: bank:go:unix ::: bank:go:windows"
 
@@ -70,4 +70,4 @@ jobs:
       - uses: jdx/mise-action@v5
         with:
           install_args: go
-      - run: go test ./internal/attic/disk ./internal/attic/unpack ./internal/attic/scratch ./internal/attic/process ./internal/attic/dedupe ./internal/attic/organize
+      - run: go test ./internal/disks/disk ./internal/disks/unpack ./internal/disks/scratch ./internal/disks/process ./internal/disks/dedupe ./internal/disks/organize

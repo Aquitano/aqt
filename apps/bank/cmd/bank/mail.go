@@ -9,11 +9,11 @@ import (
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
-	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
+	"github.com/aquitano/aqt/apps/bank/internal/sources/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 

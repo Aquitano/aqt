@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
@@ -91,7 +91,7 @@ func TestSearchOffsetPastTheEnd(t *testing.T) {
 
 func findMessages(t *testing.T, st *store.Store, query string, limit, offset int) []search.SearchHit {
 	t.Helper()
-	found, err := catalog.Find(t.Context(), st, nil, query, search.All, search.Filters{Kind: search.KindMessage}, limit, offset)
+	found, err := find.Find(t.Context(), st, query, search.All, search.Filters{Kind: search.KindMessage}, limit, offset)
 	if err != nil {
 		t.Fatal(err)
 	}

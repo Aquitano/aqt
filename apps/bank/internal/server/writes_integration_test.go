@@ -31,7 +31,7 @@ func TestContactImportAndNoteRoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &Server{db: st, read: st, blobs: blobs, dataDir: dir, catalogue: noDisks{}}
+	s := &Server{db: st, read: st, blobs: blobs, dataDir: dir}
 	srv := httptest.NewServer(s.Handler())
 	defer srv.Close()
 

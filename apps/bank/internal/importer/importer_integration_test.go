@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
-	"github.com/aquitano/aqt/apps/bank/internal/importtest"
+	"github.com/aquitano/aqt/apps/bank/internal/importer/importtest"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"

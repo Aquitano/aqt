@@ -64,7 +64,6 @@ Semantics that matter:
 - A `file` hit is bytes, wherever they are. Its `places` list the messages that carry them as an attachment, the library files and the copies on disks, and `place_count` counts them all. When a file matched by its text, quote the snippet as coming from the document, not from what a sender wrote.
 - Searching finds text inside PDFs, Office and OpenDocument files, HTML and text attachments. It does **not** find text in scanned pages or photographs unless someone has OCR'd them: `bank show <ref>` reports `text_status` per attachment, where `needs_ocr` means the words are pixels and invisible to search. If a document ought to contain something and does not match, check that before concluding the archive lacks it.
 - `--from` needs its words in the sender field, ignoring case and accents, so `--from alice` matches `Alice Example` and `alice@example.com`. `--to` is the same against recipients. When browsing without words they are substrings instead.
-- `youtube` rows are watch events, not correspondence: the sender is the channel, the subject the video title, the body only the watch URL, and the thread is the channel — so `--source youtube --from fireship` is everything watched from one channel, and `bank thread <channel id> --source youtube` reads it in order. Advertisements are not imported, and a video the export no longer names keeps its title with no URL.
 - `--person <contact>` is the better filter when you know who you mean: a contact ties one person's email addresses, WhatsApp display name and Discord handle together, so it catches them across sources where `--from alice` only catches one spelling. Run `bank contact list` to see which exist; an unknown name is an error, not an empty result.
 - `--until` is exclusive; both take `YYYY-MM-DD`, which starts at UTC midnight, or an RFC 3339 instant. A date leaves out the kinds without one: items, collections, pages, library files and files on disks.
 - A message whose source gave no date is undated: its JSON has no `sent_at`, and `--since`/`--until` leave it out. It sorts before every dated message, so it comes first in a thread and last in newest-first lists. `bank stats` counts undated messages separately.
@@ -156,7 +155,7 @@ bank query "select sender, count(*) n, min(sent_at)::date first, max(sent_at)::d
 
 ## Sources
 
-`whatsapp`, `gmail`, `proton`, `discord`, `linkedin`, `youtube` (watch history from Google Takeout), `chatgpt`, `claude` (Claude.ai exports), plus any name created by a past `bank import json --source <name>`. Previously imported sources remain readable. Run `bank stats` to see which exist before filtering on one. A `--source` typo silently returns nothing.
+`whatsapp`, `gmail`, `proton`, `discord`, `linkedin`, `chatgpt`, `claude` (Claude.ai exports), plus any name created by a past `bank import json --source <name>`. Previously imported sources remain readable. Run `bank stats` to see which exist before filtering on one. A `--source` typo silently returns nothing.
 
 ## Writing
 

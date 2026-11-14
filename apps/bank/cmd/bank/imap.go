@@ -12,10 +12,10 @@ import (
 	"syscall"
 
 	"github.com/aquitano/aqt/apps/bank/internal/client"
-	"github.com/aquitano/aqt/apps/bank/internal/eml"
-	"github.com/aquitano/aqt/apps/bank/internal/imapsync"
+	"github.com/aquitano/aqt/apps/bank/internal/collect/imapsync"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
+	"github.com/aquitano/aqt/apps/bank/internal/sources/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 

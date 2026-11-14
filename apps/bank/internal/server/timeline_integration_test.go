@@ -6,21 +6,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
 
 type modifiedFiles struct {
-	noDisks
+	reader
 	at time.Time
 }
 
-func (m modifiedFiles) ModifiedFiles(context.Context, time.Time, time.Time, int) ([]view.Place, error) {
-	place := view.Place{Display: `E:\Notes\plan.md`}
-	place.Volume, place.Ref, place.Modified = "Data", "content:abababababababab", &m.at
-	return []view.Place{place}, nil
+func (m modifiedFiles) Modified(context.Context, time.Time, time.Time, int) ([]store.Hit, error) {
+	var hit store.Hit
+	hit.Volume, hit.Path, hit.Ref, hit.Modified = "Data", "/Notes/plan.md", "content:abababababababab", &m.at
+	return []store.Hit{hit}, nil
 }
 
 func TestTimelineMergesMessagesActivityAndFiles(t *testing.T) {
@@ -36,7 +35,7 @@ func TestTimelineMergesMessagesActivityAndFiles(t *testing.T) {
 	}
 	day := time.Date(2026, 8, 14, 0, 0, 0, 0, time.Local)
 
-	s.catalogue = modifiedFiles{at: sent.Add(30 * time.Minute)}
+	s.read = modifiedFiles{reader: s.read, at: sent.Add(30 * time.Minute)}
 	got, err := client.Call(ctx, c, GetTimeline, TimelineInput{Since: day.Format(time.DateOnly), Until: day.AddDate(0, 0, 1).Format(time.DateOnly), PageSize: httpapi.PageSize{Limit: 50}})
 	if err != nil {
 		t.Fatal(err)

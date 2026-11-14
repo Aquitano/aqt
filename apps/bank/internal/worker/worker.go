@@ -18,8 +18,8 @@ import (
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivertype"
 
+	"github.com/aquitano/aqt/apps/bank/internal/collect/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
-	"github.com/aquitano/aqt/apps/bank/internal/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/jobs"
 	"github.com/aquitano/aqt/apps/bank/internal/store"

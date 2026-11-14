@@ -75,7 +75,7 @@ On volumes with stable file IDs, matching hard links can reuse a hash within the
 
 A changed or unavailable device serial requires an identity decision when the volume resembles a known one. Rerun with `--volume <id>` to confirm the known disk, or `--new-volume` to record a separate disk. This can also happen after moving a disk to another enclosure.
 
-Ctrl+C keeps committed work. Run the same command again to continue. The summary includes phase times and the log path under `%LOCALAPPDATA%\attic\logs`. Use `--log-level debug` to log individual reads.
+Ctrl+C keeps committed work. Run the same command again to continue. The summary includes phase times and the log path under `%LOCALAPPDATA%\aqt-bank\logs`. Use `--log-level debug` to log individual reads.
 
 ## Set aside duplicate copies
 
@@ -86,7 +86,7 @@ bank disk dedupe plan --keep E:\Files --keep F:\Photos
 bank disk dedupe apply --keep E:\Files --keep F:\Photos
 ```
 
-`plan` lists hashed contents that have a copy inside the kept folders and copies outside them, most bytes outside first. It skips contents under `--min-size` (default `1M`) and stops after `--limit` contents (default 100). `apply` hashes the kept copy and each extra copy again, and moves an extra copy only when both still match the catalogue. It moves the copy into `.attic-quarantine\<run>\<original path>` on the same disk and never deletes anything, so a move is a rename and a copy can go back to its original path by hand. Scans skip the quarantine folder. `bank disk entry <id>` reports a moved copy and the kept entry, and the next scan of its folder marks it missing. A copy put back by hand takes part again once a scan of its folder finds it.
+`plan` lists hashed contents that have a copy inside the kept folders and copies outside them, most bytes outside first. It skips contents under `--min-size` (default `1M`) and stops after `--limit` contents (default 100). `apply` hashes the kept copy and each extra copy again, and moves an extra copy only when both still match the catalogue. It moves the copy into `.bank-quarantine\<run>\<original path>` on the same disk and never deletes anything, so a move is a rename and a copy can go back to its original path by hand. Scans skip the quarantine folder. `bank disk entry <id>` reports a moved copy and the kept entry, and the next scan of its folder marks it missing. A copy put back by hand takes part again once a scan of its folder finds it.
 
 Only hashed files take part, so scan with hashing first. Emptying the quarantine is up to you; delete a quarantined copy only once its kept copy is backed up somewhere else.
 
@@ -189,7 +189,7 @@ A scan rehashes only what changed, so one nightly run keeps the catalogue curren
 
 ### Windows
 
-The scans write through `bank serve`, so set `BANK_URL` and a write `BANK_TOKEN` as user variables first ([Setup](#setup)); a task started as you sees them. Save this as `%LOCALAPPDATA%\attic\scan-nightly.ps1` and edit the two lists:
+The scans write through `bank serve`, so set `BANK_URL` and a write `BANK_TOKEN` as user variables first ([Setup](#setup)); a task started as you sees them. Save this as `%LOCALAPPDATA%\aqt-bank\scan-nightly.ps1` and edit the two lists:
 
 ```powershell
 $folders = @("$env:USERPROFILE\Documents")   # folders on internal drives, scanned every night
@@ -209,7 +209,7 @@ Register the script as a nightly task:
 
 ```powershell
 $action = New-ScheduledTaskAction -Execute powershell.exe `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$env:LOCALAPPDATA\attic\scan-nightly.ps1`""
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$env:LOCALAPPDATA\aqt-bank\scan-nightly.ps1`""
 $trigger = New-ScheduledTaskTrigger -Daily -At 2am
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit 0 `
     -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
@@ -217,7 +217,7 @@ Register-ScheduledTask -TaskName 'bank nightly disk scan' -TaskPath '\aqt\' -Act
     -Trigger $trigger -Settings $settings
 ```
 
-The task uses Windows PowerShell, which every Windows install has, and `-ExecutionPolicy Bypass` lets it run the script under the default `Restricted` policy. It runs while you are signed in, and `-StartWhenAvailable` catches up after a night the PC was off. bank serve must be reachable and run the commit this `bank` was built from. Each scan writes a log to `%LOCALAPPDATA%\attic\logs`, and bank serve's `GET /v1/disk/scans` lists the runs. A scan cut off by sleep or a lost connection is recorded as interrupted five minutes later, and the next night's run continues it. `Start-ScheduledTask -TaskPath '\aqt\' -TaskName 'bank nightly disk scan'` runs it once now.
+The task uses Windows PowerShell, which every Windows install has, and `-ExecutionPolicy Bypass` lets it run the script under the default `Restricted` policy. It runs while you are signed in, and `-StartWhenAvailable` catches up after a night the PC was off. bank serve must be reachable and run the commit this `bank` was built from. Each scan writes a log to `%LOCALAPPDATA%\aqt-bank\logs`, and bank serve's `GET /v1/disk/scans` lists the runs. A scan cut off by sleep or a lost connection is recorded as interrupted five minutes later, and the next night's run continues it. `Start-ScheduledTask -TaskPath '\aqt\' -TaskName 'bank nightly disk scan'` runs it once now.
 
 ### macOS
 
@@ -225,9 +225,11 @@ The task uses Windows PowerShell, which every Windows install has, and `-Executi
 
 ## Configuration
 
-Use `%APPDATA%\attic\config.toml`, or select another file with `--config`. `bank disk config` prints the effective settings and rules. The file, the scan logs under `%LOCALAPPDATA%\attic\logs`, the `.attic.toml` folder files and the `.attic-quarantine` folders keep the name the catalogue had when it was a separate program, so existing disks and settings keep working.
+Use `%APPDATA%\aqt-bank\config.toml`, or select another file with `--config`. `bank disk config` prints the effective settings and rules. Scan logs go to `%LOCALAPPDATA%\aqt-bank\logs`.
 
-`temp` selects one existing directory for nested archives and verified metadata, PDF fallback and enrichment copies. It defaults to the system temporary directory and must be on another disk when scanning. To scan C:, set `temp = 'D:\AtticTemp'` to an existing directory on another disk. Scans keep parent and child nested archives there together while listing them. Allow the sum of their sizes across active nesting levels, up to `unpack_max_bytes` per level below the outer archive. An `unpack_max_bytes` value of zero leaves this space unbounded. External tools also need space for one full input copy at a time. Private `aqt-attic/scan-*` workspaces are removed after use; abandoned workspaces are cleaned after a day when their locks are free.
+These names replaced the ones the catalogue had as a separate program: `%APPDATA%\attic\config.toml`, `.attic.toml` folder files and the `.attic-quarantine` folder at a disk's root. A file or folder under an old name would otherwise be ignored, and an ignored folder file would scan the folders it excludes, so `scan`, `get`, `enrich` and `config` refuse to run while the old configuration file exists unless `--config` names another file, and a scan stops at the first old folder file or quarantine it meets and names it. Rename it and run the command again.
+
+`temp` selects one existing directory for nested archives and verified metadata, PDF fallback and enrichment copies. It defaults to the system temporary directory and must be on another disk when scanning. To scan C:, set `temp = 'D:\BankTemp'` to an existing directory on another disk. Scans keep parent and child nested archives there together while listing them. Allow the sum of their sizes across active nesting levels, up to `unpack_max_bytes` per level below the outer archive. An `unpack_max_bytes` value of zero leaves this space unbounded. External tools also need space for one full input copy at a time. Private `aqt-bank/scan-*` workspaces are removed after use; abandoned workspaces are cleaned after a day when their locks are free.
 
 Legacy `archives.temp`, `metadata.temp` and `ai.temp` settings remain accepted. Empty `metadata.temp` and `ai.temp` values inherit the shared directory. Conflicting explicit directories are rejected. Remove the legacy settings when choosing a different top-level `temp`.
 
@@ -278,9 +280,9 @@ exclude = ["/Games/"]
 
 ### Configure a folder and its children
 
-Place `.attic.toml` in a disk's root for rules that apply across that disk, or inside a folder for rules below it. Scans discover these files automatically. A scan started inside a subtree also reads the files in its ancestors, up to the volume root.
+Place `.bank.toml` in a disk's root for rules that apply across that disk, or inside a folder for rules below it. Scans discover these files automatically. A scan started inside a subtree also reads the files in its ancestors, up to the volume root.
 
-To keep hashes and metadata without listing archive contents, save this as `E:\Backups\.attic.toml`:
+To keep hashes and metadata without listing archive contents, save this as `E:\Backups\.bank.toml`:
 
 ```toml
 [archives]
@@ -289,7 +291,7 @@ depth = 0
 
 ZIP, 7z, RAR and tar files below `E:\Backups` stay catalogued with their names, paths, sizes, dates and hashes. Hashing still reads each archive's bytes. The archive phase does not open these archives or list their members. Document text and embedded metadata extraction continue for their supported file types.
 
-A deeper file can override the inherited depth. In `E:\Backups\Selected\.attic.toml`, set `depth = 1` under `[archives]` to list archives in that subtree without opening nested archives.
+A deeper file can override the inherited depth. In `E:\Backups\Selected\.bank.toml`, set `depth = 1` under `[archives]` to list archives in that subtree without opening nested archives.
 
 Inspect the settings before scanning with `bank disk config --under E:\Backups\Selected`. It lists the contributing folder files, effective archive depth and pattern sources. This command needs a mounted Windows volume and never reaches bank serve. Add `--volume <id>` when the main configuration selects rules by catalogue volume ID.
 
@@ -397,7 +399,7 @@ ExifTool runs in `-stay_open` mode for the whole metadata phase and receives one
 
 `scan --rebuild-content` discards archive listings and document text selected through present files below the scan root. It repairs results produced before scans checked the bytes they read. The reset affects all copies sharing that content, and keeps metadata, enrichment results and text written by hand. Current folder policies determine which results are regenerated. Depth-zero copies do not regenerate archive listings.
 
-Nested archives and verified tool copies use private `aqt-attic/scan-*` workspaces under the configured `temp` directory. Windows checks that scratch is off the source volume. File locks distinguish abandoned workspaces from active readers. Cleanup failures leave files available for a later cleanup attempt.
+Nested archives and verified tool copies use private `aqt-bank/scan-*` workspaces under the configured `temp` directory. Windows checks that scratch is off the source volume. File locks distinguish abandoned workspaces from active readers. Cleanup failures leave files available for a later cleanup attempt.
 
 Archive members carry names, paths, sizes, timestamps and CRC32 where available. They are not independently hashed. A nested archive adds another `::` path component. Depth and unpack limits bound traversal. Multipart RAR listings need their sibling volumes; a missing part remains retryable. Archive listings commit as a unit so interruption cannot preserve a partial transaction.
 
@@ -435,11 +437,11 @@ Volume, kind and extension are entry BM25 fields, so ParadeDB can apply those fi
 
 ### The CLI and the API return one shape
 
-`internal/attic/view` turns catalogue records into what readers receive: every place says how to open it and, on the machine the disks attach to, whether its disk is attached now. bank serve's `/v1/disk` routes return those types without mounts, and `bank disk` spells them again for the mounts of the machine it runs on before `--json` prints them, so a field added for one reader reaches the other. The server is not that machine: `online` and `mounted_at` are left out of its answers and hidden from the document, rather than always false. Errors differ on purpose: the API gives each failure a `_tag` and its own schema so agent code can branch on it, while the CLI prints the message.
+`internal/disks/view` turns catalogue records into what readers receive: every place says how to open it and, on the machine the disks attach to, whether its disk is attached now. bank serve's `/v1/disk` routes return those types without mounts, and `bank disk` spells them again for the mounts of the machine it runs on before `--json` prints them, so a field added for one reader reaches the other. The server is not that machine: `online` and `mounted_at` are left out of its answers and hidden from the document, rather than always false. Errors differ on purpose: the API gives each failure a `_tag` and its own schema so agent code can branch on it, while the CLI prints the message.
 
 ### Dedupe sets copies aside and never deletes
 
-A copy leaves its place only when a copy inside the kept folders and the copy itself both hash to the catalogued digest at that moment, so a file that changed since its scan is never treated as a duplicate. The move is a rename into `.attic-quarantine` on the same disk that never replaces a file: it frees no space yet, and it cannot lose bytes. After the move, dedupe opens the quarantined file again without following links and requires the hashed bytes, unwritten since: the same file, or a second hash where FAT and exFAT gave the moved file a new ID. Anything else goes back. Before each move, the kept copy and both disks must still be the ones checked at the start. Deleting stays a person's decision, for once the kept copy is backed up off-site. Each move is recorded against the entry through bank serve before the command reports success; a move that cannot be recorded is undone, unless the original path was taken meanwhile, and then the error names where the copy stayed.
+A copy leaves its place only when a copy inside the kept folders and the copy itself both hash to the catalogued digest at that moment, so a file that changed since its scan is never treated as a duplicate. The move is a rename into `.bank-quarantine` on the same disk that never replaces a file: it frees no space yet, and it cannot lose bytes. After the move, dedupe opens the quarantined file again without following links and requires the hashed bytes, unwritten since: the same file, or a second hash where FAT and exFAT gave the moved file a new ID. Anything else goes back. Before each move, the kept copy and both disks must still be the ones checked at the start. Deleting stays a person's decision, for once the kept copy is backed up off-site. Each move is recorded against the entry through bank serve before the command reports success; a move that cannot be recorded is undone, unless the original path was taken meanwhile, and then the error names where the copy stayed.
 
 ### Organize renames only what the plan recorded
 

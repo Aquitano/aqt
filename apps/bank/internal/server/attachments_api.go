@@ -14,8 +14,8 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/gabriel-vasile/mimetype"
 
-	"github.com/aquitano/aqt/apps/bank/internal/blobtext"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/extraction"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
@@ -199,7 +199,7 @@ func (s *Server) setAttachmentText(ctx context.Context, in *SetAttachmentTextInp
 	// A status nothing recognizes strands the row: no default pass selects it
 	// again, and the content looks read when it never was. Storing "pending"
 	// is the same mistake spelled correctly — it means the absence of a row.
-	if err := blobtext.ValidStoredStatus(status); err != nil {
+	if err := extraction.ValidStoredStatus(status); err != nil {
 		return nil, httpapi.Invalid.New(err.Error())
 	}
 	// Storing it would silently halve a transcription, which is the worst

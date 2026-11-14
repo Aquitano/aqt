@@ -39,7 +39,7 @@ The Netflix importer accepts CSV `Title` and `Date` columns. Slash dates default
 
 Netflix supplies no stable event ID in this export. Bank identifies observations by their exact title, date, and occurrence number within matching rows. Reordered and overlapping exports reuse these identities while repeated rows within one export remain separate observations. Localized or changed titles remain separate identities.
 
-The `youtube-media` importer reads Takeout ZIP files, extracted directories, watch-history JSON or HTML, and supported playlist or music library CSV/JSON files. Selected input bytes are limited to 512 MiB in total. It prefers JSON history when both history formats exist. Playlist snapshots preserve repeated songs, exported positions, and whether the snapshot is complete, partial or of unknown completeness. The existing `youtube` importer remains available for its message representation.
+The `youtube-media` importer reads Takeout ZIP files, extracted directories, watch-history JSON or HTML, and supported playlist or music library CSV/JSON files. Selected input bytes are limited to 512 MiB in total. It prefers JSON history when both history formats exist. Playlist snapshots preserve repeated songs, exported positions, and whether the snapshot is complete, partial or of unknown completeness.
 
 HTML timestamp parsing depends on the importing machine's timezone. Prefer JSON history when moving imports between machines with different timezone settings. Replaying HTML history on a machine in another timezone conflicts with the activity already stored.
 
@@ -110,22 +110,6 @@ CLI edits accept JSON from a file or standard input. State and collection edits 
 ```
 
 Apply that document with `bank library state item:<32 hex> state.json`. State edits replace the complete personal state, so include fields you want to retain.
-
-## Retire messages a library import replaces
-
-YouTube history that reached Bank as generic JSON lives in `messages` under external ids such as `watch:`, `playlist:` and `library-song:`. Once `bank import youtube-media` holds the same history as library records, `bank retire` deletes those message rows. Each deleted row leaves a tombstone in `message_tombstones` with its source, external ID, Message-ID, ref, date, subject, raw input, reason and optional replacement library ID.
-
-Every message import skips a tombstoned source and external ID, and for mail a tombstoned Message-ID, so a JSON re-upload, `bank reimport` or an inbox sweep cannot bring the row back; every import counts it as retired. `bank show <ref>` for a retired ref prints the tombstone and its replacement instead of failing. Over HTTP, `GET /v1/messages/{ref}` answers `410 Gone` with the tombstone under `retired`.
-
-Run the cutover on the server. `retire` refuses to run through `BANK_URL`.
-
-1. Back up with `docker-backup bank` or the `pg_dump` block in [DEPLOY.md](DEPLOY.md) §7. The delete has no undo except that dump.
-2. Import every Takeout: `bank import youtube-media takeout.zip --account thomas`.
-3. Compare counts per kind: `bank query "select split_part(external_id, ':', 1), count(*) from messages where source = 'youtube' group by 1"` against `bank query "select kind, count(*) from library_activity where source = 'youtube' group by 1"` and the collection snapshots. Spot-check a few titles with `bank search`.
-4. Build the replacement map for every cited ref. `bank show <ref> --json` says what the message was; `bank search "<title>" --json` or `bank library activity "<title>" --source youtube` finds the library record. Write a CSV of `ref,replacement` rows, or a JSON object of ref to ID, with refs in their `msg:` form, into `BANK_DATA_DIR` so the container sees it under `/data`. Replacements must be existing item, activity or collection IDs.
-5. Dry run: `bank retire --source youtube --external-prefix watch: --external-prefix playlist: --external-prefix library-song: --replacement-map /data/youtube-refs.csv --reason "replaced by youtube-media"`. It prints counts and samples per prefix, and every map ref that matches no retiring row. Such a ref is a typo or a citation of a row this run keeps, and `--apply` refuses to run until the map has none.
-6. Apply: repeat the command with `--apply`. One statement deletes the rows and writes their tombstones; attachment, mailbox and mail-thread rows follow through their cascades. Message imports wait until it commits, so none can bring a retired row back. Blobs and raw inputs stay.
-7. Verify: `bank stats`, `bank show <cited ref>` reports it retired with its replacement, and `bank show <replacement>` resolves. Then re-point the wiki citations to the library IDs.
 
 ## Extend and move Bank
 

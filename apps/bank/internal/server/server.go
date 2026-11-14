@@ -15,11 +15,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
-
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
+	"github.com/aquitano/aqt/apps/bank/internal/disks/session"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
@@ -32,7 +31,8 @@ import (
 type reader interface {
 	ListMailboxes(context.Context, string) ([]store.Mailbox, error)
 	BrowseThreads(context.Context, store.BrowseOpts) ([]store.ThreadGroup, error)
-	catalog.Archive
+	find.Lists
+	find.Dated
 	AttachmentLibrary(context.Context, store.AttachmentFilter) ([]store.LibraryFile, error)
 	GetMessageByRef(ctx context.Context, cited ref.Message) (store.Message, []store.Attachment, error)
 	GetThreadPage(ctx context.Context, source, threadID string, o store.ThreadOpts) (store.Thread, error)
@@ -46,29 +46,24 @@ type reader interface {
 	Query(ctx context.Context, query string, limit int) (store.QueryResult, error)
 }
 
-// Catalogue is the file catalogue: its share of combined search, the timeline
-// and refs, and its own operations below /v1/disk. Close ends the scans that
-// write through them.
-type Catalogue interface {
-	catalog.Catalogue
-	Register(huma.API)
-	Close() error
-}
-
 type Server struct {
-	db        *store.Store // importers need the concrete store
-	read      reader
-	blobs     *blob.Store
-	kinds     importer.Registry
-	dataDir   string
-	catalogue Catalogue
+	db       *store.Store // importers need the concrete store
+	read     reader
+	blobs    *blob.Store
+	kinds    importer.Registry
+	dataDir  string
+	sessions *session.Manager
 }
 
-// New serves the archive in db and the files on disks in catalogue. The
-// kinds are the import kinds it serves a route for.
-func New(db *store.Store, catalogue Catalogue, blobs *blob.Store, dataDir string, kinds importer.Registry) *Server {
-	return &Server{db: db, read: db, catalogue: catalogue, blobs: blobs, kinds: kinds, dataDir: dataDir}
+// New serves the archive and the files on disks in db. The kinds are the
+// import kinds it serves a route for. Scans that write through the API spool
+// large archive listings below dataDir.
+func New(db *store.Store, blobs *blob.Store, dataDir string, kinds importer.Registry) *Server {
+	return &Server{db: db, read: db, blobs: blobs, kinds: kinds, dataDir: dataDir, sessions: session.New(db, filepath.Join(dataDir, "scans"))}
 }
+
+// Close ends the scans still writing through the API as interrupted.
+func (s *Server) Close() error { return s.sessions.Close() }
 
 func Tokens(dataDir string) tokens.Store {
 	return tokens.Store{Path: filepath.Join(dataDir, "tokens"), Prefix: "bank_"}
@@ -140,7 +135,7 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 // requests in flight get their time, open scans end as interrupted, and only
 // then does the caller close the database pools.
 func (s *Server) ListenAndServe(ctx context.Context, addr string) (err error) {
-	defer func() { err = errors.Join(err, s.catalogue.Close()) }()
+	defer func() { err = errors.Join(err, s.Close()) }()
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           s.Handler(),

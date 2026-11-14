@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
@@ -226,10 +225,10 @@ var failures = map[string]func(e *Error, body []byte) error{
 	"NotFound":                is(store.ErrNotFound),
 	"InvalidRequest":          is(fail.ErrInvalid),
 	"LibraryRevisionConflict": is(library.ErrConflict),
-	"AmbiguousRef":            as[atticstore.AmbiguousRefError],
-	"AmbiguousVolume":         as[atticstore.AmbiguousVolumeError],
-	"ScanRunning":             is(atticstore.ErrScanRunning),
-	"ClaimLost":               is(atticstore.ErrClaimLost),
+	"AmbiguousRef":            as[store.AmbiguousRefError],
+	"AmbiguousVolume":         as[store.AmbiguousVolumeError],
+	"ScanRunning":             is(store.ErrScanRunning),
+	"ClaimLost":               is(store.ErrClaimLost),
 	"MessageRetired":          as[store.RetiredError],
 	"MailThreadConflict":      as[store.MailThreadConflictError],
 	"AliasTaken":              as[store.ErrConflict],

@@ -44,7 +44,7 @@ func (s *Store) AddRawInput(ctx context.Context, kind, name string, d content.Di
 		return tx.QueryRow(ctx, `insert into raw_inputs (kind, content_id, name, options) values ($1, $2, $3, $4)
 			on conflict (kind, content_id, name, options) do update
 			set status = 'running', finished_at = null, report = '{}', error = ''
-			returning id`, kind, contentID, cleanText(name), options).Scan(&id)
+			returning id`, kind, contentID, CleanText(name), options).Scan(&id)
 	})
 	return id, err
 }
@@ -53,7 +53,7 @@ func (s *Store) AddRawInput(ctx context.Context, kind, name string, d content.Di
 func (s *Store) FinishRawInput(ctx context.Context, id int64, report ingest.Report, importErr error) error {
 	status, problem := report.Status(), ""
 	if importErr != nil {
-		status, problem = "failed", cleanText(importErr.Error())
+		status, problem = "failed", CleanText(importErr.Error())
 	}
 	raw, err := json.Marshal(report)
 	if err != nil {

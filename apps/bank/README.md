@@ -7,7 +7,7 @@ ingestion. Removing an importer does not delete previously archived records.
 
 Bank also catalogues the files on disks that come and go: see [Files on disks](#files-on-disks) and [DISKS.md](DISKS.md).
 
-Every route is a typed Go handler in `internal/server/*_api.go` or, for the catalogue, `internal/attic/api`, on the operation and error types in `internal/httpapi`: parameters and bodies are declared on structs, so their parsing and bounds checks are generated, and uploads and downloads stream. `GET /openapi.json` is the one document that describes them all, and a failure is always JSON with a `_tag`, a `message` and, where the caller can act, a `recovery`. A rejected parameter or body answers 422, including a body that is too large or too slow, which Huma would otherwise answer with 400, 408 or 413. A failure is the server's, a 500 whose cause stays in the log, unless a typed or sentinel error says it is invalid input, missing or a conflict. `openapi.json` is the committed copy: regenerate it with `go run ./cmd/bank openapi > openapi.json`, because a test fails while it is stale.
+Every route is a typed Go handler in `internal/server/*_api.go`, on the operation and error types in `internal/httpapi`: parameters and bodies are declared on structs, so their parsing and bounds checks are generated, and uploads and downloads stream. `GET /openapi.json` is the one document that describes them all, and a failure is always JSON with a `_tag`, a `message` and, where the caller can act, a `recovery`. A rejected parameter or body answers 422, including a body that is too large or too slow, which Huma would otherwise answer with 400, 408 or 413. A failure is the server's, a 500 whose cause stays in the log, unless a typed or sentinel error says it is invalid input, missing or a conflict. `openapi.json` is the committed copy: regenerate it with `go run ./cmd/bank openapi > openapi.json`, because a test fails while it is stale.
 
 See [MAIL.md](MAIL.md) for folder-preserving imports, mail filters, conversation grouping, and metadata recovery. See [IMAP.md](IMAP.md) for the Proton Bridge and Gmail collector.
 
@@ -29,16 +29,13 @@ go build -o bank ./cmd/bank
 ./bank import mbox takeout/All\ mail.mbox     # Gmail Takeout
 ./bank import discord package.zip             # GDPR data package
 ./bank import linkedin Complete_LinkedInDataExport.zip
-./bank import youtube takeout.zip               # YouTube watch history from Google
-                                                #  Takeout (zip, unpacked dir, or the
-                                                #  watch-history.json/.html itself)
 ./bank import chatgpt chatgpt-export.zip        # ChatGPT data export (zip or unpacked
                                                 #  dir; uploaded/generated files come
                                                 #  along as attachments, and a later full
                                                 #  export adds files a bare JSON lacked)
 ./bank import claude claude-export.zip          # Claude.ai data export
 ./bank import netflix NetflixViewingHistory.csv --account thomas
-./bank import youtube-media takeout.zip --account thomas
+./bank import youtube-media takeout.zip --account thomas   # YouTube history, playlists and music
 ./bank library upload soundtrack.flac notes.pdf
 ./bank library index ~/brain/wiki --source brain --account wiki
 echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source notes -
@@ -83,7 +80,7 @@ echo '{"body":"note to self","thread":"ideas"}' | ./bank import json --source no
 ./bank verify                                   # hash every stored blob the database names
 ./bank reimport chatgpt                         # replay stored ChatGPT inputs through today's importer
 ./bank reimport                                 # replay every stored raw input
-./bank retire --source youtube --external-prefix watch:  # dry run; --apply deletes, leaving tombstones
+./bank retire --source notes --external-prefix draft:   # dry run; --apply deletes, leaving tombstones
 ```
 
 ## Remote use
@@ -179,6 +176,14 @@ bank disk redundancy --volume Data
 `bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <ref>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with the refs of a page's first and last messages. These positions are mutually exclusive. Each page contains 20 messages unless `--limit` asks for up to 500, and includes attachment metadata.
 
 The browser opens search results around the matching message and provides **Load earlier** and **Load later** controls. Browse opens the newest page and loads older conversations after the last one shown. Contact history also has **Load earlier**; CLI callers can use `bank contact messages <name> --before <ref>` to continue beyond the offset limit.
+
+## Forget messages
+
+`bank retire --source <source> --external-prefix <prefix>` deletes the messages of one source whose external IDs start with a prefix, such as rows that another import now holds in a better form. It prints counts and samples per prefix and changes nothing until `--apply`. `--replacement-map` takes a CSV of `ref,replacement` rows, or a JSON object of ref to ID, naming the item, activity or collection that replaces a cited message; `--apply` refuses to run while the map names a ref no retiring row has. `--reason` is stored with each row.
+
+Each deleted row leaves a tombstone in `message_tombstones` with its source, external ID, Message-ID, ref, date, subject, raw input, reason and replacement. Every message import skips a tombstoned source and external ID, and for mail a tombstoned Message-ID, so a re-upload, `bank reimport` or an inbox sweep cannot bring the row back; the import counts it as retired. `bank show <ref>` for a retired ref prints the tombstone and its replacement, and `GET /v1/messages/{ref}` answers `410 Gone` with the tombstone under `retired`.
+
+Run it on the server, because `retire` refuses to run through `BANK_URL`, and back up first with the `pg_dump` block in [DEPLOY.md](DEPLOY.md) §7: the delete has no undo except that dump. Blobs and raw inputs stay.
 
 ## Agents over MCP
 

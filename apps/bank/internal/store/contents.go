@@ -32,7 +32,7 @@ func insertAttachment(ctx context.Context, tx pgx.Tx, a Attachment) (contentID i
 	}
 	tag, err := tx.Exec(ctx, `insert into attachments (message_id, position, filename, mime_type, content_id) values ($1, $2, $3, $4, $5)
 		on conflict (message_id, position) do nothing`,
-		a.MessageID, a.Position, cleanText(a.Filename), cleanText(a.MimeType), contentID)
+		a.MessageID, a.Position, CleanText(a.Filename), CleanText(a.MimeType), contentID)
 	return contentID, tag.RowsAffected() == 1, err
 }
 

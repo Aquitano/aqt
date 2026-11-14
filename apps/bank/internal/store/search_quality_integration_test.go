@@ -6,18 +6,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
-// find runs the combined search over st and the file catalogue in dsn.
-func find(t *testing.T, st *store.Store, dsn, query string, mode search.Mode, f search.Filters, limit, offset int) catalog.Result {
+// combined runs the combined search over st.
+func combined(t *testing.T, st *store.Store, query string, mode search.Mode, f search.Filters, limit, offset int) find.Result {
 	t.Helper()
-	found, err := catalog.Find(t.Context(), st, storetest.OpenCatalogue(t, dsn), query, mode, f, limit, offset)
+	found, err := find.Find(t.Context(), st, query, mode, f, limit, offset)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func find(t *testing.T, st *store.Store, dsn, query string, mode search.Mode, f 
 
 func TestSearchRetrievalCases(t *testing.T) {
 	ctx := context.Background()
-	st, dsn := storetest.NewNamed(t)
+	st := storetest.New(t)
 	labels := map[string]string{}
 	for _, m := range []store.Message{
 		{ExternalID: "invoice", Subject: "Hetzner invoice", Body: "Your monthly hosting bill", Sender: "billing@example.com"},
@@ -84,7 +84,7 @@ func TestSearchRetrievalCases(t *testing.T) {
 		{"a file found by name and text outranks a message", "orbital contract", search.All, "orbital-contract.pdf", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			found := find(t, st, dsn, tc.query, tc.mode, search.Filters{}, 20, 0)
+			found := combined(t, st, tc.query, tc.mode, search.Filters{}, 20, 0)
 			var got []string
 			for _, h := range found.Hits {
 				got = append(got, labelOf(h))
@@ -127,7 +127,7 @@ func TestAContentInThreePlacesIsOneHit(t *testing.T) {
 			(1,'`+volume+`',null,'dir','',''::bytea,'',0,null,'none',1,1),
 			(2,'`+volume+`',1,'file','lease.pdf','lease.pdf'::bytea,'/lease.pdf',1,(select id from contents where blake3 = $1),'done',1,1)`, d)
 
-	found := find(t, st, dsn, "pemberley lease", search.All, search.Filters{}, 20, 0)
+	found := combined(t, st, "pemberley lease", search.All, search.Filters{}, 20, 0)
 	if len(found.Hits) != 1 {
 		t.Fatalf("hits %+v, want the one content", found.Hits)
 	}
@@ -146,7 +146,7 @@ func TestAContentInThreePlacesIsOneHit(t *testing.T) {
 // is the page of the filtered list.
 func TestAFilteredSearchReturnsTheRightPage(t *testing.T) {
 	ctx := context.Background()
-	st, dsn := storetest.NewNamed(t)
+	st := storetest.New(t)
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	var gmail []string
 	for i := range 24 {
@@ -166,7 +166,7 @@ func TestAFilteredSearchReturnsTheRightPage(t *testing.T) {
 	}
 	// Ten gmail messages were sent from hour 4 on; newest first, the second
 	// page of three is the fourth to sixth.
-	found := find(t, st, dsn, "quarterly", search.All, search.Filters{Source: "gmail", Since: start.Add(4 * time.Hour)}, 3, 3)
+	found := combined(t, st, "quarterly", search.All, search.Filters{Source: "gmail", Since: start.Add(4 * time.Hour)}, 3, 3)
 	var got []string
 	for _, h := range found.Hits {
 		got = append(got, h.Ref)

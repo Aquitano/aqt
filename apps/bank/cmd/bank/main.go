@@ -34,16 +34,13 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/diskcmd"
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/collect/gmail"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
-	"github.com/aquitano/aqt/apps/bank/internal/gmail"
+	"github.com/aquitano/aqt/apps/bank/internal/disks/view"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/jobs"
@@ -102,7 +99,7 @@ type cli struct {
 	Worker      workerCmd      `cmd:"" help:"Work one job queue, such as ocr, beside a running serve."`
 	UI          uiCmd          `cmd:"" name:"ui" help:"Local archive browser (needs BANK_URL)."`
 	Token       tokenCmd       `cmd:"" help:"API tokens."`
-	Disk        diskcmd.Cmd    `cmd:"" help:"Scan, verify, copy and tidy files on the disks attached to this machine."`
+	Disk        diskCmd        `cmd:"" help:"Scan, verify, copy and tidy files on the disks attached to this machine."`
 }
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -149,7 +146,7 @@ func execute(ctx context.Context, args []string) error {
 		return err
 	}
 	kctx.BindTo(ctx, (*context.Context)(nil))
-	kctx.Bind(diskcmd.Connect(connect))
+	kctx.Bind(connector(connect))
 	return kctx.Run()
 }
 
@@ -211,12 +208,11 @@ func databaseURL() string {
 	return cmp.Or(os.Getenv("DATABASE_URL"), db.DefaultURL)
 }
 
-// localDB is the archive and the file catalogue on one pool, for the API
-// served in process and the commands that work on the box itself.
+// localDB is the store on its pool, for the API served in process and the
+// commands that work on the box itself.
 type localDB struct {
 	*store.Store
-	catalogue *attic.Catalogue
-	pool      *pgxpool.Pool
+	pool *pgxpool.Pool
 }
 
 func (l *localDB) Close() {
@@ -229,7 +225,7 @@ func openStore(ctx context.Context) (*localDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := &localDB{Store: store.New(pool), catalogue: attic.New(atticstore.New(pool), filepath.Join(dataDir(), "scans")), pool: pool}
+	l := &localDB{Store: store.New(pool), pool: pool}
 	if queryURL := os.Getenv("BANK_QUERY_DATABASE_URL"); queryURL != "" {
 		if err := l.ConfigureQuery(ctx, queryURL); err != nil {
 			l.Close()
@@ -269,9 +265,9 @@ func connect(ctx context.Context) (*client.Client, func(), error) {
 		st.Close()
 		return nil, nil, err
 	}
-	srv := server.New(st.Store, st.catalogue, blobs, dataDir(), sources.All)
+	srv := server.New(st.Store, blobs, dataDir(), sources.All)
 	return client.InProcess(srv.LocalHandler()), func() {
-		if err := st.catalogue.Close(); err != nil {
+		if err := srv.Close(); err != nil {
 			fmt.Fprintln(os.Stderr, "bank:", err)
 		}
 		st.Close()
@@ -515,7 +511,7 @@ func (c *showCmd) Validate() error {
 // shown is what `bank show --json` prints: what the ref names and where the
 // same bytes are, with the record itself.
 type shown[T any] struct {
-	catalog.Resolved
+	find.Resolved
 	Record T `json:"record"`
 }
 
@@ -544,7 +540,7 @@ func (c *showCmd) Run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		found, err := diskcmd.Content(ctx, api, cited)
+		found, err := diskContent(ctx, api, cited)
 		if err != nil {
 			return err
 		}
@@ -556,7 +552,7 @@ func (c *showCmd) Run(ctx context.Context) error {
 		if len(found.Occurrences) > 0 {
 			fmt.Println("on disks:")
 		}
-		return diskcmd.PrintPlaces(found)
+		return printDiskPlaces(found)
 	case ref.KindItem:
 		return showLibrary(ctx, api, server.GetLibraryItem, c.Ref, resolved, c.JSON)
 	case ref.KindActivity:
@@ -571,7 +567,7 @@ func (c *showCmd) Run(ctx context.Context) error {
 	return fmt.Errorf("%s names no kind of record bank shows", c.Ref)
 }
 
-func (c *showCmd) showMessage(ctx context.Context, api *client.Client, resolved catalog.Resolved) error {
+func (c *showCmd) showMessage(ctx context.Context, api *client.Client, resolved find.Resolved) error {
 	cited, err := c.Ref.Message()
 	if err != nil {
 		return err
@@ -628,7 +624,7 @@ func (c *showCmd) showMessage(ctx context.Context, api *client.Client, resolved 
 
 // showLibrary prints a library record: what it is in text, and the whole
 // record in JSON.
-func showLibrary[T any](ctx context.Context, api *client.Client, op httpapi.Op[server.LibraryIDInput, T], cited ref.Ref, resolved catalog.Resolved, asJSON bool) error {
+func showLibrary[T any](ctx context.Context, api *client.Client, op httpapi.Op[server.LibraryIDInput, T], cited ref.Ref, resolved find.Resolved, asJSON bool) error {
 	record, err := client.Call(ctx, api, op, server.LibraryIDInput{ID: cited.String()})
 	if err != nil {
 		return err
@@ -644,16 +640,16 @@ func showLibrary[T any](ctx context.Context, api *client.Client, op httpapi.Op[s
 // showContentPart prints the text read from a content, or its embedded tags.
 func showContentPart(ctx context.Context, api *client.Client, cited ref.Content, text, asJSON bool) error {
 	if !text {
-		d, err := diskcmd.Metadata(ctx, api, cited)
+		d, err := diskMetadata(ctx, api, cited)
 		switch {
 		case err != nil:
 			return err
 		case asJSON:
 			return printJSON(d)
 		}
-		return diskcmd.PrintMetadata(d)
+		return printDiskMetadata(d)
 	}
-	d, err := diskcmd.Text(ctx, api, cited)
+	d, err := diskText(ctx, api, cited)
 	switch {
 	case err != nil:
 		return err
@@ -668,7 +664,7 @@ func showContentPart(ctx context.Context, api *client.Client, cited ref.Content,
 
 // printLinks lists where the same bytes are elsewhere, leaving out the
 // relations the record's own output already shows.
-func printLinks(resolved catalog.Resolved, shownAlready ...string) {
+func printLinks(resolved find.Resolved, shownAlready ...string) {
 	for _, link := range resolved.Links {
 		if !slices.Contains(shownAlready, link.Relation) {
 			fmt.Printf("%-11s %s  %s\n", link.Relation, link.Ref, link.Title)
@@ -745,7 +741,7 @@ func (c *statsCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	disks, err := diskcmd.Stats(ctx, api)
+	disks, err := diskStats(ctx, api)
 	if err != nil {
 		return err
 	}
@@ -798,7 +794,7 @@ func (c *statsCmd) Run(ctx context.Context) error {
 		printExtractionStats(ext)
 	}
 	fmt.Println("\nfiles on disks:")
-	diskcmd.PrintStats(disks)
+	printDiskStats(disks)
 	return nil
 }
 
@@ -1028,7 +1024,7 @@ func (c *serveCmd) Run(ctx context.Context) error {
 	if listed, err := server.Tokens(dataDir()).List(); err == nil && len(listed) == 0 {
 		slog.Warn("no tokens yet; every /v1 request will 401 until 'bank token new <name>'")
 	}
-	srv := server.New(st.Store, st.catalogue, blobs, dataDir(), sources.All)
+	srv := server.New(st.Store, blobs, dataDir(), sources.All)
 	slog.Info("serving", "version", buildVersion(), "listen", c.Listen)
 	return worker.Run(ctx, queue, server.Drain, func(ctx context.Context) error {
 		return srv.ListenAndServe(ctx, c.Listen)

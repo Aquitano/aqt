@@ -82,11 +82,11 @@ func aliasMatch(contactPlaceholder string) string {
 }
 
 func (s *Store) CreateContact(ctx context.Context, name, note string) (Contact, error) {
-	name = strings.TrimSpace(cleanText(name))
+	name = strings.TrimSpace(CleanText(name))
 	if name == "" {
 		return Contact{}, fail.Invalidf("contact name must not be empty")
 	}
-	c := Contact{Name: name, Note: cleanText(note), Aliases: []ContactAlias{}}
+	c := Contact{Name: name, Note: CleanText(note), Aliases: []ContactAlias{}}
 	err := s.pool.QueryRow(ctx,
 		`insert into contacts (name, note) values ($1, $2)
 		 on conflict (name) do nothing
@@ -159,7 +159,7 @@ func (s *Store) ImportContacts(ctx context.Context, in []ContactImport) ([]Conta
 }
 
 func (s *Store) DeleteContact(ctx context.Context, name string) error {
-	tag, err := s.pool.Exec(ctx, `delete from contacts where name = $1`, strings.TrimSpace(cleanText(name)))
+	tag, err := s.pool.Exec(ctx, `delete from contacts where name = $1`, strings.TrimSpace(CleanText(name)))
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func (s *Store) GetContact(ctx context.Context, name string) (Contact, error) {
 	var c Contact
 	err := s.pool.QueryRow(ctx,
 		`select id, name, note, self, created_at from contacts where name = $1`,
-		strings.TrimSpace(cleanText(name))).Scan(&c.ID, &c.Name, &c.Note, &c.Self, &c.CreatedAt)
+		strings.TrimSpace(CleanText(name))).Scan(&c.ID, &c.Name, &c.Note, &c.Self, &c.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -259,7 +259,7 @@ func (s *Store) ListContacts(ctx context.Context) ([]Contact, error) {
 // the stored form and the matching form can never drift apart.
 func (s *Store) AddAlias(ctx context.Context, name, source, value string) (ContactAlias, error) {
 	var a ContactAlias
-	value = strings.TrimSpace(cleanText(value))
+	value = strings.TrimSpace(CleanText(value))
 	if value == "" {
 		return a, fail.Invalidf("alias must not be empty")
 	}
@@ -317,7 +317,7 @@ func (s *Store) RemoveAlias(ctx context.Context, name, source, value string) err
 	tag, err := s.pool.Exec(ctx, `
 		delete from contact_aliases
 		where contact_id = $1 and source = $2 and value_norm = bank_identity_key($3)`,
-		c.ID, source, strings.TrimSpace(cleanText(value)))
+		c.ID, source, strings.TrimSpace(CleanText(value)))
 	if err != nil {
 		return err
 	}
@@ -341,7 +341,7 @@ func (s *Store) SetSelf(ctx context.Context, name string) error {
 		if _, err := tx.Exec(ctx, `update contacts set self = false where self`); err != nil {
 			return err
 		}
-		tag, err := tx.Exec(ctx, `update contacts set self = true where name = $1`, strings.TrimSpace(cleanText(name)))
+		tag, err := tx.Exec(ctx, `update contacts set self = true where name = $1`, strings.TrimSpace(CleanText(name)))
 		if err == nil && tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}

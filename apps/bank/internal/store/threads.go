@@ -79,7 +79,7 @@ func (s *Store) GetThread(ctx context.Context, source, threadID string, limit in
 }
 
 func (s *Store) GetThreadPage(ctx context.Context, source, threadID string, o ThreadOpts) (Thread, error) {
-	out := Thread{ThreadID: cleanText(threadID), Source: source, Messages: []MessageDetail{}}
+	out := Thread{ThreadID: CleanText(threadID), Source: source, Messages: []MessageDetail{}}
 	if err := o.Validate(); err != nil {
 		return out, err
 	}

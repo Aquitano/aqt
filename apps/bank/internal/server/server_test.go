@@ -17,14 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
-
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
-	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/page"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
@@ -36,6 +31,7 @@ import (
 
 // fakeReader stands in for the database so handler tests need no Postgres.
 type fakeReader struct {
+	noDisks
 	msgs       []store.Message
 	filters    search.Filters
 	n          int
@@ -143,20 +139,8 @@ func (f *fakeReader) AttachmentLibrary(context.Context, store.AttachmentFilter) 
 	return nil, nil
 }
 
-// noDisks is a file catalogue with nothing in it.
+// noDisks is the store's side of disks and dates with nothing in it.
 type noDisks struct{}
-
-func (noDisks) Register(huma.API) {}
-
-func (noDisks) Close() error { return nil }
-
-func (noDisks) Content(context.Context, ref.Content) (view.Content, error) {
-	return view.Content{}, atticstore.ErrNotFound
-}
-
-func (noDisks) Places(context.Context, []content.Digest) (map[content.Digest][]view.Place, error) {
-	return nil, nil
-}
 
 func (noDisks) RankEntries(context.Context, search.Query, int) (search.List, error) {
 	return search.List{}, nil
@@ -178,7 +162,15 @@ func (noDisks) DiskPlaces(context.Context, []int64, int) (map[int64][]search.Fil
 	return nil, nil, nil
 }
 
-func (noDisks) ModifiedFiles(context.Context, time.Time, time.Time, int) ([]view.Place, error) {
+func (noDisks) MessagesBetween(context.Context, time.Time, time.Time, int) ([]store.Dated, error) {
+	return nil, nil
+}
+
+func (noDisks) ActivityBetween(context.Context, time.Time, time.Time, int) ([]store.Dated, error) {
+	return nil, nil
+}
+
+func (noDisks) Modified(context.Context, time.Time, time.Time, int) ([]store.Hit, error) {
 	return nil, nil
 }
 
@@ -194,11 +186,10 @@ func testServer(t *testing.T) (*Server, string) {
 		t.Fatal(err)
 	}
 	return &Server{
-		read:      &fakeReader{msgs: []store.Message{{ID: 7, Ref: "msg:0123456789abcdef", Source: "whatsapp", Body: "hi", SentAt: time.Unix(0, 0)}}},
-		blobs:     blobs,
-		kinds:     sources.All,
-		dataDir:   dir,
-		catalogue: noDisks{},
+		read:    &fakeReader{msgs: []store.Message{{ID: 7, Ref: "msg:0123456789abcdef", Source: "whatsapp", Body: "hi", SentAt: time.Unix(0, 0)}}},
+		blobs:   blobs,
+		kinds:   sources.All,
+		dataDir: dir,
 	}, token
 }
 
@@ -304,7 +295,7 @@ func TestSearchRequiresToken(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("with token: status %d, want 200", resp.StatusCode)
 	}
-	var found catalog.Result
+	var found find.Result
 	if err := json.NewDecoder(resp.Body).Decode(&found); err != nil {
 		t.Fatal(err)
 	}

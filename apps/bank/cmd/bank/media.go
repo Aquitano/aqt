@@ -11,11 +11,11 @@ import (
 
 	"github.com/alecthomas/kong"
 
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
-	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
+	"github.com/aquitano/aqt/apps/bank/internal/sources/media"
 )
 
 func printLibrary[T any](value T, err error) error {
@@ -208,8 +208,8 @@ type libraryIndexCmd struct {
 }
 
 func (c *libraryIndexCmd) Run(ctx context.Context, lib *libraryCmd) error {
-	opts := mediaimport.PublicationOptions{Source: cmp.Or(lib.Source, "brain"), Account: lib.Account, MaxSensitivity: lib.MaxSensitivity, AllowConfidential: lib.AllowConfidential}
-	publication, err := mediaimport.BuildPublication(c.Dir, opts)
+	opts := media.PublicationOptions{Source: cmp.Or(lib.Source, "brain"), Account: lib.Account, MaxSensitivity: lib.MaxSensitivity, AllowConfidential: lib.AllowConfidential}
+	publication, err := media.BuildPublication(c.Dir, opts)
 	if err != nil {
 		return err
 	}
@@ -225,7 +225,7 @@ func (c *libraryIndexCmd) Run(ctx context.Context, lib *libraryCmd) error {
 	return importReader(ctx, api, "markdown", "publication.json", bytes.NewReader(encoded), nil)
 }
 
-func printCatalog(result catalog.Result, limit, offset int) error {
+func printCatalog(result find.Result, limit, offset int) error {
 	for _, h := range result.Hits {
 		cited := h.Ref
 		if cited == "" && len(h.Places) > 0 {

@@ -1,7 +1,8 @@
 // Package ingest is the contract between a source, which parses one raw input
 // into records, and the importer, which stores the input and what its source
 // emits. A source reads only its input and its options: it never writes to
-// the database or the blob store.
+// the database or the blob store. OpenExport opens an input the way most
+// exporters ship one, as a zip.
 package ingest
 
 import (

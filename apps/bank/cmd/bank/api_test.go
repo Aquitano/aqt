@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
@@ -42,7 +41,7 @@ func archive(t *testing.T) (dsn, cited string, remote *httptest.Server) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := server.New(storetest.Open(t, dsn), attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, sources.All)
+	srv := server.New(storetest.Open(t, dsn), blobs, dir, sources.All)
 	token, err := server.Tokens(dir).New("cli-test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)

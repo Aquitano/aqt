@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
+	"github.com/aquitano/aqt/apps/bank/internal/sources/eml"
 )
 
 type importMailTreeCmd struct {

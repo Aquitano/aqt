@@ -13,7 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/search"
@@ -24,7 +24,7 @@ var errRevisionConflict = httpapi.Kind{Tag: "LibraryRevisionConflict", Status: h
 	Doc:   "The record changed since expected_revision was read. Read it again and repeat the edit on its current revision.",
 	Extra: map[string]reflect.Type{"code": reflect.TypeFor[string]()}}
 
-var Search = httpapi.Op[SearchInput, catalog.Result]{Operation: httpapi.Operation{ID: "search", Method: http.MethodGet, Path: "/v1/search", Tag: "search",
+var Search = httpapi.Op[SearchInput, find.Result]{Operation: httpapi.Operation{ID: "search", Method: http.MethodGet, Path: "/v1/search", Tag: "search",
 	Summary: "Search messages, the media library, attachments and files on disks at once, as one ranked list",
 	Description: "q is words and \"quoted phrases\", read the same way for every kind of record. Every word and " +
 		"phrase must match (match all, the default) or any of them (match any). A word of five or more " +
@@ -295,7 +295,7 @@ type SearchInput struct {
 	httpapi.Page
 }
 
-func (s *Server) search(ctx context.Context, in *SearchInput) (*httpapi.Body[catalog.Result], error) {
+func (s *Server) search(ctx context.Context, in *SearchInput) (*httpapi.Body[find.Result], error) {
 	f := search.Filters{Kind: in.Kind, Source: in.Source, Account: in.Account, Thread: in.Thread, From: in.From,
 		To: in.To, Person: in.Person, Subject: in.Subject, MailboxID: in.MailboxID}
 	if in.HasAttachment != "" {
@@ -314,7 +314,7 @@ func (s *Server) search(ctx context.Context, in *SearchInput) (*httpapi.Body[cat
 			return nil, httpapi.Invalid.New(err.Error())
 		}
 	}
-	return libraryReply(catalog.Find(ctx, s.read, s.catalogue, in.Q, search.Mode(in.Match), f, in.Limit, in.Offset))
+	return libraryReply(find.Find(ctx, s.read, in.Q, search.Mode(in.Match), f, in.Limit, in.Offset))
 }
 
 func (s *Server) libraryItems(ctx context.Context, in *LibraryFilters) (*httpapi.Body[[]library.Item], error) {

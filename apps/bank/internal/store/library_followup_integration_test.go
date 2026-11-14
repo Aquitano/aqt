@@ -12,14 +12,14 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
-	"github.com/aquitano/aqt/apps/bank/internal/importtest"
+	"github.com/aquitano/aqt/apps/bank/internal/importer/importtest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
-	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
+	"github.com/aquitano/aqt/apps/bank/internal/sources/media"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 )
 
-var youtubeKind = importer.Register(mediaimport.YouTube{}, "YouTube Takeout")
+var youtubeKind = importer.Register(media.YouTube{}, "YouTube Takeout")
 
 func TestLibraryHistoryReplayRetainsPrecisionEvidenceAndConflicts(t *testing.T) {
 	ctx := context.Background()
@@ -81,7 +81,7 @@ func TestYouTubeImporterCustomSourceReconcilesOnlyHistoryPrecision(t *testing.T)
 	st := storetest.New(t)
 	target := importtest.On(t, st, youtubeKind)
 	root := t.TempDir()
-	opts := mediaimport.YouTubeOptions{Source: "yt-private", Account: "owner"}
+	opts := media.YouTubeOptions{Source: "yt-private", Account: "owner"}
 	inputs := []struct{ name, body string }{
 		{"watch-history.html", `<html><body><div class="outer-cell"><div class="content-cell mdl-typography--body-1">Watched <a href="https://www.youtube.com/watch?v=abcdefghijk">A careful voyage</a><br>Oct 2, 2026, 12:00:33 PM UTC</div></div></body></html>`},
 		{"watch-history.json", `[{"header":"YouTube","title":"Watched A careful voyage","titleUrl":"https://www.youtube.com/watch?v=abcdefghijk","time":"2026-10-02T12:00:33.123Z"},{"header":"YouTube","title":"Watched New voyage","titleUrl":"https://www.youtube.com/watch?v=lmnopqrstuv","time":"2026-10-02T12:01:00Z"}]`},

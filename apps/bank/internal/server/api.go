@@ -11,11 +11,8 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic"
-	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
@@ -39,14 +36,14 @@ Lists and searches take limit, 20 by default and at most 500, and those that pag
 position take offset, at most 10000. Every failure is JSON with a _tag.`
 
 var (
-	GetTimeline = httpapi.Op[TimelineInput, catalog.Timeline]{Operation: httpapi.Operation{ID: "getTimeline", Method: http.MethodGet, Path: "/v1/timeline", Tag: "timeline",
+	GetTimeline = httpapi.Op[TimelineInput, find.Timeline]{Operation: httpapi.Operation{ID: "getTimeline", Method: http.MethodGet, Path: "/v1/timeline", Tag: "timeline",
 		Summary: "List what happened between two days, across messages, activity and files",
 		Description: "Messages by when they were sent, activity (watching, listening, reading) by when it happened, " +
 			"and files on disks by when they were last modified, merged oldest first. limit caps each group on " +
 			"its own; truncated names the groups that reached it.",
 		Tool: true,
 	}}
-	ResolveRef = httpapi.Op[ResolveInput, catalog.Resolved]{Operation: httpapi.Operation{ID: "resolveRef", Method: http.MethodGet, Path: "/v1/refs/{ref}", Tag: "refs",
+	ResolveRef = httpapi.Op[ResolveInput, find.Resolved]{Operation: httpapi.Operation{ID: "resolveRef", Method: http.MethodGet, Path: "/v1/refs/{ref}", Tag: "refs",
 		Summary: "Say what a cited ref names, whichever store holds it",
 		Description: "Takes msg:<16 hex> for a message, a library ID such as item:<32 hex> or file:<32 hex>, or " +
 			"content:<16 to 64 hex> for bytes. The answer names the record, the route that returns it in full, " +
@@ -55,7 +52,7 @@ var (
 			"itself comes from getMessage, getLibraryItem, getLibraryActivity, getLibraryCollection, " +
 			"getLibraryFile, getLibraryPage or, for bytes, getDiskContent, and the text read from bytes from " +
 			"getDiskContentText.",
-		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef},
+		Errors: []httpapi.Kind{httpapi.NotFound, AmbiguousRef},
 		Tool:   true,
 	}}
 )
@@ -76,7 +73,7 @@ func (s *Server) registerAPI(mux *http.ServeMux, requireToken bool) huma.API {
 	s.registerUploadsAPI(api)
 	httpapi.Register(api, GetTimeline, s.timeline)
 	httpapi.Register(api, ResolveRef, s.resolve)
-	s.catalogue.Register(api)
+	registerDiskAPI(api, s.db, s.sessions)
 	httpapi.Finish(api)
 	return api
 }
@@ -98,8 +95,8 @@ func failure(err error) error {
 	if retired, ok := errors.AsType[*store.RetiredError](err); ok {
 		return errRetired.New(retired.Error()).With("retired", retired.Retired)
 	}
-	if ambiguous, ok := errors.AsType[*atticstore.AmbiguousRefError](err); ok {
-		return atticapi.Ambiguous(ambiguous)
+	if ambiguous, ok := errors.AsType[*store.AmbiguousRefError](err); ok {
+		return Ambiguous(ambiguous)
 	}
 	if conflict, ok := errors.AsType[*store.MailThreadConflictError](err); ok {
 		return mailThreadConflict(conflict)
@@ -113,10 +110,10 @@ func failure(err error) error {
 	switch {
 	case errors.Is(err, library.ErrConflict):
 		return errRevisionConflict.New("This record changed. Reload it before saving again.").With("code", "library_revision_conflict")
-	case errors.Is(err, store.ErrNotFound), errors.Is(err, atticstore.ErrNotFound), errors.Is(err, catalog.ErrNoRecord):
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, find.ErrNoRecord):
 		return httpapi.NotFound.New(err.Error())
 	case noContact, badQuery, ambiguousThread, errors.Is(err, fail.ErrInvalid), errors.Is(err, library.ErrInvalid),
-		errors.Is(err, library.ErrReadOnly), errors.Is(err, catalog.ErrFilters), errors.Is(err, store.ErrMailboxSource):
+		errors.Is(err, library.ErrReadOnly), errors.Is(err, find.ErrFilters), errors.Is(err, store.ErrMailboxSource):
 		return httpapi.Invalid.New(err.Error())
 	}
 	return internal(err)
@@ -140,7 +137,7 @@ func list[T any](v []T, err error) (*httpapi.Body[[]T], error) {
 // Document is the OpenAPI document bank serve answers with, built without a
 // database.
 func Document(kinds importer.Registry) *huma.OpenAPI {
-	return (&Server{catalogue: attic.New(nil, ""), kinds: kinds}).registerAPI(http.NewServeMux(), true).OpenAPI()
+	return (&Server{kinds: kinds}).registerAPI(http.NewServeMux(), true).OpenAPI()
 }
 
 // Spec is Document as JSON.
@@ -152,8 +149,8 @@ type ResolveInput struct {
 	Ref ref.Ref `path:"ref" doc:"The ref as cited, such as msg:<16 hex>."`
 }
 
-func (s *Server) resolve(ctx context.Context, in *ResolveInput) (*httpapi.Body[catalog.Resolved], error) {
-	return reply(catalog.Resolve(ctx, s.db, s.catalogue, in.Ref))
+func (s *Server) resolve(ctx context.Context, in *ResolveInput) (*httpapi.Body[find.Resolved], error) {
+	return reply(find.Resolve(ctx, s.db, in.Ref))
 }
 
 type TimelineInput struct {
@@ -163,7 +160,7 @@ type TimelineInput struct {
 	httpapi.PageSize
 }
 
-func (s *Server) timeline(ctx context.Context, in *TimelineInput) (*httpapi.Body[catalog.Timeline], error) {
+func (s *Server) timeline(ctx context.Context, in *TimelineInput) (*httpapi.Body[find.Timeline], error) {
 	since, err := time.ParseInLocation(time.DateOnly, in.Since, time.Local)
 	if err != nil {
 		return nil, httpapi.Invalid.New("since is not a YYYY-MM-DD date")
@@ -174,5 +171,5 @@ func (s *Server) timeline(ctx context.Context, in *TimelineInput) (*httpapi.Body
 			return nil, httpapi.Invalid.New("until is a YYYY-MM-DD date after since")
 		}
 	}
-	return reply(catalog.BuildTimeline(ctx, s.db, s.catalogue, catalog.TimelineOptions{Since: since, Until: until, Groups: in.Group, Limit: in.Limit}))
+	return reply(find.BuildTimeline(ctx, s.read, find.TimelineOptions{Since: since, Until: until, Groups: in.Group, Limit: in.Limit}))
 }

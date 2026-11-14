@@ -9,11 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aquitano/aqt/apps/bank/internal/attic"
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/ref"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -29,7 +28,7 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, sources.All)
+	s := New(st, blobs, dir, sources.All)
 	token, err := Tokens(dir).New("refs-test", tokens.Write)
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +64,7 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 		from contents c where c.blake3 = decode('`+digest.String()+`', 'hex')`)
 	short, whole, onDisk := "content:"+digest.String()[:16], "content:"+digest.String(), "Docs:"+string(filepath.Separator)+"plan.pdf"
 
-	has := func(resolved catalog.Resolved, relation, cited, title string) bool {
+	has := func(resolved find.Resolved, relation, cited, title string) bool {
 		for _, link := range resolved.Links {
 			if link.Relation == relation && link.Ref == cited && link.Title == title {
 				return true
@@ -73,7 +72,7 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 		}
 		return false
 	}
-	resolve := func(cited string) (catalog.Resolved, error) {
+	resolve := func(cited string) (find.Resolved, error) {
 		parsed, err := ref.Parse(cited)
 		if err != nil {
 			t.Fatal(err)

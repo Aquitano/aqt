@@ -293,9 +293,9 @@ On the collector's machine:
 ## Development checks
 
 ```sh
-go test ./internal/imapsync -count=1
-go test -race ./internal/imapsync
-go test ./internal/imapsync -run '^$' -bench BenchmarkIMAPBackfill -benchmem
+go test ./internal/collect/imapsync -count=1
+go test -race ./internal/collect/imapsync
+go test ./internal/collect/imapsync -run '^$' -bench BenchmarkIMAPBackfill -benchmem
 go vet ./...
 ```
 

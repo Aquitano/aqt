@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -43,11 +42,11 @@ func TestTaggedFailuresAreTheStoresErrors(t *testing.T) {
 	}
 
 	err := get("/v1/refs/content:1111111111111111")
-	ambiguous, ok := errors.AsType[*atticstore.AmbiguousRefError](err)
+	ambiguous, ok := errors.AsType[*store.AmbiguousRefError](err)
 	if !ok || ambiguous.Ref != "content:1111111111111111" || len(ambiguous.Candidates) != 2 || ambiguous.Candidates[1].Path != "/b.txt" {
 		t.Fatalf("an ambiguous ref answered %#v", err)
 	}
-	local := &atticstore.AmbiguousRefError{Ref: ambiguous.Ref, Candidates: ambiguous.Candidates}
+	local := &store.AmbiguousRefError{Ref: ambiguous.Ref, Candidates: ambiguous.Candidates}
 	if err.Error() != local.Error() {
 		t.Fatalf("remote message %q, local %q", err, local)
 	}

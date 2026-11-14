@@ -124,7 +124,7 @@ func (s *Store) PutBlobText(ctx context.Context, bt BlobText) error {
 	if bt.BLAKE3.IsZero() || bt.Status == "" {
 		return fmt.Errorf("text needs a digest and a status")
 	}
-	text, status := cleanText(bt.Text), bt.Status
+	text, status := CleanText(bt.Text), bt.Status
 	if len(text) > extract.MaxChars {
 		text = truncateRunes(text, extract.MaxChars)
 		if status == string(extract.StatusOK) {
@@ -139,7 +139,7 @@ func (s *Store) PutBlobText(ctx context.Context, bt BlobText) error {
 			set text = excluded.text, extractor = excluded.extractor, status = excluded.status,
 			    detail = '', extracted_at = now()
 			where texts.status <> 'manual' or excluded.status = 'manual'`,
-			id, text, cleanText(bt.Extractor), status)
+			id, text, CleanText(bt.Extractor), status)
 		if err != nil || tag.RowsAffected() == 0 || status != string(extract.StatusNeedsOCR) {
 			return err
 		}

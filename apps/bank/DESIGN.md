@@ -16,17 +16,17 @@ Bank stores correspondence, a personal media library, activity, collections, fil
 
 ## Source acquisition
 
-| Source        | Method                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Automation                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Gmail         | Gmail API, incremental via `historyId`; initial backfill via full list                                                                                                                                                                                                                                                                                                                                                                                        | hourly job in `bank serve`                                |
-| ProtonMail    | official `proton-mail-export` CLI (paid plan) dumping EML into the inbox dir                                                                                                                                                                                                                                                                                                                                                                                  | cron                                                      |
-| Discord       | GDPR data package ("Request my data"), dropped into inbox                                                                                                                                                                                                                                                                                                                                                                                                     | manual, ~quarterly                                        |
-| LinkedIn      | official data export CSV, dropped into inbox                                                                                                                                                                                                                                                                                                                                                                                                                  | manual, ~quarterly                                        |
-| WhatsApp      | per-chat "Export chat" zips from the phone, dropped into inbox                                                                                                                                                                                                                                                                                                                                                                                                | manual                                                    |
-| YouTube       | Google Takeout, "YouTube and YouTube Music" → history (`watch-history.html` by default, `watch-history.json` when the export is set to "Multiple formats" — prefer JSON: HTML timestamps are localized, and a layout the parser does not know skips the record); not in the Data API, so Takeout is the only route. Watch history only — search history is a log of two-word queries that would dilute BM25 for common words while adding nothing retrievable | scheduled Takeout export into Drive, swept into the inbox |
-| ChatGPT       | official data export zip (conversations.json or numbered shards, message tree incl. regenerated branches)                                                                                                                                                                                                                                                                                                                                                     | manual, on demand                                         |
-| Claude.ai     | official data export zip (conversations.json)                                                                                                                                                                                                                                                                                                                                                                                                                 | manual, on demand                                         |
-| anything else | `bank import json` — JSON array or NDJSON on stdin/file                                                                                                                                                                                                                                                                                                                                                                                                       | agents, scripts                                           |
+| Source        | Method                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Automation                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Gmail         | Gmail API, incremental via `historyId`; initial backfill via full list                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | hourly job in `bank serve`                                |
+| ProtonMail    | official `proton-mail-export` CLI (paid plan) dumping EML into the inbox dir                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | cron                                                      |
+| Discord       | GDPR data package ("Request my data"), dropped into inbox                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | manual, ~quarterly                                        |
+| LinkedIn      | official data export CSV, dropped into inbox                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | manual, ~quarterly                                        |
+| WhatsApp      | per-chat "Export chat" zips from the phone, dropped into inbox                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | manual                                                    |
+| YouTube       | Google Takeout, "YouTube and YouTube Music": watch history (`watch-history.html` by default, `watch-history.json` when the export is set to "Multiple formats"; prefer JSON, because HTML timestamps are localized and a layout the parser does not know skips the record), playlists and the music library, which `youtube-media` imports as library records ([LIBRARY.md](LIBRARY.md)). None of it is in the Data API, so Takeout is the only route. Search history is left out: it is a log of two-word queries that would dilute BM25 for common words while adding nothing retrievable | scheduled Takeout export into Drive, swept into the inbox |
+| ChatGPT       | official data export zip (conversations.json or numbered shards, message tree incl. regenerated branches)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | manual, on demand                                         |
+| Claude.ai     | official data export zip (conversations.json)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | manual, on demand                                         |
+| anything else | `bank import json` — JSON array or NDJSON on stdin/file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | agents, scripts                                           |
 
 Deliberately inside ToS everywhere. If WhatsApp manual export gets old, the escape hatches are (a) one-shot Android backup decrypt (`wa-crypt-tools`) for deep backfill, (b) a whatsmeow linked-device bridge for live capture — both documented here so the schema already fits them.
 
@@ -40,7 +40,7 @@ Correspondence normalizes to `messages`. Source-specific detail stays in the sto
   - `raw_input_id` names the raw input the message was read from, and `raw_locator` says where inside it, such as `message 12`, `entry 4` or a conversation in `conversations.json`.
   - `sent_at` is null when the source gives no date. The generated `sort_at = coalesce(sent_at, '-infinity')` drives every ordering and page cursor, so an undated message sorts before every dated one. Date filters and the timeline leave it out.
   - `unique (source, external_id)` makes every importer idempotent — re-importing a dump is always safe.
-  - Sources without stable IDs derive one with `fieldhash.Hex`, the BLAKE3 digest of the fields that identify a record, each preceded by its length, so a separator inside a value cannot make two records hash alike: WhatsApp from thread, sent_at, sender and body, YouTube from video and second watched, falling back to the title for a record whose export names no video — overlapping Takeout exports of the same watch collapse, a second watch of the same video does not. Which URL forms yield a video id therefore decides identity, not just parsing.
+  - Sources without stable IDs derive one with `fieldhash.Hex`, the BLAKE3 digest of the fields that identify a record, each preceded by its length, so a separator inside a value cannot make two records hash alike: WhatsApp from thread, sent_at, sender and body. YouTube watch activity in the library is named the same way, from the video and the second it was watched, falling back to the title for a record whose export names no video: overlapping Takeout exports of the same watch collapse, and a second watch of the same video does not. Which URL forms yield a video id therefore decides identity, not just parsing.
   - Citations use `ref`, never `id`. `id` is a row serial that rebuilding the archive reassigns, so it stays inside the server for joins and no route, flag or JSON field exposes it. The ref is `msg:` and the first 16 hex characters of `fieldhash.Hex(source, field, value)`, where `field` is `message_id` and `value` the RFC 822 Message-ID when the message has one, and otherwise `external_id` and the source's external id. Hashing which field was used keeps an external id that spells some mail's Message-ID from sharing its ref. `ref.ForMessage` computes it once, at insert, into a `unique` column. A different message whose ref is already taken fails the import instead of being skipped as a duplicate, and a lookup by ref reads the unique index.
   - `thread_id` is the source's own conversation id wherever there is one — ChatGPT `conversation_id`, Claude.ai `uuid`, a Discord channel id — and the human title lives in `subject`. Titles repeat ("New chat", a #general on every server) and get renamed, so keying threads on them merged unrelated conversations and split renamed ones.
 - `contents(id, blake3, size_bytes)` — the one identity bytes have, shared with the catalogue of files on disks. A message attachment, a library file and a file on a disk with the same bytes point at one row.
@@ -67,13 +67,13 @@ inbox/.rejected/<kind>/ exports the importer could not read; operational failure
 tmp/                    extraction staging
 ```
 
-The `youtube` and `youtube-media` importers store the whole Takeout they are given as the raw input, not only the history file, so a full Takeout can take gigabytes.
+The `youtube-media` importer stores the whole Takeout it is given as the raw input, not only the history file, so a full Takeout can take gigabytes.
 
 ## CLI
 
 ```
 bank import whatsapp <file.zip|.txt>…   # per-source explicit import
-bank import youtube <takeout.zip|dir>   # YouTube watch history (Takeout)
+bank import youtube-media <takeout.zip|dir> --account a   # YouTube history, playlists and music (Takeout)
 bank import inbox                       # sweep the inbox drop zone
 bank sync                               # pull deltas from API sources (Gmail)
 bank search 'words "a phrase"' [--kind k] [--source s] [--thread id] [--from alice]
@@ -111,13 +111,79 @@ bank disk dedupe plan|apply, bank disk organize prepare|apply|undo, bank disk co
 
 Every command that has an API operation calls it through `internal/client`. With `BANK_URL` (and `BANK_TOKEN`) set, the client talks to that `bank serve`. Without it, the CLI builds the server's handler in process from `DATABASE_URL` and `BANK_DATA_DIR` and the client calls it through an `http.RoundTripper`: no socket, no token, no job workers or schedule, and opening the database checks the schema version without migrating. Flags, validation, defaults, errors and output are the same in both, because both run the same handlers.
 
-An operation is declared once, as an `httpapi.Op[Input, Output]` value in `internal/server` (or `internal/attic/api` for the catalogue below `/v1/disk`). The server registers its handler with that value and the client calls `client.Call(ctx, c, server.GetMessage, server.MessageInput{...})` with it, so method and path come from one place and the compiler ties the input and output types to both. The client encodes the input from the same struct tags Huma decodes it with.
+An operation is declared once, as an `httpapi.Op[Input, Output]` value in `internal/server`, including the catalogue's operations below `/v1/disk`. The server registers its handler with that value and the client calls `client.Call(ctx, c, server.GetMessage, server.MessageInput{...})` with it, so method and path come from one place and the compiler ties the input and output types to both. The client encodes the input from the same struct tags Huma decodes it with.
 
 `bank mcp` has no tool code of its own. An operation declared with `Tool` carries `x-agent-tool` in the OpenAPI document, and the command walks that document: each marked operation becomes a tool named by its operation ID, described by its summary and description, whose arguments are its path and query parameters (and `body`, for an operation that takes one) with the schemas Huma generated, and whose output schema is its success response. Referenced components are copied under `$defs`, because a tool's schema has no document around it. A call is encoded from the arguments and sent through the same client as the CLI, so Huma validates it and a failure is the API's tagged JSON. An answer that is not a JSON object has no output schema and comes back as text only, because MCP clients before the 2026-07-28 revision accept only an object as structured content. Only operations that read are marked.
 
 `auth`, `sync`, `migrate`, `serve`, `worker`, `token`, `verify`, `retire`, `reimport`, `import inbox` and `mail rebuild` administer the box itself and work on the archive, the blob store or the token file directly. All of them except `auth` and `serve` refuse outright when `BANK_URL` is set. Acting on the wrong box is the split brain the Decisions table's "Remote access" row exists to prevent, and the CLI should not need the operator to remember which side a command belongs on. `imap` and `ui` need `BANK_URL`, `healthcheck` takes a URL, and `openapi` needs nothing.
 
 Migrations are embedded in the binary. `bank migrate` and `bank serve` apply them, then River's own migrations under the same advisory lock; every other command checks both versions and stops when the schema or the job tables are behind or ahead of the binary.
+
+## Packages
+
+A package imports only packages in its own group or a group above it, and the compiler refuses a cycle. Package names are unique, so no import needs an alias.
+
+Foundation:
+
+- `internal/content`: names bytes by their BLAKE3 digest.
+- `internal/ref`: the cited form of every record, such as `msg:<hex>` and `content:<hex>`.
+- `internal/fieldhash`: names a record by the fields that identify it.
+- `internal/fail`: tells malformed input from operational failure.
+- `internal/page`: the bounds of every list and search.
+- `internal/search`: the query model, the ranked list and reciprocal rank fusion.
+- `internal/atomicfile`: replaces credential files atomically.
+- `internal/tokens`: the API's bearer tokens.
+- `internal/httpapi`: how an operation, its errors and its token scope are declared.
+- `internal/db`: the schema, its migrations and the version check.
+- `internal/jobs`: the River job kinds and their arguments.
+- `internal/blob`: the content-addressed file store.
+- `internal/library`: the library's records and their validation.
+- `internal/ingest`: the contract a source implements, and opening a zip input.
+
+Disk access, below the store because the store records what it returns:
+
+- `internal/disks/disk`: volumes, folder listings, digests and moves, as the operating system gives them.
+- `internal/disks/process`: bounded subprocesses without a shell.
+- `internal/disks/scratch`: locked temporary workspaces off the scanned volume.
+- `internal/disks/unpack`: lists what archives hold.
+- `internal/disks/metadata`: embedded tags through one running ExifTool.
+- `internal/disks/config`: the disk commands' settings and `.bank.toml` folder policies.
+- `internal/disks/ai`: OCR and image descriptions from a provider.
+
+Storage:
+
+- `internal/store`: every SQL query, for the archive, the library and the catalogue of disks.
+- `internal/storetest`: a migrated test database per test.
+
+Domain, above the store:
+
+- `internal/find`: the combined search, the timeline and ref resolution.
+- `internal/extraction`: `bank extract`, reading text out of stored bytes by hand.
+- `internal/verify`: hashes every stored blob the database names.
+- `internal/importer`: stores a raw input, runs its source and writes what it emits.
+- `internal/importer/inbox`: sweeps the inbox drop zone.
+- `internal/importer/importtest`: runs a source through the importer in tests.
+- `internal/sources`: the registry of import kinds.
+- `internal/sources/aichat`, `discord`, `eml`, `generic`, `linkedin`, `whatsapp`: one source each; `eml` also parses mail for the collectors.
+- `internal/sources/media`: the library sources: Netflix, YouTube Takeout, library bundles and Markdown publications.
+- `internal/collect/gmail`: the Gmail API sync.
+- `internal/collect/imapsync`: the IMAP collector.
+- `internal/disks/view`: catalogue records shaped for readers, with paths spelled for opening.
+- `internal/disks/session`: the scans that write through the API.
+- `internal/disks/dedupe`: moves extra copies into a quarantine folder.
+- `internal/disks/enrich`: runs OCR and image descriptions.
+- `internal/disks/retrieve`: copies a verified file off a disk.
+- `internal/disks/rehash`: hashes files on disks again against their stored digests.
+- `internal/disks/organize`: reviewed renames with a journal and undo.
+- `internal/worker`: does the work `internal/jobs` names.
+
+Interfaces:
+
+- `internal/server`: every API operation and its handler.
+- `internal/client`: calls the API over HTTP or in process.
+- `internal/disks/scan`: walks a folder into the catalogue through the client.
+- `internal/webui`: the embedded archive browser.
+- `cmd/bank`: every command, `bank disk` included.
 
 ## Milestones
 

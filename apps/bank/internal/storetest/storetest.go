@@ -17,7 +17,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/peterldowns/pgtestdb"
 
-	atticstore "github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/db"
 	"github.com/aquitano/aqt/apps/bank/internal/search"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
@@ -68,20 +67,6 @@ func Migrated(t *testing.T) string {
 func NewEmpty(t *testing.T) string {
 	t.Helper()
 	return pgschematest.Database(t, urlVar, pgtestdb.NoopMigrator{})
-}
-
-// NewCatalogue returns the file catalogue's Store on a migrated database of
-// its own, and the database's connection string.
-func NewCatalogue(t *testing.T) (*atticstore.Store, string) {
-	t.Helper()
-	dsn := Migrated(t)
-	return OpenCatalogue(t, dsn), dsn
-}
-
-// OpenCatalogue returns the file catalogue's Store on an existing test database.
-func OpenCatalogue(t *testing.T, dsn string) *atticstore.Store {
-	t.Helper()
-	return atticstore.New(Pool(t, dsn))
 }
 
 // Pool opens a pool on an existing test database, closed when the test ends.

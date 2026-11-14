@@ -18,7 +18,7 @@ import (
 
 func TestHealthChecksDatabase(t *testing.T) {
 	pool := storetest.Pool(t, storetest.Migrated(t))
-	server := New(store.New(pool), noDisks{}, nil, t.TempDir(), nil)
+	server := New(store.New(pool), nil, t.TempDir(), nil)
 	for _, status := range []int{http.StatusOK, http.StatusServiceUnavailable} {
 		if status == http.StatusServiceUnavailable {
 			pool.Close()

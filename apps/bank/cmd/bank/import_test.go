@@ -11,7 +11,7 @@ import (
 
 	"github.com/alecthomas/kong"
 
-	"github.com/aquitano/aqt/apps/bank/internal/inbox"
+	"github.com/aquitano/aqt/apps/bank/internal/importer/inbox"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
 	"github.com/aquitano/aqt/apps/bank/internal/store"

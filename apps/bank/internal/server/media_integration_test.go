@@ -16,12 +16,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aquitano/aqt/apps/bank/internal/catalog"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
+	"github.com/aquitano/aqt/apps/bank/internal/find"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
-	"github.com/aquitano/aqt/apps/bank/internal/mediaimport"
 	"github.com/aquitano/aqt/apps/bank/internal/sources"
+	"github.com/aquitano/aqt/apps/bank/internal/sources/media"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 	"github.com/aquitano/aqt/apps/bank/internal/tokens"
 )
@@ -119,7 +119,7 @@ func TestLibraryClientRoundTripPreservesFilesAndConflicts(t *testing.T) {
 	if err = s.db.PutBlobText(ctx, store.BlobText{BLAKE3: files[0].BLAKE3, Text: "Invoice evidence for the library", Status: "ok"}); err != nil {
 		t.Fatal(err)
 	}
-	kinds := func(result catalog.Result) map[string]int {
+	kinds := func(result find.Result) map[string]int {
 		n := map[string]int{}
 		for _, h := range result.Hits {
 			n[h.Kind]++
@@ -161,7 +161,7 @@ func TestLibraryRemoteImportsAndMarkdownRetraction(t *testing.T) {
 	path := filepath.Join(root, "page.md")
 	publish := func() store.RawInput {
 		t.Helper()
-		publication, err := mediaimport.BuildPublication(root, mediaimport.PublicationOptions{Source: "brain", Account: "wiki"})
+		publication, err := media.BuildPublication(root, media.PublicationOptions{Source: "brain", Account: "wiki"})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -21,7 +21,7 @@ import (
 // an alias can be scoped to a source before anything from it exists, and that
 // "whatsapp:Alice" is read as a scope rather than as a name with a colon in it.
 var builtinSources = []string{
-	"whatsapp", "gmail", "proton", "discord", "linkedin", "youtube", "chatgpt", "claude",
+	"whatsapp", "gmail", "proton", "discord", "linkedin", "chatgpt", "claude",
 }
 
 type contactCmd struct {

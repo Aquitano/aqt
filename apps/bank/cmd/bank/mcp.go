@@ -14,7 +14,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	atticapi "github.com/aquitano/aqt/apps/bank/internal/attic/api"
 	"github.com/aquitano/aqt/apps/bank/internal/client"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
 	"github.com/aquitano/aqt/apps/bank/internal/server"
@@ -41,7 +40,7 @@ var mcpInstructions = fmt.Sprintf(`bank is one person's archive: mail, chats and
 Every record that can be cited has one ref, kind:value: msg:<16 hex> for a message, content:<16 to 64 hex> for bytes, and a library ID such as item:<32 hex>. Cite refs exactly as the tools return them.
 
 Start with %s, which returns one ranked list of small hits, each with its ref and a snippet but never a whole body. %s says what a ref names and where the same bytes are. Then read the record: %s for a message, %s with a hit's thread_id, source and ref as around for its conversation, and %s for the text read from a file.`,
-	server.Search.ID, server.ResolveRef.ID, server.GetMessage.ID, server.GetThread.ID, atticapi.GetDiskContentText.ID)
+	server.Search.ID, server.ResolveRef.ID, server.GetMessage.ID, server.GetThread.ID, server.GetDiskContentText.ID)
 
 // newMCPServer offers each operation of doc that is marked as a tool, and
 // calls it through api.

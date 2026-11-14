@@ -1,5 +1,5 @@
-// Package store holds every query on the archive's tables. The schema is
-// package db's.
+// Package store holds every query on bank's tables: the archive's and the
+// catalogue of files on disks. The schema is package db's.
 package store
 
 import (
@@ -296,32 +296,33 @@ func refCollisions(ctx context.Context, query func(context.Context, string, ...a
 // clean normalizes every text field to what the columns accept and rejects a
 // message that could not be identified.
 func (m Message) clean() (Message, error) {
-	m.ExternalID = cleanText(m.ExternalID)
-	m.MessageID = cleanText(m.MessageID)
+	m.ExternalID = CleanText(m.ExternalID)
+	m.MessageID = CleanText(m.MessageID)
 	if m.Source == "" || m.ExternalID == "" {
 		return m, fmt.Errorf("message needs source (%q) and external_id (%q)", m.Source, m.ExternalID)
 	}
 	m.Ref = ref.ForMessage(m.Source, m.MessageID, m.ExternalID).String()
 	recipients := make([]string, len(m.Recipients))
 	for i, r := range m.Recipients {
-		recipients[i] = cleanText(r)
+		recipients[i] = CleanText(r)
 	}
 	m.Recipients = recipients
-	m.Sender = cleanText(m.Sender)
-	m.Subject = cleanText(m.Subject)
-	m.Body = cleanText(m.Body)
-	m.ThreadID = cleanText(m.ThreadID)
-	m.ParentExternalID = cleanText(m.ParentExternalID)
-	m.BranchID = cleanText(m.BranchID)
-	m.RawLocator = cleanText(m.RawLocator)
+	m.Sender = CleanText(m.Sender)
+	m.Subject = CleanText(m.Subject)
+	m.Body = CleanText(m.Body)
+	m.ThreadID = CleanText(m.ThreadID)
+	m.ParentExternalID = CleanText(m.ParentExternalID)
+	m.BranchID = CleanText(m.BranchID)
+	m.RawLocator = CleanText(m.RawLocator)
 	return m, nil
 }
 
-// cleanText makes a string safe for a Postgres text column: valid UTF-8
-// (mislabeled legacy charsets are common in old email) and no NUL bytes.
-// Identifiers get the same treatment as bodies — a Message-ID with a stray
-// 0x00 would otherwise fail insertion and, on Gmail, wedge the whole sync.
-func cleanText(s string) string {
+// CleanText makes a string safe for a Postgres text column: valid UTF-8
+// (mislabeled legacy charsets are common in old email, and file names on old
+// disks are not always valid UTF-16) and no NUL bytes. Identifiers get the
+// same treatment as bodies: a Message-ID with a stray 0x00 would otherwise
+// fail insertion and, on Gmail, wedge the whole sync.
+func CleanText(s string) string {
 	if utf8.ValidString(s) && !strings.ContainsRune(s, 0) {
 		return s
 	}
@@ -363,7 +364,7 @@ func (o optionalTime) Scan(src any) error {
 func (s *Store) FindMessageID(ctx context.Context, source, externalID string) (int64, error) {
 	var id int64
 	err := s.pool.QueryRow(ctx,
-		`select id from messages where source = $1 and external_id = $2`, source, cleanText(externalID)).Scan(&id)
+		`select id from messages where source = $1 and external_id = $2`, source, CleanText(externalID)).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, nil
 	}
@@ -374,7 +375,7 @@ func (s *Store) FindMessageID(ctx context.Context, source, externalID string) (i
 // source under this RFC 822 Message-ID, regardless of which id scheme keyed
 // it, or 0 if absent.
 func (s *Store) FindByEmailMessageID(ctx context.Context, source, messageID string) (int64, error) {
-	messageID = cleanText(messageID)
+	messageID = CleanText(messageID)
 	if messageID == "" {
 		return 0, nil
 	}
@@ -414,7 +415,7 @@ func (s *Store) SetSyncState(ctx context.Context, source string, state []byte) e
 // written by hand and must not read as a sync having happened. An empty text
 // clears the note.
 func (s *Store) SetNote(ctx context.Context, source, text string) error {
-	source = strings.TrimSpace(cleanText(source))
+	source = strings.TrimSpace(CleanText(source))
 	if source == "" {
 		return fail.Invalidf("a note needs a source")
 	}
@@ -424,7 +425,7 @@ func (s *Store) SetNote(ctx context.Context, source, text string) error {
 		on conflict (source) do update
 		set state = case when $2::text = '' then sync_state.state - 'note'
 		                 else jsonb_set(sync_state.state, '{note}', to_jsonb($2::text), true) end`,
-		source, cleanText(text))
+		source, CleanText(text))
 	return err
 }
 
