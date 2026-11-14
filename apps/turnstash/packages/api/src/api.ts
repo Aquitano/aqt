@@ -11,6 +11,8 @@ import {
   LimitBatchResult,
   MachineId,
   RepositoryTask,
+  T3Batch,
+  T3BatchResult,
   Tombstone,
 } from "@aqt/turnstash-core";
 import { Schema } from "effect";
@@ -59,6 +61,8 @@ import {
   PricingRuleView,
   ProjectDetail,
   ProjectRow,
+  QueryInput,
+  QueryResult,
   RequestDetail,
   SearchQuery,
   SearchResult,
@@ -184,6 +188,13 @@ export const ingestGroup = HttpApiGroup.make("ingest")
       error: BadRequest,
     }),
   )
+  .add(
+    HttpApiEndpoint.post("pushT3", "/t3", {
+      payload: T3Batch,
+      success: T3BatchResult,
+      error: BadRequest,
+    }),
+  )
   .prefix("/ingest")
   .middleware(MachineAuth);
 
@@ -271,6 +282,13 @@ export const readGroup = HttpApiGroup.make("read")
     }),
   )
   .add(HttpApiEndpoint.get("search", "/search", { query: SearchQuery, success: SearchResult }))
+  .add(
+    HttpApiEndpoint.post("query", "/query", {
+      payload: QueryInput,
+      success: QueryResult,
+      error: BadRequest,
+    }),
+  )
   .add(HttpApiEndpoint.get("listMachines", "/machines", { success: Schema.Array(MachineSummary) }))
   .add(
     HttpApiEndpoint.get("machineRoster", "/machines/roster", {

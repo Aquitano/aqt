@@ -75,6 +75,7 @@ const scheduleEnvironmentKeys = [
   "PI_SESSIONS_DIR",
   "OMP_SESSIONS_DIR",
   "ANTIGRAVITY_DATA_DIR",
+  "TURNSTASH_T3_STATE_DB",
 ] as const;
 
 const scheduleRunnerPath = (host: HostEnv) => `${agentPaths(host).configFile}.schedule.js`;
