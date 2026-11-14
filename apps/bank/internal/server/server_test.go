@@ -120,6 +120,8 @@ type noDisks struct{}
 
 func (noDisks) Register(huma.API) {}
 
+func (noDisks) Close() error { return nil }
+
 func (noDisks) Content(context.Context, ref.Content) (view.Content, error) {
 	return view.Content{}, atticstore.ErrNotFound
 }

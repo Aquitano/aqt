@@ -9,15 +9,18 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
-	"github.com/aquitano/aqt/apps/bank/internal/storetest"
 	"github.com/aquitano/aqt/packages/go/pgschema/pgschematest"
 	"lukechampine.com/blake3"
 )
 
 func TestDirectoryReplacementMarksDescendantsMissing(t *testing.T) {
+	eachTransport(t, testDirectoryReplacementMarksDescendantsMissing)
+}
+
+func testDirectoryReplacementMarksDescendantsMissing(t *testing.T, catalogue newCatalogue) {
 	for _, kind := range []string{"file", "link"} {
 		t.Run(kind, func(t *testing.T) {
-			st, dsn := storetest.NewCatalogue(t)
+			st, dsn := catalogue(t)
 			root := t.TempDir()
 			write(t, root, "replaced/nested/child.txt", "retained bytes")
 			scanAt(t, st, root, testVolume)
@@ -45,9 +48,13 @@ func TestDirectoryReplacementMarksDescendantsMissing(t *testing.T) {
 }
 
 func TestRawNamesKeepDistinctRowsAndParents(t *testing.T) {
+	eachTransport(t, testRawNamesKeepDistinctRowsAndParents)
+}
+
+func testRawNamesKeepDistinctRowsAndParents(t *testing.T, catalogue newCatalogue) {
 	for name, stable := range map[string]bool{"path": false, "stable": true} {
 		t.Run(name, func(t *testing.T) {
-			st, dsn := storetest.NewCatalogue(t)
+			st, dsn := catalogue(t)
 			root := t.TempDir()
 			names := []string{"bad\xed\xa0\x80", "bad\xed\xa0\x81"}
 			for _, name := range names {
@@ -84,7 +91,11 @@ func TestRawNamesKeepDistinctRowsAndParents(t *testing.T) {
 }
 
 func TestHardLinksReuseContentAcrossInitialNewAndChangedLinks(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testHardLinksReuseContentAcrossInitialNewAndChangedLinks)
+}
+
+func testHardLinksReuseContentAcrossInitialNewAndChangedLinks(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "a/linked.bin", "original")
 	if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {
@@ -146,6 +157,10 @@ func TestHardLinksReuseContentAcrossInitialNewAndChangedLinks(t *testing.T) {
 }
 
 func TestChangedHardLinkOwnerRenameRefreshesBothLinks(t *testing.T) {
+	eachTransport(t, testChangedHardLinkOwnerRenameRefreshesBothLinks)
+}
+
+func testChangedHardLinkOwnerRenameRefreshesBothLinks(t *testing.T, catalogue newCatalogue) {
 	for _, tc := range []struct {
 		name    string
 		partial string
@@ -157,7 +172,7 @@ func TestChangedHardLinkOwnerRenameRefreshesBothLinks(t *testing.T) {
 		{name: "existing conflicting digests", partial: "b", legacy: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			st, dsn := storetest.NewCatalogue(t)
+			st, dsn := catalogue(t)
 			root := t.TempDir()
 			write(t, root, "a/linked.bin", "original")
 			if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {

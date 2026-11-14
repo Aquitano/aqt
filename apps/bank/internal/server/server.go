@@ -9,6 +9,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"path/filepath"
@@ -47,10 +48,12 @@ type reader interface {
 }
 
 // Catalogue is the file catalogue: its share of combined search, the timeline
-// and refs, and its own operations below /v1/disk.
+// and refs, and its own operations below /v1/disk. Close ends the scans that
+// write through them.
 type Catalogue interface {
 	catalog.Catalogue
 	Register(huma.API)
+	Close() error
 }
 
 type Server struct {
@@ -123,9 +126,9 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListenAndServe serves until ctx ends, then drains: the listener stops,
-// requests in flight get their time, background extraction stops, and only
-// then does the caller close the database pools.
-func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
+// requests in flight get their time, background extraction stops, open scans
+// end as interrupted, and only then does the caller close the database pools.
+func (s *Server) ListenAndServe(ctx context.Context, addr string) (err error) {
 	workCtx, cancelWork := context.WithCancel(context.Background())
 	s.extraction.ctx = workCtx
 	defer func() {
@@ -134,6 +137,7 @@ func (s *Server) ListenAndServe(ctx context.Context, addr string) error {
 		cancelWork()
 		s.extraction.mu.Unlock()
 		s.extraction.done.Wait()
+		err = errors.Join(err, s.catalogue.Close())
 	}()
 	srv := &http.Server{
 		Addr:              addr,

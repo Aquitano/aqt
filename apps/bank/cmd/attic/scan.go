@@ -14,6 +14,7 @@ import (
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/scan"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
+	"github.com/aquitano/aqt/apps/bank/internal/client"
 )
 
 type scanCmd struct {
@@ -46,17 +47,17 @@ func (cmd *scanCmd) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	st, closeStore, err := openStore(ctx)
+	catalogue, closeCatalogue, err := openCatalogue(ctx)
 	if err != nil {
 		return err
 	}
-	defer closeStore()
+	defer closeCatalogue()
 
 	log, logPath, closeLog := openScanLog(level)
 	defer closeLog()
 	log.Info("attic started", "build", buildRevision(), "args", os.Args[1:], "pid", os.Getpid())
 	p := &progressLine{tty: stderrIsTerminal(), started: time.Now()}
-	res, err := scan.Run(ctx, st, scan.Options{
+	res, err := scan.Run(ctx, catalogue, scan.Options{
 		Path: cmd.Folder, Config: cfg, NoHash: cmd.NoHash, VolumeID: cmd.Volume, NewVolume: cmd.NewVolume, Progress: p.update, Log: log,
 		RebuildContent: cmd.RebuildContent,
 	})
@@ -106,6 +107,23 @@ func (cmd *scanCmd) Run(ctx context.Context) error {
 		fmt.Println("  run the same command again to continue; finished work is kept")
 	}
 	return err
+}
+
+// openCatalogue writes through bank serve when BANK_URL and BANK_TOKEN name
+// it, the way bank does, and to DATABASE_URL otherwise.
+func openCatalogue(ctx context.Context) (scan.Catalogue, func(), error) {
+	url, token := os.Getenv("BANK_URL"), os.Getenv("BANK_TOKEN")
+	switch {
+	case url != "" && token != "":
+		return scan.Remote(client.New(url, token)), func() {}, nil
+	case url != "" || token != "":
+		return nil, nil, errors.New("set both BANK_URL and BANK_TOKEN to scan through bank serve, or neither to write DATABASE_URL")
+	}
+	st, closeStore, err := openStore(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	return scan.Local(st), closeStore, nil
 }
 
 // phaseSummary names the phases that ran and how long each took, with the

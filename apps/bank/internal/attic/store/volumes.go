@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
+	"github.com/aquitano/aqt/apps/bank/internal/fail"
 )
 
 type Volume struct {
@@ -94,15 +95,12 @@ func (s *Store) ResolveVolume(ctx context.Context, mounted disk.Volume, forceID 
 		return s.insertVolume(ctx, mounted)
 	}
 	if forceID != "" {
-		v, err := scanVolume(s.pool.QueryRow(ctx, `select `+volumeColumns+` from volumes where id::text = $1`, forceID))
-		if errors.Is(err, pgx.ErrNoRows) {
-			return v, fmt.Errorf("no volume %s", forceID)
-		}
+		v, err := s.Volume(ctx, forceID)
 		if err != nil {
 			return v, err
 		}
 		if v.FS != fp.FS || v.Serial != fp.Serial {
-			return v, fmt.Errorf("volume %s is %s serial %s, but the mounted one is %s serial %s", v.ID, v.FS, v.Serial, fp.FS, fp.Serial)
+			return v, fail.Invalidf("volume %s is %s serial %s, but the mounted one is %s serial %s", v.ID, v.FS, v.Serial, fp.FS, fp.Serial)
 		}
 		return s.touchVolume(ctx, v.ID, mounted)
 	}
@@ -125,12 +123,20 @@ func (s *Store) ResolveVolume(ctx context.Context, mounted disk.Volume, forceID 
 	}
 }
 
+func (s *Store) Volume(ctx context.Context, id string) (Volume, error) {
+	v, err := scanVolume(s.pool.QueryRow(ctx, `select `+volumeColumns+` from volumes where id::text = $1`, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return v, fmt.Errorf("no volume %s: %w", id, ErrNotFound)
+	}
+	return v, err
+}
+
 func (s *Store) insertVolume(ctx context.Context, m disk.Volume) (Volume, error) {
 	return scanVolume(s.pool.QueryRow(ctx, `
 		insert into volumes (label, fs_type, serial, partition_id, device_serial, size_bytes, stable_ids, mount_path)
 		values ($1, $2, $3, $4, $5, $6, $7, $8)
 		returning `+volumeColumns,
-		cleanText(m.Label), m.FS, m.Serial, m.PartitionID, m.DeviceSerial, m.Size, m.StableIDs, cleanText(m.Root)))
+		CleanText(m.Label), m.FS, m.Serial, m.PartitionID, m.DeviceSerial, m.Size, m.StableIDs, CleanText(m.Root)))
 }
 
 // touchVolume records where and as what the volume was just seen. A device
@@ -142,7 +148,7 @@ func (s *Store) touchVolume(ctx context.Context, id string, m disk.Volume) (Volu
 		       device_serial = coalesce(nullif($4, ''), device_serial), size_bytes = $5, mount_path = $6, last_seen = now()
 		where id = $1
 		returning `+volumeColumns,
-		id, cleanText(m.Label), m.PartitionID, m.DeviceSerial, m.Size, cleanText(m.Root)))
+		id, CleanText(m.Label), m.PartitionID, m.DeviceSerial, m.Size, CleanText(m.Root)))
 }
 
 // FindVolume resolves a volume by id or label, as typed on the command line.

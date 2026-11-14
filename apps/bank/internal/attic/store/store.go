@@ -21,9 +21,9 @@ type Store struct {
 // New queries through pool, which stays its opener's to close.
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
-// cleanText makes a string safe for a Postgres text column. File names on old
+// CleanText makes a string safe for a Postgres text column. File names on old
 // disks are not always valid UTF-16, and Postgres rejects NUL bytes.
-func cleanText(s string) string {
+func CleanText(s string) string {
 	if utf8.ValidString(s) && !strings.ContainsRune(s, 0) {
 		return s
 	}

@@ -80,7 +80,11 @@ func TestNonArchiveSkipDoesNotCacheUnverifiedBytes(t *testing.T) {
 }
 
 func TestRebuildContentIsScopedAndPreservesOtherCaches(t *testing.T) {
-	st, dsn := storetest.NewCatalogue(t)
+	eachTransport(t, testRebuildContentIsScopedAndPreservesOtherCaches)
+}
+
+func testRebuildContentIsScopedAndPreservesOtherCaches(t *testing.T, catalogue newCatalogue) {
+	st, dsn := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "selected/a.txt", "original words")
 	write(t, root, "outside/copy.txt", "original words")
@@ -175,9 +179,13 @@ func rarFixture(t *testing.T, name string) string {
 }
 
 func TestMultipartArchivesVerifySiblingsAndPreserveNames(t *testing.T) {
+	eachTransport(t, testMultipartArchivesVerifySiblingsAndPreserveNames)
+}
+
+func testMultipartArchivesVerifySiblingsAndPreserveNames(t *testing.T, catalogue newCatalogue) {
 	for _, changed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("changed=%t", changed), func(t *testing.T) {
-			st, dsn := storetest.NewCatalogue(t)
+			st, dsn := catalogue(t)
 			root := t.TempDir()
 			for _, name := range []string{"test.part01.rar", "test.part02.rar"} {
 				write(t, root, name, rarFixture(t, name))

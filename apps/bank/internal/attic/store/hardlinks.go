@@ -41,6 +41,44 @@ func (sc *Scan) QueueHardLinkHashes(ctx context.Context) error {
 	return nil
 }
 
+// ReusableLinks reports which pending files ReuseContent would give a digest
+// now: a trusted link below the scan root holds one under the same stamp. A
+// scan on another machine learns this with the page, instead of asking per
+// file.
+func (sc *Scan) ReusableLinks(ctx context.Context, pending []Pending) (map[int64]bool, error) {
+	var ids []int64
+	for _, p := range pending {
+		if p.Linked {
+			ids = append(ids, p.ID)
+		}
+	}
+	if !sc.Volume.StableIDs || len(ids) == 0 {
+		return nil, nil
+	}
+	lower, upper := sc.subtree()
+	rows, err := sc.store.pool.Query(ctx, `
+		select e.id from entries e
+		where e.id = any($1) and exists(select 1 from entries known
+			where known.volume_id = e.volume_id and known.physical_file_id = e.physical_file_id
+			  and known.id <> e.id and known.kind = 'file' and known.missing_scan is null
+			  and known.hash_state = 'done' and known.hash_trusted and known.content_id is not null
+			  and known.path collate "C" > $2 and ($3 = '' or known.path collate "C" < $3)
+			  and known.size_bytes = e.size_bytes and known.modified_at = e.modified_at and known.changed_at = e.changed_at)`,
+		ids, lower, upper)
+	if err != nil {
+		return nil, err
+	}
+	reusable, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]bool, len(reusable))
+	for _, id := range reusable {
+		out[id] = true
+	}
+	return out, nil
+}
+
 func (sc *Scan) ReuseContent(ctx context.Context, p Pending, observed disk.Entry) (bool, error) {
 	if !sc.Volume.StableIDs || p.PhysicalFileID == nil || int64(observed.FileID) != *p.PhysicalFileID ||
 		observed.Dir || observed.Link || observed.Remote || observed.Size != p.Size ||

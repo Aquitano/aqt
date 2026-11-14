@@ -22,13 +22,13 @@ func (r *run) readMetadata(ctx context.Context) error {
 	exiftool := metadata.NewReader(r.o.Config.Metadata.ExifTool)
 	defer exiftool.Close()
 	var after store.ContentFile
+	// A page is fetched before its results commit, so it can hold two copies.
+	read := map[int64]bool{}
 	for {
 		batch, err := r.sc.NextMetadata(ctx, after, 64)
 		if err != nil || len(batch) == 0 {
 			return err
 		}
-		// A batch is fetched before its results commit, so it can hold two copies.
-		read := map[int64]bool{}
 		for _, p := range batch {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -48,7 +48,7 @@ func (r *run) readMetadata(ctx context.Context) error {
 			read[p.ContentID] = ok
 		}
 		after = batch[len(batch)-1]
-		if err := r.sc.Commit(ctx); err != nil {
+		if err := r.sc.MaybeCommit(ctx); err != nil {
 			return err
 		}
 	}

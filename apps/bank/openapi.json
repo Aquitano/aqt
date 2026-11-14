@@ -182,6 +182,56 @@
         ],
         "type": "object"
       },
+      "AmbiguousVolumeError": {
+        "description": "The disk resembles known volumes without matching one. Retry with volume_id if it is one of the candidates, or new_volume if it is another disk.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "AmbiguousVolume"
+            ],
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Volume"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "fingerprint": {
+            "$ref": "#/components/schemas/Fingerprint"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "candidates",
+          "fingerprint",
+          "message"
+        ],
+        "type": "object"
+      },
       "Analysis": {
         "additionalProperties": false,
         "properties": {
@@ -299,6 +349,47 @@
         ],
         "type": "object"
       },
+      "ArchiveChunk": {
+        "additionalProperties": false,
+        "properties": {
+          "abort": {
+            "description": "Drop the chunks sent so far.",
+            "type": "boolean"
+          },
+          "content_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "depth": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/ArchiveMember"
+            },
+            "maxItems": 100000,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ArchiveOutcome",
+            "description": "Set on the last chunk."
+          },
+          "unpack_max_bytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content_id",
+          "depth",
+          "unpack_max_bytes"
+        ],
+        "type": "object"
+      },
       "ArchiveInfo": {
         "additionalProperties": false,
         "properties": {
@@ -319,6 +410,107 @@
         "required": [
           "status",
           "members"
+        ],
+        "type": "object"
+      },
+      "ArchiveMember": {
+        "additionalProperties": false,
+        "properties": {
+          "crc32": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "encrypted": {
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "file",
+              "dir",
+              "link"
+            ],
+            "type": "string"
+          },
+          "modified": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "name",
+          "kind",
+          "size"
+        ],
+        "type": "object"
+      },
+      "ArchiveOutcome": {
+        "additionalProperties": false,
+        "properties": {
+          "cacheable_failure": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          },
+          "incomplete": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ArchivePartRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Volume-relative path of a multipart archive's sibling volume.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "ArchivePolicyRange": {
+        "additionalProperties": false,
+        "properties": {
+          "depth": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lower": {
+            "type": "string"
+          },
+          "upper": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lower",
+          "upper",
+          "depth"
         ],
         "type": "object"
       },
@@ -404,6 +596,78 @@
         "required": [
           "blake3",
           "status"
+        ],
+        "type": "object"
+      },
+      "Batch": {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "description": "Answers to the questions an earlier attempt at this batch returned.",
+            "items": {
+              "$ref": "#/components/schemas/HoldsAnswer"
+            },
+            "maxItems": 100000,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "finish": {
+            "$ref": "#/components/schemas/FinishRequest",
+            "description": "Ends the scan after the operations."
+          },
+          "ops": {
+            "items": {
+              "$ref": "#/components/schemas/Op"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "seq": {
+            "description": "Numbers the scan's batches from 1. A batch whose number was applied already is answered again and not applied twice, so a batch whose answer was lost can be sent again.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "ops"
+        ],
+        "type": "object"
+      },
+      "BatchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/ScanCounts",
+            "description": "The scan's counts after the batch."
+          },
+          "finished": {
+            "description": "The batch finished the scan.",
+            "type": "boolean"
+          },
+          "pending": {
+            "description": "After finish: files below the scan root still waiting for a hash.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "questions": {
+            "description": "The batch was not applied: send it again, with the same seq, and an answer to each.",
+            "items": {
+              "$ref": "#/components/schemas/Location"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "counts"
         ],
         "type": "object"
       },
@@ -1194,6 +1458,45 @@
         ],
         "type": "object"
       },
+      "DocumentResult": {
+        "additionalProperties": false,
+        "properties": {
+          "content_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "text": {
+            "$ref": "#/components/schemas/DocumentText"
+          }
+        },
+        "required": [
+          "content_id",
+          "text"
+        ],
+        "type": "object"
+      },
+      "DocumentText": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "extractor": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "text"
+        ],
+        "type": "object"
+      },
       "DupeGroup": {
         "additionalProperties": false,
         "properties": {
@@ -1377,6 +1680,26 @@
         ],
         "type": "object"
       },
+      "ExifResult": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "tags": {
+            "additionalProperties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "status",
+          "tags"
+        ],
+        "type": "object"
+      },
       "ExtractionStat": {
         "additionalProperties": false,
         "properties": {
@@ -1463,6 +1786,113 @@
         ],
         "type": "object"
       },
+      "Fingerprint": {
+        "additionalProperties": false,
+        "properties": {
+          "device_serial": {
+            "type": "string"
+          },
+          "fs": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "partition_id": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "stable_ids": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fs",
+          "serial",
+          "size",
+          "label",
+          "stable_ids"
+        ],
+        "type": "object"
+      },
+      "FinishRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "phases": {
+            "$ref": "#/components/schemas/PhaseTimes"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "failed",
+              "interrupted"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "phases"
+        ],
+        "type": "object"
+      },
+      "FolderListing": {
+        "additionalProperties": false,
+        "properties": {
+          "complete": {
+            "description": "The listing is the whole folder, so entries it lacks are missing.",
+            "type": "boolean"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/ListedEntry"
+            },
+            "maxItems": 100000,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "folder": {
+            "description": "The listed folder's number; 0 lists the volume root itself.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "git_remote": {
+            "description": "The folder is a git repository with this origin, empty when it has none.",
+            "type": "string"
+          },
+          "keep": {
+            "description": "Names of entries that exist but were excluded: neither recorded nor marked missing.",
+            "items": {
+              "contentEncoding": "base64",
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "more": {
+            "description": "More entries of this folder follow in a later listing; the folder is reconciled when the last part arrives.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "folder",
+          "entries"
+        ],
+        "type": "object"
+      },
       "ForbiddenError": {
         "description": "The token is valid and only reads; this operation writes.",
         "properties": {
@@ -1496,6 +1926,124 @@
         "required": [
           "_tag",
           "message"
+        ],
+        "type": "object"
+      },
+      "HashFailure": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/Pending"
+          }
+        },
+        "required": [
+          "file",
+          "error"
+        ],
+        "type": "object"
+      },
+      "HashResult": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/Pending"
+          }
+        },
+        "required": [
+          "file",
+          "digest"
+        ],
+        "type": "object"
+      },
+      "HashSkip": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/Pending"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "HashWork": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "linked": {
+            "description": "Another present entry on the volume has the same file id: a hard link.",
+            "type": "boolean"
+          },
+          "modified": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "physical_file_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reusable": {
+            "description": "A trusted hard link already holds the digest under the same stamp.",
+            "type": "boolean"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "size"
+        ],
+        "type": "object"
+      },
+      "HoldsAnswer": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "holds": {
+            "description": "The path holds that file id, or the scan cannot tell.",
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "holds",
+          "path",
+          "file_id"
         ],
         "type": "object"
       },
@@ -1907,6 +2455,147 @@
           "ref",
           "title",
           "href"
+        ],
+        "type": "object"
+      },
+      "LinkReuse": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "file": {
+            "$ref": "#/components/schemas/Pending"
+          },
+          "modified": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "modified",
+          "changed"
+        ],
+        "type": "object"
+      },
+      "ListedEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "accessed": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "attributes": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "changed": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "file_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "folder": {
+            "description": "A folder's number, for its own listing.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "hash_state": {
+            "enum": [
+              "pending",
+              "skipped"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "file",
+              "dir",
+              "link"
+            ],
+            "type": "string"
+          },
+          "modified": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "contentEncoding": "base64",
+            "description": "The name's bytes as the file system returned them.",
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "size",
+          "attributes",
+          "hash_state"
+        ],
+        "type": "object"
+      },
+      "ListingCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "content_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "depth": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "unpack_max_bytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content_id",
+          "depth",
+          "unpack_max_bytes"
+        ],
+        "type": "object"
+      },
+      "ListingNeeded": {
+        "additionalProperties": false,
+        "properties": {
+          "needed": {
+            "description": "No listing at this depth is cached or remembered as failed.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "needed"
+        ],
+        "type": "object"
+      },
+      "Location": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "file_id"
         ],
         "type": "object"
       },
@@ -2358,6 +3047,93 @@
         ],
         "type": "object"
       },
+      "MetadataResult": {
+        "additionalProperties": false,
+        "properties": {
+          "content_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ExifResult"
+          }
+        },
+        "required": [
+          "content_id",
+          "result"
+        ],
+        "type": "object"
+      },
+      "MetadataWork": {
+        "additionalProperties": false,
+        "properties": {
+          "content_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "stamp": {
+            "$ref": "#/components/schemas/Stamp"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "content_id",
+          "size",
+          "stamp"
+        ],
+        "type": "object"
+      },
+      "MountedVolume": {
+        "additionalProperties": false,
+        "properties": {
+          "device_serial": {
+            "type": "string"
+          },
+          "fs": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "partition_id": {
+            "type": "string"
+          },
+          "root": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "stable_ids": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "root",
+          "fs",
+          "serial",
+          "size",
+          "label",
+          "stable_ids"
+        ],
+        "type": "object"
+      },
       "NotFoundError": {
         "description": "Nothing matches.",
         "properties": {
@@ -2392,6 +3168,57 @@
           "_tag",
           "message"
         ],
+        "type": "object"
+      },
+      "Op": {
+        "additionalProperties": false,
+        "properties": {
+          "archive": {
+            "$ref": "#/components/schemas/ArchiveChunk"
+          },
+          "hard_links": {
+            "description": "The walk ended: queue hard links whose digests disagree for hashing.",
+            "type": "boolean"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/HashResult"
+          },
+          "hash_failed": {
+            "$ref": "#/components/schemas/HashFailure"
+          },
+          "listing": {
+            "$ref": "#/components/schemas/FolderListing"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/MetadataResult"
+          },
+          "rebuild_content": {
+            "description": "Discard archive listings and document text of the hashed files below the scan root.",
+            "type": "boolean"
+          },
+          "reuse": {
+            "$ref": "#/components/schemas/LinkReuse"
+          },
+          "skip": {
+            "$ref": "#/components/schemas/ScanSkip"
+          },
+          "skip_hash": {
+            "$ref": "#/components/schemas/HashSkip"
+          },
+          "status": {
+            "description": "The phase the scan entered.",
+            "enum": [
+              "hashing",
+              "listing",
+              "reading",
+              "metadata"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "$ref": "#/components/schemas/DocumentResult"
+          }
+        },
         "type": "object"
       },
       "Page": {
@@ -2473,6 +3300,116 @@
           "source",
           "account",
           "external_id"
+        ],
+        "type": "object"
+      },
+      "Pending": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "linked": {
+            "description": "Another present entry on the volume has the same file id: a hard link.",
+            "type": "boolean"
+          },
+          "modified": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "physical_file_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "size"
+        ],
+        "type": "object"
+      },
+      "PendingArchive": {
+        "additionalProperties": false,
+        "properties": {
+          "content_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "depth": {
+            "description": "How deep the cached listing reaches; 0 when there is none.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "stamp": {
+            "$ref": "#/components/schemas/Stamp"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "size",
+          "content_id",
+          "stamp",
+          "depth"
+        ],
+        "type": "object"
+      },
+      "PendingText": {
+        "additionalProperties": false,
+        "properties": {
+          "content_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "stamp": {
+            "$ref": "#/components/schemas/Stamp"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "name",
+          "content_id",
+          "size",
+          "stamp"
         ],
         "type": "object"
       },
@@ -2931,6 +3868,74 @@
         ],
         "type": "object"
       },
+      "ScanCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "archives": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "duplicates": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "hashed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "hashed_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "listed": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "members": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "metadata": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "missing": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "skipped": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "text_chars": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "texts": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "written": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "listed",
+          "written",
+          "missing",
+          "skipped",
+          "hashed",
+          "hashed_bytes",
+          "duplicates",
+          "archives",
+          "members",
+          "texts",
+          "text_chars",
+          "metadata"
+        ],
+        "type": "object"
+      },
       "ScanInfo": {
         "additionalProperties": false,
         "properties": {
@@ -3033,6 +4038,82 @@
           "texts",
           "text_chars",
           "metadata"
+        ],
+        "type": "object"
+      },
+      "ScanRunningError": {
+        "description": "Another scan of this volume is open. It ends when it finishes, or when it has sent nothing for its idle time.",
+        "properties": {
+          "_tag": {
+            "enum": [
+              "ScanRunning"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "recovery": {
+            "properties": {
+              "action": {
+                "description": "What to do, in a few words.",
+                "type": "string"
+              },
+              "instructions": {
+                "description": "How to do it.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "instructions"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "_tag",
+          "message"
+        ],
+        "type": "object"
+      },
+      "ScanSkip": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ScanStart": {
+        "additionalProperties": false,
+        "properties": {
+          "root": {
+            "description": "The scanned folder, volume-relative: empty for the whole volume, /Files for E:\\Files.",
+            "type": "string"
+          },
+          "volume_id": {
+            "description": "From resolveDiskVolume.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "volume_id",
+          "root"
         ],
         "type": "object"
       },
@@ -3299,6 +4380,57 @@
           "last_ingest",
           "last_sync",
           "stale"
+        ],
+        "type": "object"
+      },
+      "Stamp": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "file_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "modified": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "trusted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "size",
+          "digest"
+        ],
+        "type": "object"
+      },
+      "StartedScan": {
+        "additionalProperties": false,
+        "properties": {
+          "idle_seconds": {
+            "description": "A scan that sends nothing for this long is recorded as interrupted and its volume released.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "scan_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scan_id",
+          "idle_seconds"
         ],
         "type": "object"
       },
@@ -3732,6 +4864,79 @@
         ],
         "type": "object"
       },
+      "Volume": {
+        "additionalProperties": false,
+        "properties": {
+          "device_serial": {
+            "type": "string"
+          },
+          "first_seen": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "fs": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "last_seen": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "mount_path": {
+            "type": "string"
+          },
+          "partition_id": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "stable_ids": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "fs",
+          "serial",
+          "size",
+          "stable_ids",
+          "mount_path",
+          "first_seen",
+          "last_seen"
+        ],
+        "type": "object"
+      },
+      "VolumeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mounted": {
+            "$ref": "#/components/schemas/MountedVolume"
+          },
+          "new_volume": {
+            "description": "Record a new volume even when the fingerprint resembles a known one.",
+            "type": "boolean"
+          },
+          "volume_id": {
+            "description": "The known volume this disk is, after an AmbiguousVolume answer.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mounted"
+        ],
+        "type": "object"
+      },
       "VolumeSummary": {
         "additionalProperties": false,
         "properties": {
@@ -3815,6 +5020,172 @@
           "mount_path",
           "first_seen",
           "last_seen"
+        ],
+        "type": "object"
+      },
+      "WorkHashWork": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "description": "With count, for hashes: their bytes.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HashWork"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "total": {
+            "description": "With count: the work left, one per content except for hashes.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "WorkMetadataWork": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "description": "With count, for hashes: their bytes.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MetadataWork"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "total": {
+            "description": "With count: the work left, one per content except for hashes.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "WorkPendingArchive": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "description": "With count, for hashes: their bytes.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PendingArchive"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "total": {
+            "description": "With count: the work left, one per content except for hashes.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "WorkPendingText": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "description": "With count, for hashes: their bytes.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PendingText"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "total": {
+            "description": "With count: the work left, one per content except for hashes.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "WorkRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "after_id": {
+            "description": "The id of the last item of the previous page.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "after_path": {
+            "description": "The path of the last item of the previous page.",
+            "type": "string"
+          },
+          "count": {
+            "description": "Also count the work left.",
+            "type": "boolean"
+          },
+          "extensions": {
+            "description": "Text work: the extensions to read.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "limit": {
+            "format": "int64",
+            "maximum": 5000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ranges": {
+            "description": "Archive work: the requested depth by path range.",
+            "items": {
+              "$ref": "#/components/schemas/ArchivePolicyRange"
+            },
+            "maxItems": 100000,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "unpack_max_bytes": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "limit"
         ],
         "type": "object"
       }
@@ -6340,6 +7711,103 @@
         "tags": [
           "disk"
         ]
+      },
+      "post": {
+        "description": "attic scan, on the machine the disks attach to, writes the catalogue through\nthese operations: resolveDiskVolume, startDiskScan, then batches of its work with\nwriteDiskScan, interleaved with the list*Work operations that say what is left to\nhash, list, read or tag, and a last batch that finishes the scan. A scan that sends\nnothing for idle_seconds is recorded as interrupted.",
+        "operationId": "startDiskScan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartedScan"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScanRunningError"
+                }
+              }
+            },
+            "description": "ScanRunning: another scan of this volume is open. It ends when it finishes, or when it has sent nothing for its idle time."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Start a scan of a folder of a volume",
+        "tags": [
+          "disk"
+        ]
       }
     },
     "/v1/disk/scans/{id}": {
@@ -6410,6 +7878,390 @@
           }
         },
         "summary": "Show one scan",
+        "tags": [
+          "disk"
+        ]
+      }
+    },
+    "/v1/disk/scans/{id}/archive-part": {
+      "post": {
+        "operationId": "getDiskScanArchivePart",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchivePartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stamp"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Show how the catalogue saw a multipart archive's sibling volume",
+        "tags": [
+          "disk"
+        ]
+      }
+    },
+    "/v1/disk/scans/{id}/batches": {
+      "post": {
+        "description": "Applies the operations in order and commits them before answering. Batches are numbered from 1; sending the last batch again returns its answer without applying it twice. When a listing needs to know whether a catalogued path still holds a file, the batch is not applied and answers questions instead: send it again with an answer to each. A batch that fails ends the scan as failed.",
+        "operationId": "writeDiskScan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Batch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Apply a batch of a scan's work",
+        "tags": [
+          "disk"
+        ]
+      }
+    },
+    "/v1/disk/scans/{id}/keepalive": {
+      "post": {
+        "operationId": "keepDiskScanAlive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Keep a scan open while it reads a large file",
+        "tags": [
+          "disk"
+        ]
+      }
+    },
+    "/v1/disk/scans/{id}/listings/check": {
+      "post": {
+        "operationId": "checkDiskScanListing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListingCheck"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingNeeded"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Say whether a content still needs an archive listing at a depth",
         "tags": [
           "disk"
         ]
@@ -6596,6 +8448,406 @@
           }
         },
         "summary": "List the paths a scan left out, by reason or rule",
+        "tags": [
+          "disk"
+        ]
+      }
+    },
+    "/v1/disk/scans/{id}/work/archives": {
+      "post": {
+        "operationId": "listDiskScanArchiveWork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkPendingArchive"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "List archives below the scan root without a listing at their folder's depth, in path order",
+        "tags": [
+          "disk"
+        ]
+      }
+    },
+    "/v1/disk/scans/{id}/work/hashes": {
+      "post": {
+        "operationId": "listDiskScanHashWork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkHashWork"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "List files below the scan root whose digest is unknown, in path order",
+        "tags": [
+          "disk"
+        ]
+      }
+    },
+    "/v1/disk/scans/{id}/work/metadata": {
+      "post": {
+        "operationId": "listDiskScanMetadataWork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkMetadataWork"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "List files below the scan root whose content has no embedded metadata, in path order",
+        "tags": [
+          "disk"
+        ]
+      }
+    },
+    "/v1/disk/scans/{id}/work/texts": {
+      "post": {
+        "operationId": "listDiskScanTextWork",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkPendingText"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "List documents below the scan root whose content has no text, in path order",
         "tags": [
           "disk"
         ]
@@ -6875,6 +9127,105 @@
           }
         },
         "summary": "List known volumes, their totals and last scans",
+        "tags": [
+          "disk"
+        ]
+      }
+    },
+    "/v1/disk/volumes/resolve": {
+      "post": {
+        "description": "Matches the fingerprint against known volumes. A fingerprint that resembles a known volume without matching it answers AmbiguousVolume: retry with volume_id if the disk is one of the candidates, or new_volume if it is another disk.",
+        "operationId": "resolveDiskVolume",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Volume"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedError"
+                }
+              }
+            },
+            "description": "Unauthorized: the bearer token is missing or unknown."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForbiddenError"
+                }
+              }
+            },
+            "description": "Forbidden: the token is valid and only reads; this operation writes."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "NotFound: no content, entry, volume or scan matches."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AmbiguousVolumeError"
+                }
+              }
+            },
+            "description": "AmbiguousVolume: the disk resembles known volumes without matching one. Retry with volume_id if it is one of the candidates, or new_volume if it is another disk."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestError"
+                }
+              }
+            },
+            "description": "InvalidRequest: a parameter or the body is malformed, too large, out of range or contradicts another."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal: the server failed; message says how."
+          }
+        },
+        "security": [
+          {
+            "bearer": [
+              "write"
+            ]
+          }
+        ],
+        "summary": "Find or record the volume a mounted disk is",
         "tags": [
           "disk"
         ]

@@ -215,7 +215,7 @@ func openStore(ctx context.Context) (*localDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := &localDB{Store: store.New(pool), catalogue: attic.New(atticstore.New(pool)), pool: pool}
+	l := &localDB{Store: store.New(pool), catalogue: attic.New(atticstore.New(pool), filepath.Join(dataDir(), "scans")), pool: pool}
 	if queryURL := os.Getenv("BANK_QUERY_DATABASE_URL"); queryURL != "" {
 		if err := l.ConfigureQuery(ctx, queryURL); err != nil {
 			l.Close()

@@ -84,7 +84,11 @@ func TestShowListsAnEntrysVersions(t *testing.T) {
 // Moving, renaming and touching a file rehash nothing new: the entry keeps
 // the one version it had.
 func TestMovesAndTouchesKeepOneVersion(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testMovesAndTouchesKeepOneVersion)
+}
+
+func testMovesAndTouchesKeepOneVersion(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "a/notes.txt", "same bytes throughout")
 	scanAt(t, st, root, testVolume)

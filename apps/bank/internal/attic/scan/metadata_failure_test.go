@@ -76,12 +76,16 @@ func replaceHelperSource() error {
 }
 
 func TestMetadataToolFailureDoesNotStarveLaterFiles(t *testing.T) {
+	eachTransport(t, testMetadataToolFailureDoesNotStarveLaterFiles)
+}
+
+func testMetadataToolFailureDoesNotStarveLaterFiles(t *testing.T, catalogue newCatalogue) {
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("ATTIC_SCAN_METADATA_HELPER", "1")
-	st, dsn := storetest.NewCatalogue(t)
+	st, dsn := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "a-poison.png", "poison")
 	write(t, root, "b-good.png", "good")

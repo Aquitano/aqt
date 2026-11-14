@@ -1,18 +1,30 @@
 # attic
 
-Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It changes source files only when `attic dedupe apply` moves duplicate copies into a quarantine folder, or `attic organize apply` and `undo` rename files and folders that a reviewed plan lists. Scanning runs on Windows; search runs wherever the database is reachable.
+Search backup disks and USB sticks even when they are unplugged. Attic stores file metadata, BLAKE3 hashes, archive listings and document text in ParadeDB. It changes source files only when `attic dedupe apply` moves duplicate copies into a quarantine folder, or `attic organize apply` and `undo` rename files and folders that a reviewed plan lists. Scanning runs on Windows and writes through `bank serve`, so the machine with the disks needs no database.
 
-Attic is part of bank's Go module: `cmd/attic` is the CLI that scans, the packages are under `internal/attic`, and this directory holds its documents and its Executor app. `bank serve` answers the catalogue's read routes below `/v1/disk` ([Serve the catalogue to agents](#serve-the-catalogue-to-agents)).
+Attic is part of bank's Go module: `cmd/attic` is the CLI that scans, the packages are under `internal/attic`, and this directory holds its documents and its Executor app. `bank serve` answers the catalogue's routes below `/v1/disk`, the ones scans write through included ([Serve the catalogue to agents](#serve-the-catalogue-to-agents)).
 
 ## Setup
+
+The catalogue's tables live in bank's database, beside the archive's, and `bank migrate` creates them. On the PC the disks attach to, `attic scan` writes them through `bank serve` with a write token, the same two variables the `bank` CLI uses ([DEPLOY.md](../DEPLOY.md#5-remote-cli-bank-serve) sets up the server):
+
+```powershell
+go build -o "$env:USERPROFILE\.local\bin\attic.exe" ./cmd/attic     # in apps/bank
+[Environment]::SetEnvironmentVariable('BANK_URL', 'http://vps.tailnet.ts.net:8480', 'User')
+[Environment]::SetEnvironmentVariable('BANK_TOKEN', '<a token from bank token new pc>', 'User')
+```
+
+Build attic from the same commit as bank serve, because the operations a scan sends change with bank's API. A read-only token answers `Forbidden`. With only one of the two variables set, `attic scan` stops rather than guess.
+
+Only `attic scan` uses bank serve so far. Every other command reads or writes `DATABASE_URL`, so on the PC they need a database they can reach: `search`, `show`, `text`, `metadata`, `analysis`, `volumes`, `scans`, `skips`, `stats`, `dupes`, `coverage`, `get`, `verify` and `dedupe plan` read it, and `enrich` and `dedupe apply` write it. `config` and `organize` need none. Until they move, `bank search` with the same variables finds files on disks, and the [routes below `/v1/disk`](#serve-the-catalogue-to-agents) answer what the read commands do.
+
+On a machine with the database, such as a development box, leave `BANK_URL` unset and every command, `scan` included, uses `DATABASE_URL`:
 
 ```sh
 docker compose up -d --wait                                     # in apps/bank
 go run ./cmd/bank migrate                                       # in apps/bank
 go build -o "$USERPROFILE/.local/bin/attic.exe" ./cmd/attic     # in apps/bank
 ```
-
-The catalogue's tables live in bank's database, beside the archive's, and `bank migrate` creates them.
 
 `DATABASE_URL` defaults to `postgres://bank:bank@127.0.0.1:5433/bank?sslmode=disable`, the same default as bank's. Use `127.0.0.1` rather than `localhost` in your own URL too: the database listens on IPv4 only, and on Windows a `localhost` connection first spends about a second on IPv6. No attic command migrates. Each one stops with an error when the database's schema version differs from the binary's, and the commands that only read open read-only sessions. Run `bank migrate` after installing a new build.
 
@@ -184,7 +196,15 @@ Vision providers accept PNG, JPEG, GIF and WebP up to 20 MiB. Tesseract also acc
 
 `bank search` and `GET /v1/search` include the catalogue: a search without sender, source, account or date filters also returns files on disks, under `disks`, and `match` means the same for them as for messages. `/v1/disk/search` adds the filters only the catalogue has: volume, folder, extension, entry kind and current versions.
 
-Scans still write through `DATABASE_URL`, so the catalogue bank serves is whatever was scanned into bank's database.
+A scan with `BANK_URL` and `BANK_TOKEN` set writes through bank serve too; [Scan through bank serve](#scan-through-bank-serve) says how.
+
+## Scan through bank serve
+
+A scan through bank serve does what a scan into the database does, and the server reconciles listings, hard links and moves with the same code. Only the reading happens on the PC. It sends its work in batches of a few thousand entries or about 4 MiB, each applied and committed before the server answers, so a scan makes a few requests per batch rather than several per folder. Before it hashes, lists an archive, reads a document or asks ExifTool, it learns from the server which files still need that, so bytes another disk or bank already covered are not read again.
+
+The server holds the volume while the scan runs, as a scan into the database does: a second scan of the same volume answers `ScanRunning`. A batch whose answer was lost is sent again and applied once. Ctrl+C sends what is done and records the scan as interrupted. A scan that stops sending, because attic was killed or the connection is gone, is recorded as interrupted five minutes after its last request, and its volume is free again then. Stopping bank serve records its open scans as interrupted. Either way the next scan continues where it stopped, as after an interrupted scan into the database.
+
+Reconciling a folder can need to know whether a catalogued path still holds a file, which only the PC can see. The server then answers the batch with those paths instead of applying it, and attic sends it again with the answers. An archive whose listing spans batches waits on the server, under `$BANK_DATA_DIR/scans`, until its last members arrive.
 
 ### Code mode through Executor
 

@@ -58,7 +58,7 @@ func TestAPIAnswersWithTaggedResults(t *testing.T) {
 	mux := http.NewServeMux()
 	humaAPI := humago.New(mux, httpapi.Config("test", "", "bank token new <name>"))
 	humaAPI.UseMiddleware(httpapi.RequireToken(humaAPI, issued, "bank token new <name>"))
-	api.Register(humaAPI, st)
+	api.Register(humaAPI, st, nil)
 	server := httptest.NewServer(mux)
 	defer server.Close()
 	get := func(t *testing.T, path, token string, out any) int {

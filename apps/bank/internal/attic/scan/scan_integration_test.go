@@ -51,7 +51,7 @@ func scanAt(t *testing.T, st *store.Store, root string, fp disk.Fingerprint, wit
 	for _, f := range with {
 		f(&o)
 	}
-	res, err := Run(context.Background(), st, o)
+	res, err := Run(context.Background(), catalogueOf(st), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,11 @@ func find(t *testing.T, st *store.Store, query string) store.Hit {
 }
 
 func TestScanKeepsIdentityAcrossMoves(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testScanKeepsIdentityAcrossMoves)
+}
+
+func testScanKeepsIdentityAcrossMoves(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	write(t, root, "docs/Werkstudentenvertrag Element.pdf", "signed contract")
@@ -144,7 +148,11 @@ func TestScanKeepsIdentityAcrossMoves(t *testing.T) {
 }
 
 func TestDeletedFolderTakesItsFilesAlong(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testDeletedFolderTakesItsFilesAlong)
+}
+
+func testDeletedFolderTakesItsFilesAlong(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "old/report.txt", "quarterly")
 	write(t, root, "old/sub/deep.txt", "quarterly")
@@ -169,7 +177,11 @@ func TestDeletedFolderTakesItsFilesAlong(t *testing.T) {
 // A backup rotation: Latest becomes Old/2025 and Staging takes Latest's name,
 // so the old path of one folder is now another folder's.
 func TestRotatedFoldersKeepTheirFiles(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testRotatedFoldersKeepTheirFiles)
+}
+
+func testRotatedFoldersKeepTheirFiles(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "Data/Latest/monday.txt", "monday")
 	write(t, root, "Data/Staging/tuesday.txt", "tuesday")
@@ -195,7 +207,11 @@ func TestRotatedFoldersKeepTheirFiles(t *testing.T) {
 }
 
 func TestExclusionAddedAfterListingStopsHashing(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testExclusionAddedAfterListingStopsHashing)
+}
+
+func testExclusionAddedAfterListingStopsHashing(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "disk.iso", "image")
 	write(t, root, "notes.txt", "notes")
@@ -213,8 +229,10 @@ func TestExclusionAddedAfterListingStopsHashing(t *testing.T) {
 // The second of two hard links in a folder keeps its path as identity. Once
 // the first is gone, the second keeps its own row; created again, the first
 // gets its row back.
-func TestReappearingHardLinkScans(t *testing.T) {
-	st, dsn := storetest.NewCatalogue(t)
+func TestReappearingHardLinkScans(t *testing.T) { eachTransport(t, testReappearingHardLinkScans) }
+
+func testReappearingHardLinkScans(t *testing.T, catalogue newCatalogue) {
+	st, dsn := catalogue(t)
 	root := t.TempDir()
 	a, b := filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")
 	write(t, root, "a.txt", "linked")
@@ -278,7 +296,11 @@ func scanUnder(t *testing.T, st *store.Store, root string, rel ...string) Result
 }
 
 func TestCrossDirectoryHardLinksKeepTheirPaths(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testCrossDirectoryHardLinksKeepTheirPaths)
+}
+
+func testCrossDirectoryHardLinksKeepTheirPaths(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	write(t, root, "a/nested/linked.txt", "shared bytes")
@@ -333,8 +355,10 @@ func TestCrossDirectoryHardLinksKeepTheirPaths(t *testing.T) {
 
 // Only the destination is scanned and another link still holds the file. The
 // owner's path is gone, so its row moves.
-func TestMovedHardLinkKeepsItsRow(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+func TestMovedHardLinkKeepsItsRow(t *testing.T) { eachTransport(t, testMovedHardLinkKeepsItsRow) }
+
+func testMovedHardLinkKeepsItsRow(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "old/moving.bin", "linked bytes")
 	for _, dir := range []string{"new", "other"} {
@@ -367,7 +391,11 @@ func TestMovedHardLinkKeepsItsRow(t *testing.T) {
 // A path kept as a link that went missing and then received the file by a
 // rename keeps its row, and the file's old path stops counting as present.
 func TestRenameOntoAMissingLinkVacatesTheOldPath(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testRenameOntoAMissingLinkVacatesTheOldPath)
+}
+
+func testRenameOntoAMissingLinkVacatesTheOldPath(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "a/vacate.bin", "linked bytes")
 	if err := os.Mkdir(filepath.Join(root, "b"), 0o755); err != nil {
@@ -391,7 +419,11 @@ func TestRenameOntoAMissingLinkVacatesTheOldPath(t *testing.T) {
 // A path that cannot be reopened, here a folder name that is not valid
 // UTF-8, neither fails the scan nor gives up its row to another link.
 func TestHardLinksUnderInvalidNamesKeepTheirPaths(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testHardLinksUnderInvalidNamesKeepTheirPaths)
+}
+
+func testHardLinksUnderInvalidNamesKeepTheirPaths(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "b/linked.bin", "linked bytes")
 	for _, dir := range []string{"a\xff", "c\xff"} {
@@ -429,7 +461,11 @@ func zipOf(t *testing.T, files map[string]string) string {
 // Once both copies are rewritten, the old listing is found as a previous
 // version, which --current leaves out.
 func TestArchivesAreListedOncePerContent(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testArchivesAreListedOncePerContent)
+}
+
+func testArchivesAreListedOncePerContent(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	server := zipOf(t, map[string]string{"server.properties": "motd=hi", "deeper.zip": zipOf(t, map[string]string{"x.txt": "x"})})
@@ -489,7 +525,11 @@ func tarOf(t *testing.T, name string, modified time.Time) string {
 // Documents are read once per content and found by their words; configuration
 // keeps its name only, and text past the cap is kept and marked.
 func TestDocumentsAreReadForTheirWords(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+	eachTransport(t, testDocumentsAreReadForTheirWords)
+}
+
+func testDocumentsAreReadForTheirWords(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	write(t, root, "Verträge/Werkstudent.txt", "Arbeitszeit <zwanzig> Stunden & pro Woche")
@@ -539,8 +579,10 @@ func TestOversizedDocumentsWaitForTheCap(t *testing.T) {
 
 // A scan's log tells its story: the start, each phase with its time and
 // counts, each document at debug, the end. The phase times reach the history.
-func TestScanLogsItsPhases(t *testing.T) {
-	st, _ := storetest.NewCatalogue(t)
+func TestScanLogsItsPhases(t *testing.T) { eachTransport(t, testScanLogsItsPhases) }
+
+func testScanLogsItsPhases(t *testing.T, catalogue newCatalogue) {
+	st, _ := catalogue(t)
 	root := t.TempDir()
 	write(t, root, "notes.txt", "meeting notes")
 	var buf bytes.Buffer
@@ -589,7 +631,7 @@ func TestDocumentReadFailureTriesAnotherCopy(t *testing.T) {
 			_ = sc.Finish(context.Background(), "interrupted", nil)
 		}
 	})
-	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root, rules: config.Default().Rules(first.Volume.ID, first.Volume.Label), textsRead: map[int64]bool{}, seen: map[int64]bool{}}
+	r := &run{sc: localScan{sc}, log: slog.New(slog.DiscardHandler), mountRoot: root, rules: config.Default().Rules(first.Volume.ID, first.Volume.Label), textsRead: map[int64]bool{}, seen: map[int64]bool{}}
 	if err := os.Remove(filepath.Join(root, "a.txt")); err != nil {
 		t.Fatal(err)
 	}
@@ -629,7 +671,7 @@ func TestCancelledDocumentReadRemainsPending(t *testing.T) {
 			_ = sc.Finish(context.Background(), "interrupted", nil)
 		}
 	})
-	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root, rules: config.Default().Rules(first.Volume.ID, first.Volume.Label), textsRead: map[int64]bool{}, seen: map[int64]bool{}}
+	r := &run{sc: localScan{sc}, log: slog.New(slog.DiscardHandler), mountRoot: root, rules: config.Default().Rules(first.Volume.ID, first.Volume.Label), textsRead: map[int64]bool{}, seen: map[int64]bool{}}
 	r.o.Progress = func(Progress) { cancel() }
 	if err := r.readTexts(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled read: %v", err)

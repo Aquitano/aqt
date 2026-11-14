@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/aquitano/aqt/apps/bank/internal/attic/api"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/session"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/view"
 	"github.com/aquitano/aqt/apps/bank/internal/content"
@@ -19,15 +20,22 @@ import (
 
 // Catalogue is the file catalogue as bank's server sees it.
 type Catalogue struct {
-	store *store.Store
+	store    *store.Store
+	sessions *session.Manager
 }
 
 // New serves the catalogue in st, which may be nil when only the OpenAPI
-// document is wanted.
-func New(st *store.Store) *Catalogue { return &Catalogue{store: st} }
+// document is wanted. Scans that write through the API spool large archive
+// listings below spool.
+func New(st *store.Store, spool string) *Catalogue {
+	return &Catalogue{store: st, sessions: session.New(st, spool)}
+}
 
 // Register adds the catalogue's operations to api.
-func (c *Catalogue) Register(a huma.API) { api.Register(a, c.store) }
+func (c *Catalogue) Register(a huma.API) { api.Register(a, c.store, c.sessions) }
+
+// Close ends the scans still writing through the API as interrupted.
+func (c *Catalogue) Close() error { return c.sessions.Close() }
 
 // ErrNotFound means no content matches a ref.
 var ErrNotFound = store.ErrNotFound

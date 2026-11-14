@@ -13,7 +13,7 @@ import (
 
 func TestCatalogueSearchesAndResolves(t *testing.T) {
 	st, _ := storetest.NewCatalogue(t)
-	catalogue := attic.New(st)
+	catalogue := attic.New(st, "")
 	if _, err := catalogue.SearchDisks(t.Context(), store.SearchOptions{Query: "report", Limit: 5}); err != nil {
 		t.Fatal(err)
 	}

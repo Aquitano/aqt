@@ -4,21 +4,21 @@ A scan rehashes only what changed, so one nightly run keeps the catalogue curren
 
 ## Windows
 
-Save this as `%LOCALAPPDATA%\attic\scan-nightly.ps1` and edit the two lists:
+The scans write through `bank serve`, so set `BANK_URL` and a write `BANK_TOKEN` as user variables first ([Setup](README.md#setup)); a task started as you sees them. Save this as `%LOCALAPPDATA%\attic\scan-nightly.ps1` and edit the two lists:
 
 ```powershell
 $folders = @("$env:USERPROFILE\Documents")   # folders on internal drives, scanned every night
 $disks = @('Data')                           # external disks by label, scanned when attached
 
 foreach ($folder in $folders) { attic scan $folder }
-foreach ($volume in attic volumes --json | ConvertFrom-Json) {
-    if ($volume.label -in $disks -and $volume.mounted_at) { attic scan $volume.mounted_at }
+foreach ($drive in Get-CimInstance Win32_LogicalDisk) {
+    if ($drive.VolumeName -in $disks) { attic scan "$($drive.DeviceID)\" }
 }
 ```
 
 A scan unpacks nested archives to `temp`, which must be on another disk than the one it scans; see [Configuration](README.md#configuration). The default system temporary directory is on `C:`, so folders there need `temp` set to an existing directory on a disk that stays attached and is not in `$disks`, such as a second internal drive. Every scan reads the same `config.toml`, so a `temp` on one of the listed disks makes that disk's scans fail. When the only other disk is one of `$disks`, give the folder scans their own copy of the configuration with `temp` on that disk and pass it as `attic scan $folder --config <file>`. The disk scans keep the default on `C:`, and the folder scans then need that disk attached.
 
-List external disks by label rather than scanning every attached volume: once a folder on `C:` has been scanned, `C:` is a known volume too, and scanning its root would index the whole system drive. A disk's label appears in `attic volumes` after its first scan. A disk whose USB bridge reports no serial cannot be scanned unattended: a sector clone on such a bridge looks the same, so every scan of it stops on the identity question and the loop moves on. Scan it by hand with `--volume <id>` once you have checked which disk it is.
+List external disks by label rather than scanning every attached volume: once a folder on `C:` has been scanned, `C:` is a known volume too, and scanning its root would index the whole system drive. The label is the drive's name in Explorer. A disk whose USB bridge reports no serial cannot be scanned unattended: a sector clone on such a bridge looks the same, so every scan of it stops on the identity question and the loop moves on. Scan it by hand with `--volume <id>` once you have checked which disk it is.
 
 Register the script as a nightly task:
 
@@ -32,7 +32,7 @@ Register-ScheduledTask -TaskName 'attic nightly scan' -TaskPath '\aqt\' -Action 
     -Trigger $trigger -Settings $settings
 ```
 
-The task uses Windows PowerShell, which every Windows install has, and `-ExecutionPolicy Bypass` lets it run the script under the default `Restricted` policy. It runs while you are signed in, and `-StartWhenAvailable` catches up after a night the PC was off. Bank's database must be running, at the schema version of this attic build (`bank migrate`). Each scan writes a log to `%LOCALAPPDATA%\attic\logs`, and `attic scans` lists the runs. `Start-ScheduledTask -TaskPath '\aqt\' -TaskName 'attic nightly scan'` runs it once now.
+The task uses Windows PowerShell, which every Windows install has, and `-ExecutionPolicy Bypass` lets it run the script under the default `Restricted` policy. It runs while you are signed in, and `-StartWhenAvailable` catches up after a night the PC was off. bank serve must be reachable and run the commit this attic was built from. Each scan writes a log to `%LOCALAPPDATA%\attic\logs`, and bank serve's `GET /v1/disk/scans` lists the runs. A scan cut off by sleep or a lost connection is recorded as interrupted five minutes later, and the next night's run continues it. `Start-ScheduledTask -TaskPath '\aqt\' -TaskName 'attic nightly scan'` runs it once now.
 
 ## macOS
 

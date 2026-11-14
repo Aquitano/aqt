@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/aquitano/aqt/apps/bank/internal/attic/disk"
+	"github.com/aquitano/aqt/apps/bank/internal/attic/session"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 	"github.com/aquitano/aqt/apps/bank/internal/fail"
 	"github.com/aquitano/aqt/apps/bank/internal/httpapi"
@@ -20,6 +22,14 @@ var (
 			"ref":        reflect.TypeFor[string](),
 			"candidates": reflect.TypeFor[[]store.RefCandidate](),
 		}}
+	AmbiguousVolume = httpapi.Kind{Tag: "AmbiguousVolume", Status: http.StatusConflict,
+		Doc: "The disk resembles known volumes without matching one. Retry with volume_id if it is one of the candidates, or new_volume if it is another disk.",
+		Extra: map[string]reflect.Type{
+			"fingerprint": reflect.TypeFor[disk.Fingerprint](),
+			"candidates":  reflect.TypeFor[[]store.Volume](),
+		}}
+	errScanRunning = httpapi.Kind{Tag: "ScanRunning", Status: http.StatusConflict,
+		Doc: "Another scan of this volume is open. It ends when it finishes, or when it has sent nothing for its idle time."}
 )
 
 // Ambiguous is the documented failure for an ambiguous content ref.
@@ -33,9 +43,14 @@ func failure(err error) error {
 	if ambiguous, ok := errors.AsType[*store.AmbiguousRefError](err); ok {
 		return Ambiguous(ambiguous)
 	}
+	if ambiguous, ok := errors.AsType[*store.AmbiguousVolumeError](err); ok {
+		return AmbiguousVolume.New(ambiguous.Error()).With("fingerprint", ambiguous.Fingerprint).With("candidates", ambiguous.Candidates)
+	}
 	_, invalidSearch := errors.AsType[*store.InvalidSearchError](err)
 	switch {
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, store.ErrScanRunning):
+		return errScanRunning.New(err.Error())
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, session.ErrNotOpen):
 		return errNotFound.New(err.Error())
 	case invalidSearch, errors.Is(err, fail.ErrInvalid):
 		return httpapi.Invalid.New(err.Error())

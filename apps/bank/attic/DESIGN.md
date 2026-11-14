@@ -70,6 +70,16 @@ Enrichment is an explicit command. Its provider interface exposes the task, mode
 
 Enrichment results retain content, task, provider, endpoint, model and policy identity. Language, page limits and output limits affect the policy. A content-policy lock prevents duplicate concurrent calls. Each completed result commits independently. New work precedes failed retries; provider-wide outages stop the selection. A failed forced attempt preserves a prior successful result.
 
+## A scan on another machine writes through a session
+
+The disks attach to a PC and the database lives on a server that publishes Postgres on loopback only, so a scan there writes through `bank serve`. The scan driver is written once against an interface holding what it needs from the catalogue. In process the interface is `store.Scan`; over HTTP it queues the same calls and sends them as numbered batches, which the server replays against `store.Scan` in order. Reconciliation therefore runs on the server, by the same code, in the same order.
+
+A batch's entry changes commit in the scan's transaction when the batch ends. Contents, texts, metadata and archive listings keep their own short transactions, as in process, so concurrent scans of different disks still take content locks in one order and never hold them across a request. A batch number applied already is answered from the session without being applied again, which makes resending after a lost answer harmless, and a failed batch ends the scan as failed, as an error ends a scan in process.
+
+Some calls answer the driver at once in process. Over HTTP the answer is decided without waiting: a listing's subfolders are numbered by the client; a hard link's digest is reused when its page or this scan's own earlier work says a trusted link holds it; an archive is listed when its page said its content needs it, and the client asks again only for a content it listed already in this scan. Whether a catalogued path still holds a file needs the disk, and the server must not wait on the client inside a transaction, so a batch that asks is rolled back with its questions and applied when it comes back with answers. The client answers as a scan in process does, yes when it cannot tell.
+
+The session holds the volume's advisory lock between batches. A session idle for five minutes, or still open when the server stops, finishes as interrupted, which is what a killed scan in process becomes when the next scan of its volume starts.
+
 ## Search groups preserve their own ranking
 
 Filename, archive-member, document-text, metadata and enrichment indexes rank separately because their BM25 scores are not comparable. Content results include earlier versions unless `--current` is set; filename results describe entries as they are now. Every searchable word must match within one result unless `--any` is set. Query pieces with no searchable terms must not turn an otherwise valid every-word query into an empty match.

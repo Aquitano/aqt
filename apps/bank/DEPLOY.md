@@ -82,7 +82,7 @@ What the server container is allowed to do, and why it is worth having it in a c
 - It runs as uid 65532, never root.
 - Its root filesystem is read-only. The process only ever writes under `/data`, which is the one volume mounted read-write.
 - Every Linux capability is dropped and `no-new-privileges` is set, so nothing in the container can gain any.
-- It reaches Postgres over the compose network. The `127.0.0.1:5433` publish is for `psql` and `pg_dump` on the box itself; nothing else can reach the database.
+- It reaches Postgres over the compose network. The `127.0.0.1:5433` publish is for `psql` and `pg_dump` on the box itself; nothing else can reach the database. Disk scans from the PC write through `bank serve` too (section 5), so Postgres never needs another publish.
 - The port is published on the tailnet address only. `bank serve` has no TLS by design, so publishing on `0.0.0.0` would put the archive on the public internet — the default in `docker-compose.yml` is loopback so a mistyped `.env` fails closed.
 
 Run CLI commands with the same image, so they see the same data directory and the same database:
@@ -278,6 +278,19 @@ bank fetch <blake3> -o invoice.pdf
 ```
 
 `sync`, `token`, `verify`, `reimport`, `import inbox` and `mail rebuild` stay server-side and refuse to run with `BANK_URL` set, rather than acting on the wrong box. `auth` and `serve` are server-side too but do not refuse: running `bank auth gmail` on the laptop and copying `gmail/` over is a documented option (section 3), and `bank serve` is the server.
+
+### Scanning disks from the PC
+
+`attic scan` on the Windows PC the disks attach to writes the file catalogue through `bank serve` with the same two variables, so the PC holds no database credentials and Postgres stays on the box's loopback. Give it a write token of its own, so revoking it stops only the scans:
+
+```powershell
+# on the PC; the token comes from: docker compose run --rm -T bank token new pc
+[Environment]::SetEnvironmentVariable('BANK_URL', 'http://vps.tailnet.ts.net:8480', 'User')
+[Environment]::SetEnvironmentVariable('BANK_TOKEN', 'bank_...', 'User')
+attic scan E:\
+```
+
+Build `attic.exe` from the commit the server runs. The server holds each scan's volume between its requests and records a scan that sends nothing for five minutes, or that is still open when the server stops, as interrupted; the next scan continues it. Archive listings that span several requests wait under `$BANK_DATA_DIR/scans` until they are complete. [attic's README](attic/README.md#scan-through-bank-serve) has the rest, including which attic commands still need `DATABASE_URL`.
 
 ## 6. Cron
 

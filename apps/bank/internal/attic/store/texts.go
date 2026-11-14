@@ -16,12 +16,12 @@ import (
 // PendingText is a hashed document below the scan root whose content has no
 // text yet.
 type PendingText struct {
-	ID        int64
-	Path      string
-	Name      string
-	ContentID int64
-	Size      int64
-	Stamp     Stamp
+	ID        int64  `json:"id"`
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	ContentID int64  `json:"content_id"`
+	Size      int64  `json:"size"`
+	Stamp     Stamp  `json:"stamp"`
 }
 
 // pendingTextWhere selects documents by extension below an upper path bound;
@@ -64,10 +64,10 @@ func (sc *Scan) NextTexts(ctx context.Context, after PendingText, exts []string,
 
 // DocumentText is what reading one document found.
 type DocumentText struct {
-	Status    string
-	Extractor string
-	Detail    string
-	Text      string
+	Status    string `json:"status"`
+	Extractor string `json:"extractor,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	Text      string `json:"text"`
 }
 
 // SetText records a document's text against its content. A copy of the same
@@ -86,7 +86,7 @@ func (sc *Scan) SetText(ctx context.Context, contentID int64, t DocumentText) er
 		return err
 	}
 	tag, err := tx.Exec(ctx, `insert into texts (content_id, status, extractor, detail, text) values ($1, $2, $3, $4, $5)
-		on conflict do nothing`, contentID, t.Status, t.Extractor, cleanText(t.Detail), cleanText(t.Text))
+		on conflict do nothing`, contentID, t.Status, t.Extractor, CleanText(t.Detail), CleanText(t.Text))
 	if err != nil {
 		return err
 	}

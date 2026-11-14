@@ -90,7 +90,7 @@ type Slow struct {
 
 const progressEvery = 500 * time.Millisecond
 
-func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
+func Run(ctx context.Context, cat Catalogue, o Options) (Result, error) {
 	if err := o.Config.ValidateScan(); err != nil {
 		return Result{}, err
 	}
@@ -113,7 +113,7 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	vol, err := st.ResolveVolume(ctx, mounted, o.VolumeID, o.NewVolume)
+	vol, err := cat.ResolveVolume(ctx, mounted, o.VolumeID, o.NewVolume)
 	if err != nil {
 		return Result{}, err
 	}
@@ -137,14 +137,14 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 			o.Config.Metadata.ExifTool = binary
 		}
 	}
-	sc, err := st.StartScan(ctx, vol, root)
+	sc, err := cat.StartScan(ctx, vol, root)
 	if err != nil {
 		return Result{}, err
 	}
 	if metadataUnavailable != "" {
 		sc.Skip(root, "metadata_unavailable", "", metadataUnavailable)
 	}
-	log = log.With("scan", sc.ID)
+	log = log.With("scan", sc.ID())
 	a := o.Config.Archives
 	textMax := o.Config.Text.MaxBytes
 	if textMax == 0 {
@@ -166,12 +166,9 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 	if runErr != nil && ctx.Err() != nil {
 		status, runErr = "interrupted", nil
 	}
-	finishErr := sc.Finish(ctx, status, runErr)
-	res := Result{ScanID: sc.ID, Volume: vol, Root: root, Status: status, Counts: sc.Counts, Phases: sc.Phases,
-		Elapsed: time.Since(started), SlowArchives: r.slowArchives, SlowDocuments: r.slowDocs}
-	if files, _, err := sc.PendingTotals(context.WithoutCancel(ctx)); err == nil {
-		res.Pending = files
-	}
+	pending, finishErr := sc.Finish(ctx, status, r.times, runErr)
+	res := Result{ScanID: sc.ID(), Volume: vol, Root: root, Status: status, Counts: sc.Counts(), Phases: r.times,
+		Pending: pending, Elapsed: time.Since(started), SlowArchives: r.slowArchives, SlowDocuments: r.slowDocs}
 	attrs := []any{"status", status, "took_ms", res.Elapsed.Milliseconds(), "counts", res.Counts, "pending", res.Pending,
 		"phases_ms", map[string]int64{"walk": res.Phases.Walk.Milliseconds(), "hash": res.Phases.Hash.Milliseconds(),
 			"archives": res.Phases.Archives.Milliseconds(), "text": res.Phases.Text.Milliseconds(), "metadata": res.Phases.Metadata.Milliseconds()}}
@@ -185,7 +182,8 @@ func Run(ctx context.Context, st *store.Store, o Options) (Result, error) {
 
 type run struct {
 	o            Options
-	sc           *store.Scan
+	sc           Session
+	times        store.PhaseTimes
 	rules        config.Rules
 	folders      *config.Folders
 	archiveDepth int
@@ -236,7 +234,7 @@ func (r *run) progress(force bool) {
 		return
 	}
 	r.lastProgress = time.Now()
-	r.o.Progress(Progress{Phase: r.phase, ScanCounts: r.sc.Counts, Dirs: r.dirs, HashFiles: r.hashFiles, HashBytes: r.hashBytes,
+	r.o.Progress(Progress{Phase: r.phase, ScanCounts: r.sc.Counts(), Dirs: r.dirs, HashFiles: r.hashFiles, HashBytes: r.hashBytes,
 		Total: r.total, Done: r.done, Current: r.current})
 }
 
@@ -256,7 +254,7 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 		}
 		return r.sc.Commit(ctx)
 	}
-	if err := r.step(ctx, "walk", "", &r.sc.Phases.Walk, walk); err != nil {
+	if err := r.step(ctx, "walk", "", &r.times.Walk, walk); err != nil {
 		return "failed", err
 	}
 	if r.o.NoHash {
@@ -268,7 +266,7 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 		}
 		return r.sc.Commit(ctx)
 	}
-	if err := r.step(ctx, "hash", "hashing", &r.sc.Phases.Hash, hash); err != nil {
+	if err := r.step(ctx, "hash", "hashing", &r.times.Hash, hash); err != nil {
 		return "failed", err
 	}
 	if r.o.RebuildContent {
@@ -277,15 +275,15 @@ func (r *run) phases(ctx context.Context, rel []string) (string, error) {
 		}
 	}
 	if r.archiveDepth > 0 {
-		if err := r.step(ctx, "archives", "listing", &r.sc.Phases.Archives, r.listArchives); err != nil {
+		if err := r.step(ctx, "archives", "listing", &r.times.Archives, r.listArchives); err != nil {
 			return "failed", err
 		}
 	}
-	if err := r.step(ctx, "text", "reading", &r.sc.Phases.Text, r.readTexts); err != nil {
+	if err := r.step(ctx, "text", "reading", &r.times.Text, r.readTexts); err != nil {
 		return "failed", err
 	}
 	if r.o.Config.Metadata.Enabled {
-		if err := r.step(ctx, "metadata", "metadata", &r.sc.Phases.Metadata, r.readMetadata); err != nil {
+		if err := r.step(ctx, "metadata", "metadata", &r.times.Metadata, r.readMetadata); err != nil {
 			return "failed", err
 		}
 	}
@@ -306,9 +304,9 @@ func (r *run) step(ctx context.Context, phase, status string, took *time.Duratio
 	err := work(ctx)
 	*took = time.Since(started)
 	r.progress(true)
-	attrs := []any{"phase", phase, "took_ms", took.Milliseconds(), "counts", r.sc.Counts}
+	attrs := []any{"phase", phase, "took_ms", took.Milliseconds(), "counts", r.sc.Counts()}
 	if phase == "hash" && took.Seconds() > 0 {
-		attrs = append(attrs, "mb_per_s", float64(r.sc.Counts.HashedBytes)/1e6/took.Seconds())
+		attrs = append(attrs, "mb_per_s", float64(r.sc.Counts().HashedBytes)/1e6/took.Seconds())
 	}
 	switch {
 	case err != nil && ctx.Err() != nil:
@@ -674,7 +672,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 		r.sc.Skip(a.Path, archive.NotArchive, "", "")
 		return nil
 	}
-	started, members := time.Now(), r.sc.Counts.Members
+	started, members := time.Now(), r.sc.Counts().Members
 	var skips []archive.Skip
 	opener := archiveFiles{r: r, ctx: ctx, source: source, stamp: a.Stamp}
 	defer opener.close()
@@ -729,7 +727,7 @@ func (r *run) listArchive(ctx context.Context, a store.PendingArchive) error {
 		closed[s.Reason]++
 	}
 	attrs := []any{"path", a.Path, "size", a.Size, "format", res.Format, "status", res.Status,
-		"members", r.sc.Counts.Members - members, "nested_unopened", closed, "took_ms", took.Milliseconds()}
+		"members", r.sc.Counts().Members - members, "nested_unopened", closed, "took_ms", took.Milliseconds()}
 	if res.Status != archive.Listed {
 		r.log.Warn("archive not listed", append(attrs, "detail", res.Detail)...)
 		r.sc.Skip(a.Path, res.Status, "", res.Detail)

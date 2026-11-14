@@ -39,7 +39,7 @@ func TestMalformedFolderPatternStopsBeforeContentProcessing(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, config.FolderFile, "name_only = ['secret[*.txt']\n")
 	write(t, root, "secret.txt", "private text")
-	res, err := Run(t.Context(), st, Options{
+	res, err := Run(t.Context(), Local(st), Options{
 		Path: root,
 		locate: func(string) (disk.Volume, []string, error) {
 			return disk.Volume{Fingerprint: testVolume, Root: root}, nil, nil
@@ -75,12 +75,16 @@ func TestFolderPolicyUsesLosslessFilesystemPath(t *testing.T) {
 }
 
 func TestFolderArchivePolicyKeepsHashAndMetadata(t *testing.T) {
+	eachTransport(t, testFolderArchivePolicyKeepsHashAndMetadata)
+}
+
+func testFolderArchivePolicyKeepsHashAndMetadata(t *testing.T, catalogue newCatalogue) {
 	binary, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("ATTIC_SCAN_METADATA_HELPER", "1")
-	st, dsn := storetest.NewCatalogue(t)
+	st, dsn := catalogue(t)
 	root := t.TempDir()
 	write(t, root, config.FolderFile, "[archives]\ndepth = 0\n")
 	write(t, root, "backups/closed.zip", zipOf(t, map[string]string{"hidden.txt": "hidden"}))
@@ -142,7 +146,11 @@ func TestUnreadableFolderDoesNotProcessQueuedContent(t *testing.T) {
 }
 
 func TestFolderDepthUpgradesIdenticalArchiveCopies(t *testing.T) {
-	st, dsn := storetest.NewCatalogue(t)
+	eachTransport(t, testFolderDepthUpgradesIdenticalArchiveCopies)
+}
+
+func testFolderDepthUpgradesIdenticalArchiveCopies(t *testing.T, catalogue newCatalogue) {
+	st, dsn := catalogue(t)
 	root := t.TempDir()
 	data := zipOf(t, map[string]string{"fake.zip": "ordinary bytes", "nested.zip": zipOf(t, map[string]string{"deep.txt": "content"})})
 	write(t, root, "a/copy.zip", data)
@@ -247,6 +255,10 @@ func TestArchiveDepthUpgradeRemembersUnchangedUnpackLimit(t *testing.T) {
 }
 
 func TestArchiveUpgradeRemembersPermanentFailuresAtEachDepth(t *testing.T) {
+	eachTransport(t, testArchiveUpgradeRemembersPermanentFailuresAtEachDepth)
+}
+
+func testArchiveUpgradeRemembersPermanentFailuresAtEachDepth(t *testing.T, catalogue newCatalogue) {
 	encrypted, err := os.ReadFile(filepath.Join("..", "archive", "testdata", "encrypted.7z"))
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +271,7 @@ func TestArchiveUpgradeRemembersPermanentFailuresAtEachDepth(t *testing.T) {
 		{"damaged", whole[:len(whole)-10], "damaged"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			st, dsn := storetest.NewCatalogue(t)
+			st, dsn := catalogue(t)
 			root := t.TempDir()
 			data := zipOf(t, map[string]string{"nested.zip": zipOf(t, map[string]string{"cached.txt": "cached", "closed.zip": tc.nested})})
 			for _, name := range []string{"a/first.zip", "a/second.zip", "b/copy.zip"} {
@@ -333,7 +345,11 @@ func TestArchiveUpgradeRetriesUnverifiedCopies(t *testing.T) {
 }
 
 func TestArchiveListingRetriesCopiesWithMissingVolumes(t *testing.T) {
-	st, dsn := storetest.NewCatalogue(t)
+	eachTransport(t, testArchiveListingRetriesCopiesWithMissingVolumes)
+}
+
+func testArchiveListingRetriesCopiesWithMissingVolumes(t *testing.T, catalogue newCatalogue) {
+	st, dsn := catalogue(t)
 	root := t.TempDir()
 	for _, folder := range []string{"a", "b"} {
 		write(t, root, folder+"/test.part01.rar", rarFixture(t, "test.part01.rar"))

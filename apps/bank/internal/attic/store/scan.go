@@ -34,12 +34,14 @@ type Scan struct {
 	skips       [][]any
 	hashes      []completedHash
 	hashInserts map[int64]bool
-	heldFiles   map[fileLocation]bool
+	heldFiles   map[Location]bool
 }
 
-type fileLocation struct {
-	path   string
-	fileID int64
+// Location is a catalogued path and the file id ApplyListing asks whether it
+// still holds.
+type Location struct {
+	Path   string `json:"path"`
+	FileID int64  `json:"file_id"`
 }
 
 type ScanCounts struct {
@@ -111,7 +113,7 @@ func (s *Store) StartScan(ctx context.Context, v Volume, root string) (*Scan, er
 	}
 	if !locked {
 		conn.Release()
-		return nil, fmt.Errorf("a scan of volume %q is already running", v.Label)
+		return nil, fmt.Errorf("a scan of volume %q is %w", v.Label, ErrScanRunning)
 	}
 	sc := &Scan{Volume: v, Root: root, store: s, lock: conn, lastCommit: time.Now()}
 	// Holding the lock means no other scan of this volume is alive, so any
@@ -128,6 +130,9 @@ func (s *Store) StartScan(ctx context.Context, v Volume, root string) (*Scan, er
 	}
 	return sc, nil
 }
+
+// ErrScanRunning means another scan holds the volume.
+var ErrScanRunning = errors.New("already running")
 
 func scanLockKey(volumeID string) string { return "attic-scan:" + volumeID }
 
@@ -233,9 +238,36 @@ func (sc *Scan) Commit(ctx context.Context) error {
 	return err
 }
 
+// Mark is a point Rewind returns the scan to. Take it after a commit, while
+// nothing is pending.
+type Mark struct {
+	counts ScanCounts
+	skips  int
+	dirty  int
+}
+
+func (sc *Scan) Mark() Mark { return Mark{counts: sc.Counts, skips: len(sc.skips), dirty: sc.dirty} }
+
+// Rewind rolls back the scan's open transaction and forgets what it counted
+// and skipped since m, and the answers it kept for observed, so the same
+// listings can be applied again with other answers. Contents, texts,
+// metadata and archive listings commit on their own and stay.
+func (sc *Scan) Rewind(ctx context.Context, m Mark, observed []Location) error {
+	var err error
+	if sc.tx != nil {
+		err = sc.tx.Rollback(ctx)
+		sc.tx = nil
+	}
+	sc.Counts, sc.skips, sc.dirty, sc.hashes = m.counts, sc.skips[:m.skips], m.dirty, sc.hashes[:0]
+	for _, l := range observed {
+		delete(sc.heldFiles, l)
+	}
+	return err
+}
+
 // Skip records something the scan left out, with the reason and the rule.
 func (sc *Scan) Skip(entryPath, reason, rule, detail string) {
-	sc.skips = append(sc.skips, []any{sc.ID, cleanText(entryPath), reason, rule, cleanText(detail)})
+	sc.skips = append(sc.skips, []any{sc.ID, CleanText(entryPath), reason, rule, CleanText(detail)})
 	sc.Counts.Skipped++
 	sc.dirty++
 }
@@ -597,12 +629,12 @@ func (sc *Scan) ApplyListing(ctx context.Context, parent *Dir, listed []Listed, 
 }
 
 func (sc *Scan) holdsFile(entryPath string, fileID int64, observe func(string, int64) bool) bool {
-	location := fileLocation{path: entryPath, fileID: fileID}
+	location := Location{Path: entryPath, FileID: fileID}
 	if held, ok := sc.heldFiles[location]; ok {
 		return held
 	}
 	if sc.heldFiles == nil {
-		sc.heldFiles = make(map[fileLocation]bool)
+		sc.heldFiles = make(map[Location]bool)
 	}
 	held := observe(entryPath, fileID)
 	sc.heldFiles[location] = held
@@ -655,7 +687,7 @@ func execResult(br pgx.BatchResults) error {
 // Windows reports 100-nanosecond ticks.
 func normalize(l Listed, stableIDs bool) Listed {
 	l.rawName = l.Name
-	l.Name = cleanText(l.Name)
+	l.Name = CleanText(l.Name)
 	if stableIDs {
 		l.physicalFileID = l.FileID
 	}
@@ -743,20 +775,20 @@ func (sc *Scan) SetGitRemote(ctx context.Context, dir Dir, remote string) error 
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `update entries set git_remote = $2 where id = $1 and git_remote is distinct from $2`, dir.ID, cleanText(remote))
+	_, err = tx.Exec(ctx, `update entries set git_remote = $2 where id = $1 and git_remote is distinct from $2`, dir.ID, CleanText(remote))
 	return err
 }
 
 // Pending is a file whose content is not known yet.
 type Pending struct {
-	ID   int64
-	Path string
-	Size int64
+	ID   int64  `json:"id"`
+	Path string `json:"path"`
+	Size int64  `json:"size"`
 
-	PhysicalFileID *int64
-	Modified       *time.Time
-	Changed        *time.Time
-	Linked         bool
+	PhysicalFileID *int64     `json:"physical_file_id,omitempty"`
+	Modified       *time.Time `json:"modified,omitempty"`
+	Changed        *time.Time `json:"changed,omitempty"`
+	Linked         bool       `json:"linked,omitempty" doc:"Another present entry on the volume has the same file id: a hard link."`
 }
 
 type completedHash struct {

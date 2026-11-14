@@ -126,7 +126,7 @@ func list[T any](v []T, err error) (*httpapi.Body[[]T], error) {
 
 // Spec is the OpenAPI document bank serve answers with, built without a database.
 func Spec() ([]byte, error) {
-	return json.MarshalIndent((&Server{catalogue: attic.New(nil)}).registerAPI(http.NewServeMux()).OpenAPI(), "", "  ")
+	return json.MarshalIndent((&Server{catalogue: attic.New(nil, "")}).registerAPI(http.NewServeMux()).OpenAPI(), "", "  ")
 }
 
 type resolveInput struct {

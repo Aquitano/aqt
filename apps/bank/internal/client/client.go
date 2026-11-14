@@ -104,6 +104,8 @@ var failures = map[string]func(e *Error, body []byte) error{
 	"InvalidRequest":          is(fail.ErrInvalid),
 	"LibraryRevisionConflict": is(library.ErrConflict),
 	"AmbiguousRef":            as[atticstore.AmbiguousRefError],
+	"AmbiguousVolume":         as[atticstore.AmbiguousVolumeError],
+	"ScanRunning":             is(atticstore.ErrScanRunning),
 	"MessageRetired":          as[store.RetiredError],
 	"MailThreadConflict":      as[store.MailThreadConflictError],
 	"AliasTaken":              as[store.ErrConflict],

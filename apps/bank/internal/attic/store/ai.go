@@ -183,7 +183,7 @@ func (c *AIClaim) Save(ctx context.Context, result ai.Result, failure error, ela
  on conflict (content_id,task,provider,model,prompt_version) do update set
  status=excluded.status,text=excluded.text,detail=excluded.detail,reported_model=excluded.reported_model,
  elapsed_ms=excluded.elapsed_ms,attempts=ai_results.attempts+1,updated_at=now()
- where ai_results.status='failed' or excluded.status<>'failed'`, contentID, key.Task, key.Provider, key.Model, key.PromptVersion, status, cleanText(result.Text), cleanText(detail), cleanText(result.ReportedModel), elapsed.Milliseconds())
+ where ai_results.status='failed' or excluded.status<>'failed'`, contentID, key.Task, key.Provider, key.Model, key.PromptVersion, status, CleanText(result.Text), CleanText(detail), CleanText(result.ReportedModel), elapsed.Milliseconds())
 	return err
 }
 

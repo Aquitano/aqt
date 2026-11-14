@@ -6,6 +6,7 @@ package api
 import (
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/aquitano/aqt/apps/bank/internal/attic/session"
 	"github.com/aquitano/aqt/apps/bank/internal/attic/store"
 )
 
@@ -25,12 +26,16 @@ versions of a file stay findable.
 Cite a file by its content ref; entry IDs name a location in this catalogue only.`
 
 type server struct {
-	store *store.Store
+	store    *store.Store
+	sessions *session.Manager
 }
 
-// Register adds the catalogue's operations, answered from st, to api. st may
-// be nil when only the document is wanted.
-func Register(api huma.API, st *store.Store) {
+// Register adds the catalogue's operations, answered from st, and the scan
+// operations, kept in sessions, to api. Both may be nil when only the
+// document is wanted.
+func Register(api huma.API, st *store.Store, sessions *session.Manager) {
 	api.OpenAPI().Tags = append(api.OpenAPI().Tags, &huma.Tag{Name: Tag, Description: description})
-	(&server{store: st}).register(api)
+	s := &server{store: st, sessions: sessions}
+	s.register(api)
+	s.registerScans(api)
 }

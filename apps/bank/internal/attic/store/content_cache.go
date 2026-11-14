@@ -52,12 +52,12 @@ func (sc *Scan) RebuildContent(ctx context.Context) error {
 // Stamp pairs current entry metadata with its digest. Trusted means that
 // digest was read through a held object matching this metadata.
 type Stamp struct {
-	Size     int64
-	Modified *time.Time
-	Changed  *time.Time
-	FileID   *int64
-	Digest   content.Digest
-	Trusted  bool
+	Size     int64          `json:"size"`
+	Modified *time.Time     `json:"modified,omitempty"`
+	Changed  *time.Time     `json:"changed,omitempty"`
+	FileID   *int64         `json:"file_id,omitempty"`
+	Digest   content.Digest `json:"digest"`
+	Trusted  bool           `json:"trusted,omitempty"`
 }
 
 const stampColumns = `e.size_bytes, e.modified_at, e.changed_at, e.physical_file_id, c.blake3, e.hash_trusted`

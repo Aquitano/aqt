@@ -80,7 +80,7 @@ func (sc *Scan) SetMetadata(ctx context.Context, contentID int64, result metadat
 			lines = append(lines, key+": "+fmt.Sprint(cleanJSON(result.Tags[key])))
 		}
 	}
-	tag, err := sc.store.pool.Exec(ctx, `insert into metadata (content_id, status, detail, tags, text) values ($1, $2, $3, $4, $5) on conflict do nothing`, contentID, result.Status, cleanText(result.Detail), data, cleanText(strings.Join(lines, "\n")))
+	tag, err := sc.store.pool.Exec(ctx, `insert into metadata (content_id, status, detail, tags, text) values ($1, $2, $3, $4, $5) on conflict do nothing`, contentID, result.Status, CleanText(result.Detail), data, CleanText(strings.Join(lines, "\n")))
 	if err == nil && tag.RowsAffected() > 0 {
 		sc.Counts.Metadata++
 	}
@@ -90,11 +90,11 @@ func (sc *Scan) SetMetadata(ctx context.Context, contentID int64, result metadat
 func cleanJSON(v any) any {
 	switch v := v.(type) {
 	case string:
-		return cleanText(v)
+		return CleanText(v)
 	case map[string]any:
 		out := make(map[string]any, len(v))
 		for key, value := range v {
-			out[cleanText(key)] = cleanJSON(value)
+			out[CleanText(key)] = cleanJSON(value)
 		}
 		return out
 	case []any:

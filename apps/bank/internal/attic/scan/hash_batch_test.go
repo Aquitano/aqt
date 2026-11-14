@@ -99,7 +99,7 @@ func TestPartialScanKeepsHashBatchesWithOutsideHardLinks(t *testing.T) {
 	if err != nil || len(pending) != 65 {
 		t.Fatalf("pending: %d files, %v", len(pending), err)
 	}
-	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root,
+	r := &run{sc: localScan{sc}, log: slog.New(slog.DiscardHandler), mountRoot: root,
 		rules: config.Default().Rules(first.Volume.ID, first.Volume.Label)}
 	for i, p := range pending {
 		if !p.Linked {
@@ -139,7 +139,7 @@ func TestCancelledHashCommitsCompletedWork(t *testing.T) {
 			_ = sc.Finish(context.Background(), "interrupted", nil)
 		}
 	})
-	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root,
+	r := &run{sc: localScan{sc}, log: slog.New(slog.DiscardHandler), mountRoot: root,
 		rules: config.Default().Rules(first.Volume.ID, first.Volume.Label)}
 	r.o.Progress = func(p Progress) {
 		r.lastProgress = time.Time{}
@@ -187,7 +187,7 @@ func TestHashRequiresHeldObjectToMatchListedStamp(t *testing.T) {
 	if err := os.Rename(filepath.Join(root, "replacement.bin"), filepath.Join(root, "a.bin")); err != nil {
 		t.Fatal(err)
 	}
-	r := &run{sc: sc, log: slog.New(slog.DiscardHandler), mountRoot: root,
+	r := &run{sc: localScan{sc}, log: slog.New(slog.DiscardHandler), mountRoot: root,
 		rules: config.Default().Rules(first.Volume.ID, first.Volume.Label)}
 	if err := r.hashOne(t.Context(), p); err != nil {
 		t.Fatal(err)

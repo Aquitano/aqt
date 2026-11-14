@@ -28,7 +28,7 @@ func TestRefsResolveAcrossTheArchiveAndTheCatalogue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn)), blobs, dir, filepath.Join(dir, "archive"))
+	s := New(st, attic.New(storetest.OpenCatalogue(t, dsn), ""), blobs, dir, filepath.Join(dir, "archive"))
 	t.Cleanup(s.extraction.done.Wait)
 	token, err := Tokens(dir).New("refs-test", tokens.Write)
 	if err != nil {

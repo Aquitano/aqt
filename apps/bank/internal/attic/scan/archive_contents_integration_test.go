@@ -13,8 +13,12 @@ import (
 // An attachment and a file on a disk with the same bytes are one content, so
 // what either reader extracted is the other's too and neither reads it again.
 func TestScanSharesContentsAndTextWithTheArchive(t *testing.T) {
+	eachTransport(t, testScanSharesContentsAndTextWithTheArchive)
+}
+
+func testScanSharesContentsAndTextWithTheArchive(t *testing.T, catalogue newCatalogue) {
 	ctx := context.Background()
-	st, dsn := storetest.NewCatalogue(t)
+	st, dsn := catalogue(t)
 	archive := storetest.Open(t, dsn)
 	contract, scanned := "Kaufvertrag Grundbuch Wohnung", "Mietvertrag Kaution Wohnung"
 	id, err := archive.InsertMessage(ctx, bankstore.Message{Source: "mail", ExternalID: "m1", SentAt: time.Now()})

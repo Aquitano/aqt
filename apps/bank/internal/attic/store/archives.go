@@ -13,12 +13,12 @@ import (
 // PendingArchive is a hashed archive below the scan root whose content has
 // no listing at the requested depth yet.
 type PendingArchive struct {
-	ID        int64
-	Path      string
-	Size      int64
-	ContentID int64
-	Stamp     Stamp
-	Depth     int
+	ID        int64  `json:"id"`
+	Path      string `json:"path"`
+	Size      int64  `json:"size"`
+	ContentID int64  `json:"content_id"`
+	Stamp     Stamp  `json:"stamp"`
+	Depth     int    `json:"depth" doc:"How deep the cached listing reaches; 0 when there is none."`
 }
 
 // Each disjoint policy range drives an entries_path_idx scan. The lateral
@@ -165,8 +165,8 @@ func (l *Listing) Add(ctx context.Context, m archive.Member) error {
 	if y := m.Modified.Year(); y < 1 || y > 9999 {
 		modified = nil
 	}
-	name := cleanText(m.Name)
-	l.rows = append(l.rows, []any{l.contentID, m.Kind, name, cleanText(m.Path), ext(m.Kind, name), m.Size,
+	name := CleanText(m.Name)
+	l.rows = append(l.rows, []any{l.contentID, m.Kind, name, CleanText(m.Path), ext(m.Kind, name), m.Size,
 		modified, crc, m.Encrypted})
 	l.members++
 	// Counted as read, so progress moves through a large archive; Abort takes
@@ -218,7 +218,7 @@ func (l *Listing) Finish(ctx context.Context, res archive.Result) error {
 		return err
 	}
 	if _, err := l.tx.Exec(ctx, `update archives set format = $2, status = $3, detail = $4, members = $5, listed_at = clock_timestamp()
-		where content_id = $1`, l.contentID, res.Format, res.Status, cleanText(res.Detail), l.members); err != nil {
+		where content_id = $1`, l.contentID, res.Format, res.Status, CleanText(res.Detail), l.members); err != nil {
 		l.Abort(ctx)
 		return err
 	}
