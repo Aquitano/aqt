@@ -93,10 +93,16 @@ func (g *stubGmail) serve(w http.ResponseWriter, r *http.Request) {
 		g.mu.Unlock()
 		switch g.status[id] {
 		case http.StatusNotFound:
+			w.WriteHeader(http.StatusNotFound)
 			if g.gone404 != nil {
+				// Released only once the 404 is on the wire: the held message's
+				// failure cancels the run, and a 404 still unsent then reads as
+				// a cancelled request instead of a dead message.
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
 				g.once.Do(func() { close(g.gone404) })
 			}
-			w.WriteHeader(http.StatusNotFound)
 		case http.StatusInternalServerError:
 			w.WriteHeader(http.StatusInternalServerError)
 		default:
