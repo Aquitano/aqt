@@ -23,28 +23,20 @@ const (
 // library file and a copy on a disk with the same bytes are one hit with three
 // places.
 type SearchHit struct {
-	Kind string `json:"kind" enum:"message,file,item,activity,collection,page"`
-	// Ref is what bank show and the record routes take. A folder, or a file a
-	// scan has not hashed yet, has none; its place names the entry.
-	Ref string `json:"ref,omitempty"`
-	// Digest is a file's whole BLAKE3 digest, which /v1/blobs/{blake3}
-	// serves when the archive holds the bytes.
-	Digest  string `json:"blake3,omitempty"`
-	Type    string `json:"type,omitempty" doc:"A library record's kind, such as movie or watch, or a disk entry's: dir or link."`
-	Title   string `json:"title"`
-	Snippet string `json:"snippet,omitempty" doc:"Text around the match, without markup."`
-	// At is when a message was sent or an activity happened. A day without a
-	// time is its UTC midnight with DayOnly set.
-	At       *time.Time  `json:"at,omitempty"`
-	DayOnly  bool        `json:"day_only,omitempty"`
-	Source   string      `json:"source,omitempty"`
-	ThreadID string      `json:"thread_id,omitempty" doc:"A message's thread, for opening its conversation with the thread route."`
-	Places   []FilePlace `json:"places,omitempty" doc:"Where a file's bytes are, at most 20."`
-	// PlaceCount counts every place, also those past the first 20.
-	PlaceCount int     `json:"place_count,omitempty"`
-	Score      float64 `json:"score" doc:"Reciprocal rank fusion: the sum of 1/(60+rank) over the ranked lists the hit is in."`
-	// Matched names those lists.
-	Matched []string `json:"matched"`
+	Kind       string      `json:"kind" enum:"message,file,item,activity,collection,page"`
+	Ref        string      `json:"ref,omitempty" doc:"What to cite, as kind:value, and what resolveRef and the record operations take. A folder, or a file a scan has not hashed yet, has none; its place names the entry."`
+	Digest     string      `json:"blake3,omitempty" doc:"A file's whole BLAKE3 digest, which /v1/blobs/{blake3} serves when the archive holds the bytes."`
+	Type       string      `json:"type,omitempty" doc:"A library record's kind, such as movie or watch, or a disk entry's: dir or link."`
+	Title      string      `json:"title"`
+	Snippet    string      `json:"snippet,omitempty" doc:"Text around the match, without markup."`
+	At         *time.Time  `json:"at,omitempty" doc:"When a message was sent or an activity happened. A day without a time is its UTC midnight, with day_only set."`
+	DayOnly    bool        `json:"day_only,omitempty"`
+	Source     string      `json:"source,omitempty"`
+	ThreadID   string      `json:"thread_id,omitempty" doc:"A message's thread. getThread opens the conversation with this ID, the source and the ref as around."`
+	Places     []FilePlace `json:"places,omitempty" doc:"Where a file's bytes are, at most 20."`
+	PlaceCount int         `json:"place_count,omitempty" doc:"Every place, also those past the first 20."`
+	Score      float64     `json:"score" doc:"Reciprocal rank fusion: the sum of 1/(60+rank) over the ranked lists the hit is in. It orders the list and means nothing on its own."`
+	Matched    []string    `json:"matched" doc:"The ranked lists that found the hit."`
 
 	// Key makes two hits the same record across lists: the content for a
 	// file, otherwise the ref, and the entry for a disk entry without one.
@@ -54,20 +46,17 @@ type SearchHit struct {
 
 // FilePlace is one place a file's bytes are.
 type FilePlace struct {
-	Kind string `json:"kind" enum:"message,library_file,disk"`
-	// Ref is the message's or library file's ref.
-	Ref      string     `json:"ref,omitempty"`
-	Name     string     `json:"name"`
+	Kind     string     `json:"kind" enum:"message,library_file,disk"`
+	Ref      string     `json:"ref,omitempty" doc:"The message's or library file's ref."`
+	Name     string     `json:"name" doc:"The filename."`
 	At       *time.Time `json:"at,omitempty"`
 	Source   string     `json:"source,omitempty"`
 	ThreadID string     `json:"thread_id,omitempty"`
-	// EntryID, Volume and Path say where on which disk, for bank disk entry
-	// and bank disk get.
-	EntryID  int64  `json:"entry_id,omitempty"`
-	Volume   string `json:"volume,omitempty"`
-	Path     string `json:"path,omitempty"`
-	Missing  bool   `json:"missing,omitempty"`
-	Previous bool   `json:"previous,omitempty" doc:"The entry held these bytes before they changed."`
+	EntryID  int64      `json:"entry_id,omitempty" doc:"The entry on a disk, which getDiskEntry shows."`
+	Volume   string     `json:"volume,omitempty" doc:"The disk's label, or its ID when it has none."`
+	Path     string     `json:"path,omitempty" doc:"The path on that disk."`
+	Missing  bool       `json:"missing,omitempty" doc:"The last scan of its folder no longer found the file."`
+	Previous bool       `json:"previous,omitempty" doc:"The entry held these bytes before they changed."`
 }
 
 // List is one ranked list: one index's best matches for one kind, best first,

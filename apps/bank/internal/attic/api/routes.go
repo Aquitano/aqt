@@ -46,7 +46,8 @@ var (
 			"on its own scale, so entries, archive members, document text, embedded tags and OCR or image " +
 			"descriptions come back as separate lists, each up to limit long. Results include places that held a " +
 			"content before the file changed; current=true leaves those out.",
-		Errors: []httpapi.Kind{errNotFound}})}
+		Errors: []httpapi.Kind{errNotFound},
+		Tool:   true})}
 
 	GetDiskStats = httpapi.Op[struct{}, view.Stats]{Operation: readOp(operation{ID: "getDiskStats", Method: http.MethodGet, Path: "/v1/disk/stats",
 		Summary: "Count volumes, files, contents, documents and enrichment results"})}
@@ -64,17 +65,21 @@ var (
 	GetDiskContent = httpapi.Op[RefInput, view.Content]{Operation: readOp(operation{ID: "getDiskContent", Method: http.MethodGet, Path: "/v1/disk/contents/{ref}",
 		Summary:     "Show one content and every place on disks it lives or lived",
 		Description: "Occurrences list current places first, then places that held this content before their bytes changed.",
-		Errors:      []httpapi.Kind{errNotFound, AmbiguousRef}})}
+		Errors:      []httpapi.Kind{errNotFound, AmbiguousRef},
+		Tool:        true})}
 
-	GetDiskContentText = httpapi.Op[RefInput, store.TextDetail]{Operation: readOp(operation{ID: "getDiskContentText", Method: http.MethodGet, Path: "/v1/disk/contents/{ref}/text",
+	GetDiskContentText = httpapi.Op[TextInput, store.TextDetail]{Operation: readOp(operation{ID: "getDiskContentText", Method: http.MethodGet, Path: "/v1/disk/contents/{ref}/text",
 		Summary: "Read the text extracted from a content",
-		Description: "Text belongs to the content, whether a disk scan, an attachment's text job or a person wrote it, " +
-			"up to the first 4 MB; status says whether it was cut.",
-		Errors: []httpapi.Kind{errNotFound, AmbiguousRef}})}
+		Description: "Text belongs to the content, whether a disk scan, an attachment's text job or a person wrote it. " +
+			"Up to the first 4 MiB is stored, and status says whether it was cut. The answer holds length " +
+			"characters from offset; chars is the length of the whole text, so a longer one is read in steps.",
+		Errors: []httpapi.Kind{errNotFound, AmbiguousRef},
+		Tool:   true})}
 
 	GetDiskContentMetadata = httpapi.Op[RefInput, store.MetadataDetail]{Operation: readOp(operation{ID: "getDiskContentMetadata", Method: http.MethodGet, Path: "/v1/disk/contents/{ref}/metadata",
 		Summary: "Read embedded image, document, audio and video tags",
-		Errors:  []httpapi.Kind{errNotFound, AmbiguousRef}})}
+		Errors:  []httpapi.Kind{errNotFound, AmbiguousRef},
+		Tool:    true})}
 
 	ListDiskContentAnalyses = httpapi.Op[RefInput, []store.Analysis]{Operation: readOp(operation{ID: "listDiskContentAnalyses", Method: http.MethodGet, Path: "/v1/disk/contents/{ref}/analyses",
 		Summary: "List OCR and image descriptions, one per task, provider, model and prompt version",
@@ -89,11 +94,13 @@ var (
 	GetDiskEntry = httpapi.Op[IDInput, DiskEntry]{Operation: readOp(operation{ID: "getDiskEntry", Method: http.MethodGet, Path: "/v1/disk/entries/{id}",
 		Summary:     "Show one entry: its file, folder or link, its versions and its other copies",
 		Description: "Versions list every content the entry held, newest first, with the scans that saw each one arrive and change.",
-		Errors:      []httpapi.Kind{errNotFound}})}
+		Errors:      []httpapi.Kind{errNotFound},
+		Tool:        true})}
 
 	ListDiskVolumes = httpapi.Op[struct{}, []store.VolumeSummary]{Operation: readOp(operation{ID: "listDiskVolumes", Method: http.MethodGet, Path: "/v1/disk/volumes",
 		Summary:     "List known volumes, their totals and last scans",
-		Description: "Each volume carries the fingerprint its disk is recognised by, so the machine the disks attach to can tell which are mounted."})}
+		Description: "Each volume carries the fingerprint its disk is recognised by, so the machine the disks attach to can tell which are mounted.",
+		Tool:        true})}
 
 	ListDiskVolumeFiles = httpapi.Op[VolumeFilesInput, []store.VerifyFile]{Operation: readOp(operation{ID: "listDiskVolumeFiles", Method: http.MethodGet, Path: "/v1/disk/volumes/{id}/files",
 		Summary: "List the files and links below a folder with their full digests, in path order",
@@ -278,8 +285,21 @@ func (s *server) content(ctx context.Context, in *RefInput) (*body[view.Content]
 	return reply(view.NewContent(c, nil), err)
 }
 
-func (s *server) text(ctx context.Context, in *RefInput) (*body[store.TextDetail], error) {
-	return reply(s.store.Text(ctx, 0, in.Ref))
+type TextInput struct {
+	RefInput
+	Offset int `query:"offset" minimum:"0" doc:"Skip this many characters."`
+	Length int `query:"length" default:"20000" minimum:"1" doc:"How many characters, at most."`
+}
+
+func (s *server) text(ctx context.Context, in *TextInput) (*body[store.TextDetail], error) {
+	d, err := s.store.Text(ctx, 0, in.Ref)
+	if err != nil {
+		return nil, failure(err)
+	}
+	chars := []rune(d.Text)
+	start := min(in.Offset, len(chars))
+	d.Text = string(chars[start:min(start+in.Length, len(chars))])
+	return reply(d, nil)
 }
 
 func (s *server) metadata(ctx context.Context, in *RefInput) (*body[store.MetadataDetail], error) {
@@ -303,7 +323,7 @@ func (s *server) copies(ctx context.Context, in *CopiesInput) (*body[store.Retri
 }
 
 type IDInput struct {
-	ID int64 `path:"id" minimum:"1"`
+	ID int64 `path:"id" minimum:"1" doc:"The entry's ID, which a place on a disk names as entry_id, or the scan's ID."`
 }
 
 // DiskEntry is named for the document: the library has an Entry too.

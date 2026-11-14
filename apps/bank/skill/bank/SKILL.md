@@ -1,11 +1,11 @@
 ---
 name: bank
-description: Search or write the owner's personal message archive through the `bank` CLI. Use when a task needs something he wrote or received in email, WhatsApp, Discord, LinkedIn, or personal ChatGPT and Claude.ai conversations. Also use to retrieve attachments from those messages or save a note, decision, or messages to the archive.
+description: Search or write the owner's personal archive through the `bank` CLI or its MCP tools. Use when a task needs something he wrote or received in email, WhatsApp, Discord, LinkedIn, or personal ChatGPT and Claude.ai conversations, something in his media library, or a file he kept, attached or has on a disk. Also use to retrieve attachments or save a note, decision, or messages to the archive.
 ---
 
-# bank — the owner's message archive
+# bank: the owner's archive
 
-One Postgres holding every message from every source, BM25-searchable from the CLI. Read freely, write rarely.
+One Postgres holding every message from every source, a media library, stored files and a catalogue of the files on disks, searched together from the CLI or over MCP. Read freely, write rarely.
 
 ## Preflight
 
@@ -29,6 +29,10 @@ Calling the HTTP API directly instead of the CLI: `GET /openapi.json` describes 
 
 On the VPS itself there is no `BANK_URL`; `DATABASE_URL` points at Postgres and the same commands work locally.
 
+## MCP instead of the CLI
+
+When the session has bank's MCP tools (`bank mcp` serves them: `search`, `resolveRef`, `getMessage`, `getThread`, `getDiskContentText` and more), read through them instead of the CLI. Each tool is one API operation that reads. Its arguments are the CLI flags below without dashes (`q` for the words, `kind`, `source`, `person`, `since`, `limit`, `offset`), its result is the JSON `--json` prints, and the semantics below hold for both. A failure is a tool error whose text is the API's JSON with `_tag`, `message` and, when you can act on it, `recovery`. The usual path is `search`, then `getMessage` or `resolveRef` on a hit's ref, then `getThread` with the hit's `thread_id`, `source` and its ref as `around`, or `getDiskContentText` for a file's text, which comes 20000 characters at a time. No tool writes: imports, notes and contacts stay with the CLI.
+
 ## Reading
 
 ```sh
@@ -39,6 +43,11 @@ bank contact messages <name> [--source s] [--since d] [--until d] [--limit n] [-
 bank show <ref> [--json]         # any ref: a message's body, recipients and attachments, a library record,
                                  #  or a content's places; and where the same bytes are elsewhere
 bank show content:<hex> --text   # the text read from a file, whether attached or on a disk
+bank show content:<hex> --metadata  # its embedded image, document, audio and video tags
+bank show msg:<hex> --provenance # the raw input, folder and mail grouping evidence
+bank timeline <2019|2019-03|2019-03-14> [--group message|activity|file] [--limit n] [--json]
+                                 # what happened in a year, month or day, oldest first
+bank disk search <words> [--volume label] [--ext pdf] [--json]  # files on disks, with disk-only filters
 bank stats [--json]              # sources, counts, date ranges, freshness, notes; files on disks
 bank fetch <blake3> -o <path>    # write attachment bytes to a file
 bank attachment stats [--json]   # how much of the archive is searchable inside its attachments
@@ -59,10 +68,10 @@ Semantics that matter:
 - `--person <contact>` is the better filter when you know who you mean: a contact ties one person's email addresses, WhatsApp display name and Discord handle together, so it catches them across sources where `--from alice` only catches one spelling. Run `bank contact list` to see which exist; an unknown name is an error, not an empty result.
 - `--until` is exclusive; both take `YYYY-MM-DD`, which starts at UTC midnight, or an RFC 3339 instant. A date leaves out the kinds without one: items, collections, pages, library files and files on disks.
 - A message whose source gave no date is undated: its JSON has no `sent_at`, and `--since`/`--until` leave it out. It sorts before every dated message, so it comes first in a thread and last in newest-first lists. `bank stats` counts undated messages separately.
-- `--limit` defaults to 100 and must be between 1 and 500. Out-of-range values are a usage error, not an empty result. Start generous (50-100), then narrow with `--source`/`--person`/dates rather than re-running blind.
+- `--limit` defaults to 20 and must be between 1 and 500. Out-of-range values are a usage error, not an empty result. Raise it (50-100) when skimming for something specific, then narrow with `--source`/`--person`/dates rather than re-running blind.
 - `--offset` pages the one ranked list: `--limit 100 --offset 100` is the second hundred hits. A short page is the end of the list. `counts` shows what lies behind a `--kind` filter. `--offset` is capped at 10000. Narrow the query if you need more.
 - Browsing without words (`bank search --source whatsapp`) lists conversations by their latest message; continue with `--after <last_ref of the last row>`.
-- `bank thread` takes a message hit's `thread_id` and `source`. Pass `--around <hit.ref> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.ref>` or `--after <last.ref>`. Use `--latest` for recent history. Positions are mutually exclusive, a page holds 100 messages by default and at most 500, and there is no total history cap.
+- `bank thread` takes a message hit's `thread_id` and `source`. Pass `--around <hit.ref> --limit 100` to include that hit in context. Pages include attachments and `has_before`/`has_after`; continue with `--before <first.ref>` or `--after <last.ref>`. Use `--latest` for recent history. Positions are mutually exclusive, a page holds 20 messages by default and at most 500, and there is no total history cap.
 - Contact history can continue with `bank contact messages <name> --before <last.ref>`, beyond the offset limit. Results are newest-first. Use the cursor without `--offset`.
 - `bank contact show <name>` lists a person's attached identities and how many messages each source contributes — the quickest way to tell whether `--person` will actually reach the conversation you want, or whether an identity is still unattached.
 - `bank stats --json` is `{sources, disks}`. Each of `sources[]` has `last_ingest`, and `last_sync` for sync-backed ones. Use it to say "the archive has nothing after X" instead of assuming a gap means nothing happened.

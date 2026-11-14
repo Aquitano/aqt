@@ -89,6 +89,7 @@ type cli struct {
 	Show        showCmd        `cmd:"" help:"Print any cited record (msg:…, content:…, or a library ID such as item:…) and where the same bytes are elsewhere."`
 	Stats       statsCmd       `cmd:"" help:"Per-source counts, date ranges and freshness, and the files on disks in numbers."`
 	Timeline    timelineCmd    `cmd:"" help:"What happened in a year, month or day: messages, activity and files on disks."`
+	MCP         mcpCmd         `cmd:"" name:"mcp" help:"Offer the archive's read operations to agents as MCP tools on stdin and stdout."`
 	OpenAPI     openapiCmd     `cmd:"" name:"openapi" help:"Print the OpenAPI document of the typed routes." hidden:""`
 	Note        noteCmd        `cmd:"" help:"Note what a source holds (empty text clears)."`
 	Query       queryCmd       `cmd:"" help:"Read-only ad-hoc SQL: READ ONLY tx, 15s timeout, row cap 100."`

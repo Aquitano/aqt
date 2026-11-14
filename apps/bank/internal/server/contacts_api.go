@@ -23,7 +23,9 @@ const maxContactImport = 8 << 20
 
 var (
 	ListContacts = httpapi.Op[struct{}, []store.Contact]{Operation: httpapi.Operation{ID: "listContacts", Method: http.MethodGet, Path: "/v1/contacts", Tag: "contacts",
-		Summary: "List every contact with its aliases",
+		Summary:     "List every contact with its aliases",
+		Description: "A contact's name is what the person filter of search and listThreads takes; its aliases are the addresses and handles that filter matches.",
+		Tool:        true,
 	}}
 	CreateContact = httpapi.Op[ContactCreateInput, store.Contact]{Operation: httpapi.Operation{ID: "createContact", Method: http.MethodPost, Path: "/v1/contacts", Tag: "contacts",
 		Summary:     "Create a contact without aliases",
@@ -42,6 +44,7 @@ var (
 	GetContact = httpapi.Op[ContactInput, store.ContactDetail]{Operation: httpapi.Operation{ID: "getContact", Method: http.MethodGet, Path: "/v1/contacts/{name}", Tag: "contacts",
 		Summary: "Get one contact with its aliases and its message count per source",
 		Errors:  []httpapi.Kind{httpapi.NotFound},
+		Tool:    true,
 	}}
 	DeleteContact = httpapi.Op[ContactInput, ContactDeleted]{Operation: httpapi.Operation{ID: "deleteContact", Method: http.MethodDelete, Path: "/v1/contacts/{name}", Tag: "contacts",
 		Summary: "Delete a contact and its aliases, leaving its messages in place",

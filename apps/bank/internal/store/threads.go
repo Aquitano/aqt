@@ -19,9 +19,9 @@ type Thread struct {
 	ThreadID  string          `json:"thread_id"`
 	Source    string          `json:"source"`
 	Messages  []MessageDetail `json:"messages"`
-	Truncated bool            `json:"truncated"`
-	HasBefore bool            `json:"has_before"`
-	HasAfter  bool            `json:"has_after"`
+	Truncated bool            `json:"truncated" doc:"The page is not the whole conversation: has_before or has_after is set."`
+	HasBefore bool            `json:"has_before" doc:"Older messages exist; pass the first message's ref as before."`
+	HasAfter  bool            `json:"has_after" doc:"Newer messages exist; pass the last message's ref as after."`
 }
 
 // Cursors name messages in this thread. Pages use (sort_at, id), so messages

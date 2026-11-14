@@ -6,7 +6,7 @@ import "github.com/aquitano/aqt/apps/bank/internal/fail"
 
 const (
 	// DefaultLimit is the page size when a caller names none.
-	DefaultLimit = 100
+	DefaultLimit = 20
 	// MaxLimit is the largest page: large enough for "everything about X",
 	// small enough that a typo cannot ask for the whole archive.
 	MaxLimit = 500

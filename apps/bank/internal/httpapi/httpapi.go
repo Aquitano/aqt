@@ -160,12 +160,16 @@ func (k Kind) schema(registry huma.Registry) *huma.Schema {
 // Operation is one route. Its error responses are Errors plus EveryOperation.
 // Writes marks an operation that changes the archive, which a read token may
 // not call; an operation that takes a body and only reads, such as a search
-// by POST, leaves it false.
+// by POST, leaves it false. Tool offers the operation to agents as a tool of
+// bank mcp, and the document marks it with ToolExtension.
 type Operation struct {
 	ID, Method, Path, Tag, Summary, Description string
 	Errors                                      []Kind
-	Writes                                      bool
+	Writes, Tool                                bool
 }
+
+// ToolExtension marks an operation that agents are offered as a tool.
+const ToolExtension = "x-agent-tool"
 
 // writeRole is the role an operation that writes requires of the bearer
 // token. OpenAPI 3.1 lets a security requirement name roles for any scheme.
@@ -176,6 +180,9 @@ func (o Operation) For(api huma.API) huma.Operation {
 		OperationID: o.ID, Method: o.Method, Path: o.Path, Tags: []string{o.Tag},
 		Summary: o.Summary, Description: o.Description,
 	}
+	if o.Tool {
+		op.Extensions = map[string]any{ToolExtension: true}
+	}
 	errs := o.Errors
 	if o.Writes {
 		op.Security = []map[string][]string{{"bearer": {writeRole}}}
@@ -185,7 +192,8 @@ func (o Operation) For(api huma.API) huma.Operation {
 	return op
 }
 
-func writes(op *huma.Operation) bool {
+// Writes says whether op, as registered, changes the archive.
+func Writes(op *huma.Operation) bool {
 	return slices.ContainsFunc(op.Security, func(requirement map[string][]string) bool {
 		return slices.Contains(requirement["bearer"], writeRole)
 	})
@@ -205,7 +213,7 @@ func RequireToken(api huma.API, store tokens.Store, mintCommand string) func(hum
 		case !ok:
 			ctx.SetHeader("WWW-Authenticate", "Bearer")
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "send Authorization: Bearer <token>; the owner mints one with `"+mintCommand+"`")
-		case !scope.Allows(writes(ctx.Operation())):
+		case !scope.Allows(Writes(ctx.Operation())):
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "this token only reads, and "+ctx.Operation().OperationID+" writes")
 		default:
 			next(ctx)
@@ -250,7 +258,7 @@ func bearerToken(header string) (string, bool) {
 // PageSize is the limit every list and search takes. Struct tags cannot name
 // constants, so a test keeps these equal to the page package's.
 type PageSize struct {
-	Limit int `query:"limit" default:"100" minimum:"1" maximum:"500" doc:"How many results, at most."`
+	Limit int `query:"limit" default:"20" minimum:"1" maximum:"500" doc:"How many results, at most."`
 }
 
 // Page is PageSize with an offset, for lists that page by position.

@@ -38,6 +38,7 @@ var Search = httpapi.Op[SearchInput, catalog.Result]{Operation: httpapi.Operatio
 		"to, person, subject, mailbox_id and has_attachment restrict the search to messages and the files " +
 		"attached to them, and cannot be combined with account or a kind other than message or file. " +
 		"coverage says what the result leaves out or does not prove.",
+	Tool: true,
 }}
 
 // registerSearchAPI serves the one search over every kind of record.
@@ -65,6 +66,7 @@ var (
 	GetLibraryItem = httpapi.Op[LibraryIDInput, library.Item]{Operation: httpapi.Operation{ID: "getLibraryItem", Method: http.MethodGet, Path: "/v1/library/items/{id}", Tag: "library",
 		Summary: "Return one media item with its state, evidence and linked files",
 		Errors:  libraryNotFound,
+		Tool:    true,
 	}}
 	SetLibraryItemState = httpapi.Op[LibraryStateInput, library.State]{Operation: httpapi.Operation{ID: "setLibraryItemState", Method: http.MethodPut, Path: "/v1/library/items/{id}/state", Tag: "library",
 		Summary: "Replace an item's personal state: status, rating, progress, notes and tags",
@@ -84,6 +86,7 @@ var (
 	GetLibraryActivity = httpapi.Op[LibraryIDInput, library.Activity]{Operation: httpapi.Operation{ID: "getLibraryActivity", Method: http.MethodGet, Path: "/v1/library/activity/{id}", Tag: "library",
 		Summary: "Return one activity record with its evidence",
 		Errors:  libraryNotFound,
+		Tool:    true,
 	}}
 
 	// ListLibraryCollections answers in the shape projection picks, so its
@@ -102,6 +105,7 @@ var (
 	GetLibraryCollection = httpapi.Op[LibraryIDInput, library.Collection]{Operation: httpapi.Operation{ID: "getLibraryCollection", Method: http.MethodGet, Path: "/v1/library/collections/{id}", Tag: "library",
 		Summary: "Return one collection with the entries of its current snapshot",
 		Errors:  libraryNotFound,
+		Tool:    true,
 	}}
 	EditLibraryCollection = httpapi.Op[CollectionEditInput, library.Collection]{Operation: httpapi.Operation{ID: "editLibraryCollection", Method: http.MethodPut, Path: "/v1/library/collections/{id}", Tag: "library",
 		Summary: "Replace a personal collection's title, description and entries",
@@ -129,10 +133,12 @@ var (
 	GetLibraryFile = httpapi.Op[LibraryIDInput, library.File]{Operation: httpapi.Operation{ID: "getLibraryFile", Method: http.MethodGet, Path: "/v1/library/files/{id}", Tag: "library",
 		Summary: "Return one library file's record. Its bytes are at /v1/blobs/{blake3}",
 		Errors:  libraryNotFound,
+		Tool:    true,
 	}}
 	GetLibraryPage = httpapi.Op[LibraryIDInput, library.Page]{Operation: httpapi.Operation{ID: "getLibraryPage", Method: http.MethodGet, Path: "/v1/library/pages/{id}", Tag: "library",
 		Summary: "Return one published note with its body",
 		Errors:  libraryNotFound,
+		Tool:    true,
 	}}
 )
 

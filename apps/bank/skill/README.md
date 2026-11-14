@@ -16,3 +16,5 @@ export BANK_TOKEN=bank_...            # ssh vps bank token new <machine>, printe
 Verify with `bank stats`; the skill's own preflight uses the same command and knows how to read each failure.
 
 On the VPS the skill works unchanged: leave `BANK_URL` unset there and the CLI serves the same API in process from `DATABASE_URL`.
+
+An agent can also read the archive through `bank mcp`, which offers the API's read operations as MCP tools with the same two env vars; [Agents over MCP](../README.md#agents-over-mcp) has the client configuration. The skill describes both and still covers the writes, which only the CLI does.

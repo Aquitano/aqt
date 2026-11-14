@@ -41,16 +41,15 @@ func (o BrowseOpts) Validate() error {
 }
 
 type ThreadGroup struct {
-	Source   string `json:"source"`
-	ThreadID string `json:"thread_id"`
-	Count    int64  `json:"n"`
-	// LastAt is absent when no message in the thread has a date.
-	LastAt  time.Time `json:"last_at,omitzero"`
-	LastRef string    `json:"last_ref"`
-	Sender  string    `json:"sender"`
-	Subject string    `json:"subject"`
-	Preview string    `json:"preview"`
-	Members string    `json:"members"`
+	Source   string    `json:"source"`
+	ThreadID string    `json:"thread_id"`
+	Count    int64     `json:"n" doc:"Messages in the thread that pass the filters."`
+	LastAt   time.Time `json:"last_at,omitzero" doc:"When the latest of them was sent. Absent when none has a date."`
+	LastRef  string    `json:"last_ref" doc:"The latest of them, by ref. The last row's is the after of the next page."`
+	Sender   string    `json:"sender"`
+	Subject  string    `json:"subject"`
+	Preview  string    `json:"preview"`
+	Members  string    `json:"members"`
 }
 
 // BrowseThreads lists conversations by their latest message that passes the

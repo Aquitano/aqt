@@ -37,11 +37,9 @@ type Disks interface {
 }
 
 type Result struct {
-	Hits []search.SearchHit `json:"hits"`
-	// Counts are the matches of every kind searched, so a caller sees what
-	// lies past this page or behind a kind filter.
-	Counts   []search.KindCount `json:"counts"`
-	Coverage []string           `json:"coverage"`
+	Hits     []search.SearchHit `json:"hits" doc:"Best first. A page shorter than limit is the end of the list."`
+	Counts   []search.KindCount `json:"counts" doc:"How many records of each kind searched match, so a caller sees what lies past this page or behind a kind filter."`
+	Coverage []string           `json:"coverage" doc:"What the result leaves out or does not prove, such as kinds a filter skipped."`
 }
 
 const maxPlaces = 20

@@ -17,6 +17,9 @@ var (
 	}}
 	GetStats = httpapi.Op[struct{}, []store.SourceStats]{Operation: httpapi.Operation{ID: "getStats", Method: http.MethodGet, Path: "/v1/stats", Tag: "messages",
 		Summary: "Count messages per source, with their date range and freshness",
+		Description: "One row per source. Before concluding that the archive lacks something, read the source's " +
+			"note, the owner's account of what it holds, and whether it is stale.",
+		Tool: true,
 	}}
 )
 

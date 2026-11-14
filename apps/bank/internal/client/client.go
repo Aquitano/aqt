@@ -5,12 +5,15 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,9 +138,9 @@ func decode[O any](resp *http.Response) (O, error) {
 	return out, json.NewDecoder(resp.Body).Decode(&out)
 }
 
-// send is every request's one path: the input is encoded, the token goes on,
-// and an answer that is not 2xx comes back as the error it stands for. A body
-// given here replaces the one the input encodes.
+// send is every typed request's path: the input is encoded, and an answer
+// that is not 2xx comes back as the error it stands for. A body given here
+// replaces the one the input encodes.
 func (c *Client) send(ctx context.Context, op httpapi.Operation, in any, body io.Reader, contentType string) (*http.Response, error) {
 	r, err := encode(op, in)
 	if err != nil {
@@ -146,11 +149,38 @@ func (c *Client) send(ctx context.Context, op httpapi.Operation, in any, body io
 	if body != nil {
 		r.body, r.contentType = body, contentType
 	}
+	resp, err := c.do(ctx, op.Method, r)
+	if failed, ok := errors.AsType[*Error](err); ok {
+		return nil, failed.typed()
+	}
+	return resp, err
+}
+
+// Do sends a request that is already written, such as one built from an
+// operation's document rather than its Go types, and returns the answer's
+// JSON. A failure the server answered is an *Error that keeps its body.
+func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body json.RawMessage) (json.RawMessage, error) {
+	r := request{path: path, query: query, header: http.Header{}}
+	if body != nil {
+		r.body, r.contentType = bytes.NewReader(body), "application/json"
+	}
+	resp, err := c.do(ctx, method, r)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	answer, err := io.ReadAll(resp.Body)
+	return bytes.TrimSpace(answer), err
+}
+
+// do is every request's one path: the token goes on, and an answer that is
+// not 2xx comes back as an *Error.
+func (c *Client) do(ctx context.Context, method string, r request) (*http.Response, error) {
 	u := c.base + r.path
 	if len(r.query) > 0 {
 		u += "?" + r.query.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, op.Method, u, r.body)
+	req, err := http.NewRequestWithContext(ctx, method, u, r.body)
 	if err != nil {
 		return nil, err
 	}
@@ -174,12 +204,14 @@ func (c *Client) send(ctx context.Context, op httpapi.Operation, in any, body io
 
 // Error is a failure the server answered with, decoded from its tagged body.
 // It unwraps to the sentinel error the store returns for the same failure, so
-// a caller tests it the way it would test the store's.
+// a caller tests it the way it would test the store's. Body is the tagged
+// JSON as the server sent it, fields of the failure's kind included.
 type Error struct {
 	Status   int
 	Tag      string
 	Message  string
 	Recovery *httpapi.Recovery
+	Body     json.RawMessage
 	cause    error
 }
 
@@ -221,7 +253,7 @@ func as[T any, P interface {
 	return P(&v)
 }
 
-func decodeFailure(resp *http.Response) error {
+func decodeFailure(resp *http.Response) *Error {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	e := &Error{Status: resp.StatusCode, Message: resp.Status}
 	var tagged struct {
@@ -236,9 +268,14 @@ func decodeFailure(resp *http.Response) error {
 		}
 		return e
 	}
-	e.Tag, e.Message, e.Recovery = tagged.Tag, tagged.Message, tagged.Recovery
+	e.Tag, e.Message, e.Recovery, e.Body = tagged.Tag, tagged.Message, tagged.Recovery, bytes.TrimSpace(body)
+	return e
+}
+
+// typed is the store's error for e, where its tag names one.
+func (e *Error) typed() error {
 	if typed, ok := failures[e.Tag]; ok {
-		return typed(e, body)
+		return typed(e, e.Body)
 	}
 	return e
 }

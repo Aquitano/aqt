@@ -520,9 +520,10 @@ func PrintPlaces(c view.Content) error {
 	return printHits(places[previous:])
 }
 
-// Text is the text read from a content, by a scan, a text job or a person.
+// Text is the whole text read from a content, by a scan, a text job or a
+// person.
 func Text(ctx context.Context, bank *client.Client, cited ref.Content) (store.TextDetail, error) {
-	return client.Call(ctx, bank, api.GetDiskContentText, api.RefInput{Ref: cited})
+	return client.Call(ctx, bank, api.GetDiskContentText, api.TextInput{RefInput: api.RefInput{Ref: cited}, Length: extract.MaxChars})
 }
 
 // Metadata is a content's embedded tags.

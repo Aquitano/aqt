@@ -35,7 +35,7 @@ item:<32 hex>. GET /v1/refs/{ref} says what any of them names.
 A token reads, or reads and writes. An operation that changes the archive names the
 write role in its security requirement, and answers Forbidden to a read token.
 
-Lists and searches take limit, 100 by default and at most 500, and those that page by
+Lists and searches take limit, 20 by default and at most 500, and those that page by
 position take offset, at most 10000. Every failure is JSON with a _tag.`
 
 var (
@@ -44,14 +44,19 @@ var (
 		Description: "Messages by when they were sent, activity (watching, listening, reading) by when it happened, " +
 			"and files on disks by when they were last modified, merged oldest first. limit caps each group on " +
 			"its own; truncated names the groups that reached it.",
+		Tool: true,
 	}}
 	ResolveRef = httpapi.Op[ResolveInput, catalog.Resolved]{Operation: httpapi.Operation{ID: "resolveRef", Method: http.MethodGet, Path: "/v1/refs/{ref}", Tag: "refs",
 		Summary: "Say what a cited ref names, whichever store holds it",
 		Description: "Takes msg:<16 hex> for a message, a library ID such as item:<32 hex> or file:<32 hex>, or " +
 			"content:<16 to 64 hex> for bytes. The answer names the record, the route that returns it in full, " +
 			"and where the same bytes are: a message attachment's or library file's copies on disks, and for " +
-			"bytes, the messages and library files that hold them as well as the places on disks.",
+			"bytes, the messages and library files that hold them as well as the places on disks. The record " +
+			"itself comes from getMessage, getLibraryItem, getLibraryActivity, getLibraryCollection, " +
+			"getLibraryFile, getLibraryPage or, for bytes, getDiskContent, and the text read from bytes from " +
+			"getDiskContentText.",
 		Errors: []httpapi.Kind{httpapi.NotFound, atticapi.AmbiguousRef},
+		Tool:   true,
 	}}
 )
 
@@ -132,9 +137,15 @@ func list[T any](v []T, err error) (*httpapi.Body[[]T], error) {
 	return reply(v, err)
 }
 
-// Spec is the OpenAPI document bank serve answers with, built without a database.
+// Document is the OpenAPI document bank serve answers with, built without a
+// database.
+func Document(kinds importer.Registry) *huma.OpenAPI {
+	return (&Server{catalogue: attic.New(nil, ""), kinds: kinds}).registerAPI(http.NewServeMux(), true).OpenAPI()
+}
+
+// Spec is Document as JSON.
 func Spec(kinds importer.Registry) ([]byte, error) {
-	return json.MarshalIndent((&Server{catalogue: attic.New(nil, ""), kinds: kinds}).registerAPI(http.NewServeMux(), true).OpenAPI(), "", "  ")
+	return json.MarshalIndent(Document(kinds), "", "  ")
 }
 
 type ResolveInput struct {

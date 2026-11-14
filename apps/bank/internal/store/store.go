@@ -28,23 +28,22 @@ type Message struct {
 	// ID is the row number joins use. It changes when the archive is rebuilt
 	// from its raw inputs, so it never leaves the process; Ref is what
 	// callers see and cite.
-	ID               int64    `json:"-"`
-	Ref              string   `json:"ref"`
-	Source           string   `json:"source"`
-	ExternalID       string   `json:"external_id,omitempty"`
-	MessageID        string   `json:"message_id,omitempty"` // RFC 822 Message-ID for mail sources
-	ParentExternalID string   `json:"parent_external_id,omitempty"`
-	BranchID         string   `json:"branch_id,omitempty"`
-	AlternativeIndex int      `json:"alternative_index,omitempty"`
-	ThreadID         string   `json:"thread_id,omitempty"`
-	Sender           string   `json:"sender"`
-	Recipients       []string `json:"recipients,omitempty"`
-	Subject          string   `json:"subject,omitempty"`
-	Body             string   `json:"body"`
-	// SentAt is zero, and absent from JSON, when the source did not say.
-	SentAt     time.Time `json:"sent_at,omitzero"`
-	RawInput   int64     `json:"raw_input,omitempty"`
-	RawLocator string    `json:"raw_locator,omitempty"`
+	ID               int64     `json:"-"`
+	Ref              string    `json:"ref" doc:"What to cite: msg:<16 hex>."`
+	Source           string    `json:"source"`
+	ExternalID       string    `json:"external_id,omitempty"`
+	MessageID        string    `json:"message_id,omitempty"` // RFC 822 Message-ID for mail sources
+	ParentExternalID string    `json:"parent_external_id,omitempty"`
+	BranchID         string    `json:"branch_id,omitempty"`
+	AlternativeIndex int       `json:"alternative_index,omitempty"`
+	ThreadID         string    `json:"thread_id,omitempty" doc:"The conversation, which getThread reads with this ID and the source."`
+	Sender           string    `json:"sender"`
+	Recipients       []string  `json:"recipients,omitempty"`
+	Subject          string    `json:"subject,omitempty"`
+	Body             string    `json:"body"`
+	SentAt           time.Time `json:"sent_at,omitzero" doc:"Absent when the source gave no date."`
+	RawInput         int64     `json:"raw_input,omitempty"`
+	RawLocator       string    `json:"raw_locator,omitempty"`
 }
 
 // messageBatchSize bounds one PostgreSQL protocol batch. The whole call still
@@ -74,17 +73,14 @@ const existingMessageSQL = `
 	order by ($3 <> '' and message_id = $3) desc, id limit 1`
 
 type Attachment struct {
-	MessageID int64          `json:"-"`
-	Position  int            `json:"position"`
-	Filename  string         `json:"filename"`
-	MimeType  string         `json:"mime_type,omitempty"`
-	SizeBytes int64          `json:"size_bytes"`
-	BLAKE3    content.Digest `json:"blake3"`
-	// TextStatus is the extraction outcome for this content (StatusPending
-	// when nothing has run), and TextChars how much text it yielded. Shown by
-	// `bank show` so it is obvious whether a document is searchable inside.
-	TextStatus string `json:"text_status,omitempty"`
-	TextChars  int    `json:"text_chars,omitempty"`
+	MessageID  int64          `json:"-"`
+	Position   int            `json:"position"`
+	Filename   string         `json:"filename"`
+	MimeType   string         `json:"mime_type,omitempty"`
+	SizeBytes  int64          `json:"size_bytes"`
+	BLAKE3     content.Digest `json:"blake3" doc:"The digest of the bytes. content: followed by it is their ref."`
+	TextStatus string         `json:"text_status,omitempty" doc:"What reading text from the bytes came to, such as ok, needs_ocr, failed or pending. Search finds words inside a file only when text was read."`
+	TextChars  int            `json:"text_chars,omitempty" doc:"How many characters of text were read."`
 }
 
 // MessageDetail is one message plus its attachments — the shape `bank show
@@ -491,28 +487,17 @@ func (s *Store) GetMessageByRef(ctx context.Context, r ref.Message) (Message, []
 }
 
 type SourceStats struct {
-	Source   string `json:"source"`
-	Messages int64  `json:"messages"`
-	// Undated counts messages whose source gave no date. Earliest and Latest
-	// describe the others, and are absent when there are none.
-	Undated  int64     `json:"undated"`
-	Earliest time.Time `json:"earliest,omitzero"`
-	Latest   time.Time `json:"latest,omitzero"`
-	// LastIngest is when this source last gained a message — the freshness
-	// signal for manually dropped exports.
-	LastIngest time.Time `json:"last_ingest"`
-	// LastSync is when a sync-backed source (Gmail) last advanced its
-	// checkpoint. Null for sources that are imported by hand — a pointer
-	// because omitempty does nothing for a zero time.Time, and an agent
-	// reading "0001-01-01" as a sync date would be worse than reading nothing.
-	LastSync *time.Time `json:"last_sync"`
-	// Note is the owner's note on what this source actually holds, set with
-	// `bank note`. Absence of a message only means something once you
-	// know the source was ever complete for that period.
-	Note string `json:"note,omitempty"`
-	// Stale reports that nothing has landed here in StaleAfter, which for a
-	// source that should be growing means the drop-off went unnoticed.
-	Stale bool `json:"stale"`
+	Source     string    `json:"source"`
+	Messages   int64     `json:"messages"`
+	Undated    int64     `json:"undated" doc:"Messages whose source gave no date. earliest and latest describe the others, and are absent when there are none."`
+	Earliest   time.Time `json:"earliest,omitzero"`
+	Latest     time.Time `json:"latest,omitzero"`
+	LastIngest time.Time `json:"last_ingest" doc:"When this source last gained a message."`
+	// A pointer because omitempty does nothing for a zero time.Time, and an
+	// agent reading "0001-01-01" as a sync date would be worse than nothing.
+	LastSync *time.Time `json:"last_sync" doc:"When a source that syncs, such as Gmail, last advanced its checkpoint. Null for sources imported by hand."`
+	Note     string     `json:"note,omitempty" doc:"The owner's note on what this source holds. A missing message means something only once the source is known to be complete for that period."`
+	Stale    bool       `json:"stale" doc:"Nothing has landed here for 30 days, which for a source that should grow means an import stopped."`
 }
 
 // StaleAfter is how long a source may go without a new message before stats

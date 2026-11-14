@@ -629,6 +629,7 @@
         "additionalProperties": false,
         "properties": {
           "blake3": {
+            "description": "The digest of the bytes. content: followed by it is their ref.",
             "type": "string"
           },
           "filename": {
@@ -646,10 +647,12 @@
             "type": "integer"
           },
           "text_chars": {
+            "description": "How many characters of text were read.",
             "format": "int64",
             "type": "integer"
           },
           "text_status": {
+            "description": "What reading text from the bytes came to, such as ok, needs_ocr, failed or pending. Search finds words inside a file only when text was read.",
             "type": "string"
           }
         },
@@ -1957,6 +1960,7 @@
             "type": "string"
           },
           "entry_id": {
+            "description": "The entry on a disk, which getDiskEntry shows.",
             "format": "int64",
             "type": "integer"
           },
@@ -1969,12 +1973,15 @@
             "type": "string"
           },
           "missing": {
+            "description": "The last scan of its folder no longer found the file.",
             "type": "boolean"
           },
           "name": {
+            "description": "The filename.",
             "type": "string"
           },
           "path": {
+            "description": "The path on that disk.",
             "type": "string"
           },
           "previous": {
@@ -1982,6 +1989,7 @@
             "type": "boolean"
           },
           "ref": {
+            "description": "The message's or library file's ref.",
             "type": "string"
           },
           "source": {
@@ -1991,6 +1999,7 @@
             "type": "string"
           },
           "volume": {
+            "description": "The disk's label, or its ID when it has none.",
             "type": "string"
           }
         },
@@ -3183,12 +3192,14 @@
             ]
           },
           "ref": {
+            "description": "What to cite: msg:\u003c16 hex\u003e.",
             "type": "string"
           },
           "sender": {
             "type": "string"
           },
           "sent_at": {
+            "description": "Absent when the source gave no date.",
             "format": "date-time",
             "type": "string"
           },
@@ -3199,6 +3210,7 @@
             "type": "string"
           },
           "thread_id": {
+            "description": "The conversation, which getThread reads with this ID and the source.",
             "type": "string"
           }
         },
@@ -3270,12 +3282,14 @@
             ]
           },
           "ref": {
+            "description": "What to cite: msg:\u003c16 hex\u003e.",
             "type": "string"
           },
           "sender": {
             "type": "string"
           },
           "sent_at": {
+            "description": "Absent when the source gave no date.",
             "format": "date-time",
             "type": "string"
           },
@@ -3286,6 +3300,7 @@
             "type": "string"
           },
           "thread_id": {
+            "description": "The conversation, which getThread reads with this ID and the source.",
             "type": "string"
           }
         },
@@ -4289,6 +4304,7 @@
         "additionalProperties": false,
         "properties": {
           "counts": {
+            "description": "How many records of each kind searched match, so a caller sees what lies past this page or behind a kind filter.",
             "items": {
               "$ref": "#/components/schemas/KindCount"
             },
@@ -4298,6 +4314,7 @@
             ]
           },
           "coverage": {
+            "description": "What the result leaves out or does not prove, such as kinds a filter skipped.",
             "items": {
               "type": "string"
             },
@@ -4307,6 +4324,7 @@
             ]
           },
           "hits": {
+            "description": "Best first. A page shorter than limit is the end of the list.",
             "items": {
               "$ref": "#/components/schemas/SearchHit"
             },
@@ -4650,10 +4668,12 @@
         "additionalProperties": false,
         "properties": {
           "at": {
+            "description": "When a message was sent or an activity happened. A day without a time is its UTC midnight, with day_only set.",
             "format": "date-time",
             "type": "string"
           },
           "blake3": {
+            "description": "A file's whole BLAKE3 digest, which /v1/blobs/{blake3} serves when the archive holds the bytes.",
             "type": "string"
           },
           "day_only": {
@@ -4671,6 +4691,7 @@
             "type": "string"
           },
           "matched": {
+            "description": "The ranked lists that found the hit.",
             "items": {
               "type": "string"
             },
@@ -4680,6 +4701,7 @@
             ]
           },
           "place_count": {
+            "description": "Every place, also those past the first 20.",
             "format": "int64",
             "type": "integer"
           },
@@ -4694,10 +4716,11 @@
             ]
           },
           "ref": {
+            "description": "What to cite, as kind:value, and what resolveRef and the record operations take. A folder, or a file a scan has not hashed yet, has none; its place names the entry.",
             "type": "string"
           },
           "score": {
-            "description": "Reciprocal rank fusion: the sum of 1/(60+rank) over the ranked lists the hit is in.",
+            "description": "Reciprocal rank fusion: the sum of 1/(60+rank) over the ranked lists the hit is in. It orders the list and means nothing on its own.",
             "format": "double",
             "type": "number"
           },
@@ -4709,7 +4732,7 @@
             "type": "string"
           },
           "thread_id": {
-            "description": "A message's thread, for opening its conversation with the thread route.",
+            "description": "A message's thread. getThread opens the conversation with this ID, the source and the ref as around.",
             "type": "string"
           },
           "title": {
@@ -4955,10 +4978,12 @@
             "type": "string"
           },
           "last_ingest": {
+            "description": "When this source last gained a message.",
             "format": "date-time",
             "type": "string"
           },
           "last_sync": {
+            "description": "When a source that syncs, such as Gmail, last advanced its checkpoint. Null for sources imported by hand.",
             "format": "date-time",
             "type": [
               "string",
@@ -4974,15 +4999,18 @@
             "type": "integer"
           },
           "note": {
+            "description": "The owner's note on what this source holds. A missing message means something only once the source is known to be complete for that period.",
             "type": "string"
           },
           "source": {
             "type": "string"
           },
           "stale": {
+            "description": "Nothing has landed here for 30 days, which for a source that should grow means an import stopped.",
             "type": "boolean"
           },
           "undated": {
+            "description": "Messages whose source gave no date. earliest and latest describe the others, and are absent when there are none.",
             "format": "int64",
             "type": "integer"
           }
@@ -5185,6 +5213,7 @@
         "additionalProperties": false,
         "properties": {
           "chars": {
+            "description": "The length of the whole text, in characters.",
             "format": "int64",
             "type": "integer"
           },
@@ -5205,6 +5234,7 @@
             "type": "string"
           },
           "text": {
+            "description": "The text, or the part of it a request asked for.",
             "type": "string"
           }
         },
@@ -5221,6 +5251,7 @@
         "additionalProperties": false,
         "properties": {
           "chars": {
+            "description": "The length of the whole text, in characters.",
             "format": "int64",
             "type": "integer"
           },
@@ -5285,9 +5316,11 @@
         "additionalProperties": false,
         "properties": {
           "has_after": {
+            "description": "Newer messages exist; pass the last message's ref as after.",
             "type": "boolean"
           },
           "has_before": {
+            "description": "Older messages exist; pass the first message's ref as before.",
             "type": "boolean"
           },
           "messages": {
@@ -5306,6 +5339,7 @@
             "type": "string"
           },
           "truncated": {
+            "description": "The page is not the whole conversation: has_before or has_after is set.",
             "type": "boolean"
           }
         },
@@ -5323,16 +5357,19 @@
         "additionalProperties": false,
         "properties": {
           "last_at": {
+            "description": "When the latest of them was sent. Absent when none has a date.",
             "format": "date-time",
             "type": "string"
           },
           "last_ref": {
+            "description": "The latest of them, by ref. The last row's is the after of the next page.",
             "type": "string"
           },
           "members": {
             "type": "string"
           },
           "n": {
+            "description": "Messages in the thread that pass the filters.",
             "format": "int64",
             "type": "integer"
           },
@@ -5849,7 +5886,7 @@
     }
   },
   "info": {
-    "description": "bank is one person's archive: messages (mail, chats, AI conversations), a media\nlibrary with what was watched, listened to and read, files, published notes, and a\ncatalogue of the files on disks that come and go, below /v1/disk.\n\nGET /v1/search searches all of it at once; kind narrows the search to one kind of\nrecord. Every record is cited by one ref, kind:value: msg:\u003c16 hex\u003e for a message,\ncontent:\u003c16 to 64 hex\u003e for bytes, and the ID for a library record, such as\nitem:\u003c32 hex\u003e. GET /v1/refs/{ref} says what any of them names.\n\nA token reads, or reads and writes. An operation that changes the archive names the\nwrite role in its security requirement, and answers Forbidden to a read token.\n\nLists and searches take limit, 100 by default and at most 500, and those that page by\nposition take offset, at most 10000. Every failure is JSON with a _tag.",
+    "description": "bank is one person's archive: messages (mail, chats, AI conversations), a media\nlibrary with what was watched, listened to and read, files, published notes, and a\ncatalogue of the files on disks that come and go, below /v1/disk.\n\nGET /v1/search searches all of it at once; kind narrows the search to one kind of\nrecord. Every record is cited by one ref, kind:value: msg:\u003c16 hex\u003e for a message,\ncontent:\u003c16 to 64 hex\u003e for bytes, and the ID for a library record, such as\nitem:\u003c32 hex\u003e. GET /v1/refs/{ref} says what any of them names.\n\nA token reads, or reads and writes. An operation that changes the archive names the\nwrite role in its security requirement, and answers Forbidden to a read token.\n\nLists and searches take limit, 20 by default and at most 500, and those that page by\nposition take offset, at most 10000. Every failure is JSON with a _tag.",
     "title": "bank",
     "version": "1"
   },
@@ -5963,7 +6000,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -6077,7 +6114,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -6218,7 +6255,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -6745,6 +6782,7 @@
     },
     "/v1/contacts": {
       "get": {
+        "description": "A contact's name is what the person filter of search and listThreads takes; its aliases are the addresses and handles that filter matches.",
         "operationId": "listContacts",
         "responses": {
           "200": {
@@ -6797,7 +6835,8 @@
         "summary": "List every contact with its aliases",
         "tags": [
           "contacts"
-        ]
+        ],
+        "x-agent-tool": true
       },
       "post": {
         "description": "A name that is empty or already taken is an InvalidRequest.",
@@ -6978,7 +7017,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -7199,7 +7238,8 @@
         "summary": "Get one contact with its aliases and its message count per source",
         "tags": [
           "contacts"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/contacts/{name}/aliases": {
@@ -7484,7 +7524,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -7743,7 +7783,8 @@
         "summary": "Show one content and every place on disks it lives or lived",
         "tags": [
           "disk"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/disk/contents/{ref}/analyses": {
@@ -7915,12 +7956,13 @@
         "summary": "Read embedded image, document, audio and video tags",
         "tags": [
           "disk"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/disk/contents/{ref}/text": {
       "get": {
-        "description": "Text belongs to the content, whether a disk scan, an attachment's text job or a person wrote it, up to the first 4 MB; status says whether it was cut.",
+        "description": "Text belongs to the content, whether a disk scan, an attachment's text job or a person wrote it. Up to the first 4 MiB is stored, and status says whether it was cut. The answer holds length characters from offset; chars is the length of the whole text, so a longer one is read in steps.",
         "operationId": "getDiskContentText",
         "parameters": [
           {
@@ -7931,6 +7973,31 @@
             "schema": {
               "description": "Content ref: content: and 16 to 64 lowercase hex characters of the BLAKE3 digest.",
               "type": "string"
+            }
+          },
+          {
+            "description": "Skip this many characters.",
+            "explode": false,
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "description": "Skip this many characters.",
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "How many characters, at most.",
+            "explode": false,
+            "in": "query",
+            "name": "length",
+            "schema": {
+              "default": 20000,
+              "description": "How many characters, at most.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
             }
           }
         ],
@@ -7999,7 +8066,8 @@
         "summary": "Read the text extracted from a content",
         "tags": [
           "disk"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/disk/copies": {
@@ -8200,7 +8268,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -8771,10 +8839,12 @@
         "operationId": "getDiskEntry",
         "parameters": [
           {
+            "description": "The entry's ID, which a place on a disk names as entry_id, or the scan's ID.",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
+              "description": "The entry's ID, which a place on a disk names as entry_id, or the scan's ID.",
               "format": "int64",
               "minimum": 1,
               "type": "integer"
@@ -8836,7 +8906,8 @@
         "summary": "Show one entry: its file, folder or link, its versions and its other copies",
         "tags": [
           "disk"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/disk/entries/{id}/dedupe-move": {
@@ -8956,7 +9027,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -9057,7 +9128,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -9232,10 +9303,12 @@
         "operationId": "getDiskScan",
         "parameters": [
           {
+            "description": "The entry's ID, which a place on a disk names as entry_id, or the scan's ID.",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
+              "description": "The entry's ID, which a place on a disk names as entry_id, or the scan's ID.",
               "format": "int64",
               "minimum": 1,
               "type": "integer"
@@ -9689,10 +9762,12 @@
         "operationId": "listDiskScanSkipGroups",
         "parameters": [
           {
+            "description": "The entry's ID, which a place on a disk names as entry_id, or the scan's ID.",
             "in": "path",
             "name": "id",
             "required": true,
             "schema": {
+              "description": "The entry's ID, which a place on a disk names as entry_id, or the scan's ID.",
               "format": "int64",
               "minimum": 1,
               "type": "integer"
@@ -9797,7 +9872,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -10360,7 +10435,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -10438,7 +10513,8 @@
         "summary": "Find files on disks by name, path, text, tags or OCR, with filters by volume, folder and type",
         "tags": [
           "disk"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/disk/stats": {
@@ -10547,7 +10623,8 @@
         "summary": "List known volumes, their totals and last scans",
         "tags": [
           "disk"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/disk/volumes/resolve": {
@@ -10703,7 +10780,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -12274,7 +12351,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -12421,7 +12498,8 @@
         "summary": "Return one activity record with its evidence",
         "tags": [
           "library"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/library/collections": {
@@ -12547,7 +12625,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -12832,7 +12910,8 @@
         "summary": "Return one collection with the entries of its current snapshot",
         "tags": [
           "library"
-        ]
+        ],
+        "x-agent-tool": true
       },
       "put": {
         "description": "Only collections created here can be edited; imported ones are read-only. The body replaces all entries. expected_revision is the collection's revision as last read.",
@@ -13001,7 +13080,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -13309,7 +13388,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -13593,7 +13672,8 @@
         "summary": "Return one library file's record. Its bytes are at /v1/blobs/{blake3}",
         "tags": [
           "library"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/library/items": {
@@ -13718,7 +13798,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -14110,7 +14190,8 @@
         "summary": "Return one media item with its state, evidence and linked files",
         "tags": [
           "library"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/library/items/{id}/state": {
@@ -14409,7 +14490,8 @@
         "summary": "Return one published note with its body",
         "tags": [
           "library"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/mail-conflicts/{id}": {
@@ -14454,7 +14536,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -14592,6 +14674,7 @@
     },
     "/v1/messages/{ref}": {
       "get": {
+        "description": "An attachment's blake3 names its bytes: content: followed by the digest is the ref that resolveRef and getDiskContentText take. Read the conversation around the message with getThread, passing its thread_id, its source and its ref as around.",
         "operationId": "getMessage",
         "parameters": [
           {
@@ -14667,10 +14750,11 @@
             "description": "Internal: the server failed; message says how."
           }
         },
-        "summary": "Read one message with its attachments",
+        "summary": "Read one message with its whole body, recipients and attachments",
         "tags": [
           "messages"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/messages/{ref}/branch": {
@@ -14905,7 +14989,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -14970,7 +15054,7 @@
     },
     "/v1/refs/{ref}": {
       "get": {
-        "description": "Takes msg:\u003c16 hex\u003e for a message, a library ID such as item:\u003c32 hex\u003e or file:\u003c32 hex\u003e, or content:\u003c16 to 64 hex\u003e for bytes. The answer names the record, the route that returns it in full, and where the same bytes are: a message attachment's or library file's copies on disks, and for bytes, the messages and library files that hold them as well as the places on disks.",
+        "description": "Takes msg:\u003c16 hex\u003e for a message, a library ID such as item:\u003c32 hex\u003e or file:\u003c32 hex\u003e, or content:\u003c16 to 64 hex\u003e for bytes. The answer names the record, the route that returns it in full, and where the same bytes are: a message attachment's or library file's copies on disks, and for bytes, the messages and library files that hold them as well as the places on disks. The record itself comes from getMessage, getLibraryItem, getLibraryActivity, getLibraryCollection, getLibraryFile, getLibraryPage or, for bytes, getDiskContent, and the text read from bytes from getDiskContentText.",
         "operationId": "resolveRef",
         "parameters": [
           {
@@ -15049,7 +15133,8 @@
         "summary": "Say what a cited ref names, whichever store holds it",
         "tags": [
           "refs"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/search": {
@@ -15242,7 +15327,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -15310,7 +15395,8 @@
         "summary": "Search messages, the media library, attachments and files on disks at once, as one ranked list",
         "tags": [
           "search"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/sources/{source}/note": {
@@ -15406,6 +15492,7 @@
     },
     "/v1/stats": {
       "get": {
+        "description": "One row per source. Before concluding that the archive lacks something, read the source's note, the owner's account of what it holds, and whether it is stale.",
         "operationId": "getStats",
         "responses": {
           "200": {
@@ -15458,12 +15545,13 @@
         "summary": "Count messages per source, with their date range and freshness",
         "tags": [
           "messages"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/threads": {
       "get": {
-        "description": "One row per thread, with its message count, latest sender and a preview. Read a row's messages with the thread route, passing its source and thread_id. For the next page, pass the last row's last_ref as after.",
+        "description": "One row per thread, with its message count, latest sender and a preview. This is browsing without words; search finds messages by their words. Read a row's messages with getThread, passing its source and thread_id. For the next page, pass the last row's last_ref as after.",
         "operationId": "listThreads",
         "parameters": [
           {
@@ -15594,7 +15682,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -15654,12 +15742,13 @@
         "summary": "List conversations by their latest message",
         "tags": [
           "messages"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/threads/{id}": {
       "get": {
-        "description": "Without a position the page starts at the oldest message. Use at most one of before, after, around and latest. has_before and has_after say whether more messages exist on either side.",
+        "description": "Messages come whole, with their bodies and attachments. Without a position the page starts at the oldest message; around centers it on a message, such as a search hit. Use at most one of before, after, around and latest. has_before and has_after say whether more messages exist on either side: pass the first message's ref as before, or the last one's as after, for the next page.",
         "operationId": "getThread",
         "parameters": [
           {
@@ -15738,7 +15827,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -15812,7 +15901,8 @@
         "summary": "Read a page of one conversation, oldest first",
         "tags": [
           "messages"
-        ]
+        ],
+        "x-agent-tool": true
       }
     },
     "/v1/timeline": {
@@ -15870,7 +15960,7 @@
             "in": "query",
             "name": "limit",
             "schema": {
-              "default": 100,
+              "default": 20,
               "description": "How many results, at most.",
               "format": "int64",
               "maximum": 500,
@@ -15924,7 +16014,8 @@
         "summary": "List what happened between two days, across messages, activity and files",
         "tags": [
           "timeline"
-        ]
+        ],
+        "x-agent-tool": true
       }
     }
   },

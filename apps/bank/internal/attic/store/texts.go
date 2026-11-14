@@ -159,7 +159,7 @@ type TextInfo struct {
 	Status    string    `json:"status"`
 	Extractor string    `json:"extractor,omitempty"`
 	Detail    string    `json:"detail,omitempty"`
-	Chars     int64     `json:"chars"`
+	Chars     int64     `json:"chars" doc:"The length of the whole text, in characters."`
 	Extracted time.Time `json:"extracted"`
 }
 
@@ -177,7 +177,7 @@ func (s *Store) textInfo(ctx context.Context, contentID int64) (*TextInfo, error
 type TextDetail struct {
 	Ref string `json:"ref"`
 	TextInfo
-	Text string `json:"text"`
+	Text string `json:"text" doc:"The text, or the part of it a request asked for."`
 }
 
 // Text returns the text read from an entry's content, or from a ref's.

@@ -35,19 +35,27 @@ var (
 var (
 	ListThreads = httpapi.Op[ListThreadsInput, []store.ThreadGroup]{Operation: httpapi.Operation{ID: "listThreads", Method: http.MethodGet, Path: "/v1/threads", Tag: "messages",
 		Summary: "List conversations by their latest message",
-		Description: "One row per thread, with its message count, latest sender and a preview. Read a row's " +
-			"messages with the thread route, passing its source and thread_id. For the next page, pass the " +
-			"last row's last_ref as after.",
+		Description: "One row per thread, with its message count, latest sender and a preview. This is browsing " +
+			"without words; search finds messages by their words. Read a row's messages with getThread, passing " +
+			"its source and thread_id. For the next page, pass the last row's last_ref as after.",
+		Tool: true,
 	}}
 	GetMessage = httpapi.Op[MessageInput, store.MessageDetail]{Operation: httpapi.Operation{ID: "getMessage", Method: http.MethodGet, Path: "/v1/messages/{ref}", Tag: "messages",
-		Summary: "Read one message with its attachments",
-		Errors:  []httpapi.Kind{httpapi.NotFound, errRetired},
+		Summary: "Read one message with its whole body, recipients and attachments",
+		Description: "An attachment's blake3 names its bytes: content: followed by the digest is the ref that " +
+			"resolveRef and getDiskContentText take. Read the conversation around the message with getThread, " +
+			"passing its thread_id, its source and its ref as around.",
+		Errors: []httpapi.Kind{httpapi.NotFound, errRetired},
+		Tool:   true,
 	}}
 	GetThread = httpapi.Op[ThreadInput, store.Thread]{Operation: httpapi.Operation{ID: "getThread", Method: http.MethodGet, Path: "/v1/threads/{id}", Tag: "messages",
 		Summary: "Read a page of one conversation, oldest first",
-		Description: "Without a position the page starts at the oldest message. Use at most one of before, after, " +
-			"around and latest. has_before and has_after say whether more messages exist on either side.",
+		Description: "Messages come whole, with their bodies and attachments. Without a position the page starts " +
+			"at the oldest message; around centers it on a message, such as a search hit. Use at most one of " +
+			"before, after, around and latest. has_before and has_after say whether more messages exist on " +
+			"either side: pass the first message's ref as before, or the last one's as after, for the next page.",
 		Errors: []httpapi.Kind{httpapi.NotFound, errMailThreadConflict},
+		Tool:   true,
 	}}
 	GetMailConflict = httpapi.Op[MailConflictInput, store.Thread]{Operation: httpapi.Operation{ID: "getMailConflict", Method: http.MethodGet, Path: "/v1/mail-conflicts/{id}", Tag: "messages",
 		Summary:     "Read the messages of a mail thread conflict that belong to no current thread",

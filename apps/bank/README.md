@@ -109,7 +109,7 @@ Run `bun run check:dist` in `internal/webui/app` to rebuild and check the embedd
 assets against Git. Commit the rebuilt `dist/` with its source changes. CI and
 `mise run bank:ts` run the same check.
 
-Agents on a client machine get the CLI handed to them by a Claude Code skill: [skill/README.md](skill/README.md).
+Agents on a client machine get the CLI handed to them by a Claude Code skill: [skill/README.md](skill/README.md), or the read operations as tools through `bank mcp`: see [Agents over MCP](#agents-over-mcp).
 
 Deployment (VPS, LUKS, containerized server, OCR worker, restic, cron): [DEPLOY.md](DEPLOY.md).
 
@@ -176,9 +176,32 @@ bank disk redundancy --volume Data
 
 ## Retrieve conversation history
 
-`bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <ref>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with the refs of a page's first and last messages. These positions are mutually exclusive. Each page contains 100 messages unless `--limit` asks for up to 500, and includes attachment metadata.
+`bank thread` returns a chronological page with `has_before` and `has_after` in JSON. Use `--around <ref>` to include a search hit, `--latest` to start at the newest messages, or `--before` and `--after` with the refs of a page's first and last messages. These positions are mutually exclusive. Each page contains 20 messages unless `--limit` asks for up to 500, and includes attachment metadata.
 
 The browser opens search results around the matching message and provides **Load earlier** and **Load later** controls. Browse opens the newest page and loads older conversations after the last one shown. Contact history also has **Load earlier**; CLI callers can use `bank contact messages <name> --before <ref>` to continue beyond the offset limit.
+
+## Agents over MCP
+
+`bank mcp` serves the Model Context Protocol on stdin and stdout. Its tools are the API operations marked as tools in `openapi.json` (`x-agent-tool`): search, resolving a ref, a message, a thread page, conversations without words, the timeline, stats, contacts, the library records, and the text, tags and places on disks of a file. Each tool's name is the operation's ID, and its description and argument schema are the operation's, with their defaults and bounds. Every tool only reads. A call goes through the same client as the CLI, so `bank mcp` works against `BANK_URL` with a read-only token, or in process from `DATABASE_URL` without one. A failure comes back as a tool error holding the API's tagged JSON, with `recovery` where there is one.
+
+Register it with an MCP client, such as Claude Code's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "bank": {
+      "command": "bank",
+      "args": ["mcp"],
+      "env": {
+        "BANK_URL": "http://vps.tailnet.ts.net:8480",
+        "BANK_TOKEN": "bank_..."
+      }
+    }
+  }
+}
+```
+
+Mint the token with `bank token new <agent> --read-only` on the server.
 
 ## Refs
 
