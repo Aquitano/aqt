@@ -2,8 +2,6 @@ package mediaimport
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,7 +17,6 @@ type Input struct {
 	Bytes []byte `json:"bytes"`
 }
 
-func digest(data []byte) string { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 func identity(source, account, external string) library.Identity {
 	return library.Identity{Source: source, Account: account, ExternalID: external}
 }

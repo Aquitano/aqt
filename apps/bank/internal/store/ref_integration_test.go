@@ -20,8 +20,8 @@ import (
 const (
 	goldenSource  = "claude"
 	goldenKey     = "e33e84ec-61be-48d5-ad97-bbfb3da5bcf4"
-	goldenRef     = "msg:9454d9440ade1088"
-	goldenMailRef = "msg:4a8e1445b83f809c"
+	goldenRef     = "msg:062a9ef78eddb664"
+	goldenMailRef = "msg:885e9d8733168c86"
 )
 
 func TestRefIsStableAndAddressable(t *testing.T) {

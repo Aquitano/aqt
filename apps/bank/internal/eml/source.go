@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
@@ -15,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/export"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
@@ -229,12 +228,11 @@ func emit(data []byte, opts EMLOptions, locator string, takeout bool, out ingest
 }
 
 // defaultExternalID is what a message is keyed by when the caller names no id
-// of its own: the Message-ID, or the raw bytes' digest for mail that carries
-// none.
+// of its own: the Message-ID, or for mail that carries none the BLAKE3 digest
+// of its raw bytes, which for a single message is its raw input's digest.
 func defaultExternalID(m *Message, raw []byte) string {
 	if m.MessageID != "" {
 		return m.MessageID
 	}
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
+	return content.Sum(raw).String()
 }

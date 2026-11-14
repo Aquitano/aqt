@@ -1,13 +1,12 @@
 // Package tokens keeps the bearer tokens of an app's HTTP API.
 //
-// Tokens live in one line-oriented file, "<name>:<sha256 of the token>:<scope>",
+// Tokens live in one line-oriented file, "<name>:<BLAKE3 of the token>:<scope>",
 // so a plaintext token exists only on its client. The file is read per
 // request: it is tiny, and revocation then takes effect at once.
 package tokens
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
@@ -18,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/gofrs/flock"
+	"lukechampine.com/blake3"
 
 	"github.com/aquitano/aqt/apps/bank/internal/atomicfile"
 )
@@ -146,6 +146,6 @@ func (s Store) Verify(presented string) (Scope, bool, error) {
 }
 
 func hashToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
+	sum := blake3.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }

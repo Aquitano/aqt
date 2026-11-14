@@ -2,17 +2,17 @@ package whatsapp
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/aquitano/aqt/apps/bank/internal/export"
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
@@ -131,12 +131,12 @@ func messageDigest(thread string, pm ParsedMessage, seen map[string]int) string 
 	if IsMediaOmitted(body) {
 		body = ""
 	}
-	base := thread + "\x00" + pm.SentAt.Format("2006-01-02T15:04:05") + "\x00" + pm.Sender + "\x00" + body
-	n := seen[base]
-	seen[base] = n + 1
+	fields := []string{thread, pm.SentAt.Format("2006-01-02T15:04:05"), pm.Sender, body}
+	digest := fieldhash.Hex(fields...)
+	n := seen[digest]
+	seen[digest] = n + 1
 	if n > 0 {
-		base += fmt.Sprintf("\x00%d", n)
+		return fieldhash.Hex(append(fields, strconv.Itoa(n))...)
 	}
-	sum := sha256.Sum256([]byte(base))
-	return hex.EncodeToString(sum[:])
+	return digest
 }

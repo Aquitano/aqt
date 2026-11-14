@@ -2,7 +2,6 @@ package imapsync
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -16,6 +15,7 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"golang.org/x/sync/errgroup"
+	"lukechampine.com/blake3"
 
 	"github.com/aquitano/aqt/apps/bank/internal/eml"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
@@ -137,7 +137,7 @@ func (session *session) download(messages []messageInfo, dir string, limit int64
 				}
 				path = file.Name()
 				var copyErr error
-				hash := sha256.New()
+				hash := blake3.New(32, nil)
 				literal := &observedLiteral{LiteralReader: item.Literal}
 				size, copyErr = io.Copy(io.MultiWriter(file, hash), io.LimitReader(literal, limit+1))
 				if literal.readErr != nil && (!errors.Is(literal.readErr, io.EOF) || size != literal.Size()) {

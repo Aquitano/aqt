@@ -239,7 +239,7 @@ ufw allow 41641/udp        # tailscale itself
 ufw enable
 ```
 
-Tokens live in `$BANK_DATA_DIR/tokens` as `name:sha256`, are checked on every request, and revocation is immediate:
+Tokens live in `$BANK_DATA_DIR/tokens` as `name:digest:scope`, the digest being the token's BLAKE3, are checked on every request, and revocation is immediate:
 
 ```sh
 docker compose run --rm bank token new laptop      # prints the token once — copy it now
@@ -371,3 +371,24 @@ not in the raw inputs, so a re-import does not bring them back.
 generated row IDs. If a backup cron from §7 is
 live, take one last snapshot first — the wipe is exactly the kind of action the
 backups exist for.
+
+## 9. Switching clients to the rebuilt server
+
+The rebuilt server starts with an empty database. Two things outside it still
+describe the old server and have to be reset.
+
+- **Tokens.** Tokens are now hashed with BLAKE3, so no token minted earlier
+  verifies. Revoke each name `bank token list` shows, since a name stays taken,
+  then mint a token per client with `docker compose run --rm -T bank token new
+  <name>` and replace `BANK_TOKEN` on every client: laptop, disk PC, IMAP
+  collector and MCP configurations.
+- **IMAP collector state.** The collector skips every UID up to its checkpoints
+  in its own `state_dir`, and binds each account to a digest of its mailbox and
+  Bank URL. Kept as it is, the state either skips all mail collected before or
+  refuses every account. On the collector's machine: check `bank imap --config
+  <config> --status` for pending messages, stop the collector and its scheduled
+  task, move `state_dir` aside (`state` beside the configuration in the
+  example), set the new `BANK_URL` and `BANK_TOKEN`, run `--check` and `--once`,
+  then start it again and delete the old state directory, which can hold
+  decrypted mail. [IMAP.md](IMAP.md#switching-to-a-rebuilt-bank-server) has
+  each step.

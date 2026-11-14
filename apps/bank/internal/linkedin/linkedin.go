@@ -5,9 +5,7 @@ package linkedin
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/csv"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +15,7 @@ import (
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/export"
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
@@ -78,8 +77,7 @@ func externalID(m message) string {
 	if !m.SentAt.IsZero() {
 		date = m.SentAt.UTC().Format(time.RFC3339)
 	}
-	sum := sha256.Sum256([]byte(m.ConversationID + "\x00" + date + "\x00" + m.From + "\x00" + m.Body))
-	return hex.EncodeToString(sum[:])
+	return fieldhash.Hex(m.ConversationID, date, m.From, m.Body)
 }
 
 // readMessages parses messages.csv out of the export zip or the CSV itself.

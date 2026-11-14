@@ -25,9 +25,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +34,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
@@ -148,14 +147,14 @@ func message(value json.RawMessage, defaultSource string, seen map[string]int) (
 // derivedID hashes only what the input says, never the import time or a
 // parsed instant, which depend on when and where the import runs.
 func derivedID(e entry, timeKey string, seen map[string]int) string {
-	base := e.Source + "\x00" + e.Thread + "\x00" + timeKey + "\x00" + e.Sender + "\x00" + e.Subject + "\x00" + e.Body
-	n := seen[base]
-	seen[base] = n + 1
+	fields := []string{e.Source, e.Thread, timeKey, e.Sender, e.Subject, e.Body}
+	digest := fieldhash.Hex(fields...)
+	n := seen[digest]
+	seen[digest] = n + 1
 	if n > 0 {
-		base += fmt.Sprintf("\x00%d", n)
+		return fieldhash.Hex(append(fields, strconv.Itoa(n))...)
 	}
-	sum := sha256.Sum256([]byte(base))
-	return hex.EncodeToString(sum[:])
+	return digest
 }
 
 // eachEntry passes the top-level values of a JSON array, or of a stream of

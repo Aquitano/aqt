@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"gopkg.in/yaml.v3"
 )
@@ -35,7 +37,7 @@ func markdownAccount(root, account string) string {
 	if runtime.GOOS == "windows" {
 		abs = strings.ToLower(abs)
 	}
-	return "directory:" + digest([]byte(filepath.ToSlash(abs)))[:24]
+	return "directory:" + fieldhash.Hex(filepath.ToSlash(abs))[:24]
 }
 
 func sensitivityAllowed(value string, opts PublicationOptions) (bool, error) {
@@ -210,7 +212,7 @@ func markdownDocument(input Input, opts PublicationOptions, sensitivityPath stri
 		title = strings.TrimSuffix(filepath.Base(input.Name), filepath.Ext(input.Name))
 	}
 	id := identity(opts.Source, opts.Account, input.Name)
-	sum := digest(input.Bytes)
+	sum := content.Sum(input.Bytes).String()
 	return &library.Page{Identity: id, ID: library.StableID("page", id), Path: input.Name, Title: title, Body: body, Answers: nonNil(meta.Answers), Tags: nonNil(meta.Tags), Aliases: nonNil(meta.Aliases), ContentHash: sum, Revision: sum, Sensitivity: sensitivity, Provenance: library.Provenance{Locator: input.Name}}, nil
 }
 

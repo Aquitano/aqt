@@ -1,8 +1,6 @@
 package aichat
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -10,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
@@ -155,8 +154,7 @@ func parseClaudeMemory(raw []byte) ([]message, error) {
 		return nil, err
 	}
 	version := func(body string) string {
-		sum := sha256.Sum256([]byte(body))
-		return "memory-" + hex.EncodeToString(sum[:8])
+		return "memory-" + fieldhash.Hex(body)[:16]
 	}
 	var out []message
 	if body := strings.TrimSpace(m.ConversationsMemory); body != "" {

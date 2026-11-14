@@ -2,9 +2,6 @@ package imapsync
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -14,6 +11,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 )
 
 type Event struct {
@@ -57,9 +56,8 @@ func Run(ctx context.Context, config Config, destination string, importer Import
 	}
 	defer st.close()
 	for _, connection := range connections {
-		identity, _ := json.Marshal([]string{connection.account.Address, connection.username, connection.account.Source, strings.TrimRight(destination, "/")})
-		digest := sha256.Sum256(identity)
-		if err := st.bind(ctx, connection.account.ID, hex.EncodeToString(digest[:])); err != nil {
+		identity := fieldhash.Hex(connection.account.Address, connection.username, connection.account.Source, strings.TrimRight(destination, "/"))
+		if err := st.bind(ctx, connection.account.ID, identity); err != nil {
 			return err
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 )
@@ -79,7 +80,7 @@ func (n Netflix) Parse(_ context.Context, raw ingest.Raw, opts NetflixOptions, o
 			out.Issue(ingest.Issuef(ingest.Skipped, "%s: CSV row %d has an empty title or invalid date", name, row))
 			continue
 		}
-		itemIdentity := identity(opts.Source, opts.Account, "title:"+digest([]byte(title)))
+		itemIdentity := identity(opts.Source, opts.Account, "title:"+fieldhash.Hex(title))
 		itemID := library.StableID("item", itemIdentity)
 		if !items[itemID] {
 			item := library.Item{Identity: itemIdentity, ID: itemID, Kind: "other", Title: title, Creators: []string{}, FileIDs: []string{}, Provenance: provenance(name, fmt.Sprintf("CSV row %d", row))}
@@ -92,7 +93,7 @@ func (n Netflix) Parse(_ context.Context, raw ingest.Raw, opts NetflixOptions, o
 			batch.Items = append(batch.Items, item)
 			items[itemID] = true
 		}
-		viewing := digest([]byte(title + "\x00" + date.Precision + "\x00" + date.Value))
+		viewing := fieldhash.Hex(title, date.Precision, date.Value)
 		occurrences[viewing]++
 		eventIdentity := identity(opts.Source, opts.Account, fmt.Sprintf("viewing:%s:occurrence:%d", viewing, occurrences[viewing]))
 		batch.Activity = append(batch.Activity, library.Activity{Identity: eventIdentity, ID: library.StableID("activity", eventIdentity), ItemID: itemID, Kind: "watch", Title: title, Occurred: date, Provenance: provenance(name, fmt.Sprintf("CSV row %d", row))})

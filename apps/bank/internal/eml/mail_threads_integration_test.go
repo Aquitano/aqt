@@ -117,6 +117,36 @@ func TestMailRebuildLargeEMLReadsOnlyHeaders(t *testing.T) {
 	}
 }
 
+// Mail without a Message-ID is keyed by the digest of its raw input, which
+// rebuild takes from the stored row instead of reading the bytes for it: a
+// body replaced after the import changes nothing rebuild resolves.
+func TestMailWithoutMessageIDKeepsItsKeyInRebuild(t *testing.T) {
+	ctx := context.Background()
+	st := storetest.New(t)
+	target := mailTarget(t, st)
+	const headers = "Subject: no id\r\nReferences: <parent@example.com>\r\n\r\n"
+	raw := mustImportRaw(t, target, "eml", "anonymous.eml", headers+"imported body", EMLOptions{Source: "anonymous"})
+	id, err := st.FindMessageID(ctx, "anonymous", raw.BLAKE3.String())
+	if err != nil {
+		t.Fatalf("import did not key the message by its input's digest: %v", err)
+	}
+	stored := target.Blobs.Path(raw.BLAKE3)
+	if err := os.Remove(stored); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stored, []byte(headers+"another body"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	report, err := RebuildMail(ctx, st, target.Blobs, "anonymous", true)
+	if err != nil || report.Messages != 1 || report.Missing != 0 {
+		t.Fatalf("rebuild did not find the message by its input's digest: %+v %v", report, err)
+	}
+	message, err := st.GetMessageDetail(ctx, id)
+	if err != nil || message.Mail == nil || !message.Mail.HasReplyLinks {
+		t.Fatalf("rebuilt metadata: %+v %v", message, err)
+	}
+}
+
 // storeRaw records an input the way the importer stores it, without parsing
 // it, for a rebuild to read.
 func storeRaw(t *testing.T, target importer.Target, kind, name string, r io.Reader, options string) int64 {

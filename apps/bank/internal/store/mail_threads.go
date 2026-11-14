@@ -2,8 +2,6 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +9,8 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 )
 
 type MailProjection struct {
@@ -67,8 +67,7 @@ type mailComponent struct {
 }
 
 func mailDerivedID(key string) string {
-	digest := sha256.Sum256([]byte(key))
-	return "mail:" + hex.EncodeToString(digest[:])
+	return "mail:" + fieldhash.Hex(key)
 }
 
 func (s *Store) ProjectMail(ctx context.Context, id int64, projection MailProjection, apply bool, workKey string) (MailProjectionResult, error) {

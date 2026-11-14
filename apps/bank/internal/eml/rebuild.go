@@ -3,8 +3,6 @@ package eml
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,7 +13,9 @@ import (
 	"strings"
 
 	"github.com/aquitano/aqt/apps/bank/internal/blob"
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/export"
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/store"
 )
@@ -81,7 +81,6 @@ func RebuildMail(ctx context.Context, st *store.Store, blobs *blob.Store, source
 			opts.MailboxKind = "export"
 		}
 		label := "raw input " + strconv.FormatInt(raw.ID, 10)
-		prefix := "mail-projection-v5:" + raw.BLAKE3.String() + ":" + string(raw.Options) + ":" + string(configuration)
 		report.Inputs++
 		visit := func(input io.Reader, contentDigest, locator string) error {
 			if err := ctx.Err(); err != nil {
@@ -108,8 +107,7 @@ func RebuildMail(ctx context.Context, st *store.Store, blobs *blob.Store, source
 				report.Missing++
 				return nil
 			}
-			digest := sha256.Sum256([]byte(prefix + contentDigest))
-			workKey := hex.EncodeToString(digest[:])
+			workKey := fieldhash.Hex("mail-projection-v5", raw.BLAKE3.String(), string(raw.Options), string(configuration), contentDigest)
 			done, err := st.MailRebuildDone(ctx, source, workKey, id)
 			if err != nil {
 				return err
@@ -163,12 +161,10 @@ func RebuildMail(ctx context.Context, st *store.Store, blobs *blob.Store, source
 }
 
 // rebuildInput visits every message of one stored input with the digest its
-// default external id is derived from.
+// default external id is derived from. A single message's digest is its raw
+// input's, so only messages inside an mbox or a zip are hashed here.
 func rebuildInput(raw store.RawInput, blobs *blob.Store, visit func(io.Reader, string, string) error) error {
-	sum := func(data []byte) string {
-		digest := sha256.Sum256(data)
-		return hex.EncodeToString(digest[:])
-	}
+	sum := func(data []byte) string { return content.Sum(data).String() }
 	input := ingest.Raw{Name: raw.Name, Path: blobs.Path(raw.BLAKE3)}
 	if raw.Kind == "mbox" {
 		f, err := input.Open()
@@ -188,14 +184,7 @@ func rebuildInput(raw store.RawInput, blobs *blob.Store, visit func(io.Reader, s
 			return err
 		}
 		defer f.Close()
-		digest := sha256.New()
-		if _, err := io.Copy(digest, f); err != nil {
-			return err
-		}
-		if _, err := f.Seek(0, io.SeekStart); err != nil {
-			return err
-		}
-		return visit(f, hex.EncodeToString(digest.Sum(nil)), "")
+		return visit(f, raw.BLAKE3.String(), "")
 	}
 	exp, err := export.Open(input)
 	if err != nil {

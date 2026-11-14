@@ -5,12 +5,11 @@
 package ref
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
 	"github.com/aquitano/aqt/apps/bank/internal/content"
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 )
 
 type Kind string
@@ -107,8 +106,7 @@ func ForMessage(source, messageID, externalID string) Message {
 	if messageID != "" {
 		field, value = "message_id", messageID
 	}
-	sum := sha256.Sum256([]byte(source + "\x00" + field + "\x00" + value))
-	return Message{value: hex.EncodeToString(sum[:])[:valueChars[KindMessage].max]}
+	return Message{value: fieldhash.Hex(source, field, value)[:valueChars[KindMessage].max]}
 }
 
 func (m Message) IsZero() bool { return m.value == "" }

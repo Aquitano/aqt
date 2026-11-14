@@ -18,18 +18,18 @@ package youtube
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/export"
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 )
 
@@ -122,14 +122,14 @@ func watchDigest(w watch, seen map[string]int) string {
 	if key == "" {
 		key = w.Title
 	}
-	base := key + "\x00" + w.WatchedAt.Format("2006-01-02T15:04:05")
-	n := seen[base]
-	seen[base] = n + 1
+	fields := []string{key, w.WatchedAt.Format("2006-01-02T15:04:05")}
+	digest := fieldhash.Hex(fields...)
+	n := seen[digest]
+	seen[digest] = n + 1
 	if n > 0 {
-		base += fmt.Sprintf("\x00%d", n)
+		return fieldhash.Hex(append(fields, strconv.Itoa(n))...)
 	}
-	sum := sha256.Sum256([]byte(base))
-	return hex.EncodeToString(sum[:])
+	return digest
 }
 
 // historyNames are the history files this importer reads, matched by base name

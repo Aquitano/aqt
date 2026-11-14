@@ -17,7 +17,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 	"github.com/aquitano/aqt/apps/bank/internal/export"
+	"github.com/aquitano/aqt/apps/bank/internal/fieldhash"
 	"github.com/aquitano/aqt/apps/bank/internal/ingest"
 	"github.com/aquitano/aqt/apps/bank/internal/library"
 	"github.com/aquitano/aqt/apps/bank/internal/youtube"
@@ -182,7 +184,7 @@ func (y YouTube) Parse(_ context.Context, raw ingest.Raw, opts YouTubeOptions, o
 				native := event.VideoID
 				external := "video:" + native
 				if native == "" {
-					external = "unavailable-title:" + digest([]byte(event.Title))
+					external = "unavailable-title:" + fieldhash.Hex(event.Title)
 				}
 				id := identity(opts.Source, opts.Account, external)
 				itemID := library.StableID("item", id)
@@ -315,7 +317,7 @@ func collectionFor(input Input, sum string, opts YouTubeOptions, native, title, 
 		external = "playlist-file:" + title
 	}
 	id := identity(opts.Source, opts.Account, external)
-	return library.Collection{Identity: id, ID: library.StableID("collection", id), Kind: kind, Title: title, Description: description, Snapshot: &library.Snapshot{ExternalID: digest([]byte(external + "\x00" + sum)), Captured: library.Date{Precision: "unknown"}, Completeness: "unknown", Provenance: provenance(input.Name, "collection export"), Entries: []library.Entry{}}}
+	return library.Collection{Identity: id, ID: library.StableID("collection", id), Kind: kind, Title: title, Description: description, Snapshot: &library.Snapshot{ExternalID: fieldhash.Hex(external, sum), Captured: library.Date{Precision: "unknown"}, Completeness: "unknown", Provenance: provenance(input.Name, "collection export"), Entries: []library.Entry{}}}
 }
 
 func youtubeCollectionItem(input Input, sum string, opts YouTubeOptions, row int, native, title, urlValue, creator, album string, music bool) library.Item {
@@ -359,7 +361,7 @@ func parseYouTubeCSV(input Input, opts YouTubeOptions, out ingest.Emitter) ([]li
 	collectionIndex := map[string]int{}
 	entrySections := map[int]bool{}
 	music := youtubeMusicFile(input.Name)
-	sum := digest(input.Bytes)
+	sum := content.Sum(input.Bytes).String()
 	title := ""
 	native := ""
 	description := ""
@@ -542,7 +544,7 @@ func parseYouTubeCollectionJSON(input Input, opts YouTubeOptions) ([]library.Ite
 	for _, entry := range entries {
 		music = music || entry.TrackID != ""
 	}
-	sum := digest(input.Bytes)
+	sum := content.Sum(input.Bytes).String()
 	collection := collectionFor(input, sum, opts, payload.PlaylistID, payload.Title, payload.Description, music)
 	if payload.Completeness != "" {
 		collection.Snapshot.Completeness = payload.Completeness
