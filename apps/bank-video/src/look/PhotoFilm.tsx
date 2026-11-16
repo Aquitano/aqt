@@ -127,7 +127,7 @@ export function PhotoFilm({ version }: { version: Version }) {
     version.cuts.find((c) => now >= c.from && now < c.from + c.duration) ?? version.cuts[0];
   const spans = version.spans.filter((s) => now >= s.from && now < s.to);
   const light =
-    ramp(now, 0, 18) * (1 - ramp(now, arc.durationInFrames - 48, arc.durationInFrames - 2, inOut));
+    ramp(now, 0, 18) * (1 - ramp(now, arc.durationInFrames - 48, arc.durationInFrames - 1, inOut));
   const note = version.footnotes && cut ? footnote(cut.photo, now, arc) : undefined;
   const shot = version.lettered && cut ? letteringOf(cut.photo) : undefined;
   const phrase = spans.find((s) => s.words.kind === "serif");
