@@ -1,0 +1,9 @@
+{
+  "extends": "@aqt/config/tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["bun"]
+  },
+  "include": ["src", "scripts", "remotion.config.ts"]
+}

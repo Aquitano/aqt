@@ -1,0 +1,17 @@
+["bank-video:check"]
+description = "Check the Siglum film and shared TypeScript packages"
+depends = ["shared:ts", "bank-video:ts"]
+
+["bank-video:ts"]
+dir = "{{config_root}}/apps/bank-video"
+run = "bun run check"
+
+["bank-video:dev"]
+description = "Write the scores and open the films in Remotion Studio"
+dir = "{{config_root}}/apps/bank-video"
+run = "bun run dev"
+
+["bank-video:render"]
+description = "Write the scores and render the three films to apps/bank-video/out/"
+dir = "{{config_root}}/apps/bank-video"
+run = "bun run render"
