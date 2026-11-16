@@ -10,6 +10,7 @@ on:
         "apps/img/**",
         "apps/bank/internal/webui/app/**",
         "apps/bank/scripts/**",
+        "apps/bank-video/**",
         "apps/tracker/extension/**",
         "tools/**",
         "vite.config.ts",
@@ -28,6 +29,7 @@ on:
         "apps/img/**",
         "apps/bank/internal/webui/app/**",
         "apps/bank/scripts/**",
+        "apps/bank-video/**",
         "apps/tracker/extension/**",
         "tools/**",
         "vite.config.ts",
@@ -59,6 +61,7 @@ jobs:
       - run: mise run shared:ts
       - run: mise run stack:ts
       - run: mise run bank:ts
+      - run: mise run bank-video:ts
       - run: mise run gallery:ts
       - run: mise run img:ts
       - run: mise run tracker:ts

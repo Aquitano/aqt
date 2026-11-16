@@ -1,0 +1,30 @@
+{
+  "name": "@aqt/siglum-video",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "score": "bun scripts/score.ts",
+    "dev": "bun run score && remotion studio src/index.ts",
+    "render": "bun run score && remotion render src/index.ts Orbs out/orbs.mp4 && remotion render src/index.ts Line out/line.mp4 && remotion render src/index.ts Search out/search.mp4 && remotion render src/index.ts Sources out/sources.mp4 && remotion render src/index.ts Cited out/cited.mp4 && remotion render src/index.ts Seam out/seam.mp4 && remotion render src/index.ts Frieze out/frieze.mp4",
+    "check": "vp check . && tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/martian-mono": "5.3.0",
+    "@fontsource-variable/source-serif-4": "5.3.1",
+    "@remotion/cli": "4.0.539",
+    "@remotion/media": "4.0.539",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@aqt/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}
