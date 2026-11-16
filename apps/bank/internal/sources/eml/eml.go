@@ -90,6 +90,12 @@ func parseHeader(h mail.Header) *Message {
 		out.NormalizedMessageID = ""
 		out.Warnings = append(out.Warnings, "Message-ID exceeds email grouping limit")
 	}
+	// The Message-ID is a unique btree key, and Postgres refuses a key over
+	// about 2.7 KB, which would fail the whole batch the mail arrives in.
+	if len(out.MessageID) > 1024 {
+		out.MessageID = ""
+		out.Warnings = append(out.Warnings, "Message-ID exceeds the archive's key limit; the mail is keyed by its content")
+	}
 	for name, destination := range map[string]*[]string{"In-Reply-To": &out.InReplyTo, "References": &out.References} {
 		if len(h.Get(name)) > 65536 {
 			out.Warnings = append(out.Warnings, name+" exceeds email grouping limit")
