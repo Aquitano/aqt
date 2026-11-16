@@ -62,8 +62,12 @@ func (s *sink) Message(m ingest.Message) error {
 			continue
 		}
 		attachment, err := s.storePart(part)
-		if err != nil {
+		if fail.IsOp(err) {
 			return err
+		}
+		if err != nil {
+			s.Issue(ingest.Issuef(ingest.Rejected, "%v (message %s)", err, m.ExternalID))
+			continue
 		}
 		attachment.Position = position
 		record.Attachments = append(record.Attachments, attachment)
@@ -83,7 +87,8 @@ func (s *sink) Message(m ingest.Message) error {
 
 // storePart streams one attachment into the blob store. Many exported files
 // carry no usable extension, so the first bytes name the type when nothing
-// else does.
+// else does. A failure of the archive is a fail.Op; any other error is the
+// part's own, such as a zip entry whose checksum only fails at its end.
 func (s *sink) storePart(part ingest.Part) (store.Attachment, error) {
 	rc, err := part.Open()
 	if err != nil {
