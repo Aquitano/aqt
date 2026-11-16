@@ -169,6 +169,11 @@ func Run(ctx context.Context, t Target, id int64) (store.RawInput, error) {
 	if err != nil && !fail.IsOp(err) && !errors.Is(err, fail.ErrInvalid) {
 		err = fail.Invalidf("%s: %v", raw.Name, err)
 	}
+	// An import cut short by a dropped client or a shutdown stays running,
+	// which marks it interrupted: neither the input nor its parser failed.
+	if err != nil && ctx.Err() != nil {
+		return raw, err
+	}
 	if finishErr := t.Store.FinishRawInput(ctx, id, out.report, err); finishErr != nil {
 		return raw, errors.Join(err, fail.Opf("record outcome of raw input %d: %w", id, finishErr))
 	}

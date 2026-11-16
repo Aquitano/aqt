@@ -136,6 +136,44 @@ func TestUnreadableAttachmentIsRejectedAndImportContinues(t *testing.T) {
 	}
 }
 
+// interrupted is a source whose caller goes away after its first message.
+type interrupted struct{ cancel context.CancelFunc }
+
+func (interrupted) Kind() string { return "interrupted" }
+
+func (s interrupted) Parse(_ context.Context, _ ingest.Raw, _ struct{}, out ingest.Emitter) error {
+	if err := out.Message(ingest.Message{Source: "interrupted", ExternalID: "a", ThreadID: "thread", Body: "first"}); err != nil {
+		return err
+	}
+	s.cancel()
+	return out.Message(ingest.Message{Source: "interrupted", ExternalID: "b", ThreadID: "thread", Body: "second"})
+}
+
+// An import cut short by its caller stays running, which marks it
+// interrupted, instead of being recorded as the input's failure.
+func TestCancelledImportStaysRunning(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	target := importtest.Target(t, importer.Register(interrupted{cancel: cancel}, "Test interruption."))
+	path := filepath.Join(t.TempDir(), "input.txt")
+	if err := os.WriteFile(path, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	name, r, err := importer.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	got, err := importer.Import(ctx, target, "interrupted", name, r, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("import: %v", err)
+	}
+	stored, err := target.Store.RawInput(context.Background(), got.ID)
+	if err != nil || stored.Status != "running" || stored.Error != "" {
+		t.Fatalf("raw input after cancel: %+v %v", stored, err)
+	}
+}
+
 func TestImportingTwiceWritesOneSetOfRows(t *testing.T) {
 	target, dsn, path, _ := setup(t, threeMessages)
 	first := importtest.MustImport(t, target, "lines", path, nil)
