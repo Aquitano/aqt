@@ -18,7 +18,7 @@ Archive and cost dashboard for AI coding-agent sessions. A small agent on each m
 
 ## Server
 
-The server needs Postgres 17 with the `pg_search` extension for BM25 search. The `paradedb/paradedb` image ships it, and migrations fail without it. Search matches message text and the string values of each message's tool call inputs, such as shell commands and file paths. Tool output has an index of its own, and a match in it is listed on the message that made the call, with the role `tool`. Output whose execution names no message stays in the message text.
+The server needs Postgres 17 with the `pg_search` extension for BM25 search. The `paradedb/paradedb` image ships it, and migrations fail without it. Search matches message text and the string values of each message's tool call inputs, such as shell commands and file paths. Tool output has an index of its own, and a match in it is listed on the message that made the call, with the role `tool`. Output whose execution names no message stays in the message text. Both indexes split identifiers into their words, so `normalize` finds `normalizeConversation` and `records` finds `source_records`, while the whole identifier still matches only where its words are adjacent.
 
 Follow the [VPS deployment runbook](deploy/README.md) to pull a GitHub-built image, configure HTTPS and authentik, and back up or restore the database. A source-build option is also available.
 
