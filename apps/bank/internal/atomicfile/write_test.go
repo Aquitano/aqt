@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -15,15 +16,22 @@ func (brokenReader) Read([]byte) (int, error) { return 0, errors.New("interrupte
 
 func TestWritePreservesCompleteFileAndRestrictsPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "token")
-	if err := Write(path, strings.NewReader("old")); err != nil {
-		t.Fatal(err)
+	write := func(value string) {
+		t.Helper()
+		if err := Write(path, strings.NewReader(value)); err != nil {
+			t.Fatal(err)
+		}
+		if runtime.GOOS != "windows" {
+			if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0600 {
+				t.Fatalf("file is not owner-only: %v, %v", info, err)
+			}
+		}
 	}
-	info, err := os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatalf("new file permissions: %v, %v", info, err)
-	}
-	if err := os.Chmod(path, 0640); err != nil {
-		t.Fatal(err)
+	write("old")
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(path, 0640); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := Write(path, io.MultiReader(strings.NewReader("partial"), brokenReader{})); err == nil {
 		t.Fatal("failed reader succeeded")
@@ -32,13 +40,7 @@ func TestWritePreservesCompleteFileAndRestrictsPermissions(t *testing.T) {
 	if err != nil || string(raw) != "old" {
 		t.Fatalf("failed write replaced file: %q, %v", raw, err)
 	}
-	if err := Write(path, strings.NewReader("replacement")); err != nil {
-		t.Fatal(err)
-	}
-	info, err = os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatalf("replacement permissions are not owner-only: %v, %v", info, err)
-	}
+	write("replacement")
 	entries, err := os.ReadDir(filepath.Dir(path))
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("temporary files left behind: %v, %v", entries, err)

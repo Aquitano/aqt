@@ -79,7 +79,7 @@ setDefaultTimeout(30_000);
 const fixture = new URL(
   "../../../packages/providers/test/fixtures/claude/config/projects/example-slug/11111111-1111-4111-8111-111111111111.jsonl",
   import.meta.url,
-).pathname;
+);
 const streamId = StreamId.make("fixture/jsonl/projects/example-slug/session.jsonl");
 const machineA = MachineId.make("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
 const machineB = MachineId.make("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");

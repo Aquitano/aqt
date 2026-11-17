@@ -117,7 +117,10 @@ test("sessions list pages the archive with a read token and leaves collector sta
         authorization: "Bearer fixture-read-token",
       },
     ]);
-    expect((await readdir(directory)).toSorted()).toEqual(["config", "state"]);
+    expect((await readdir(directory)).filter((name) => name !== ".bun").toSorted()).toEqual([
+      "config",
+      "state",
+    ]);
   }));
 
 test("a token the read API refuses is explained without being printed", () =>

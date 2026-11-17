@@ -219,14 +219,15 @@ test("catalog versions are stable across key order and refreshes carry dropped r
     },
     sample_spec: { input_cost_per_token: 1 },
   });
-  expect(refreshed.primary["claude-sonnet-4-5"]).toEqual([4e-6, 2e-5, null, 4e-7, null]);
-  expect(refreshed.primary["composer-2"]).toEqual(bundledEntries.primary["composer-2"]);
-  expect(refreshed.fallback["gpt-5.5"]).toEqual(bundledEntries.primary["gpt-5.5"]);
-  expect(makeCatalog(refreshed).version).not.toBe(catalog.version);
+  const next = makeCatalog(refreshed);
+  expect(next.version).not.toBe(catalog.version);
   const million = { inputTokens: 1_000_000 };
-  expect(priced(makeCatalog(refreshed), "gpt-5.5", million)).toEqual(
-    priced(catalog, "gpt-5.5", million),
-  );
+  expect(
+    priced(next, "claude-sonnet-4-5", { ...million, cacheReadTokens: 1_000_000 }).costUsd,
+  ).toBeCloseTo(4.4);
+  for (const model of ["composer-2", "gpt-5.5"]) {
+    expect(priced(next, model, million)).toEqual(priced(catalog, model, million));
+  }
 });
 
 test("a model dropped, re-listed at a new rate and dropped again keeps the newer rate", () => {

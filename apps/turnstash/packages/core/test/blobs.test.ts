@@ -79,8 +79,7 @@ test("data URI extraction preserves escaped bytes and leaves malformed encodings
   });
   for (const suffix of ["%XX", "!", "A"]) {
     const payload = JSON.stringify({ image: `data:image/png;base64,${"A".repeat(1100)}${suffix}` });
-    expect(extractInlineBlobs(payload).payload).toBe(payload);
-    expect(extractInlineBlobs(payload).blobs.size).toBe(0);
+    expect(extractInlineBlobs(payload)).toEqual({ payload, blobs: new Map(), sha256s: new Set() });
   }
 });
 

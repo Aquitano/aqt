@@ -1,5 +1,4 @@
 import Foundation
-import NotchCore
 
 /// A clock that only moves when a test says so. Sleepers wake in deadline
 /// order when `advance(by:)` passes them, and the call yields until the woken
@@ -43,7 +42,9 @@ final class ManualClock: Clock, @unchecked Sendable {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 lock.withLock {
-                    if deadline <= _now {
+                    if Task.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    } else if deadline <= _now {
                         continuation.resume()
                     } else {
                         sleepers.append(Sleeper(id: id, deadline: deadline, continuation: continuation))

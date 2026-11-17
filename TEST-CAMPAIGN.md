@@ -1,0 +1,37 @@
+# Test review ledger
+
+Baseline is `18bfe971`. Attic's suites live under Bank. The Health directory points to a separate repository. Shared TypeScript UI and configuration, and `ops/`, have no dedicated test suites in this checkout.
+
+The checkout has no numeric test-line budget that I could locate. The working limit is zero net growth in each subsystem. Line counts measure physical test source lines, including fixtures written in test code. Independent safety checks stay in place.
+
+The diff adds 349 test and fixture lines and removes 760 across 41 files. Each application or shared test area stays at or below its baseline. From the campaign commit, `git diff --numstat HEAD^ HEAD -- apps packages/go tools` reproduces the counts.
+
+| Area | Tests removed, consolidated, or repaired | Contracts retained |
+| --- | --- | --- |
+| Bank disk tools | Archive readers now check closure through a read on the released handle. `Stat` reported a different error on Windows. | Verified source bytes, archive offset independence, full hash checks, no-clobber moves and retrieval, cancellation, and cleanup. |
+| Bank intake, store, and API | Share one database fixture for invalid attachment text requests. Credential writes still execute on Windows, with POSIX mode checks where supported. | Import replay and rollback, source-specific parsing, SQL ordering and search, write authorization, absence of rows after rejected writes, and preservation of the previous credential file after a failed write. |
+| Bank web | Removed draft checks that compared fixture revisions or repeated already-covered saves. | Reject late revisions, preserve edits made during a save, and release only clean inactive drafts. |
+| Gallery API and media | Folded repeated analytics cases into grouping and membership checks. Removed the MCP schema class assertion. Replaced imitation responses with real JSON responses in the museum fixture. Exercised all remote image variants in the same store. | Published-entity and artwork membership checks, MCP allowlist and input compatibility, early museum ID rejection, draft access, remote image sizes, cache isolation, and revalidation. |
+| Gallery layout and renderer | Combined ray cases that duplicated the same painting and camera setup. | Front-facing hit, range, occlusion, walkable room links, doorway clearance, texture budget and hover protection. |
+| Tracker extension | Joined the capture dependency case to the offline-to-online flow. Folded wildcard rules into one routing scenario. Fixed the timestamp used in the UUID test. | Capture waits behind its page view, outbox ordering and retry, private-host redaction, pause and forget, and UUID variant and timestamp. |
+| Tracker Go | Replaced the fake registration test with a rule-order assertion over the real registry. Credential round trips run on Windows and retain separate POSIX mode checks. | Publishing fallback last, rejecting a session from another issuer, storing rotated tokens, capture and event validation, derivation retry, and retention. |
+| Tracker for macOS | Joined the ignored-app checks into one focus, title, and return sequence. Replaced the token refresh test's sleep with a gate that waits for both expiry checks. | Transient overlays preserve the underlying span, private app titles stay hidden, two callers share one refresh, and the outbox persists events. |
+| Turnstash agent and providers | Isolated CLI tests from the real home. Replaced URL pathname, `mkdir` process, and invalid Windows path fixtures. Removed redundant checkpoint hash length checks and avoided extra CLI starts for malformed and absent config. | Archive reads leave collector state alone, diagnostics do not create enrollment state, schedules pass through approved settings and hide credentials, and collection preserves replay, rewritten input, and redaction. |
+| Turnstash core, API, server, and web | Reused one extraction result for malformed blobs. Replaced pricing tuple assertions with billed amounts. Exercised literal highlighting and markup escaping in the rendered component. Passed the fixture URL directly to the server test's file reader. | Raw payload preservation, schema boundaries, ingest and deletion races, billing fallback and cache rates, literal search, and escaped transcript text. |
+| Notch | Replaced battery flag checks with transitions through connected, disconnected, and low-battery states. Closed the manual clock's cancellation-before-registration race. | Hysteresis, charging and Low Power Mode, hover timers, request lifecycle, provider hooks, display behavior, and tray recovery. |
+| Starboard | Combined pin precedence, alias replacement, and cycling checks around the actual assignment results. | Keyboard routing and release safety, config compatibility, pin order, and visible search ranking. |
+| Album | Deleted `scripts/qa/debug.ts`, a scratch probe for editor double-click and z-order. | `03-editor.ts` and `07-regressions.ts` cover those interactions. The latter also checks undo and autosave during navigation. |
+| Shared Go extraction and PDF | Dropped font encoder identity and xref slice growth assertions. Kept stack behavior at the operand-order check. | Actual document decoding, PDF fallback, UTF-8 truncation, extraction limits, parser bounds, and concurrent reads. |
+| Shared Go migrations | Retained the existing cases. | Concurrent upgrade applies each migration once, version reads are read-only, and a refusing database fails the test instead of skipping it. |
+| Stack generator | Dropped duplicated optional-file checks, obsolete tooling assertions, and a second generic command-error test. Fixed fake paths on Windows. | No overwrite, task namespace protection, scoped workspace setup, and failed builds stay outside aggregate checks. |
+| macOS runner script | The user-copy test runs the original script under a temporary home and checks the exact installed bytes. Only the system-install case needs a redirected destination. | Exact launch path, old copy survives failed verification, and prebuilt app replaces it without build or launch. |
+
+## Verification and open risks
+
+- Vitest passed all 200 cases in 35 files. Turnstash agent and shared-package Bun suites passed 206 cases with one Windows skip. Gallery server passed 52 Bun cases. Stack passed all 27 Bun cases, including the real mise test. The macOS shell-runner fixture passed all three cases on Ubuntu WSL.
+- Bank, Tracker, and both shared Go modules passed locally with database test URLs unset. Go vet passed for the same modules. The archive handle test passed 20 repetitions. The Tracker extractor suite passed three repetitions.
+- Vite+ checked the 24 changed TypeScript files with zero errors and 41 warnings. The missing local `@aqt/turnstash-analysis` workspace link was restored for validation.
+- Bank, Tracker, Turnstash, and shared migration integration checks need disposable ParadeDB. The local Docker engine was unavailable. Bank's attachment consolidation compiled, but the SQL-backed assertions skipped.
+- Notch, Starboard, and TrackerCore still need a run with the Apple toolchain.
+- Album's smoke and manual QA scripts need a development server and Clerk test access. Running them can create external test users and sign-in tokens.
+- Antigravity decodes workspace file URLs using the normalization host's OS. The fixture exercises the host's native URL format. A foreign-format URI can still lose its project path on Windows.

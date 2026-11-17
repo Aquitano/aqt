@@ -116,44 +116,30 @@ func TestAttachmentTextKeepsAStatedStatus(t *testing.T) {
 
 // A status the archive does not know strands the row: no default pass ever
 // selects it again, and the content reads as done when nothing read it.
-func TestAttachmentTextRejectsAnInvalidStatus(t *testing.T) {
+func TestAttachmentTextRejectsInvalidWrites(t *testing.T) {
 	s, _ := attachmentServer(t)
+	path := "/v1/attachments/" + testDigest.String() + "/text"
 	// "pending" spells the same mistake correctly: it means the absence of a
 	// row, so a row saying it is a contradiction.
-	for _, status := range []string{"needsocr", "done", "pending"} {
-		w := authed(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text?status="+status, "text")
-		if w.Code != http.StatusUnprocessableEntity {
-			t.Errorf("put ?status=%s: %d, want 422", status, w.Code)
-		}
+	for _, tc := range []struct {
+		name, method, path, body string
+		status                   int
+	}{
+		{"unknown status", http.MethodPut, path + "?status=needsocr", "text", http.StatusUnprocessableEntity},
+		{"pending is the absence of text", http.MethodPut, path + "?status=pending", "text", http.StatusUnprocessableEntity},
+		{"text exceeds storage limit", http.MethodPut, path, strings.Repeat("a", extract.MaxChars+1), http.StatusUnprocessableEntity},
+		{"unknown digest", http.MethodPut, "/v1/attachments/" + strings.Repeat("c", 64) + "/text", "orphan", http.StatusNotFound},
+		{"malformed write digest", http.MethodPut, "/v1/attachments/not-a-digest/text", "x", http.StatusUnprocessableEntity},
+		{"malformed read digest", http.MethodGet, "/v1/attachments/not-a-digest/text", "", http.StatusUnprocessableEntity},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if w := authed(t, s, tc.method, tc.path, tc.body); w.Code != tc.status {
+				t.Errorf("status = %d, want %d", w.Code, tc.status)
+			}
+		})
 	}
-	if w := authed(t, s, http.MethodGet, "/v1/attachments/"+testDigest.String()+"/text", ""); w.Code != http.StatusNotFound {
-		t.Fatalf("a rejected status stored a row anyway: %d", w.Code)
-	}
-}
-
-// Storing more than a row keeps would halve a transcription silently, and a
-// transcription is the one kind of text nothing here can produce again.
-func TestAttachmentTextRejectsOversizedBody(t *testing.T) {
-	s, _ := attachmentServer(t)
-	body := strings.Repeat("a", extract.MaxChars+1)
-	if w := authed(t, s, http.MethodPut, "/v1/attachments/"+testDigest.String()+"/text", body); w.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("put oversized text: %d, want 422", w.Code)
-	}
-}
-
-func TestAttachmentTextRejectsUnknownDigest(t *testing.T) {
-	s, _ := attachmentServer(t)
-	unknown := strings.Repeat("c", 64)
-	// Text for content no message carries would be unreachable by any search
-	// and invisible to every refresh: better a 404 than a silent no-op.
-	if w := authed(t, s, http.MethodPut, "/v1/attachments/"+unknown+"/text", "orphan"); w.Code != http.StatusNotFound {
-		t.Fatalf("put unknown digest: %d, want 404", w.Code)
-	}
-	if w := authed(t, s, http.MethodPut, "/v1/attachments/not-a-digest/text", "x"); w.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("put bad digest: %d, want 422", w.Code)
-	}
-	if w := authed(t, s, http.MethodGet, "/v1/attachments/not-a-digest/text", ""); w.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("get bad digest: %d, want 422", w.Code)
+	if w := authed(t, s, http.MethodGet, path, ""); w.Code != http.StatusNotFound {
+		t.Fatalf("a rejected write stored a row: %d", w.Code)
 	}
 }
 

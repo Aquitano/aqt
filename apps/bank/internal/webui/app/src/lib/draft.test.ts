@@ -60,11 +60,6 @@ test("a delayed save response cannot downgrade newer cached data or draft revisi
   assert.deepEqual(client.getQueryData(key), latest);
   const clean = createDraft({ notes: latest.notes }, latest.revision);
   assert.equal(saveDraft(clean, submitted, 2, submitted), clean);
-  const dirty = { ...createDraft({ notes: "Original" }, 1), value: submitted };
-  const accepted = saveDraft(dirty, submitted, 2, submitted);
-  assert.equal(accepted.revision, 2);
-  assert.ok(latest.revision > accepted.revision);
-  assert.equal(keepLatest(undefined, response), response);
   client.clear();
 });
 

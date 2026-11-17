@@ -15,23 +15,11 @@ function evt(over: Partial<BeaconEvent> = {}): BeaconEvent {
 }
 
 describe("planIncrements", () => {
-  test("folds repeated events into a single counted increment", () => {
-    const result = planIncrements([evt(), evt(), evt()], publishAll, allowAllArtworks);
-    expect(result).toEqual([
-      {
-        entityKind: "exhibition",
-        entityId: "m1",
-        metric: "page_view",
-        artworkId: "",
-        count: 3,
-      },
-    ]);
-  });
-
   test("separates metrics, entities and inspected artworks", () => {
     const result = planIncrements(
       [
-        evt({ metric: "page_view" }),
+        evt(),
+        evt({ artworkId: "ignored" }),
         evt({ metric: "session_entered" }),
         evt({ metric: "inspect_open", artworkId: "a1" }),
         evt({ metric: "inspect_open", artworkId: "a1" }),
@@ -42,20 +30,15 @@ describe("planIncrements", () => {
       allowAllArtworks,
     );
     const byKey = new Map(result.map((r) => [`${r.metric}:${r.artworkId}:${r.entityId}`, r.count]));
-    expect(byKey.get("page_view::m1")).toBe(1);
-    expect(byKey.get("session_entered::m1")).toBe(1);
-    expect(byKey.get("inspect_open:a1:m1")).toBe(2);
-    expect(byKey.get("inspect_open:a2:m1")).toBe(1);
-    expect(byKey.get("page_view::e2")).toBe(1);
-  });
-
-  test("drops artworkId for non-inspect metrics", () => {
-    const [inc] = planIncrements(
-      [evt({ metric: "tour_completed", artworkId: "a9" })],
-      publishAll,
-      allowAllArtworks,
+    expect(byKey).toEqual(
+      new Map([
+        ["page_view::m1", 2],
+        ["session_entered::m1", 1],
+        ["inspect_open:a1:m1", 2],
+        ["inspect_open:a2:m1", 1],
+        ["page_view::e2", 1],
+      ]),
     );
-    expect(inc?.artworkId).toBe("");
   });
 
   test("drops events for unpublished or unknown entities", () => {
@@ -68,24 +51,12 @@ describe("planIncrements", () => {
     expect(result[0]?.entityId).toBe("published");
   });
 
-  test("drops inspect_open events for artworks the entity doesn't contain", () => {
-    const result = planIncrements(
-      [
-        evt({ metric: "inspect_open", artworkId: "hung" }),
-        evt({ metric: "inspect_open", artworkId: "junk" }),
-      ],
-      publishAll,
-      (_kind, _entityId, artworkId) => artworkId === "hung",
-    );
-    expect(result).toHaveLength(1);
-    expect(result[0]?.artworkId).toBe("hung");
-  });
-
   test("validates the inspected artwork against its own entity", () => {
     const result = planIncrements(
       [
         evt({ entityId: "m1", metric: "inspect_open", artworkId: "a1" }),
         evt({ entityId: "m2", metric: "inspect_open", artworkId: "a1" }),
+        evt({ entityId: "m1", metric: "inspect_open", artworkId: "unhung" }),
       ],
       publishAll,
       (_kind, entityId, artworkId) => entityId === "m1" && artworkId === "a1",

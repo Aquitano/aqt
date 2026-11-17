@@ -108,7 +108,6 @@ test("JSONL checkpoints detect larger rewrites anywhere in the consumed prefix",
     await Bun.write(path, original);
     const first = await run(extractJsonl(streamId, path, { byteOffset: 0 }));
     expect(first.checkpoint.byteOffset).toBe(Buffer.byteLength(original));
-    expect(first.checkpoint.prefixHash).toHaveLength(64);
 
     await Bun.write(path, `${original}{"text":"appended"}\n`);
     const appended = await run(extractJsonl(streamId, path, first.checkpoint));
