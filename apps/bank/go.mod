@@ -9,14 +9,14 @@ require (
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/danielgtaylor/huma/v2 v2.40.0
 	github.com/emersion/go-imap v1.2.1
-	github.com/emersion/go-imap/v2 v2.0.0-beta.8
+	github.com/emersion/go-imap/v2 v2.0.0-beta.9
 	github.com/emersion/go-message v0.18.2
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/gabriel-vasile/mimetype v1.4.16
 	github.com/go-git/go-git/v5 v5.19.3
 	github.com/gofrs/flock v0.13.2
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/klauspost/compress v1.20.4
 	github.com/mholt/archives v0.1.5
 	github.com/modelcontextprotocol/go-sdk v1.8.0
