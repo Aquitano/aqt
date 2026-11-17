@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/aquitano/aqt/apps/bank/internal/importer"
@@ -24,7 +25,9 @@ import (
 // lines is a source that reads one message per line, "id|date|body|file,
 // file". A date of - is unknown. While broken is set it fails after
 // emitting its first message, the way a parser bug or a crash ends an import
-// between storing attachment bytes and writing rows.
+// between storing attachment bytes and writing rows. A file named
+// unreadable.jpg fails partway through its read, the way a damaged zip entry
+// fails its checksum.
 type lines struct{ broken *atomic.Bool }
 
 func (lines) Kind() string { return "lines" }
@@ -50,6 +53,9 @@ func (l lines) Parse(_ context.Context, raw ingest.Raw, _ struct{}, out ingest.E
 		for _, name := range strings.Split(fields[3], ",") {
 			if name != "" {
 				m.Parts = append(m.Parts, ingest.Part{Filename: name, Open: func() (io.ReadCloser, error) {
+					if name == "unreadable.jpg" {
+						return io.NopCloser(io.MultiReader(strings.NewReader("partial "), iotest.ErrReader(errors.New("zip: checksum error")))), nil
+					}
 					return io.NopCloser(strings.NewReader("bytes of " + name)), nil
 				}})
 			}
@@ -114,6 +120,57 @@ func TestFailedImportLeavesNoPartialMessageAndReplays(t *testing.T) {
 	if n := pgschematest.QueryInt(t, dsn, `select count(*) from messages m where m.external_id = 'a'
 		and (select count(*) from attachments a where a.message_id = m.id) = 2`); n != 1 {
 		t.Fatal("message a is missing attachments")
+	}
+}
+
+// A damaged attachment costs that one file, not the rest of the export.
+func TestUnreadableAttachmentIsRejectedAndImportContinues(t *testing.T) {
+	target, dsn, path, _ := setup(t, "a|2024-05-01|first|unreadable.jpg,b.pdf\nb|2024-05-02|second|c.pdf\n")
+	got := importtest.MustImport(t, target, "lines", path, nil)
+	if got.Status != "gaps" || got.Report.Inserted != 2 || got.Report.Attachments != 2 || got.Report.Issues[ingest.Rejected] != 1 {
+		t.Fatalf("import: %+v", got)
+	}
+	if n := pgschematest.QueryInt(t, dsn, `select count(*) from attachments a join messages m on m.id = a.message_id
+		where m.external_id = 'a' and a.position = 1`); n != 1 {
+		t.Fatal("b.pdf did not keep its position after the unreadable part")
+	}
+}
+
+// interrupted is a source whose caller goes away after its first message.
+type interrupted struct{ cancel context.CancelFunc }
+
+func (interrupted) Kind() string { return "interrupted" }
+
+func (s interrupted) Parse(_ context.Context, _ ingest.Raw, _ struct{}, out ingest.Emitter) error {
+	if err := out.Message(ingest.Message{Source: "interrupted", ExternalID: "a", ThreadID: "thread", Body: "first"}); err != nil {
+		return err
+	}
+	s.cancel()
+	return out.Message(ingest.Message{Source: "interrupted", ExternalID: "b", ThreadID: "thread", Body: "second"})
+}
+
+// An import cut short by its caller stays running, which marks it
+// interrupted, instead of being recorded as the input's failure.
+func TestCancelledImportStaysRunning(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	target := importtest.Target(t, importer.Register(interrupted{cancel: cancel}, "Test interruption."))
+	path := filepath.Join(t.TempDir(), "input.txt")
+	if err := os.WriteFile(path, []byte("input"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	name, r, err := importer.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	got, err := importer.Import(ctx, target, "interrupted", name, r, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("import: %v", err)
+	}
+	stored, err := target.Store.RawInput(context.Background(), got.ID)
+	if err != nil || stored.Status != "running" || stored.Error != "" {
+		t.Fatalf("raw input after cancel: %+v %v", stored, err)
 	}
 }
 

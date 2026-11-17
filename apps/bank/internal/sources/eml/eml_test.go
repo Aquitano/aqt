@@ -1,8 +1,11 @@
 package eml
 
 import (
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/aquitano/aqt/apps/bank/internal/content"
 )
 
 const multipartMail = "From: =?UTF-8?Q?Bj=C3=B6rn?= <bjoern@example.com>\r\n" +
@@ -63,6 +66,23 @@ func TestParseMultipart(t *testing.T) {
 	}
 	if m.Date.IsZero() {
 		t.Error("Date not parsed")
+	}
+}
+
+func TestOversizedMessageIDFallsBackToContentKey(t *testing.T) {
+	raw := []byte("Message-ID: <" + strings.Repeat("x", 3000) + "@example.com>\r\nSubject: spam\r\n\r\nbody\r\n")
+	m, err := Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.MessageID != "" {
+		t.Errorf("MessageID kept at %d bytes", len(m.MessageID))
+	}
+	if got, want := defaultExternalID(m, raw), content.Sum(raw).String(); got != want {
+		t.Errorf("external id = %q, want the content digest %q", got, want)
+	}
+	if !slices.ContainsFunc(m.Warnings, func(w string) bool { return strings.Contains(w, "key limit") }) {
+		t.Errorf("no warning about the dropped Message-ID: %v", m.Warnings)
 	}
 }
 
