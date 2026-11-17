@@ -15,7 +15,7 @@ import { QuotaSamplerLive } from "./quota-telemetry.ts";
 import { normalizersLayer } from "./registry.ts";
 import { GaugeSamplerLive, TelemetryLive } from "./telemetry.ts";
 import { ensureBundledCatalog } from "./valuation.ts";
-import { PricingRefreshLive, WorkerLive } from "./worker.ts";
+import { PricingRefreshLive, SealingLive, WorkerLive } from "./worker.ts";
 
 const StaticLive = Layer.unwrap(
   Effect.map(ServerConfig, (config) =>
@@ -57,6 +57,7 @@ const ServerLive = Layer.unwrap(
 const MainLive = Layer.mergeAll(
   ServerLive,
   WorkerLive,
+  SealingLive,
   PricingRefreshLive,
   GaugeSamplerLive,
   QuotaSamplerLive,

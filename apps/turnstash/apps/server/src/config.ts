@@ -27,6 +27,7 @@ export interface ServerConfigShape {
   readonly normalizeSettleMillis: number;
   readonly statementTimeoutMillis: number;
   readonly pricingRefreshHours: number;
+  readonly sealAfterDays: number;
 }
 
 export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()(
@@ -71,6 +72,9 @@ export const ServerConfigLive = Layer.effect(
       ).pipe(Config.withDefault(30_000)),
       pricingRefreshHours: yield* Config.schema(NonNegativeInt, "PRICING_REFRESH_HOURS").pipe(
         Config.withDefault(24),
+      ),
+      sealAfterDays: yield* Config.schema(NonNegativeInt, "SEAL_AFTER_DAYS").pipe(
+        Config.withDefault(7),
       ),
     });
   }),

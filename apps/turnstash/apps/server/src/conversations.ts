@@ -47,6 +47,7 @@ import {
 } from "./db/schema.ts";
 import { activeValuation, conversationConditions, number } from "./filters.ts";
 import { commitsForConversation } from "./git.ts";
+import { deleteConversationSegments } from "./segments.ts";
 import { activeCatalog } from "./valuation.ts";
 
 const costByConversation = (db: Db["Service"], ids: ReadonlyArray<string>) =>
@@ -496,6 +497,7 @@ export const deleteConversation = Effect.fn("Conversations.delete")(function* (i
             eq(sourceRecords.conversationKey, row.conversationKey),
           ),
         );
+      yield* deleteConversationSegments(row.provider, row.conversationKey);
       yield* tx.delete(conversations).where(eq(conversations.id, id));
       yield* deleteUnlinkedBlobs();
     }),

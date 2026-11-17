@@ -1,12 +1,20 @@
 import { type Normalizer, type ProviderId, providerIds, StreamId } from "@aqt/turnstash-core";
-import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { deleteUnlinkedBlobs, setRecordBlobs } from "./blobs.ts";
+import { lockConversations } from "./conversation-locks.ts";
 import { Db, inTransaction } from "./db/client.ts";
-import { dirtyConversations, sourceRecords, sourceStreams, tombstones } from "./db/schema.ts";
+import {
+  dirtyConversations,
+  recordSegments,
+  sourceRecords,
+  sourceStreams,
+  tombstones,
+} from "./db/schema.ts";
 import { Normalizers, storedRecordOf } from "./registry.ts";
 import { scrubText } from "./scrub.ts";
+import { deleteUnreferencedSegments, packSegment, payloadsOf } from "./segments.ts";
 import { ensureBundledCatalog, recalculateCatalogs } from "./valuation.ts";
 
 const trimPageRows = 500;
@@ -38,7 +46,13 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
     const sizes = yield* db
       .select({ id: sourceRecords.id, bytes: sql<number>`octet_length(${sourceRecords.payload})` })
       .from(sourceRecords)
-      .where(and(eq(sourceRecords.provider, provider), gt(sourceRecords.id, after)))
+      .where(
+        and(
+          eq(sourceRecords.provider, provider),
+          gt(sourceRecords.id, after),
+          isNotNull(sourceRecords.payload),
+        ),
+      )
       .orderBy(asc(sourceRecords.id))
       .limit(trimPageRows);
     const ids = pageIdsOf(sizes);
@@ -49,12 +63,12 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
       .select({
         id: sourceRecords.id,
         contentHash: sourceRecords.contentHash,
-        payload: sourceRecords.payload,
+        payload: sql<string>`${sourceRecords.payload}`,
         streamId: sourceStreams.streamId,
       })
       .from(sourceRecords)
       .innerJoin(sourceStreams, eq(sourceStreams.id, sourceRecords.streamRef))
-      .where(inArray(sourceRecords.id, ids));
+      .where(and(inArray(sourceRecords.id, ids), isNotNull(sourceRecords.payload)));
     const changed = page.flatMap(({ id, contentHash, payload, streamId }) => {
       const kept = storedRecordOf(normalizer, StreamId.make(streamId), payload);
       const keptPayload = scrubText(kept.payload);
@@ -70,7 +84,11 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
             .update(sourceRecords)
             .set({ payload: row.payload })
             .where(
-              and(eq(sourceRecords.id, row.id), eq(sourceRecords.contentHash, row.contentHash)),
+              and(
+                eq(sourceRecords.id, row.id),
+                eq(sourceRecords.contentHash, row.contentHash),
+                isNull(sourceRecords.segmentRef),
+              ),
             )
             .returning({ id: sourceRecords.id })
             .pipe(Effect.map((updated) => updated.length > 0)),
@@ -82,10 +100,73 @@ const trimRecords = Effect.fn("Archive.trimRecords")(function* (
   }
 });
 
+// A sealed record is trimmed inside its segment, which is packed again when a record changed or when it still
+// holds records that were since replaced or deleted.
+const trimSegment = Effect.fn("Archive.trimSegment")(function* (
+  segment: Pick<typeof recordSegments.$inferSelect, "id" | "provider" | "conversationKey">,
+  normalizer: Normalizer,
+) {
+  const db = yield* Db;
+  yield* lockConversations([segment]);
+  const rows = yield* db
+    .select({
+      id: sourceRecords.id,
+      payload: sourceRecords.payload,
+      segmentRef: sourceRecords.segmentRef,
+      streamId: sourceStreams.streamId,
+    })
+    .from(sourceRecords)
+    .innerJoin(sourceStreams, eq(sourceStreams.id, sourceRecords.streamRef))
+    .where(eq(sourceRecords.segmentRef, segment.id))
+    .orderBy(asc(sourceRecords.id))
+    .for("update", { of: sourceRecords });
+  if (rows.length === 0) return 0;
+  const payloads = yield* payloadsOf(rows);
+  const kept = rows.map((row) => {
+    const payload = payloads.get(row.id) ?? "";
+    const stored = storedRecordOf(normalizer, StreamId.make(row.streamId), payload);
+    return { id: row.id, before: payload, ...stored, payload: scrubText(stored.payload) };
+  });
+  const changed = kept.filter((record) => record.payload !== record.before);
+  const [stored] = yield* db
+    .select({ records: recordSegments.records })
+    .from(recordSegments)
+    .where(eq(recordSegments.id, segment.id));
+  if (changed.length === 0 && stored?.records === rows.length) return 0;
+  yield* db
+    .update(recordSegments)
+    .set({
+      data: yield* packSegment(kept.map((record) => [record.id, record.payload])),
+      records: rows.length,
+    })
+    .where(eq(recordSegments.id, segment.id));
+  yield* setRecordBlobs(changed);
+  return changed.length;
+}, inTransaction);
+
+const trimSegments = Effect.fn("Archive.trimSegments")(function* (
+  provider: ProviderId,
+  normalizer: Normalizer,
+) {
+  const db = yield* Db;
+  const segments = yield* db
+    .select({
+      id: recordSegments.id,
+      provider: recordSegments.provider,
+      conversationKey: recordSegments.conversationKey,
+    })
+    .from(recordSegments)
+    .where(eq(recordSegments.provider, provider))
+    .orderBy(asc(recordSegments.id));
+  let trimmed = 0;
+  for (const segment of segments) trimmed += yield* trimSegment(segment, normalizer);
+  return trimmed;
+});
+
 // OpenCode left its JSON file store behind when it moved to SQLite. A file whose row the same machine's
 // database sent is dropped, since normalize prefers the database row. Trimming runs first and turns every
 // readable data column into an object, so a row whose data stayed text, or that jsonb cannot hold (an escaped
-// NUL), keeps its file as the fallback. Only session rows normalize without a data column, and a row only stands
+// NUL), keeps its file as the fallback, and so does a row that is already sealed. Only session rows normalize without a data column, and a row only stands
 // in for a file of the same conversation.
 const removeOpencodeFileTwins = Effect.fn("Archive.removeOpencodeFileTwins")(function* () {
   const db = yield* Db;
@@ -147,8 +228,11 @@ const queueArchive = Effect.fn("Archive.queue")(function* () {
 export const reprocessArchive = Effect.fn("Archive.reprocess")(function* () {
   const normalizers = yield* Normalizers;
   let trimmed = 0;
-  for (const provider of providerIds)
+  yield* deleteUnreferencedSegments();
+  for (const provider of providerIds) {
     trimmed += yield* trimRecords(provider, normalizers[provider]);
+    trimmed += yield* trimSegments(provider, normalizers[provider]);
+  }
   return yield* inTransaction(
     Effect.gen(function* () {
       const db = yield* Db;

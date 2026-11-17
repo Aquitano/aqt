@@ -12,7 +12,7 @@ import {
   streamIdOf,
   type WireRecord,
 } from "@aqt/turnstash-core";
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, isNotNull, sql } from "drizzle-orm";
 import { Deferred, Effect, Fiber } from "effect";
 
 import { getBlob, setRecordBlobs } from "../src/blobs.ts";
@@ -25,11 +25,14 @@ import {
   messages,
   modelRequests,
   recordBlobs,
+  recordSegments,
   sourceRecords,
 } from "../src/db/schema.ts";
 import { applyBatch } from "../src/ingest.ts";
+import { normalizeConversation } from "../src/normalize.ts";
 import { Normalizers } from "../src/registry.ts";
 import { reprocessArchive } from "../src/reprocess.ts";
+import { payloadsOf, sealIdle } from "../src/segments.ts";
 import { workOnce } from "../src/worker.ts";
 import { runTest } from "./support.ts";
 
@@ -84,11 +87,28 @@ const codexRecords = (): ReadonlyArray<WireRecord> => {
 
 const stored = Effect.gen(function* () {
   const db = yield* Db;
-  return yield* db
-    .select({ hash: sourceRecords.contentHash, payload: sourceRecords.payload })
+  const rows = yield* db
+    .select({
+      id: sourceRecords.id,
+      hash: sourceRecords.contentHash,
+      payload: sourceRecords.payload,
+      segmentRef: sourceRecords.segmentRef,
+    })
     .from(sourceRecords)
     .orderBy(asc(sourceRecords.id));
+  const payloads = yield* payloadsOf(rows);
+  return rows.map((row) => ({ hash: row.hash, payload: payloads.get(row.id) ?? "" }));
 });
+
+const untrimmedCodex = Effect.map(Normalizers, ({ codex, ...rest }) => ({
+  ...rest,
+  codex: {
+    id: codex.id,
+    parserVersion: codex.parserVersion,
+    conversationKeyOf: codex.conversationKeyOf,
+    normalize: codex.normalize,
+  },
+}));
 
 const conversation = Effect.gen(function* () {
   const db = yield* Db;
@@ -108,18 +128,8 @@ test("reprocessing trims records stored before their provider's trim and rebuild
   await runTest(
     Effect.gen(function* () {
       yield* insertMachine;
-      const { codex, ...rest } = yield* Normalizers;
-      const untrimmed = {
-        ...rest,
-        codex: {
-          id: codex.id,
-          parserVersion: codex.parserVersion,
-          conversationKeyOf: codex.conversationKeyOf,
-          normalize: codex.normalize,
-        },
-      };
       yield* ingest("11111111-0000-4000-8000-000000000001", codexRecords()).pipe(
-        Effect.provideService(Normalizers, untrimmed),
+        Effect.provideService(Normalizers, yield* untrimmedCodex),
       );
       yield* workOnce();
       const before = yield* stored;
@@ -453,6 +463,84 @@ test("reprocessing removes OpenCode file store records whose readable database r
       expect((yield* stored).map((row) => row.payload)).toContain(opencodePart("prt_3"));
       expect((yield* stored).map((row) => row.payload)).toContain(opencodePart("prt_4"));
       expect((yield* stored).map((row) => row.payload)).toContain(opencodePart("prt_5"));
+    }),
+  );
+});
+
+test("a sealed conversation normalizes as before, and a record replaced after sealing is read from its row", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      const records = codexRecords();
+      yield* ingest("11111111-0000-4000-8000-000000000010", records);
+      yield* workOnce();
+      const before = yield* stored;
+      const built = yield* conversation;
+      const [{ key } = { key: "" }] = yield* db
+        .select({ key: conversations.conversationKey })
+        .from(conversations);
+
+      expect(yield* sealIdle(0)).toEqual({ conversations: 1, records: records.length });
+      const inline = db
+        .select({ id: sourceRecords.id })
+        .from(sourceRecords)
+        .where(isNotNull(sourceRecords.payload));
+      expect(yield* inline).toEqual([]);
+      expect(yield* stored).toEqual(before);
+      yield* normalizeConversation("codex", key);
+      expect(yield* conversation).toEqual(built);
+
+      const last = records.at(-1)!;
+      const payload = JSON.stringify(
+        Object.assign({}, parseJsonObject(last.payload), { resent: true }),
+      );
+      yield* ingest("11111111-0000-4000-8000-000000000011", [
+        {
+          ...last,
+          payload,
+          contentHash: sha256Hex(payload),
+          observedAt: "2026-10-18T10:00:00.000Z",
+        },
+      ]);
+      expect(yield* inline).toHaveLength(1);
+      const after = yield* stored;
+      expect(after.slice(0, -1)).toEqual(before.slice(0, -1));
+      expect(after.at(-1)?.payload).toContain('"resent":true');
+      yield* workOnce();
+      expect(yield* conversation).toEqual(built);
+
+      yield* reprocessArchive();
+      const [segment] = yield* db.select({ records: recordSegments.records }).from(recordSegments);
+      expect(segment?.records).toBe(records.length - 1);
+    }),
+  );
+});
+
+test("reprocessing trims sealed records, and deleting the conversation removes its segments", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      yield* insertMachine;
+      const db = yield* Db;
+      yield* ingest("11111111-0000-4000-8000-000000000012", codexRecords()).pipe(
+        Effect.provideService(Normalizers, yield* untrimmedCodex),
+      );
+      yield* workOnce();
+      const before = yield* stored;
+      const built = yield* conversation;
+      yield* sealIdle(0);
+
+      expect((yield* reprocessArchive()).trimmed).toBeGreaterThan(0);
+      yield* workOnce();
+      const after = yield* stored;
+      expect(after.map((row) => row.hash)).toEqual(before.map((row) => row.hash));
+      expect(after.some((row) => row.payload.includes("encrypted_content"))).toBe(false);
+      expect(yield* conversation).toEqual(built);
+
+      const [{ id } = { id: "" }] = yield* db.select({ id: conversations.id }).from(conversations);
+      yield* deleteConversation(id);
+      expect(yield* db.select({ id: recordSegments.id }).from(recordSegments)).toEqual([]);
+      expect(yield* db.select({ id: sourceRecords.id }).from(sourceRecords)).toEqual([]);
     }),
   );
 });
