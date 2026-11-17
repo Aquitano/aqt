@@ -9,13 +9,18 @@ import (
 
 func TestRegistryListsEverySite(t *testing.T) {
 	want := map[string]bool{"article": false, "github": false, "hackernews": false, "reddit": false, "stackexchange": false, "x": false, "youtube": false}
+	seenFallback := false
 	for _, rule := range extractor.Rules() {
+		fallback := slices.Contains(rule.Hosts, "*")
+		if seenFallback && !fallback {
+			t.Errorf("site rule %s appears after a wildcard", rule.Extractor)
+		}
+		seenFallback = seenFallback || fallback
 		if _, ok := want[rule.Extractor]; !ok {
 			continue
 		}
 		want[rule.Extractor] = true
 		// The wildcard fallback reads every path there is, so it carries no regex.
-		fallback := slices.Contains(rule.Hosts, "*")
 		if rule.Version < 1 || len(rule.Hosts) == 0 || (rule.PathRegex == "" && !fallback) {
 			t.Errorf("%s has an incomplete rule: %+v", rule.Extractor, rule)
 		}

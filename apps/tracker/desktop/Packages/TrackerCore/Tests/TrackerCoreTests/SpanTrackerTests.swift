@@ -85,22 +85,14 @@ struct SpanTrackerTests {
         #expect(end(tracker.apply(.idle(since: opened + 90), at: opened + 150)[0])?.endedAt == opened + 100)
     }
 
-    @Test func anIgnoredBundleIDLeavesTheSpanOpen() {
+    @Test func anIgnoredAppLeavesTheUnderlyingSpanAndTitleIntact() {
         var tracker = makeTracker()
         _ = tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now)
 
         #expect(tracker.apply(.frontmost(dock, windowTitle: nil), at: .now).isEmpty)
-        #expect(tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now).isEmpty)
-        #expect(tracker.openSpan?.target == editor)
-    }
-
-    @Test func anIgnoredBundleIDsWindowTitleNeverReachesTheSpanUnderneath() {
-        var tracker = makeTracker()
-        _ = tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now)
-        _ = tracker.apply(.frontmost(dock, windowTitle: nil), at: .now)
-
         #expect(tracker.apply(.windowTitle("Dock"), at: .now).isEmpty)
         #expect(tracker.apply(.frontmost(editor, windowTitle: "main.go"), at: .now).isEmpty)
+        #expect(tracker.openSpan?.target == editor)
         #expect(tracker.openSpan?.windowTitle == "main.go")
     }
 

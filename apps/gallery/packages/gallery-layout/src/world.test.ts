@@ -127,10 +127,11 @@ describe("analyzeWorld", () => {
 describe("navigation helpers", () => {
   const world = buildWorldLayout({ rooms: autoRooms(3) });
 
-  test("pickPaintingRay hits the painting ahead and ignores others", () => {
+  test("pickPaintingRay requires a nearby canvas in front of the visitor with a clear line of sight", () => {
     const target = world.paintings.findIndex((p) => p.roomIndex === 0 && p.wall === "east");
     const painting = world.paintings[target];
-    if (!painting) throw new Error("painting missing");
+    const first = world.rooms[0];
+    if (!painting || !first) throw new Error("painting or room missing");
     const origin = {
       x: painting.position[0] - 3,
       y: painting.position[1],
@@ -138,29 +139,14 @@ describe("navigation helpers", () => {
     };
     const towards = { x: 1, y: 0, z: 0 };
     const all = world.paintings.map((_, i) => i);
-    expect(pickPaintingRay(world, all, origin, towards, 10, 0.1)).toBe(target);
+    expect(pickPaintingRay(world, all, origin, towards, 10, 0.1, world.walls)).toBe(target);
     expect(pickPaintingRay(world, all, origin, towards, 2, 0.1)).toBe(-1);
     expect(pickPaintingRay(world, [target], origin, { x: -1, y: 0, z: 0 }, 10, 0.1)).toBe(-1);
-  });
-
-  test("pickPaintingRay stops at a wall between the eye and the canvas", () => {
-    const target = world.paintings.findIndex((p) => p.roomIndex === 0 && p.wall === "east");
-    const painting = world.paintings[target];
-    const first = world.rooms[0];
-    if (!painting || !first) throw new Error("painting missing");
-    const towards = { x: 1, y: 0, z: 0 };
-    const outside = {
-      x: first.minX - 2,
-      y: painting.position[1],
-      z: painting.position[2],
-    };
+    const outside = { ...origin, x: first.minX - 2 };
     const range = painting.position[0] - outside.x + 1;
 
     expect(pickPaintingRay(world, [target], outside, towards, range, 0.1)).toBe(target);
     expect(pickPaintingRay(world, [target], outside, towards, range, 0.1, world.walls)).toBe(-1);
-
-    const inside = { ...outside, x: painting.position[0] - 3 };
-    expect(pickPaintingRay(world, [target], inside, towards, 10, 0.1, world.walls)).toBe(target);
   });
 
   test("doorwayWaypoints routes through each door centre in order", () => {

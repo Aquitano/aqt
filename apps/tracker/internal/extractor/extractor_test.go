@@ -1,7 +1,6 @@
 package extractor
 
 import (
-	"context"
 	"net/url"
 	"slices"
 	"testing"
@@ -85,34 +84,5 @@ func TestMatchRuleWildcardLosesToASpecificRule(t *testing.T) {
 					c.url, rules[0].Extractor, got, ok, c.want)
 			}
 		}
-	}
-}
-
-func TestWildcardHostMatchesAnyHost(t *testing.T) {
-	r := Rule{Extractor: "article", Hosts: []string{"*"}}
-	for _, raw := range []string{"https://example.com/", "https://a.b.c.example.co.uk/x?y=1", "http://localhost:3000/"} {
-		u, _ := url.Parse(raw)
-		if !r.Matches(u) {
-			t.Errorf("Matches(%s) = false", raw)
-		}
-	}
-}
-
-type stub struct{ rule Rule }
-
-func (s stub) Rule() Rule { return s.rule }
-
-func (stub) Extract(context.Context, []byte, *url.URL) (Record, error) { return Record{}, ErrNoMatch }
-
-func TestRulesPublishWildcardsLast(t *testing.T) {
-	Register(stub{Rule{Extractor: "zzz-site", Version: 1, Hosts: []string{"zzz.example"}}})
-	Register(stub{Rule{Extractor: "aaa-fallback", Version: 1, Hosts: []string{"*"}}})
-
-	var order []string
-	for _, r := range Rules() {
-		order = append(order, r.Extractor)
-	}
-	if !slices.Equal(order, []string{"zzz-site", "aaa-fallback"}) {
-		t.Errorf("rule order = %v", order)
 	}
 }

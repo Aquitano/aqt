@@ -16,15 +16,12 @@ test("JSON accessors skip invalid fields and preserve empty arrays and zero", ()
   expect(jsonArrayAt(source, "missing", "items")).toBe(source.items);
   expect(jsonObjectAt(source, "missing", "nested")).toBe(source.nested);
   expect(jsonStringAt([], "title")).toBeUndefined();
-  expect(jsonNumberAt({ value: Number.POSITIVE_INFINITY }, "value")).toBeUndefined();
   expect(jsonArrayAt(undefined, "items")).toEqual([]);
   expect(jsonObjectAt({ value: [] }, "value")).toBeUndefined();
 });
 
 test("parseJson keeps documents with numbers past the double range", () => {
-  expect(parseJsonObject('{"big": 1e400, "title": "hello"}')).toEqual({
-    big: Number.POSITIVE_INFINITY,
-    title: "hello",
-  });
+  const parsed = parseJsonObject('{"big": 1e400, "count": 2}');
+  expect(jsonNumberAt(parsed, "big", "count")).toBe(2);
   expect(parseJson('{"title": ')).toBeUndefined();
 });

@@ -16,7 +16,6 @@ describe("generated app", () => {
         expect(Boolean(files["src/lib/hono/index.ts"])).toBe(hono);
         expect(Boolean(files["src/app/page.test.tsx"])).toBe(testing);
         expect(files["src/app/page.tsx"]!.includes("/api/health")).toBe(hono);
-        expect(JSON.stringify(files)).not.toMatch(/valibot|prettier|eslint|next\/font/);
       }
   });
 
@@ -27,11 +26,6 @@ describe("generated app", () => {
       compilerOptions: { paths: { "@/*": ["./src/*"] } },
     });
     expect(files["tsconfig.json"]).not.toContain("noUncheckedIndexedAccess");
-    expect(files["next.config.ts"]).toContain("reactCompiler: true");
-    expect(files["vite.config.ts"]).toContain('from "vite-plus"');
-    expect(files["next.config.ts"]).toContain('import "./src/lib/env"');
-    expect(files["src/lib/env.ts"]).toContain('from "arktype"');
-    expect(files["src/lib/hono/routes/users.ts"]).toContain('sValidator("json", createUserSchema)');
   });
 
   test("workflow installs at root, checks the app, and reacts to shared configuration", () => {

@@ -1,34 +1,16 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { rejects } from "node:assert/strict";
 
 import { fetchMuseumObject, guessArtworkType, parseMuseumUrl } from "./museum-import";
 
-const realFetch = globalThis.fetch;
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
+afterEach(() => mock.restore());
 
-/** True when the thunk rejects — avoids the bun-types `await`-no-effect hint
- * on `expect(...).rejects`. */
-async function rejected(fn: () => Promise<unknown>): Promise<boolean> {
-  try {
-    await fn();
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-/** Stub global fetch with a URL→JSON router; every response is `ok`. */
-function stubFetch(route: (url: string) => unknown) {
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url =
-      typeof input === "string" ? input : input instanceof Request ? input.url : input.href;
-    return {
-      ok: true,
-      status: 200,
-      json: async () => route(url),
-    } as Response;
-  }) as typeof fetch;
+function stubFetch(route: (url: string) => object) {
+  const fetchJson = async (input: string | URL | Request) =>
+    Response.json(route(input instanceof Request ? input.url : input.toString()));
+  return spyOn(globalThis, "fetch").mockImplementation(
+    Object.assign(fetchJson, { preconnect: globalThis.fetch.preconnect }),
+  );
 }
 
 describe("guessArtworkType", () => {
@@ -64,7 +46,7 @@ describe("parseMuseumUrl", () => {
   });
 });
 
-describe("fetchMuseumObject — Met", () => {
+describe("Met museum imports", () => {
   test("normalizes the Met payload and parses its dimensions", async () => {
     stubFetch(() => ({
       title: "Wheat Field with Cypresses",
@@ -93,11 +75,13 @@ describe("fetchMuseumObject — Met", () => {
   });
 
   test("rejects a non-numeric Met id", async () => {
-    expect(await rejected(() => fetchMuseumObject("met", "abc"))).toBe(true);
+    const request = stubFetch(() => ({}));
+    await rejects(fetchMuseumObject("met", "abc"), /must be numeric/);
+    expect(request).not.toHaveBeenCalled();
   });
 });
 
-describe("fetchMuseumObject — Art Institute", () => {
+describe("Art Institute imports", () => {
   test("builds the IIIF image URL and strips the HTML description", async () => {
     stubFetch(() => ({
       data: {
@@ -123,7 +107,7 @@ describe("fetchMuseumObject — Art Institute", () => {
   });
 });
 
-describe("fetchMuseumObject — Wikidata", () => {
+describe("Wikidata imports", () => {
   test("assembles dimensions, medium and artist from claims + label lookups", async () => {
     stubFetch((url) => {
       if (url.includes("Special:EntityData")) {
@@ -220,6 +204,8 @@ describe("fetchMuseumObject — Wikidata", () => {
   });
 
   test("rejects a malformed Q-id", async () => {
-    expect(await rejected(() => fetchMuseumObject("wikidata", "12345"))).toBe(true);
+    const request = stubFetch(() => ({}));
+    await rejects(fetchMuseumObject("wikidata", "12345"), /Wikidata id must look like/);
+    expect(request).not.toHaveBeenCalled();
   });
 });

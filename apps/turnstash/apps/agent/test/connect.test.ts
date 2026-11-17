@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
 
@@ -112,22 +112,21 @@ test("connect replaces a config that no longer parses, enroll does not", () =>
     expect(JSON.parse(await readFile(configFile, "utf8")).machineId).toBe(machineId);
   }));
 
-test("status and doctor fail on a config that no longer parses", () =>
+test.each(["status", "doctor"])("%s fails on a config that no longer parses", (command) =>
   withDirectory(async (directory) => {
-    await runCli(directory, connectArgs);
+    await mkdir(join(directory, "config"));
     await writeFile(join(directory, "config", "config.json"), '{"serverUrl":"https://turn');
-    for (const command of ["status", "doctor"]) {
-      const result = await runCli(directory, [command]);
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("SchemaError");
-    }
-  }));
+    const result = await runCli(directory, [command]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("SchemaError");
+  }),
+);
 
-test("diagnostics and sync before enrollment leave the agent ready to connect", () =>
-  withDirectory(async (directory) => {
-    for (const command of ["status", "doctor", "sync"]) {
-      const result = await runCli(directory, [command]);
-      expect(result.exitCode).toBe(0);
-    }
-    expect((await runCli(directory, connectArgs)).exitCode).toBe(0);
-  }));
+test.each(["status", "doctor", "sync"])(
+  "%s leaves an unenrolled agent's directories empty",
+  (command) =>
+    withDirectory(async (directory) => {
+      expect((await runCli(directory, [command])).exitCode).toBe(0);
+      expect((await readdir(directory)).filter((name) => name !== ".bun")).toEqual([]);
+    }),
+);

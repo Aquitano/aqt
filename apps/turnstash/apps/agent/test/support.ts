@@ -22,18 +22,19 @@ export const runCli = async (
   args: ReadonlyArray<string>,
   env: Readonly<Record<string, string>> = {},
 ) => {
-  const child = Bun.spawn(
-    [process.execPath, new URL("../src/main.ts", import.meta.url).pathname, ...args],
-    {
-      env: {
-        TURNSTASH_CONFIG_DIR: join(directory, "config"),
-        TURNSTASH_STATE_DIR: join(directory, "state"),
-        ...env,
-      },
-      stdout: "pipe",
-      stderr: "pipe",
+  const child = Bun.spawn([process.execPath, join(import.meta.dir, "../src/main.ts"), ...args], {
+    env: {
+      HOME: directory,
+      USERPROFILE: directory,
+      APPDATA: directory,
+      LOCALAPPDATA: directory,
+      TURNSTASH_CONFIG_DIR: join(directory, "config"),
+      TURNSTASH_STATE_DIR: join(directory, "state"),
+      ...env,
     },
-  );
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [exitCode, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),

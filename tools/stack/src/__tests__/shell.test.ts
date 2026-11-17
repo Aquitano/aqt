@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { rejects } from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,11 +19,9 @@ describe("BunShellRunner", () => {
     directories.push(root);
     const shell = new BunShellRunner();
     const destination = join(root, "app");
-    expect(await shell.exists(destination)).toBe(false);
     await shell.reserveDirectory(destination);
-    expect(await shell.exists(destination)).toBe(true);
-    await expect(shell.reserveDirectory(destination)).rejects.toThrow();
     await shell.writeFile(join(destination, "package.json"), '{"name":"@aqt/example"}');
+    await rejects(shell.reserveDirectory(destination));
     expect(await shell.readPackageJson(join(destination, "package.json"))).toEqual({
       name: "@aqt/example",
     });

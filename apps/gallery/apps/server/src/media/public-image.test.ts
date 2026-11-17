@@ -111,52 +111,26 @@ afterEach(async () => {
   await rm(uploadRoot, { recursive: true, force: true });
 });
 
-describe("servePublicImage — remote source resize cap", () => {
-  test("caps a >2048px source to <=2048px webp", async () => {
+describe("remote image resizing", () => {
+  test("serves and caches each remote variant at its own size", async () => {
     rows = artworkRows(remoteArtworkRow());
-    stubImageFetch(await solidPng(3000, 2000));
+    const calls = stubImageFetch(await solidPng(3000, 2000));
+    const variants = [
+      ["full", 2048],
+      ["mid", 1024],
+      ["thumb", 480],
+    ] as const;
 
-    const res = await servePublicImage(baseOpts());
-
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toBe("image/webp");
-    const meta = await metaOf(res);
-    expect(meta.format).toBe("webp");
-    expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBeLessThanOrEqual(2048);
-  });
-
-  test("mid caps to <=1024px and caches under its own key", async () => {
-    rows = artworkRows(remoteArtworkRow());
-    stubImageFetch(await solidPng(3000, 2000));
-
-    const res = await servePublicImage({ ...baseOpts(), variant: "mid" });
-
-    expect(res.status).toBe(200);
-    const meta = await metaOf(res);
-    expect(meta.format).toBe("webp");
-    expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBe(1024);
-    expect(
-      await Bun.file(
-        path.join(uploadRoot, "public-image-cache", "artwork-art-1-mid-v2.webp"),
-      ).exists(),
-    ).toBe(true);
-  });
-
-  test("thumb caps to <=480px and caches under its own key", async () => {
-    rows = artworkRows(remoteArtworkRow());
-    stubImageFetch(await solidPng(3000, 2000));
-
-    const res = await servePublicImage({ ...baseOpts(), variant: "thumb" });
-
-    expect(res.status).toBe(200);
-    const meta = await metaOf(res);
-    expect(meta.format).toBe("webp");
-    expect(Math.max(meta.width ?? 0, meta.height ?? 0)).toBe(480);
-    expect(
-      await Bun.file(
-        path.join(uploadRoot, "public-image-cache", "artwork-art-1-thumb-v2.webp"),
-      ).exists(),
-    ).toBe(true);
+    const checkVariant = async ([variant, width]: (typeof variants)[number]) => {
+      const res = await servePublicImage({ ...baseOpts(), variant });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("image/webp");
+      expect(await metaOf(res)).toMatchObject({ format: "webp", width });
+    };
+    await Promise.all(variants.map(checkVariant));
+    const fetched = calls.count;
+    await Promise.all(variants.map(checkVariant));
+    expect(calls.count).toBe(fetched);
   });
 
   test("warmArtworkImages derives mid and full so the first visit is a cache hit", async () => {

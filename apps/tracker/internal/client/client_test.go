@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -28,14 +29,7 @@ func TestSessionRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The file carries a refresh token: anything wider than the owner is a leak.
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("permissions %o, want 600", perm)
-	}
+	assertOwnerOnly(t, path)
 
 	got, err := load(path)
 	if err != nil {
@@ -50,6 +44,9 @@ func TestSessionRoundTrip(t *testing.T) {
 }
 
 func TestSaveOverAWiderFileTightensIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX file permissions")
+	}
 	path := filepath.Join(t.TempDir(), "token.json")
 	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
@@ -57,12 +54,15 @@ func TestSaveOverAWiderFileTightensIt(t *testing.T) {
 	if err := save(path, testSession("https://auth.example")); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("permissions %o, want 600", perm)
+	assertOwnerOnly(t, path)
+}
+
+func assertOwnerOnly(t *testing.T, path string) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0600 {
+			t.Errorf("file is not owner-only: %v, %v", info, err)
+		}
 	}
 }
 
