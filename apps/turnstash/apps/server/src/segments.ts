@@ -25,14 +25,28 @@ const decodeEntries = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Array(Schema.Tuple([Schema.Number, Schema.String]))),
 );
 
-export const packSegment = (entries: ReadonlyArray<SegmentEntry>) =>
-  Effect.promise(() => compress(JSON.stringify(entries), compression));
-
 const unpackSegment = (data: Buffer) =>
   Effect.promise(() => decompress(data)).pipe(
     Effect.flatMap((json) => decodeEntries(json.toString("utf8"))),
     Effect.orDie,
   );
+
+// Whoever packs a segment then drops or overwrites the only other copy of its records, and raw records cannot
+// be rebuilt, so the segment is read back before it is handed out.
+export const packSegment = Effect.fn("Segments.pack")(function* (
+  entries: ReadonlyArray<SegmentEntry>,
+) {
+  const data = yield* Effect.promise(() => compress(JSON.stringify(entries), compression));
+  const stored = yield* unpackSegment(data);
+  const intact =
+    stored.length === entries.length &&
+    stored.every(([id, payload], index) => {
+      const entry = entries[index];
+      return entry !== undefined && entry[0] === id && entry[1] === payload;
+    });
+  if (!intact) return yield* Effect.die("a packed segment does not read back as its records");
+  return data;
+});
 
 export interface StoredRecord {
   readonly id: number;
