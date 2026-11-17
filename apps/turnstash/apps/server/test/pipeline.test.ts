@@ -543,7 +543,7 @@ test("a new catalog keeps the valuations of models it does not reprice", async (
         .where(and(eq(valuations.catalogVersion, version), eq(valuations.active, true)));
       expect(swapped?.n).toBe(requests.length);
       const [total] = yield* db.select({ n: count() }).from(valuations);
-      expect(total?.n).toBe(requests.length * 2);
+      expect(total?.n).toBe(requests.length);
     }),
   );
 });
@@ -1241,7 +1241,7 @@ test("reprocessing keeps a pending catalog, which takes over once it has priced 
   );
 });
 
-test("only the active catalog and the three most recent superseded ones keep their valuations", async () => {
+test("a superseded catalog loses its valuations once its successor is live", async () => {
   await runTest(
     Effect.gen(function* () {
       yield* insertMachines;
@@ -1252,7 +1252,7 @@ test("only the active catalog and the three most recent superseded ones keep the
       );
       yield* workOnce();
       const versions: Array<string> = [];
-      for (const step of [1, 2, 3, 4, 5]) {
+      for (const step of [1, 2]) {
         const version = yield* insertRepricedCatalog([step * 1e-5, 5e-5, 1.25e-5, 1e-6, 2]);
         yield* activateCatalog(version);
         yield* workOnce();
@@ -1261,7 +1261,7 @@ test("only the active catalog and the three most recent superseded ones keep the
       const kept = yield* db
         .selectDistinct({ version: valuations.catalogVersion })
         .from(valuations);
-      expect(kept.map((row) => row.version).toSorted()).toEqual(versions.slice(1).toSorted());
+      expect(kept.map((row) => row.version)).toEqual(versions.slice(1));
     }),
   );
 });

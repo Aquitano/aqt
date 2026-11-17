@@ -307,7 +307,7 @@ export const valuations = pgTable(
   },
   (table) => [
     // Every cost aggregate joins the active valuation; keyed with its cost the join is index-only and skips
-    // the rows kept for superseded catalogs. The pricing version keeps the worker's unvalued check index-only.
+    // the rows of a catalog still being priced. The pricing version keeps the worker's unvalued check index-only.
     index("valuations_active_cost")
       .on(table.requestId, table.costUsd, table.pricingVersion)
       .where(sql`${table.active}`),
