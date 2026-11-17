@@ -379,6 +379,96 @@ test("a rate limit error becomes a limit hit that names its window", () => {
   ]);
 });
 
+test("trimming drops API request copies and tool output the result block repeats, and nothing else", async () => {
+  const output = "line of build output\n".repeat(80);
+  const file = "export const kept = true;\n".repeat(80);
+  const toolResult = JSON.stringify({
+    type: "user",
+    uuid: "00000000-0000-4000-8000-0000000000aa",
+    sessionId: session,
+    timestamp: "2026-09-21T12:00:01.000Z",
+    message: {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "toolu_trim", content: output }],
+    },
+    toolUseResult: { stdout: output, stderr: "", interrupted: false, originalFile: file },
+  });
+  const wireCopy = JSON.stringify({
+    type: "api-request-blob",
+    sessionId: session,
+    hash: "b".repeat(64),
+    message: { role: "user", content: [{ type: "text", text: output }] },
+  });
+  const systemCopy = JSON.stringify({
+    type: "api-request-blob",
+    sessionId: session,
+    hash: "c".repeat(64),
+    message: { role: "system", content: [{ type: "text", text: output }] },
+  });
+  const rows = [
+    ...(await conversationRows()),
+    ...jsonlRows(
+      streamIdOf({
+        kind: "jsonl",
+        root: configRoot,
+        relativePath: `projects/extra/${session}.jsonl`,
+      }),
+      [toolResult, wireCopy, systemCopy].join("\n"),
+      "2026-09-21T12:00:00.000Z",
+    ),
+  ];
+  const trimOf = (payload: string) =>
+    claudeNormalizer.trim?.(rows[0]!.streamId, payload) ?? payload;
+  const trimmed = rows.map((row) => ({ ...row, payload: trimOf(row.payload) }));
+
+  expect(claudeNormalizer.normalize(session, trimmed)).toEqual(
+    claudeNormalizer.normalize(session, rows),
+  );
+  expect(trimmed.map((row) => trimOf(row.payload))).toEqual(trimmed.map((row) => row.payload));
+  const changed = trimmed.filter((row, index) => row.payload !== rows[index]?.payload);
+  expect(changed.map((row) => JSON.parse(row.payload))).toEqual([
+    {
+      ...JSON.parse(toolResult),
+      toolUseResult: {
+        stdout: { omitted: "tool_result", chars: output.length },
+        stderr: "",
+        interrupted: false,
+        originalFile: file,
+      },
+    },
+    {
+      ...JSON.parse(wireCopy),
+      message: {
+        omitted: "api-request",
+        chars: JSON.stringify(JSON.parse(wireCopy).message).length,
+      },
+    },
+  ]);
+});
+
+test("a long attachment is named in the transcript without its body", () => {
+  const streamId = streamIdOf({ kind: "jsonl", root: configRoot, relativePath: transcript });
+  const attachment = { type: "skill_listing", content: "skill ".repeat(600) };
+  const rows = jsonlRows(
+    streamId,
+    JSON.stringify({
+      type: "attachment",
+      uuid: "00000000-0000-4000-8000-0000000000ab",
+      sessionId: session,
+      timestamp: "2026-09-21T12:00:01.000Z",
+      attachment,
+    }),
+    "2026-09-21T12:00:00.000Z",
+  );
+  expect(claudeNormalizer.normalize(session, rows)?.messages[0]?.parts).toEqual([
+    {
+      type: "opaque",
+      kind: "attachment:skill_listing",
+      data: { omitted: "attachment", chars: JSON.stringify(attachment).length },
+    },
+  ]);
+});
+
 test("Claude state follows explicit overrides even when they name the default directory", () => {
   expect(claudeStateFiles(host({}))).toEqual(["/home/dev/.claude.json"]);
   expect(claudeStateFiles(host({ env: { CLAUDE_CONFIG_DIR: "~/.claude" } }))).toEqual([
