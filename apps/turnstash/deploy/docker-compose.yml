@@ -1,6 +1,6 @@
 services:
   db:
-    image: paradedb/paradedb:v0.26.5-pg17@sha256:af82b608d85fccc315dcaa65fdeef63c94837906bb7984f378ab645c8d4e81b8
+    image: paradedb/paradedb:v0.26.6-pg17@sha256:d2793a65990a7179c97835cc8fc546f8f8bb3a2df975d80194f35e1744fd49be
     # The image sizes shared_buffers to 25% of the host's RAM; a personal archive needs far less.
     command: ["postgres", "-c", "shared_buffers=256MB"]
     # Parallel hash joins allocate in /dev/shm; Docker's 64 MB default fails dashboard queries with SQLSTATE 53100.
