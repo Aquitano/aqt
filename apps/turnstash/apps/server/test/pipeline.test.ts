@@ -353,6 +353,11 @@ test("tool output is stored on its execution and not repeated in the result part
       );
       expect(withExecution.length).toBeGreaterThan(0);
       expect(withExecution.map((part) => part.output)).toEqual(withExecution.map(() => null));
+      const texts = (yield* db.select({ text: messages.text }).from(messages)).map(
+        (row) => row.text,
+      );
+      const outputs = withExecution.map((part) => executions.get(part.toolKey) ?? "");
+      expect(outputs.filter((output) => texts.some((text) => text.includes(output)))).toEqual([]);
     }),
   );
 });

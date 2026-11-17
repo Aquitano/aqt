@@ -8,10 +8,12 @@ import {
   type MessagePart,
   type NormalizedConversation,
   type NormalizedMessage,
+  type NormalizedToolExecution,
   type ProviderId,
   RecordKey,
   type SourceRecordRow,
   StreamId,
+  textOfParts,
 } from "@aqt/turnstash-core";
 import { resolveModel } from "@aqt/turnstash-pricing";
 import { and, asc, eq, lte, or, type SQL, sql } from "drizzle-orm";
@@ -189,11 +191,9 @@ const upsertConversationRow = Effect.fn("Normalize.upsertConversationRow")(funct
 
 // Tool output is stored on its execution. A result part keeps its copy only when no execution holds the
 // same text, and readers fall back to the execution.
-const withoutRepeatedOutput = (normalized: NormalizedConversation) => {
+const withoutRepeatedOutput = (tools: ReadonlyArray<NormalizedToolExecution>) => {
   const outputs = new Map(
-    normalized.toolExecutions.flatMap((tool) =>
-      tool.output === null ? [] : [[tool.toolKey, tool.output] as const],
-    ),
+    tools.flatMap((tool) => (tool.output === null ? [] : [[tool.toolKey, tool.output] as const])),
   );
   return (parts: ReadonlyArray<MessagePart>): ReadonlyArray<MessagePart> =>
     parts.map((part) =>
@@ -213,8 +213,15 @@ const stringsOf = (value: Schema.Json): ReadonlyArray<string> => {
 };
 
 // Search matches messages.text, so a message also carries the string values of the tool calls it made, such as
-// a shell command or a file path.
+// a shell command or a file path. Output is searched on its tool execution and left out, unless the execution
+// names no message a match could be listed on.
 const searchTextOf = (normalized: NormalizedConversation) => {
+  const messageKeys = new Set(normalized.messages.map((message) => message.messageKey));
+  const searchedParts = withoutRepeatedOutput(
+    normalized.toolExecutions.filter(
+      (tool) => tool.messageKey !== undefined && messageKeys.has(tool.messageKey),
+    ),
+  );
   const inputs = new Map<string, Array<string>>();
   for (const tool of normalized.toolExecutions) {
     if (tool.messageKey === undefined) continue;
@@ -223,7 +230,7 @@ const searchTextOf = (normalized: NormalizedConversation) => {
     inputs.set(tool.messageKey, strings);
   }
   return (message: NormalizedMessage): string =>
-    [message.text, ...(inputs.get(message.messageKey) ?? [])]
+    [textOfParts(searchedParts(message.parts)), ...(inputs.get(message.messageKey) ?? [])]
       .filter((text) => text !== "")
       .join("\n");
 };
@@ -234,7 +241,7 @@ const replaceMessages = Effect.fn("Normalize.replaceMessages")(function* (
   analysis: ConversationAnalysis,
 ) {
   const db = yield* Db;
-  const storedParts = withoutRepeatedOutput(normalized);
+  const storedParts = withoutRepeatedOutput(normalized.toolExecutions);
   const searchText = searchTextOf(normalized);
   const keys = normalized.messages.map((message) => message.messageKey);
   yield* db

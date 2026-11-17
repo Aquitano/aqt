@@ -219,3 +219,53 @@ test("stable message links seek into a transcript and paginate surrounding conte
     }),
   );
 });
+
+test("tool output is found on the message that made the call, and only without a role or as a tool match", async () => {
+  await runTest(
+    Effect.gen(function* () {
+      const db = yield* Db;
+      const id = crypto.randomUUID();
+      const at = new Date("2026-09-21T10:00:00Z");
+      yield* db.insert(conversations).values({
+        id,
+        provider: "claude",
+        conversationKey: id,
+        startedAt: at,
+        endedAt: at,
+        parserVersion: 1,
+      });
+      yield* db.insert(messages).values({
+        conversationId: id,
+        messageKey: "caller",
+        seq: 0,
+        role: "assistant",
+        createdAt: at,
+        parts: [],
+        text: "run the build",
+      });
+      yield* db.insert(toolExecutions).values([
+        {
+          conversationId: id,
+          messageKey: "caller",
+          toolKey: "first",
+          name: "shell",
+          output: "lighthouse failed to compile",
+          status: "error",
+        },
+        {
+          conversationId: id,
+          messageKey: "caller",
+          toolKey: "second",
+          name: "shell",
+          output: "lighthouse compiled",
+          status: "ok",
+        },
+      ]);
+      const hits = (yield* search({ q: "lighthouse" })).hits;
+      expect(hits.map((hit) => [hit.messageKey, hit.role])).toEqual([["caller", "tool"]]);
+      expect(hits[0]?.snippet).toContain("<b>lighthouse</b>");
+      expect((yield* search({ q: "lighthouse", role: "tool" })).hits).toHaveLength(1);
+      expect((yield* search({ q: "lighthouse", role: "assistant" })).hits).toEqual([]);
+    }),
+  );
+});

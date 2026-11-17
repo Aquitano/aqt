@@ -1,6 +1,6 @@
 import type { SearchHit, SearchQuery, SearchResult } from "@aqt/turnstash-api";
 import type { ProviderId, Role } from "@aqt/turnstash-core";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, lt, type SQL, sql } from "drizzle-orm";
 import { Effect } from "effect";
 
 import { Db } from "./db/client.ts";
@@ -8,6 +8,7 @@ import { conversations, messages } from "./db/schema.ts";
 import { dateWindow, number, projectCondition } from "./filters.ts";
 
 interface SearchRow extends Record<string, unknown> {
+  readonly hit_id: string;
   readonly conversation_id: string;
   readonly message_id: string;
   readonly message_key: string;
@@ -25,26 +26,34 @@ interface SnippetRow extends Record<string, unknown> {
   readonly snippet: string;
 }
 
-export const search = Effect.fn("Search.run")(function* (query: SearchQuery) {
+// Message text and tool output each have a BM25 index. A match in tool output is reported on the message
+// that made the call, where the transcript shows the output.
+const indexes = {
+  messages: { table: sql`messages`, field: "text", role: sql`messages.role`, join: sql`` },
+  toolOutput: {
+    table: sql`tool_executions`,
+    field: "output",
+    role: sql`'tool'::message_role`,
+    join: sql`join messages on messages.conversation_id = tool_executions.conversation_id
+              and messages.message_key = tool_executions.message_key`,
+  },
+} as const;
+
+const searchIndex = Effect.fn("Search.index")(function* (
+  index: (typeof indexes)[keyof typeof indexes],
+  q: string,
+  filters: SQL,
+  limit: number,
+) {
   const db = yield* Db;
-  const limit = query.limit ?? 50;
-  const window = dateWindow(query);
-  const filters =
-    and(
-      query.provider === undefined ? undefined : eq(conversations.provider, query.provider),
-      query.projectKey === undefined ? undefined : projectCondition(query.projectKey),
-      query.role === undefined ? undefined : eq(messages.role, query.role),
-      window.from === null ? undefined : gte(messages.createdAt, window.from),
-      window.to === null ? undefined : lt(messages.createdAt, window.to),
-    ) ?? sql`true`;
-  const matches = sql`paradedb.parse_with_field('text', ${query.q}, lenient => true)`;
+  const matches = sql`paradedb.parse_with_field(${index.field}, ${q}, lenient => true)`;
   const rows = yield* db.execute<SearchRow>(
     sql`
-    select messages.conversation_id, messages.id as message_id, messages.message_key, messages.seq, messages.role,
-           conversations.provider, conversations.title, conversations.project_key, messages.created_at,
-           paradedb.score(messages.id) as score
-    from messages join conversations on conversations.id = messages.conversation_id
-    where messages.id @@@ ${matches} and ${filters}
+    select ${index.table}.id as hit_id, messages.conversation_id, messages.id as message_id, messages.message_key,
+           messages.seq, ${index.role} as role, conversations.provider, conversations.title,
+           conversations.project_key, messages.created_at, paradedb.score(${index.table}.id) as score
+    from ${index.table} ${index.join} join conversations on conversations.id = messages.conversation_id
+    where ${index.table}.id @@@ ${matches} and ${filters}
     order by score desc limit ${limit}`,
     "objects",
   );
@@ -56,25 +65,49 @@ export const search = Effect.fn("Search.run")(function* (query: SearchQuery) {
       ? []
       : yield* db.execute<SnippetRow>(
           sql`
-          select id, paradedb.snippet(text, max_num_chars => 300) as snippet
-          from messages
-          where id @@@ ${matches} and id = any(${`{${rows.map((row) => row.message_id).join(",")}}`}::uuid[])`,
+          select id, paradedb.snippet(${sql.identifier(index.field)}, max_num_chars => 300) as snippet
+          from ${index.table}
+          where id @@@ ${matches} and id = any(${`{${rows.map((row) => row.hit_id).join(",")}}`}::uuid[])`,
           "objects",
         );
   const snippetOf = new Map(snippets.map((row) => [row.id, row.snippet]));
-  return {
-    hits: rows.map((row): SearchHit => ({
-      conversationId: row.conversation_id,
-      messageId: row.message_id,
-      messageKey: row.message_key,
-      seq: row.seq,
-      role: row.role,
-      provider: row.provider,
-      title: row.title,
-      projectKey: row.project_key,
-      createdAt: new Date(row.created_at).toISOString(),
-      snippet: snippetOf.get(row.message_id) ?? "",
-      score: number(row.score),
-    })),
-  } satisfies SearchResult;
+  return rows.map((row): SearchHit => ({
+    conversationId: row.conversation_id,
+    messageId: row.message_id,
+    messageKey: row.message_key,
+    seq: row.seq,
+    role: row.role,
+    provider: row.provider,
+    title: row.title,
+    projectKey: row.project_key,
+    createdAt: new Date(row.created_at).toISOString(),
+    snippet: snippetOf.get(row.hit_id) ?? "",
+    score: number(row.score),
+  }));
+});
+
+export const search = Effect.fn("Search.run")(function* (query: SearchQuery) {
+  const limit = query.limit ?? 50;
+  const window = dateWindow(query);
+  const shared = and(
+    query.provider === undefined ? undefined : eq(conversations.provider, query.provider),
+    query.projectKey === undefined ? undefined : projectCondition(query.projectKey),
+    window.from === null ? undefined : gte(messages.createdAt, window.from),
+    window.to === null ? undefined : lt(messages.createdAt, window.to),
+  );
+  const ofRole = query.role === undefined ? undefined : eq(messages.role, query.role);
+  const inMessages = yield* searchIndex(
+    indexes.messages,
+    query.q,
+    and(shared, ofRole) ?? sql`true`,
+    limit,
+  );
+  const inToolOutput =
+    query.role === undefined || query.role === "tool"
+      ? yield* searchIndex(indexes.toolOutput, query.q, shared ?? sql`true`, limit)
+      : [];
+  const best = new Map<string, SearchHit>();
+  for (const hit of [...inMessages, ...inToolOutput].toSorted((a, b) => b.score - a.score))
+    if (!best.has(hit.messageId)) best.set(hit.messageId, hit);
+  return { hits: [...best.values()].slice(0, limit) } satisfies SearchResult;
 });
