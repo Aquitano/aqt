@@ -3,7 +3,7 @@ module github.com/aquitano/aqt/packages/go/pgschema
 go 1.27.2
 
 require (
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/jackc/tern/v2 v2.4.3
 	github.com/peterldowns/pgtestdb v0.1.1
 )
