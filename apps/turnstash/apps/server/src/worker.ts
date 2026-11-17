@@ -3,6 +3,7 @@ import { Cause, Clock, Effect, Layer, Metric, Ref, Schedule } from "effect";
 import { ServerConfig } from "./config.ts";
 import { failureSummary } from "./db/errors.ts";
 import { hasDueConversations, normalizeDirty, queueStale } from "./normalize.ts";
+import { deleteUnreferencedSegments, sealIdle } from "./segments.ts";
 import { workerItems, workerPassMillis } from "./telemetry.ts";
 import { autoRefreshPricing, hasCatalogWork, pruneValuations, valuePending } from "./valuation.ts";
 
@@ -55,6 +56,26 @@ export const WorkerLive = Layer.effectDiscard(
         (cause) => Effect.logError("worker pass failed", failureSummary(cause)),
       ),
       Effect.repeat(Schedule.spaced(`${config.workerIntervalMillis} millis`)),
+      Effect.forkScoped,
+    );
+  }),
+);
+
+// Conversations that stopped receiving records are sealed in the background.
+export const SealingLive = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const { sealAfterDays } = yield* ServerConfig;
+    yield* Effect.gen(function* () {
+      const sealed = yield* sealIdle(sealAfterDays);
+      const dropped = yield* deleteUnreferencedSegments();
+      if (sealed.conversations > 0 || dropped > 0)
+        yield* Effect.logInfo("sealed idle conversations", { ...sealed, dropped });
+    }).pipe(
+      Effect.catchCauseIf(
+        (cause) => !Cause.hasInterrupts(cause),
+        (cause) => Effect.logError("sealing failed", failureSummary(cause)),
+      ),
+      Effect.repeat(Schedule.spaced("1 hour")),
       Effect.forkScoped,
     );
   }),

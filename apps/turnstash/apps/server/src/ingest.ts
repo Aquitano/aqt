@@ -248,6 +248,8 @@ export const applyBatch = Effect.fn("Ingest.applyBatch")(function* (
                 "redactions",
                 "conversationKey",
               ]),
+              // A replaced record is stored inline again; its sealed copy is no longer read.
+              segmentRef: sql`NULL`,
               ingestedAt: sql`now()`,
             },
             setWhere: sql`${sourceRecords.observedAt} <= excluded.observed_at`,

@@ -43,6 +43,7 @@ import { unknownProject } from "./filters.ts";
 import { relinkConversations } from "./git.ts";
 import { Normalizers } from "./registry.ts";
 import { scrubJson, scrubOptional, scrubText } from "./scrub.ts";
+import { payloadsOf } from "./segments.ts";
 import { normalizeFailures } from "./telemetry.ts";
 import { activeCatalog } from "./valuation.ts";
 
@@ -121,9 +122,10 @@ const loadRecords = Effect.fn("Normalize.loadRecords")(function* (
       streamId: sourceStreams.streamId,
       machineId: sourceStreams.machineId,
       recordKey: sourceRecords.recordKey,
+      id: sourceRecords.id,
       payload: sourceRecords.payload,
+      segmentRef: sourceRecords.segmentRef,
       observedAt: sourceRecords.observedAt,
-      redactions: sourceRecords.redactions,
     })
     .from(sourceRecords)
     .innerJoin(sourceStreams, eq(sourceStreams.id, sourceRecords.streamRef))
@@ -526,10 +528,11 @@ export const normalizeConversation = Effect.fn("Normalize.conversation")(functio
     .where(and(eq(tombstones.provider, provider), eq(tombstones.conversationKey, conversationKey)));
   if (deleted.length > 0) return null;
   const records = yield* loadRecords(provider, conversationKey);
+  const payloads = yield* payloadsOf(records);
   const rows = records.map((row): SourceRecordRow => ({
     streamId: StreamId.make(row.streamId),
     recordKey: RecordKey.make(row.recordKey),
-    payload: row.payload,
+    payload: payloads.get(row.id) ?? "",
     observedAt: row.observedAt.toISOString(),
   }));
   const normalized = records.length === 0 ? null : normalizer.normalize(conversationKey, rows);

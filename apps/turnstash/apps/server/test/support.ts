@@ -55,6 +55,7 @@ const tables = [
   "record_blobs",
   "blobs",
   "source_records",
+  "record_segments",
   "source_streams",
   "ingest_batches",
   "tombstones",

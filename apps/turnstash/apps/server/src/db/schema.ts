@@ -16,6 +16,7 @@ import {
   bigserial,
   boolean,
   bytea,
+  check,
   date,
   doublePrecision,
   foreignKey,
@@ -83,6 +84,22 @@ export const sourceStreams = pgTable(
   ],
 );
 
+// The records of a conversation that stopped receiving batches, packed and compressed together. Transcript
+// lines repeat their session id, paths and model settings, which only compression across records removes.
+export const recordSegments = pgTable(
+  "record_segments",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    provider: text("provider").$type<ProviderId>().notNull(),
+    conversationKey: text("conversation_key").notNull(),
+    data: bytea("data").notNull(),
+    // How many records the data holds, which exceeds the rows pointing here once some were replaced or deleted.
+    records: integer("records").notNull(),
+    sealedAt: timestamptz("sealed_at").notNull().defaultNow(),
+  },
+  (table) => [index("record_segments_conversation").on(table.provider, table.conversationKey)],
+);
+
 export const sourceRecords = pgTable(
   "source_records",
   {
@@ -93,7 +110,10 @@ export const sourceRecords = pgTable(
     provider: text("provider").$type<ProviderId>().notNull(),
     recordKey: text("record_key").notNull(),
     contentHash: text("content_hash").notNull(),
-    payload: text("payload").notNull(),
+    // Null once the record is sealed. The row still decides which records exist: a segment entry counts only
+    // while its row points at that segment.
+    payload: text("payload"),
+    segmentRef: bigint("segment_ref", { mode: "number" }).references(() => recordSegments.id),
     observedAt: timestamptz("observed_at").notNull(),
     redactions: integer("redactions").notNull().default(0),
     conversationKey: text("conversation_key"),
@@ -102,6 +122,17 @@ export const sourceRecords = pgTable(
   (table) => [
     uniqueIndex("source_records_identity").on(table.streamRef, table.recordKey),
     index("source_records_conversation").on(table.provider, table.conversationKey),
+    // Shrinks to the conversations still receiving records, so finding the idle ones stays cheap.
+    index("source_records_unsealed")
+      .on(table.provider, table.conversationKey, table.ingestedAt)
+      .where(sql`${table.payload} IS NOT NULL`),
+    index("source_records_segment")
+      .on(table.segmentRef)
+      .where(sql`${table.segmentRef} IS NOT NULL`),
+    check(
+      "source_records_payload_or_segment",
+      sql`(${table.payload} IS NULL) <> (${table.segmentRef} IS NULL)`,
+    ),
   ],
 );
 

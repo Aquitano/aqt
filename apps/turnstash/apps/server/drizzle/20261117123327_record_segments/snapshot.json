@@ -1,0 +1,438 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "f77c8cda-f5f9-4554-b401-d59f48fef8fa",
+  "prevIds": [
+    "ff384e65-b747-4f07-8b51-e2c312b35f9f"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "record_segments"
+      ],
+      "writes": [
+        "s|tbl|public.record_segments",
+        "n|tbl|public.record_segments",
+        "e|tbl|public.record_segments",
+        "n|rel|public.record_segments",
+        "n|type|public.record_segments",
+        "n|rel|public.record_segments_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "source_records",
+        "segment_ref"
+      ],
+      "writes": [
+        "s|col|public.source_records.segment_ref",
+        "n|col|public.source_records.segment_ref",
+        "e|col|public.source_records.segment_ref"
+      ],
+      "reads": [
+        "n|tbl|public.source_records",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "source_records",
+        "payload"
+      ],
+      "writes": [
+        "s|colprop|public.source_records.payload.notNull"
+      ],
+      "reads": [
+        "n|tbl|public.source_records",
+        "n|sch|public",
+        "n|col|public.source_records.payload"
+      ],
+      "sqlHash": "43e95dcba8521bc8"
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "record_segments",
+        "record_segments_conversation"
+      ],
+      "writes": [
+        "s|idx|public.record_segments_conversation",
+        "n|idx|public.record_segments_conversation",
+        "e|idx|public.record_segments_conversation",
+        "n|rel|public.record_segments_conversation"
+      ],
+      "reads": [
+        "n|tbl|public.record_segments",
+        "n|sch|public",
+        "n|col|public.record_segments.provider",
+        "n|col|public.record_segments.conversation_key"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "source_records",
+        "source_records_unsealed"
+      ],
+      "writes": [
+        "s|idx|public.source_records_unsealed",
+        "n|idx|public.source_records_unsealed",
+        "e|idx|public.source_records_unsealed",
+        "n|rel|public.source_records_unsealed"
+      ],
+      "reads": [
+        "n|tbl|public.source_records",
+        "n|sch|public",
+        "n|col|public.source_records.provider",
+        "n|col|public.source_records.conversation_key",
+        "n|col|public.source_records.ingested_at"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "source_records",
+        "source_records_segment"
+      ],
+      "writes": [
+        "s|idx|public.source_records_segment",
+        "n|idx|public.source_records_segment",
+        "e|idx|public.source_records_segment",
+        "n|rel|public.source_records_segment"
+      ],
+      "reads": [
+        "n|tbl|public.source_records",
+        "n|sch|public",
+        "n|col|public.source_records.segment_ref"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "source_records"
+      ],
+      "writes": [
+        "s|fk|public.source_records.source_records_segment_ref_record_segments_id_fkey",
+        "n|fk|public.source_records.source_records_segment_ref_record_segments_id_fkey",
+        "e|fk|public.source_records.source_records_segment_ref_record_segments_id_fkey",
+        "n|con|public.source_records.source_records_segment_ref_record_segments_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.source_records",
+        "n|sch|public",
+        "n|tbl|public.record_segments",
+        "n|sch|public",
+        "n|col|public.source_records.segment_ref",
+        "n|col|public.record_segments.id",
+        "e|uniqueness|public.record_segments.id"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "source_records"
+      ],
+      "writes": [
+        "s|ck|public.source_records.source_records_payload_or_segment",
+        "n|ck|public.source_records.source_records_payload_or_segment",
+        "e|ck|public.source_records.source_records_payload_or_segment",
+        "n|con|public.source_records.source_records_payload_or_segment"
+      ],
+      "reads": [
+        "n|tbl|public.source_records",
+        "n|sch|public",
+        "n|col|public.source_records.payload",
+        "n|col|public.source_records.segment_ref"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "record_segments",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "record_segments",
+        "name": "id",
+        "type": "bigserial",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "record_segments",
+        "name": "provider",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "record_segments",
+        "name": "conversation_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "record_segments",
+        "name": "data",
+        "type": "bytea",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "record_segments",
+        "name": "records",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "record_segments",
+        "name": "sealed_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_records",
+        "name": "segment_ref",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "record_segments",
+        "name": "record_segments_conversation",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "provider",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "conversation_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_records",
+        "name": "source_records_unsealed",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "provider",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "conversation_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "ingested_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"payload\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_records",
+        "name": "source_records_segment",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "segment_ref",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"segment_ref\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_records",
+        "name": "source_records_segment_ref_record_segments_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "segment_ref"
+        ],
+        "schemaTo": "public",
+        "tableTo": "record_segments",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "record_segments",
+        "name": "record_segments_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_records",
+        "name": "source_records_payload_or_segment",
+        "value": "(\"payload\" IS NULL) <> (\"segment_ref\" IS NULL)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"source_records\",\"payload\"]",
+      "set": {
+        "notNull": false
+      }
+    }
+  ]
+}
