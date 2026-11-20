@@ -27,3 +27,5 @@ coverage/
 ExportOptions.plist
 .claude/settings.local.json
 go.work.sum
+
+.vercel
