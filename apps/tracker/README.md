@@ -256,7 +256,7 @@ mkdir -p /data/aqt-tracker/pgdata /data/aqt-tracker/backups
 chmod 700 /data/aqt-tracker/backups
 ```
 
-`/opt/aqt-tracker/apps/tracker/.env`, mode 600, or keep it in Infisical's `prod` and run `mise run tracker:secrets:send` from the laptop:
+`/opt/aqt-tracker/apps/tracker/.env`, mode 600, or keep it in Infisical's `prod` and run `./homelab secrets aqt-tracker` from the homelab repository:
 
 ```sh
 COMPOSE_PROFILES=server
@@ -297,7 +297,7 @@ The time zone is the one Grafana's per-day panels bucket by; a dump does not car
 docker compose -f docker-compose.yml -f deploy/docker-compose.laptop.yml down
 ```
 
-Later deploys are `mise run tracker:deploy` from the laptop. `tracker reprocess`, `migrate` and `blob` run on the box as `docker compose run --rm tracker <command>`.
+Later deploys are `./homelab deploy aqt-tracker` from the homelab repository. `tracker reprocess`, `migrate` and `blob` run on the box as `docker compose run --rm tracker <command>`.
 
 ### Pointing the clients at it
 

@@ -1,7 +1,7 @@
 # The API server only. Postgres (Neon), media (R2) and identity (Clerk) are
 # external services, and the web app runs on Vercel.
 #
-# .env here is the file `ops/secrets.sh send gallery prod` writes; compose also
+# .env here is the file `./homelab secrets aqt-gallery` writes; compose also
 # reads it for the interpolation below.
 services:
   server:
