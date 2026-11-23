@@ -22,6 +22,7 @@ import {
   type StreamId,
   textOfParts,
   type Usage,
+  withJsonField,
 } from "@aqt/turnstash-core";
 import { Option, type Schema } from "effect";
 
@@ -215,6 +216,10 @@ const limitWindowOf = (text: string): number | undefined => {
   return undefined;
 };
 
+// Prompt snapshots, skill listings and tool lists repeat in every session and run to many kilobytes. The
+// transcript names such an attachment and the archived record keeps its body.
+const shownAttachmentChars = 2048;
+
 const normalize = (
   conversationKey: string,
   records: ReadonlyArray<SourceRecordRow>,
@@ -402,10 +407,11 @@ const normalize = (
     } else if (type === "attachment") {
       const attachment = asObject(record["attachment"]);
       if (attachment === undefined) continue;
+      const chars = JSON.stringify(attachment).length;
       parts.push({
         type: "opaque",
         kind: `attachment:${asString(attachment["type"]) ?? "unknown"}`,
-        data: attachment,
+        data: chars > shownAttachmentChars ? { omitted: "attachment", chars } : attachment,
       });
     } else if (type === "system") {
       const subtype = asString(record["subtype"]);
@@ -479,9 +485,64 @@ const normalize = (
   };
 };
 
+const repeatedOutputChars = 1024;
+const transcriptRoles = new Set(["user", "assistant"]);
+
+const toolResultTexts = (record: Schema.JsonObject): ReadonlyArray<string> =>
+  asArray(asObject(record["message"])?.["content"]).flatMap((value) => {
+    const block = asObject(value);
+    if (block === undefined || asString(block["type"]) !== "tool_result") return [];
+    const text = textOfContent(block["content"]);
+    return text === null ? [] : [text];
+  });
+
+// Returns the value itself when nothing inside it changed.
+const withoutRepeatedText = (value: Json, texts: ReadonlyArray<string>): Json => {
+  if (typeof value === "string")
+    return value.length > repeatedOutputChars && texts.some((text) => text.includes(value))
+      ? { omitted: "tool_result", chars: value.length }
+      : value;
+  if (isArray(value)) {
+    const items = value.map((item) => withoutRepeatedText(item, texts));
+    return items.some((item, index) => item !== value[index]) ? items : value;
+  }
+  const object = asObject(value);
+  if (object === undefined) return value;
+  const entries = Object.entries(object).map(([key, item]): [string, Json] => [
+    key,
+    withoutRepeatedText(item, texts),
+  ]);
+  return entries.some(([key, item]) => item !== object[key]) ? Object.fromEntries(entries) : value;
+};
+
+// Claude Code logs each API request beside the transcript: an api-request-blob holds one wire message. The
+// transcript records already carry what a user or assistant message says; a system message exists only in its
+// blob and is kept. toolUseResult is the harness's structured copy of a tool result, and loses only the text
+// its own tool_result block repeats in full.
+const trim = (_streamId: StreamId, payload: string): string => {
+  if (payload.length <= repeatedOutputChars) return payload;
+  const record = parseJsonObject(payload);
+  if (record === undefined) return payload;
+  const wireMessage = asObject(record["message"]);
+  if (record["type"] === "api-request-blob")
+    return wireMessage === undefined || !transcriptRoles.has(asString(wireMessage["role"]) ?? "")
+      ? payload
+      : JSON.stringify(
+          withJsonField(record, "message", {
+            omitted: "api-request",
+            chars: JSON.stringify(wireMessage).length,
+          }),
+        );
+  const result = record["toolUseResult"];
+  if (result === undefined) return payload;
+  const kept = withoutRepeatedText(result, toolResultTexts(record));
+  return kept === result ? payload : JSON.stringify(withJsonField(record, "toolUseResult", kept));
+};
+
 export const claudeNormalizer: Normalizer = {
   id: "claude",
-  parserVersion: 4,
+  parserVersion: 5,
   conversationKeyOf,
   normalize,
+  trim,
 };

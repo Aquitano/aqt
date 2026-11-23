@@ -349,10 +349,8 @@ const swapToPending = Effect.fn("Valuation.swapToPending")(function* (catalog: C
   yield* regroupAll(catalog);
 }, inCatalogTransaction);
 
-// The request inspector shows prices under earlier catalogs, so the few most recent superseded catalogs keep
-// their rows. Older ones are dropped: every refresh would otherwise add a row per request forever.
-const retainedCatalogs = 3;
-
+// Only the live catalog and one still being priced keep their rows. A price is a function of the request and
+// its catalog, and every refresh would otherwise leave a row per request behind.
 export const pruneValuations = Effect.fn("Valuation.prune")(function* () {
   const db = yield* Db;
   const [pruned] = yield* db.execute<{ count: number }>(
@@ -360,8 +358,6 @@ export const pruneValuations = Effect.fn("Valuation.prune")(function* () {
     WITH stale AS (
       SELECT version FROM ${pricingCatalogs}
       WHERE NOT active AND NOT pending
-      ORDER BY fetched_at DESC
-      OFFSET ${retainedCatalogs}
     ), deleted AS (
       DELETE FROM ${valuations} WHERE catalog_version IN (SELECT version FROM stale) RETURNING 1
     )
