@@ -4,6 +4,8 @@ Use a Linux host with Docker Engine, Docker Compose v2 or newer, Git, OpenSSL, a
 
 GitHub builds the server image after verification. The VPS pulls that image. Postgres uses the pinned ParadeDB image. The database has no published port, and the server binds to localhost.
 
+The production instance on `ubuntu` is not deployed from this directory. Its Compose file lives in `stacks/turnstash` of [Aquitano/homelab](https://github.com/Aquitano/homelab) and ships with `./homelab deploy turnstash`; its server image pin stays in the box's `deploy/.env` as `SERVER_IMAGE`. Change production settings there, never by copying this file onto the box. This directory's `docker-compose.yml` stays as the CI fixture and the reference for other hosts, so a Compose change that production needs goes into both repositories.
+
 Turnstash lives in `apps/turnstash` of [Aquitano/aqt](https://github.com/Aquitano/aqt), and its CLI is `turnstash`. The repository is private. Authenticate with an account that has access and clone it on the VPS:
 
 ```sh
