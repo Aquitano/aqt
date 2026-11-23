@@ -4,6 +4,8 @@ Use a Linux host with Docker Engine, Docker Compose v2 or newer, Git, OpenSSL, a
 
 GitHub builds the server image after verification. The VPS pulls that image. Postgres uses the pinned ParadeDB image. The database has no published port, and the server binds to localhost.
 
+The turnstash workflow also boots `docker-compose.yml` for its container checks, so it is a CI fixture as well as the reference deployment. A host managed by separate infrastructure configuration keeps its own copy of the Compose file. On such a host, apply changes from here through that configuration rather than copying this file over it, and run the commands below against the Compose file the host actually uses.
+
 Turnstash lives in `apps/turnstash` of [Aquitano/aqt](https://github.com/Aquitano/aqt), and its CLI is `turnstash`. The repository is private. Authenticate with an account that has access and clone it on the VPS:
 
 ```sh
