@@ -40,7 +40,7 @@
   },
   "devDependencies": {
     "@aqt/config": "workspace:*",
-    "@cloudflare/vite-plugin": "^1.69.1",
+    "@cloudflare/vite-plugin": "^1.70.1",
     "@tanstack/devtools-vite": "^0.8.6",
     "@tanstack/router-cli": "^1.168.0",
     "@types/node": "catalog:",
