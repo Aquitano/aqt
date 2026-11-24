@@ -1,7 +1,7 @@
 # Build context is the workspace root (aqt/), not this directory: the lockfile
 # is resolved against every workspace manifest, and the filter below installs
 # only what this server and its workspace dependencies need.
-FROM oven/bun:1.4.4-slim@sha256:1846adf22496bd711036aae8be147e57bdebbaea2e5264e3e0b5af1db187d9a4
+FROM oven/bun:1.4.5-slim@sha256:b780593f3e10918cbdaec3d5a08d52224b9198069a65eb47812085c2ec007643
 
 WORKDIR /app
 COPY . .

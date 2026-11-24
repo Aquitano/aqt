@@ -5,7 +5,7 @@
 # reachable from a tailnet, the process serving it should have as little around
 # it as possible.
 
-FROM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS build
+FROM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 WORKDIR /src/apps/bank
 
 # The context is the repository root, because bank builds against
@@ -48,7 +48,7 @@ CMD ["worker", "--queue", "ocr"]
 #
 # This stage is last, so `docker build -f apps/bank/Dockerfile .` from the
 # repository root produces the server image.
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931 AS server
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:8ce6dd87e9823c5b48dcfb2c8604714ccb351ce59607327bcc4957448da279b5 AS server
 
 COPY --from=build /out/bank /usr/local/bin/bank
 
