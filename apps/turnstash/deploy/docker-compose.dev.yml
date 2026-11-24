@@ -1,6 +1,6 @@
 services:
   db:
-    image: paradedb/paradedb:v0.26.6-pg17@sha256:d2793a65990a7179c97835cc8fc546f8f8bb3a2df975d80194f35e1744fd49be
+    image: paradedb/paradedb:v0.27.0-pg17@sha256:8fb8cafe24cd8eb59a9a3daea5a14d7e4d92219734c829351d094368cc693319
     environment:
       POSTGRES_USER: turnstash
       POSTGRES_PASSWORD: turnstash
@@ -11,7 +11,7 @@ services:
       - db-dev-data:/var/lib/postgresql/data
 
   db-test:
-    image: paradedb/paradedb:v0.26.6-pg17@sha256:d2793a65990a7179c97835cc8fc546f8f8bb3a2df975d80194f35e1744fd49be
+    image: paradedb/paradedb:v0.27.0-pg17@sha256:8fb8cafe24cd8eb59a9a3daea5a14d7e4d92219734c829351d094368cc693319
     profiles: [test]
     environment:
       POSTGRES_USER: turnstash

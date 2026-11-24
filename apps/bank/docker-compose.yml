@@ -16,7 +16,7 @@
 services:
   db:
     # pg_search 0.26.4; keep the CI database on this digest too.
-    image: paradedb/paradedb:v0.26.6-pg18@sha256:4df3bcf9f19b32821446967f7874d1a40bee8b9550184cc0d70e93f51ee8af36
+    image: paradedb/paradedb:v0.27.0-pg18@sha256:37607fa963841e46b8a2461faf4fe3535dce9bb8019bc2dde7f207729d571ca3
     environment:
       POSTGRES_USER: bank
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bank}
