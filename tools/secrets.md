@@ -22,7 +22,7 @@ tools/secrets.sh push gallery            # upload the local file, after confirmi
 
 Targets are `bank`, `gallery`, `gallery-web`, `img` and `tracker`; each one names the `.env` path it owns. `pull`, `diff` and `push` all work on the checkout they run in, so they default to `dev` — the environment you actually develop against.
 
-Prod reaches the VPS from the [homelab](https://github.com/Aquitano/homelab) repository: `./homelab secrets <stack>` exports the same Infisical project and writes the `.env` on the box, so the VPS holds no Infisical credentials.
+Infisical holds only the dev environments. Prod lives in the [homelab](https://github.com/Aquitano/homelab) repository, encrypted with SOPS as `secrets/<stack>/prod.env.sops`, and `./homelab secrets <stack>` writes the `.env` on the box from there. The VPS holds neither Infisical credentials nor the decryption key.
 
 `pull` replaces the file and reports whether the values actually changed, comparing them the way `diff` does, so reordering and comments do not count as drift. An environment that exists but holds no secrets aborts the pull rather than emptying a working `.env`. Comments do not survive a pull; they belong in `.env.example`.
 

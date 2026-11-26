@@ -256,7 +256,7 @@ mkdir -p /data/aqt-tracker/pgdata /data/aqt-tracker/backups
 chmod 700 /data/aqt-tracker/backups
 ```
 
-`/opt/aqt-tracker/apps/tracker/.env`, mode 600, or keep it in Infisical's `prod` and run `./homelab secrets aqt-tracker` from the homelab repository:
+`/opt/aqt-tracker/apps/tracker/.env`, mode 600, or keep it encrypted in the homelab repository as `secrets/aqt-tracker/prod.env.sops` and run `./homelab secrets aqt-tracker` there:
 
 ```sh
 COMPOSE_PROFILES=server
