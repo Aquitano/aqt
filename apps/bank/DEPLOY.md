@@ -150,7 +150,7 @@ counts each job queue's `waiting`, `running` and `failed` jobs, with
 `oldest_waiting`, the time the longest-waiting job became due. A queue whose
 oldest job keeps aging has no worker. Failed jobs stay counted for seven days. The image runs `bank healthcheck` itself, so Compose can probe
 the distroless server. `bank version` reports the build revision supplied through
-`GIT_SHA`, which `ops/deploy.sh` sets, or else `BANK_VERSION`. SIGTERM and Ctrl-C
+`GIT_SHA`, or else `BANK_VERSION`, which `bank-update` sets. SIGTERM and Ctrl-C
 stop new requests and new jobs, and allow active requests and running jobs up
 to 30 seconds before the database pools close. A job still running then is
 cancelled: a text job is tried again later, a scheduled one at its next tick.

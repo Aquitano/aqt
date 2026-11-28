@@ -110,8 +110,8 @@ dependencies; the build context is the workspace root so bun can verify the
 lockfile, and the root `.dockerignore` allowlists what that needs.
 
 ```bash
-mise run gallery:secrets:send           # writes apps/gallery/apps/server/.env on the VPS
-mise run gallery:deploy                 # pulls, builds and restarts it there
+./homelab secrets aqt-gallery   # in the homelab repo: writes apps/gallery/apps/server/.env on the VPS
+./homelab deploy aqt-gallery    # pulls, builds and restarts it there
 ```
 
 The container listens on 3000, published on loopback (`AQT_GALLERY_LISTEN`

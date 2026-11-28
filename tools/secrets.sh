@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  echo "usage: ops/secrets.sh <pull|push|diff|send> <target> [env]" >&2
+  echo "usage: tools/secrets.sh <pull|push|diff> <target> [env]" >&2
   echo "targets: bank gallery gallery-web img tracker" >&2
   exit 2
 }
@@ -218,30 +218,6 @@ diff)
   gap=$(undocumented "$scratch/remote")
   [ -z "$gap" ] || echo "warning: $rel.example documents keys $slug does not have: $gap" >&2
   diff -u --label "$target $slug:$folder" "$scratch/remote" --label "$disp" "$scratch/local"
-  ;;
-send)
-  # Not ${AQT_VPS_HOST:?...}: bash 3.2 runs the EXIT trap on an expansion error
-  # and the successful cleanup overwrites the failure status with 0.
-  host=${AQT_VPS_HOST:-}
-  vps=${AQT_VPS_ROOT:-}
-  [ -n "$host" ] && [ -n "$vps" ] || {
-    echo "set AQT_VPS_HOST and AQT_VPS_ROOT" >&2
-    exit 1
-  }
-  "$root/ops/vps.sh" "$host"
-  fetch >"$scratch/new"
-  test -s "$scratch/new" || {
-    echo "$target $slug:$folder returned nothing; refusing to send it" >&2
-    exit 1
-  }
-  pairs <"$scratch/new" >"$scratch/now"
-  gap=$(undocumented "$scratch/now")
-  [ -z "$gap" ] || echo "warning: $rel.example documents keys $slug does not have: $gap" >&2
-  confirm "$(printf '%s %s:%s -> %s:%s/%s, %d keys' "$target" "$slug" "$folder" "$host" "$vps" "$disp" "$(wc -l <"$scratch/now")")"
-  # Written beside the target and moved, so an interrupted transfer never leaves
-  # the box with half a .env.
-  ssh "$host" "umask 077 && cat > '$vps/$app/$rel.aqt' && mv '$vps/$app/$rel.aqt' '$vps/$app/$rel'" <"$scratch/new"
-  echo "$host:$vps/$disp <- $target $slug:$folder"
   ;;
 *) usage ;;
 esac
