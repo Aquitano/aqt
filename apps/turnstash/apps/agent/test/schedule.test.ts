@@ -7,7 +7,11 @@ import { run, withDirectory } from "./support.ts";
 
 test("scheduled sync preserves selected paths, excludes credentials, and propagates the exit code", () =>
   withDirectory(async (directory) => {
-    const configDir = join(directory, 'config with spaces " & $ %');
+    const windows = process.platform === "win32";
+    const configDir = join(
+      directory,
+      windows ? "config with spaces & $ %" : 'config with spaces " & $ %',
+    );
     const source = join(directory, "fake agent.js");
     await writeFile(
       source,
@@ -25,7 +29,7 @@ test("scheduled sync preserves selected paths, excludes credentials, and propaga
     };
     const runner = await run(
       writeScheduleRunner(
-        { os: "linux", home: directory, env: environment },
+        { os: windows ? "win32" : "linux", home: directory, env: environment },
         { executable: process.execPath, script: source },
       ),
     );
@@ -49,5 +53,5 @@ test("scheduled sync preserves selected paths, excludes credentials, and propaga
     expect(captured.env.ADMIN_TOKEN).toBeUndefined();
     expect(captured.env.OPENAI_API_KEY).toBeUndefined();
     expect(await readFile(runner.script, "utf8")).not.toContain("must-not-be-saved");
-    expect((await stat(runner.script)).mode & 0o777).toBe(0o600);
+    if (!windows) expect((await stat(runner.script)).mode & 0o777).toBe(0o600);
   }));

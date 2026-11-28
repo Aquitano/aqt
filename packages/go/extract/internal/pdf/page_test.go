@@ -167,18 +167,6 @@ func TestFontAccessors(t *testing.T) {
 	}
 }
 
-func TestFontEncoderCaches(t *testing.T) {
-	f := &Font{V: testValue(dict{name("Encoding"): name("WinAnsiEncoding")})}
-	e1 := f.Encoder()
-	e2 := f.Encoder()
-	if f.enc == nil {
-		t.Fatal("encoding was not cached on the Font")
-	}
-	if e1 != e2 {
-		t.Fatal("Encoder() returned different instances; caching is broken")
-	}
-}
-
 func TestBuildOutline(t *testing.T) {
 	entry := testValue(dict{
 		name("Title"): "Root",

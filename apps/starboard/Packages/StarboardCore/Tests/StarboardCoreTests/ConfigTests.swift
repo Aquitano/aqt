@@ -57,10 +57,11 @@ struct ConfigTests {
         #expect(decode(json).failure != nil)
     }
 
-    @Test func pinningReplacesTheLetterInEitherCase() throws {
-        var config = try decode(#"{"assignments": {"S": "Safari"}}"#).get()
-        config.pin("s", to: "Slack", in: [])
-        #expect(config.assignments == ["s": "Slack"])
+    @Test func pinningReplacesTheLetterAndMovesTheAppFromItsOldAlias() throws {
+        let chrome = AppRecord(bundleID: "com.google.Chrome", names: ["Google Chrome"])
+        var config = try decode(#"{"assignments": {"G": "Ghostty", "c": "com.google.Chrome"}}"#).get()
+        config.pin("g", to: "Google Chrome", in: [chrome])
+        #expect(config.assignments == ["g": "Google Chrome"])
         #expect(try config.validated().get() == config)
     }
 
@@ -69,14 +70,6 @@ struct ConfigTests {
         config.assignments = ["g": "Google Chrome", "t": "Ghostty"]
         config.pin("c", to: "google chrome", in: [])
         #expect(config.assignments == ["c": "google chrome", "t": "Ghostty"])
-    }
-
-    @Test func pinningFindsTheAppUnderAnyName() {
-        let chrome = AppRecord(bundleID: "com.google.Chrome", names: ["Google Chrome"])
-        var config = Config()
-        config.assignments = ["c": "com.google.Chrome"]
-        config.pin("g", to: "Google Chrome", in: [chrome])
-        #expect(config.assignments == ["g": "Google Chrome"])
     }
 }
 

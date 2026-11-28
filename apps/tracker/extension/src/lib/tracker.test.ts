@@ -31,7 +31,6 @@ const {
   requestSync,
   serialized,
   showSeenBefore,
-  uploadCaptures,
 } = await import("./tracker.ts");
 
 const pageURL = "https://example.org/article";
@@ -229,34 +228,15 @@ test("a failed upload does not bring back a row the full outbox evicted meanwhil
   expect((await pendingCounts()).events).toBe(0);
 });
 
-test("a capture waits until the page view it references has left the outbox", async () => {
-  await enqueueEvent(pageView);
-  await markFailed("events", await dueEvents(100));
-  await enqueueCapture({
-    meta: {
-      capture_id: "capture",
-      page_view_id: pageView.id,
-      device_id: "device",
-      captured_at: timestamp,
-      url: pageURL,
-      extractor: "article",
-      reason: "initial",
-      raw_char_count: page.html.length,
-    },
-    html: page.html,
-  });
-  await uploadCaptures();
-  expect(fetchRequest).not.toHaveBeenCalled();
-  expect((await pendingCounts()).captures).toBe(1);
-});
-
-test("a page read while the server is unreachable is captured, and uploaded once it answers", async () => {
+test("a page captured offline uploads after its queued events reach the server", async () => {
   let reachable = false;
+  const requests: string[] = [];
   fetchRequest.mockImplementation(async (input) => {
-    if (!reachable) throw new TypeError("Failed to fetch");
     const { pathname } = new URL(input instanceof Request ? input.url : input);
+    requests.push(pathname);
+    if (!reachable) throw new TypeError("Failed to fetch");
     if (pathname === "/healthz") return Response.json({ ok: true, db: true });
-    if (pathname === "/v1/events/batch") return Response.json({ accepted: 1, dropped: 0 });
+    if (pathname === "/v1/events/batch") return Response.json({ accepted: 2, dropped: 0 });
     return Response.json(
       { capture_id: "capture", raw_hash: "00", deduplicated: false },
       { status: 201 },
@@ -266,17 +246,24 @@ test("a page read while the server is unreachable is captured, and uploaded once
   await requestSync(["health"]);
   expect((await syncStore.get())?.connected).toBe(false);
 
+  await enqueueEvent(pageView);
   await withTabFocused(() => serialized((at) => reconcile("unknown", at)));
   const armed = await fakeBrowser.alarms.get(`capture:1:${pageView.id}`);
   expect(armed).toBeDefined();
   await serialized((at) => onAlarm({ ...armed!, scheduledTime: at }, at));
   await requestSync();
-  expect(await pendingCounts()).toEqual({ events: 1, captures: 1 });
+  expect(await pendingCounts()).toEqual({ events: 2, captures: 1 });
+  expect(requests.filter((path) => path !== "/healthz")).toEqual(["/v1/events/batch"]);
 
+  requests.length = 0;
   reachable = true;
   vi.setSystemTime(new Date(Date.parse(timestamp) + 300_000));
   await requestSync(["health"]);
   expect(await pendingCounts()).toEqual({ events: 0, captures: 0 });
+  expect(requests.filter((path) => path !== "/healthz")).toEqual([
+    "/v1/events/batch",
+    "/v1/captures",
+  ]);
 });
 
 test("the extension counts events the server drops", async () => {

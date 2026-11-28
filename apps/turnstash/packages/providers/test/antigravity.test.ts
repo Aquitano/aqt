@@ -97,8 +97,7 @@ const transcript = [
     type: "GENERIC",
     status: "DONE",
     created_at: "2026-09-21T09:00:00Z",
-    content:
-      "You have read and write access to the following workspace(s):\n- file:///Users/dev/proj%20x\n",
+    content: `You have read and write access to the following workspace(s):\n- file:///${process.platform === "win32" ? "C:/" : ""}Users/dev/proj%20x\n`,
   },
   {
     step_index: 2,
@@ -187,7 +186,9 @@ test("transcript steps become messages and tools, usage rows become requests lin
   const conversation = antigravityNormalizer.normalize("cascade-1", records());
   if (conversation === null) throw new Error("expected a conversation");
   expect(conversation.title).toBe("add a login page");
-  expect(conversation.projectPath).toBe("/Users/dev/proj x");
+  expect(conversation.projectPath).toBe(
+    process.platform === "win32" ? "C:\\Users\\dev\\proj x" : "/Users/dev/proj x",
+  );
   expect(
     conversation.messages.map((message) => [message.messageKey, message.role, message.seq]),
   ).toEqual([

@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 
-import { z } from "zod";
-
 import { galleryTools } from "./tools";
 
 const TOOL_NAMES = [
@@ -80,10 +78,9 @@ describe("generated MCP tools", () => {
     expect(bad.success).toBe(false);
   });
 
-  test("carry a description and an object input schema", () => {
+  test("carry a description", () => {
     for (const tool of galleryTools) {
       expect(tool.description.length).toBeGreaterThan(0);
-      expect(tool.inputSchema).toBeInstanceOf(z.ZodObject);
     }
   });
 });

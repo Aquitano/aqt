@@ -82,7 +82,7 @@ func TestArchiveReopensReuseVerificationAndIndependentOffsets(t *testing.T) {
 		t.Fatalf("outer protection ended before listing: %v", err)
 	}
 	a.close()
-	if _, err := held.Stat(); !errors.Is(err, os.ErrClosed) {
-		t.Fatal("outer handle remained open after listing")
+	if _, err := held.ReadAt(buf, 0); !errors.Is(err, os.ErrClosed) {
+		t.Fatalf("reading after listing: %v, want a closed file", err)
 	}
 }

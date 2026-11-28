@@ -13,9 +13,11 @@ struct LetterAssignerTests {
         #expect(LetterAssigner.dynamicLetter(for: "1Password") == "1")
     }
 
-    @Test func aPinComesFirstOnItsLetter() {
+    @Test func aPinOwnsItsLetterAndTheOtherAppOnlyAppearsWhenCycling() {
         let assigner = LetterAssigner(pins: ["s": slack.bundleID])
-        #expect(assigner.apps(for: "s", in: [safari, slack]).map(\.name) == ["Slack", "Safari"])
+        let candidates = [safari, slack]
+        #expect(assigner.apps(for: "s", in: candidates).map(\.name) == ["Slack", "Safari"])
+        #expect(assigner.letters(candidates) == [slack.bundleID: "s"])
     }
 
     @Test func anAppPinnedElsewhereLeavesItsNameLetter() {
@@ -45,10 +47,5 @@ struct LetterAssignerTests {
             slack.bundleID: "s",
             notes.bundleID: "n",
         ])
-    }
-
-    @Test func anAppOnlyReachedByCyclingHasNoLetter() {
-        let assigner = LetterAssigner(pins: ["s": slack.bundleID])
-        #expect(assigner.letters([safari, slack])[safari.bundleID] == nil)
     }
 }

@@ -26,12 +26,6 @@ describe("hostMatches", () => {
     expect(hostMatches("*.example.com", "example.com")).toBe(false);
     expect(hostMatches("*.example.com", "notexample.com")).toBe(false);
   });
-
-  test("a bare star matches every host", () => {
-    expect(hostMatches("*", "example.com")).toBe(true);
-    expect(hostMatches("*", "a.b.c.example.co.uk")).toBe(true);
-    expect(hostMatches("*", "localhost")).toBe(true);
-  });
 });
 
 describe("matchRule", () => {
@@ -61,26 +55,15 @@ describe("matchRule", () => {
     expect(matchRule(rules, new URL("https://x.com/"))?.extractor).toBe("anything");
   });
 
-  test("a wildcard rule catches what no specific rule claims", () => {
+  test("the fallback only captures hosts that specific rules leave unclaimed", () => {
     const article = rule({ extractor: "article", hosts: ["*"], path_regex: "" });
-    expect(matchRule([...rules, article], new URL("https://example.com/post"))?.extractor).toBe(
-      "article",
+    const withFallback = [article, ...rules];
+    expect(matchRule(withFallback, new URL("https://github.com/a/b/pull/12"))?.extractor).toBe(
+      "github",
     );
-  });
-
-  test("a host a specific rule names never falls through to the wildcard", () => {
-    const article = rule({ extractor: "article", hosts: ["*"], path_regex: "" });
-    expect(matchRule([...rules, article], new URL("https://github.com/a/b"))).toBeUndefined();
-    expect(
-      matchRule([...rules, article], new URL("https://www.youtube.com/shorts/abc")),
-    ).toBeUndefined();
-  });
-
-  test("a specific rule beats a wildcard one whatever the order", () => {
-    const article = rule({ extractor: "article", hosts: ["*"], path_regex: "" });
-    const url = new URL("https://github.com/wxt-dev/wxt/pull/12");
-    expect(matchRule([...rules, article], url)?.extractor).toBe("github");
-    expect(matchRule([article, ...rules], url)?.extractor).toBe("github");
+    expect(matchRule(withFallback, new URL("https://github.com/a/b"))).toBeUndefined();
+    expect(matchRule(withFallback, new URL("https://www.youtube.com/shorts/abc"))).toBeUndefined();
+    expect(matchRule(withFallback, new URL("https://example.com/post"))?.extractor).toBe("article");
   });
 
   test("an excluded path is not captured, and not handed to the wildcard either", () => {

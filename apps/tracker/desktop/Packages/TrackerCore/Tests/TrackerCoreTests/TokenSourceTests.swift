@@ -31,20 +31,12 @@ private func tokenFile(_ contents: Data) throws -> String {
     return path.path(percentEncoded: false)
 }
 
-private final class CallCounter: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value = 0
+private actor RefreshCalls {
+    private(set) var total = 0
 
-    func record() {
-        lock.lock()
-        defer { lock.unlock() }
-        value += 1
-    }
-
-    var count: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return value
+    func record() -> Int {
+        total += 1
+        return total
     }
 }
 
@@ -127,22 +119,33 @@ struct TokenSourceTests {
 
     /// Actors are reentrant and this one suspends for the whole round trip, so
     /// without the shared task both callers would spend the same refresh token.
-    @Test func concurrentCallersShareOneRefresh() async throws {
+    @Test(.timeLimit(.minutes(1))) func concurrentCallersShareOneRefresh() async throws {
         let path = try tokenFile(sessionJSON(expiry: "2026-01-01T00:00:00Z"))
-        let calls = CallCounter()
-        let source = TokenSource(path: path, now: { epoch }, transport: { request in
-            calls.record()
-            try? await Task.sleep(for: .milliseconds(50))
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            let body = #"{"access_token":"access-2","refresh_token":"refresh-2","expires_in":3600}"#
-            return (Data(body.utf8), response)
-        })
+        let calls = RefreshCalls()
+        let arrivals = AsyncStream<Void>.makeStream()
+        let respond = reply(#"{"access_token":"access-2","refresh_token":"refresh-2","expires_in":3600}"#)
+        let source = TokenSource(
+            path: path,
+            now: {
+                arrivals.continuation.yield()
+                return epoch
+            },
+            transport: { request in
+                if await calls.record() == 1 {
+                    // Both callers must see the expired token before the first exchange finishes.
+                    var iterator = arrivals.stream.makeAsyncIterator()
+                    _ = await iterator.next()
+                    _ = await iterator.next()
+                }
+                return try await respond(request)
+            }
+        )
 
         async let first = source.bearer()
         async let second = source.bearer()
 
         #expect(await [first, second] == ["access-2", "access-2"])
-        #expect(calls.count == 1)
+        #expect(await calls.total == 1)
     }
 
     /// `applicationWillTerminate` cannot await, and a quit before the first

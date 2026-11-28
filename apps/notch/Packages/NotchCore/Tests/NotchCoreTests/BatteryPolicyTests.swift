@@ -32,61 +32,33 @@ struct BatteryPolicyTests {
         #expect(out.activities.map(\.kind) == [.charging(percent: 60, isCharging: true, isFull: false)])
         #expect(out.activities.first?.priority == .high)
         #expect(out.activities.first?.ttl == 4)
-        #expect(out.state.lastPluggedIn)
-    }
-
-    @Test func stayingPluggedInEmitsNothing() {
-        let out = decide(snapshot(isPluggedIn: true), .init(lastPluggedIn: true))
-        #expect(out.activities.isEmpty)
-    }
-
-    @Test func unplugEmitsNothing() {
-        let out = decide(snapshot(isPluggedIn: false), .init(lastPluggedIn: true))
-        #expect(out.activities.isEmpty)
-        #expect(!out.state.lastPluggedIn)
+        let steady = decide(snapshot(isPluggedIn: true), out.state)
+        #expect(steady.activities.isEmpty)
+        let unplugged = decide(snapshot(), steady.state)
+        #expect(unplugged.activities.isEmpty)
+        #expect(decide(snapshot(isPluggedIn: true), unplugged.state).activities.count == 1)
     }
 
     // MARK: - Low-battery hysteresis
 
-    @Test func lowBatteryAlertsOnceAtThreshold() {
+    @Test func lowBatteryAlertsAgainOnlyAfterLeavingTheDeadBand() {
         let out = decide(snapshot(percent: 20), .init())
         #expect(out.activities.map(\.kind) == [.lowBattery(percent: 20)])
         #expect(out.activities.first?.priority == .urgent)
         #expect(out.activities.first?.ttl == 6)
-        #expect(out.state.lowBatteryNotified)
-    }
-
-    @Test func lowBatteryDoesNotRepeatWhileArmed() {
-        let out = decide(snapshot(percent: 15), .init(lowBatteryNotified: true))
-        #expect(out.activities.isEmpty)
-        #expect(out.state.lowBatteryNotified)
-    }
-
-    @Test func lowBatteryStaysArmedBetween20And25() {
-        // 22% is in the dead band: no new alert, but the alert stays armed so it
-        // won't re-fire when the level dips back to 20%.
-        let out = decide(snapshot(percent: 22), .init(lowBatteryNotified: true))
-        #expect(out.activities.isEmpty)
-        #expect(out.state.lowBatteryNotified)
-    }
-
-    @Test func lowBatteryReArmsAbove25() {
-        let out = decide(snapshot(percent: 26), .init(lowBatteryNotified: true))
-        #expect(out.activities.isEmpty)
-        #expect(!out.state.lowBatteryNotified)
+        let held = decide(snapshot(percent: 25), out.state)
+        #expect(held.activities.isEmpty)
+        let dip = decide(snapshot(percent: 15), held.state)
+        #expect(dip.activities.isEmpty)
+        let rearmed = decide(snapshot(percent: 26), dip.state)
+        #expect(rearmed.activities.isEmpty)
+        #expect(decide(snapshot(percent: 18), rearmed.state).activities.map(\.kind) == [.lowBattery(percent: 18)])
     }
 
     @Test func chargingReArmsAndSuppressesLowBattery() {
         let out = decide(snapshot(percent: 10, isCharging: true), .init(lowBatteryNotified: true))
         #expect(out.activities.isEmpty)
         #expect(!out.state.lowBatteryNotified)
-    }
-
-    @Test func reArmedLowBatteryFiresAgainOnNextDip() {
-        var state = BatteryPolicy.State(lowBatteryNotified: true)
-        state = decide(snapshot(percent: 30), state).state // re-arm above 25
-        let out = decide(snapshot(percent: 18), state) // dip again
-        #expect(out.activities.map(\.kind) == [.lowBattery(percent: 18)])
     }
 
     // MARK: - Configurable threshold

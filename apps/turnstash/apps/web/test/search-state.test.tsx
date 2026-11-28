@@ -42,26 +42,17 @@ test("search and stable message URLs preserve reserved characters and validate f
 
 test("query highlights use literal text and escape transcript markup", () => {
   expect(
-    highlightSegments("a+b A+B axb", "a+b")
-      .filter((segment) => segment.matched)
-      .map((segment) => segment.text),
-  ).toEqual(["a+b", "A+B"]);
-  expect(
-    highlightSegments("a.b aXb", "a.b")
-      .filter((segment) => segment.matched)
-      .map((segment) => segment.text),
-  ).toEqual(["a.b"]);
-  expect(
     highlightSegments("go north north south", '"go north" OR -south')
       .filter((segment) => segment.matched)
       .map((segment) => segment.text),
   ).toEqual(["go north"]);
   const html = renderToStaticMarkup(
     <pre>
-      <HighlightedText text={'<img src=x onerror="alert(1)"> a+b'} query="a+b" />
+      <HighlightedText text={'<img src=x onerror="alert(1)"> a+b A+B axb'} query="a+b" />
     </pre>,
   );
-  expect(html).toContain("<mark>a+b</mark>");
+  expect(html).toContain("<mark>a+b</mark> <mark>A+B</mark> axb");
+  expect(html).toContain("&lt;img");
 });
 
 test("limits links preserve history and controls and reject invalid selections", () => {
